@@ -1,8 +1,9 @@
 from functools import lru_cache
+from typing import Annotated
 from zoneinfo import ZoneInfo
 
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -12,7 +13,7 @@ class Settings(BaseSettings):
     bot_id: int = 0
     database_url: str
     app_encryption_key: str = Field(min_length=43, max_length=44)
-    admin_ids: frozenset[int] = frozenset()
+    admin_ids: Annotated[frozenset[int], NoDecode] = frozenset()
     timezone: str = "Asia/Shanghai"
     log_level: str = "INFO"
     poll_timeout_seconds: int = Field(default=30, ge=1, le=50)

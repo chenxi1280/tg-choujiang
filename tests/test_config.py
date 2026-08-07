@@ -19,6 +19,12 @@ def test_bot_id_is_derived_from_token() -> None:
     assert _settings(bot_id="").bot_id == 123456789
 
 
+def test_blank_admin_ids_env_is_empty_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_IDS", "")
+
+    assert _settings().admin_ids == frozenset()
+
+
 def test_explicit_bot_id_must_match_token() -> None:
     with pytest.raises(ValidationError, match="BOT_ID does not match BOT_TOKEN"):
         _settings(bot_id=987654321)

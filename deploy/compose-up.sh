@@ -35,12 +35,16 @@ compose up -d --no-build --remove-orphans app worker
 timeout_seconds="${TG_LOTTERY_HEALTH_TIMEOUT_SECONDS:-600}"
 started_at="$(date +%s)"
 while true; do
+  app_state="$(docker_cmd inspect tg-lottery-app --format '{{.State.Status}}' 2>/dev/null || true)"
+  worker_state="$(docker_cmd inspect tg-lottery-worker --format '{{.State.Status}}' 2>/dev/null || true)"
   app_health="$(docker_cmd inspect tg-lottery-app --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
   worker_health="$(docker_cmd inspect tg-lottery-worker --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
   if [[ "$app_health" == "healthy" && "$worker_health" == "healthy" ]]; then
     break
   fi
-  if [[ "$app_health" == "unhealthy" || "$worker_health" == "unhealthy" ]]; then
+  if [[ "$app_state" =~ ^(dead|exited|restarting)$ ]] ||
+    [[ "$worker_state" =~ ^(dead|exited|restarting)$ ]] ||
+    [[ "$app_health" == "unhealthy" || "$worker_health" == "unhealthy" ]]; then
     docker_cmd logs --tail 200 tg-lottery-app >&2 || true
     docker_cmd logs --tail 200 tg-lottery-worker >&2 || true
     exit 1
@@ -51,7 +55,9 @@ while true; do
     docker_cmd logs --tail 200 tg-lottery-worker >&2 || true
     exit 1
   fi
-  echo "Waiting for services (${elapsed}s/${timeout_seconds}s): app=${app_health:-none} worker=${worker_health:-none}"
+  printf 'Waiting for services (%ss/%ss): app=%s/%s worker=%s/%s\n' \
+    "$elapsed" "$timeout_seconds" "${app_state:-none}" "${app_health:-none}" \
+    "${worker_state:-none}" "${worker_health:-none}"
   sleep 5
 done
 
