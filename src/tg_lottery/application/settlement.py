@@ -1,0 +1,231 @@
+from datetime import datetime, timedelta
+from uuid import UUID
+
+from sqlalchemy import exists, func, select
+
+from tg_lottery.application.ports import UnitOfWorkFactory
+from tg_lottery.domain.enums import (
+    CampaignState,
+    InvitationState,
+    QualificationState,
+    UpdateState,
+)
+from tg_lottery.domain.errors import SettlementBlocked
+from tg_lottery.domain.rules import CampaignRules, canonical_hash
+from tg_lottery.domain.transitions import require_campaign_transition
+from tg_lottery.infrastructure.db import (
+    Campaign,
+    DrawEntry,
+    DrawSnapshot,
+    Invitation,
+    Participant,
+    PollingOffset,
+    QualificationCheck,
+    TelegramUpdate,
+    TicketLedger,
+)
+
+_PENDING_UPDATE_STATES = (
+    UpdateState.RECEIVED,
+    UpdateState.PROCESSING,
+    UpdateState.FAILED,
+)
+_PENDING_INVITATION_STATES = (
+    InvitationState.JOINED_PENDING,
+    InvitationState.CHECKING,
+    InvitationState.VALIDATION_UNKNOWN,
+)
+
+
+class SettlementService:
+    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+        self._uow_factory = uow_factory
+
+    async def settle(self, campaign_id: UUID, now: datetime) -> DrawSnapshot:
+        async with self._uow_factory() as uow:
+            campaign = await uow.session.scalar(
+                select(Campaign).where(Campaign.id == campaign_id).with_for_update()
+            )
+            if campaign is None:
+                raise ValueError("campaign not found")
+            existing = await uow.session.scalar(
+                select(DrawSnapshot).where(DrawSnapshot.campaign_id == campaign.id)
+            )
+            if existing:
+                return existing
+            self._enter_settling(campaign)
+            await self._expire_unqualified_invitations(uow.session, campaign)
+            await self._require_drain_complete(uow.session, campaign, now)
+            entries = await self._eligible_entries(uow.session, campaign.id)
+            snapshot = await self._create_snapshot(
+                uow.session,
+                campaign=campaign,
+                entries=entries,
+                now=now,
+            )
+            campaign.state = CampaignState.READY_TO_DRAW
+            campaign.settled_at = now
+            return snapshot
+
+    def _enter_settling(self, campaign: Campaign) -> None:
+        if campaign.state in {CampaignState.RUNNING, CampaignState.PAUSED}:
+            require_campaign_transition(campaign.state, CampaignState.SETTLING)
+            campaign.state = CampaignState.SETTLING
+        if campaign.state is not CampaignState.SETTLING:
+            raise SettlementBlocked(f"campaign state {campaign.state} cannot settle")
+
+    async def _expire_unqualified_invitations(self, session: object, campaign: Campaign) -> None:
+        invitations = (
+            await session.scalars(
+                select(Invitation)
+                .where(
+                    Invitation.campaign_id == campaign.id,
+                    Invitation.state.in_(
+                        [
+                            InvitationState.ATTRIBUTION_CANDIDATE,
+                            InvitationState.JOINED_PENDING,
+                            InvitationState.CHECKING,
+                        ]
+                    ),
+                )
+                .with_for_update()
+            )
+        ).all()
+        for invitation in invitations:
+            if invitation.due_at is None or invitation.due_at > campaign.cutoff_at:
+                invitation.state = InvitationState.EXPIRED_UNQUALIFIED
+
+    async def _require_drain_complete(
+        self, session: object, campaign: Campaign, now: datetime
+    ) -> None:
+        rules = CampaignRules.model_validate(campaign.rules)
+        drain_until = campaign.cutoff_at + timedelta(seconds=rules.settlement_drain_seconds)
+        blockers: list[str] = []
+        if now < drain_until:
+            blockers.append("drain_window_not_elapsed")
+        if await self._has_pending_updates(session, campaign):
+            blockers.append("inbox_pending_before_cutoff")
+        if await self._has_pending_invitations(session, campaign.id):
+            blockers.append("invitation_validation_pending")
+        if await self._has_pending_qualifications(session, campaign.id):
+            blockers.append("qualification_review_pending")
+        if not await self._polling_fresh_after_cutoff(session, campaign.cutoff_at):
+            blockers.append("polling_not_fresh_after_cutoff")
+        if blockers:
+            raise SettlementBlocked(",".join(blockers))
+
+    async def _has_pending_updates(self, session: object, campaign: Campaign) -> bool:
+        update_id = await session.scalar(
+            select(TelegramUpdate.id)
+            .where(
+                TelegramUpdate.event_at <= campaign.cutoff_at,
+                TelegramUpdate.state.in_(_PENDING_UPDATE_STATES),
+            )
+            .limit(1)
+        )
+        return update_id is not None
+
+    async def _has_pending_invitations(self, session: object, campaign_id: UUID) -> bool:
+        invitation_id = await session.scalar(
+            select(Invitation.id)
+            .where(
+                Invitation.campaign_id == campaign_id,
+                Invitation.state.in_(_PENDING_INVITATION_STATES),
+            )
+            .limit(1)
+        )
+        return invitation_id is not None
+
+    async def _has_pending_qualifications(self, session: object, campaign_id: UUID) -> bool:
+        draw_check_exists = exists(
+            select(QualificationCheck.id).where(
+                QualificationCheck.participant_id == Participant.id,
+                QualificationCheck.phase == "draw",
+            )
+        )
+        participant_id = await session.scalar(
+            select(Participant.id)
+            .where(
+                Participant.campaign_id == campaign_id,
+                (
+                    Participant.qualification_state.in_(
+                        [QualificationState.PENDING, QualificationState.UNKNOWN]
+                    )
+                    | ~draw_check_exists
+                ),
+            )
+            .limit(1)
+        )
+        return participant_id is not None
+
+    async def _polling_fresh_after_cutoff(self, session: object, cutoff_at: datetime) -> bool:
+        last_poll = await session.scalar(select(func.max(PollingOffset.last_poll_succeeded_at)))
+        return last_poll is not None and last_poll >= cutoff_at
+
+    async def _eligible_entries(
+        self, session: object, campaign_id: UUID
+    ) -> list[tuple[Participant, int]]:
+        statement = (
+            select(Participant, func.coalesce(func.sum(TicketLedger.delta), 0))
+            .outerjoin(TicketLedger, TicketLedger.participant_id == Participant.id)
+            .where(
+                Participant.campaign_id == campaign_id,
+                Participant.qualification_state == QualificationState.ELIGIBLE,
+                Participant.private_reachable.is_(True),
+            )
+            .group_by(Participant.id)
+            .order_by(Participant.user_id)
+        )
+        rows = (await session.execute(statement)).all()
+        return [(participant, int(weight)) for participant, weight in rows if int(weight) > 0]
+
+    async def _create_snapshot(
+        self,
+        session: object,
+        *,
+        campaign: Campaign,
+        entries: list[tuple[Participant, int]],
+        now: datetime,
+    ) -> DrawSnapshot:
+        watermark = await session.scalar(
+            select(func.max(TicketLedger.created_at)).where(TicketLedger.campaign_id == campaign.id)
+        )
+        watermark = watermark or now
+        payload = {
+            "campaign_id": str(campaign.id),
+            "config_revision": campaign.config_revision,
+            "ledger_watermark": watermark.isoformat(),
+            "entries": [(str(participant.id), weight) for participant, weight in entries],
+        }
+        snapshot = DrawSnapshot(
+            campaign_id=campaign.id,
+            config_revision=campaign.config_revision,
+            ledger_watermark=watermark,
+            snapshot_hash=canonical_hash(payload),
+            total_weight=sum(weight for _, weight in entries),
+        )
+        session.add(snapshot)
+        await session.flush()
+        for participant, weight in entries:
+            check_id = await self._latest_draw_check(session, participant.id)
+            session.add(
+                DrawEntry(
+                    snapshot_id=snapshot.id,
+                    participant_id=participant.id,
+                    user_id=participant.user_id,
+                    weight=weight,
+                    qualification_observation_id=check_id,
+                )
+            )
+        return snapshot
+
+    async def _latest_draw_check(self, session: object, participant_id: UUID) -> UUID | None:
+        return await session.scalar(
+            select(QualificationCheck.id)
+            .where(
+                QualificationCheck.participant_id == participant_id,
+                QualificationCheck.phase == "draw",
+            )
+            .order_by(QualificationCheck.observed_at.desc())
+            .limit(1)
+        )

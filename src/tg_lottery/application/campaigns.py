@@ -1,0 +1,322 @@
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from uuid import UUID
+
+from sqlalchemy import select
+
+from tg_lottery.application.authorization import require_group_admin
+from tg_lottery.application.ports import UnitOfWorkFactory
+from tg_lottery.application.records import add_audit, add_job, add_outbox, utcnow
+from tg_lottery.domain.enums import CampaignState
+from tg_lottery.domain.rules import CampaignDraft, CampaignRules, canonical_hash
+from tg_lottery.domain.transitions import require_campaign_transition
+from tg_lottery.infrastructure.db import Campaign, Group, Prize, RuleRevision
+
+
+@dataclass(frozen=True)
+class PrizeSpec:
+    name: str
+    quantity: int
+    claim_instructions: str
+
+
+class CampaignService:
+    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+        self._uow_factory = uow_factory
+
+    async def create_draft(
+        self,
+        draft: CampaignDraft,
+        prizes: tuple[PrizeSpec, ...],
+        actor_user_id: int,
+    ) -> Campaign:
+        self._validate_prizes(prizes)
+        async with self._uow_factory() as uow:
+            group = await self._group(uow.session, draft.group_id)
+            await require_group_admin(uow.session, group_id=group.id, user_id=actor_user_id)
+            campaign = self._new_campaign(draft, group, actor_user_id)
+            uow.session.add(campaign)
+            await uow.session.flush()
+            self._add_rules_and_prizes(
+                uow.session,
+                campaign=campaign,
+                draft=draft,
+                prizes=prizes,
+                actor=actor_user_id,
+            )
+            add_audit(
+                uow.session,
+                actor_user_id=actor_user_id,
+                action="campaign.created",
+                aggregate_type="campaign",
+                aggregate_id=str(campaign.id),
+            )
+            return campaign
+
+    async def publish(self, campaign_id: UUID, actor_user_id: int, bot_username: str) -> None:
+        async with self._uow_factory() as uow:
+            campaign = await self._locked_campaign(uow.session, campaign_id)
+            await require_group_admin(
+                uow.session, group_id=campaign.group_id, user_id=actor_user_id
+            )
+            require_campaign_transition(campaign.state, CampaignState.PUBLISHING)
+            campaign.state = CampaignState.PUBLISHING
+            revision = await self._freeze_revision(uow.session, campaign)
+            group = await self._group_by_id(uow.session, campaign.group_id)
+            self._schedule_lifecycle(uow.session, campaign)
+            add_outbox(
+                uow.session,
+                operation="send_campaign_card",
+                aggregate_type="campaign",
+                aggregate_id=str(campaign.id),
+                recipient_chat_id=group.chat_id,
+                business_key=f"publish:{campaign.id}:{revision.revision}",
+                payload=self._campaign_card(campaign, bot_username),
+            )
+            add_audit(
+                uow.session,
+                actor_user_id=actor_user_id,
+                action="campaign.publish_requested",
+                aggregate_type="campaign",
+                aggregate_id=str(campaign.id),
+            )
+
+    async def change_state(
+        self,
+        campaign_id: UUID,
+        *,
+        actor_user_id: int,
+        target: CampaignState,
+        reason: str,
+    ) -> None:
+        async with self._uow_factory() as uow:
+            campaign = await self._locked_campaign(uow.session, campaign_id)
+            await require_group_admin(
+                uow.session, group_id=campaign.group_id, user_id=actor_user_id
+            )
+            require_campaign_transition(campaign.state, target)
+            campaign.state = target
+            if target is CampaignState.SETTLING:
+                self._add_settlement_job(uow.session, campaign)
+            if target is CampaignState.CANCELLED:
+                self._add_revoke_job(uow.session, campaign)
+            add_audit(
+                uow.session,
+                actor_user_id=actor_user_id,
+                action=f"campaign.{target.value}",
+                aggregate_type="campaign",
+                aggregate_id=str(campaign.id),
+                reason=reason,
+            )
+
+    async def early_cutoff(
+        self,
+        campaign_id: UUID,
+        *,
+        actor_user_id: int,
+        cutoff_at: datetime,
+        reason: str,
+    ) -> None:
+        async with self._uow_factory() as uow:
+            campaign = await self._locked_campaign(uow.session, campaign_id)
+            await require_group_admin(
+                uow.session, group_id=campaign.group_id, user_id=actor_user_id
+            )
+            require_campaign_transition(campaign.state, CampaignState.SETTLING)
+            campaign.cutoff_at = cutoff_at
+            campaign.state = CampaignState.SETTLING
+            rules = CampaignRules.model_validate(campaign.rules)
+            self._schedule_early_cutoff_jobs(
+                uow.session,
+                campaign=campaign,
+                cutoff_at=cutoff_at,
+                rules=rules,
+            )
+            add_audit(
+                uow.session,
+                actor_user_id=actor_user_id,
+                action="campaign.early_cutoff",
+                aggregate_type="campaign",
+                aggregate_id=str(campaign.id),
+                reason=reason,
+                details={"cutoff_at": cutoff_at.isoformat()},
+            )
+
+    def _validate_prizes(self, prizes: tuple[PrizeSpec, ...]) -> None:
+        if not prizes:
+            raise ValueError("campaign requires at least one prize")
+        if any(prize.quantity < 1 or not prize.name.strip() for prize in prizes):
+            raise ValueError("each prize requires a name and positive quantity")
+
+    async def _group(self, session: object, group_id: int) -> Group:
+        group = await session.scalar(select(Group).where(Group.chat_id == group_id))
+        if group is None:
+            raise ValueError("target Telegram group is not registered")
+        return group
+
+    async def _group_by_id(self, session: object, group_id: UUID) -> Group:
+        group = await session.get(Group, group_id)
+        if group is None:
+            raise ValueError("campaign group does not exist")
+        return group
+
+    def _new_campaign(self, draft: CampaignDraft, group: Group, actor: int) -> Campaign:
+        return Campaign(
+            group_id=group.id,
+            name=draft.name,
+            state=CampaignState.DRAFT,
+            timezone=draft.rules.timezone,
+            preheat_at=draft.preheat_at,
+            cutoff_at=draft.cutoff_at,
+            draw_at=draft.draw_at,
+            rules=draft.rules.model_dump(mode="json"),
+            created_by=actor,
+        )
+
+    def _add_rules_and_prizes(
+        self,
+        session: object,
+        *,
+        campaign: Campaign,
+        draft: CampaignDraft,
+        prizes: tuple[PrizeSpec, ...],
+        actor: int,
+    ) -> None:
+        rules = draft.rules.model_dump(mode="json")
+        session.add(
+            RuleRevision(
+                campaign_id=campaign.id,
+                revision=1,
+                rules=rules,
+                rules_hash=canonical_hash(rules),
+                actor_user_id=actor,
+                frozen=False,
+            )
+        )
+        for position, spec in enumerate(prizes, start=1):
+            session.add(
+                Prize(
+                    campaign_id=campaign.id,
+                    position=position,
+                    name=spec.name,
+                    quantity=spec.quantity,
+                    claim_instructions=spec.claim_instructions,
+                )
+            )
+
+    async def _locked_campaign(self, session: object, campaign_id: UUID) -> Campaign:
+        campaign = await session.scalar(
+            select(Campaign).where(Campaign.id == campaign_id).with_for_update()
+        )
+        if campaign is None:
+            raise ValueError("campaign not found")
+        return campaign
+
+    async def _freeze_revision(self, session: object, campaign: Campaign) -> RuleRevision:
+        revision = await session.scalar(
+            select(RuleRevision).where(
+                RuleRevision.campaign_id == campaign.id,
+                RuleRevision.revision == campaign.config_revision,
+            )
+        )
+        if revision is None:
+            raise ValueError("campaign rule revision is missing")
+        revision.frozen = True
+        return revision
+
+    def _schedule_lifecycle(self, session: object, campaign: Campaign) -> None:
+        rules = CampaignRules.model_validate(campaign.rules)
+        add_job(
+            session,
+            job_type="campaign_start",
+            aggregate_id=str(campaign.id),
+            business_key=f"campaign_start:{campaign.id}:{campaign.config_revision}",
+            run_at=campaign.preheat_at,
+        )
+        add_job(
+            session,
+            job_type="campaign_cutoff",
+            aggregate_id=str(campaign.id),
+            business_key=f"campaign_cutoff:{campaign.id}:{campaign.config_revision}",
+            run_at=campaign.cutoff_at,
+        )
+        add_job(
+            session,
+            job_type="qualification_review",
+            aggregate_id=str(campaign.id),
+            business_key=f"qualification_review:{campaign.id}:{campaign.config_revision}",
+            run_at=campaign.cutoff_at,
+        )
+        add_job(
+            session,
+            job_type="revoke_invite_links",
+            aggregate_id=str(campaign.id),
+            business_key=f"revoke_links:{campaign.id}:{campaign.config_revision}",
+            run_at=campaign.cutoff_at,
+        )
+        add_job(
+            session,
+            job_type="campaign_settle",
+            aggregate_id=str(campaign.id),
+            business_key=f"campaign_settle:{campaign.id}:{campaign.config_revision}",
+            run_at=campaign.cutoff_at + timedelta(seconds=rules.settlement_drain_seconds),
+        )
+        add_job(
+            session,
+            job_type="campaign_draw",
+            aggregate_id=str(campaign.id),
+            business_key=f"campaign_draw:{campaign.id}:{campaign.config_revision}",
+            run_at=campaign.draw_at,
+        )
+
+    def _add_settlement_job(self, session: object, campaign: Campaign) -> None:
+        add_job(
+            session,
+            job_type="campaign_settle",
+            aggregate_id=str(campaign.id),
+            business_key=f"campaign_settle_manual:{campaign.id}:{campaign.config_revision}",
+            run_at=utcnow(),
+        )
+
+    def _add_revoke_job(self, session: object, campaign: Campaign) -> None:
+        add_job(
+            session,
+            job_type="revoke_invite_links",
+            aggregate_id=str(campaign.id),
+            business_key=f"revoke_links_cancel:{campaign.id}:{campaign.config_revision}",
+            run_at=utcnow(),
+        )
+
+    def _schedule_early_cutoff_jobs(
+        self,
+        session: object,
+        *,
+        campaign: Campaign,
+        cutoff_at: datetime,
+        rules: CampaignRules,
+    ) -> None:
+        suffix = int(cutoff_at.timestamp())
+        for job_type in ("qualification_review", "revoke_invite_links"):
+            add_job(
+                session,
+                job_type=job_type,
+                aggregate_id=str(campaign.id),
+                business_key=f"{job_type}_early:{campaign.id}:{suffix}",
+                run_at=cutoff_at,
+            )
+        add_job(
+            session,
+            job_type="campaign_settle",
+            aggregate_id=str(campaign.id),
+            business_key=f"campaign_settle_early:{campaign.id}:{suffix}",
+            run_at=cutoff_at + timedelta(seconds=rules.settlement_drain_seconds),
+        )
+
+    def _campaign_card(self, campaign: Campaign, bot_username: str) -> dict[str, object]:
+        return {
+            "campaign_id": str(campaign.id),
+            "name": campaign.name,
+            "cutoff_at": campaign.cutoff_at.isoformat(),
+            "draw_at": campaign.draw_at.isoformat(),
+            "bot_username": bot_username,
+        }

@@ -1,0 +1,63 @@
+name: tg-lottery
+
+x-runtime: &runtime
+  image: ${TG_LOTTERY_APP_IMAGE:-tg-lottery-app:latest}
+  restart: unless-stopped
+  env_file:
+    - ${ENV_FILE:-.env.docker.example}
+  environment:
+    BOT_TOKEN: ${BOT_TOKEN:?BOT_TOKEN is required}
+    BOT_ID: ${BOT_ID:?BOT_ID is required}
+    DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+    APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}
+    ADMIN_IDS: ${ADMIN_IDS:-}
+    TIMEZONE: ${TIMEZONE:-Asia/Shanghai}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    POLL_TIMEOUT_SECONDS: ${POLL_TIMEOUT_SECONDS:-30}
+    POLL_LEASE_SECONDS: ${POLL_LEASE_SECONDS:-60}
+    WORKER_POLL_SECONDS: ${WORKER_POLL_SECONDS:-2}
+    RELEASE_SHA: ${RELEASE_SHA:-unknown}
+    RELEASE_ID: ${RELEASE_ID:-unknown}
+  networks:
+    - infra_default
+
+services:
+  app:
+    <<: *runtime
+    container_name: tg-lottery-app
+    command: ["python", "-m", "tg_lottery.app"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "tg_lottery.healthcheck", "--role", "app"]
+      interval: 20s
+      timeout: 15s
+      retries: 6
+      start_period: 40s
+
+  worker:
+    <<: *runtime
+    container_name: tg-lottery-worker
+    command: ["python", "-m", "tg_lottery.worker"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "tg_lottery.healthcheck", "--role", "worker"]
+      interval: 20s
+      timeout: 15s
+      retries: 6
+      start_period: 40s
+
+  migrate:
+    image: ${TG_LOTTERY_APP_IMAGE:-tg-lottery-app:latest}
+    profiles: ["tools"]
+    restart: "no"
+    env_file:
+      - ${ENV_FILE:-.env.docker.example}
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+    command: ["alembic", "upgrade", "head"]
+    networks:
+      - infra_default
+
+networks:
+  infra_default:
+    name: ${INFRA_NETWORK_NAME:-infra_default}
+    external: true
+

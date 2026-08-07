@@ -1,0 +1,56 @@
+import asyncio
+
+from tg_lottery.bootstrap import build_container
+from tg_lottery.config import get_settings
+from tg_lottery.jobs.handlers import JobHandlers
+from tg_lottery.jobs.worker import JobWorker
+from tg_lottery.runtime import configure_logging, owner_id, stop_event, validate_bot
+from tg_lottery.telegram.crypto import SecretCipher
+from tg_lottery.telegram.gateway import TelegramGateway
+from tg_lottery.telegram.outbox import OutboxWorker
+
+
+async def run() -> None:
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    container = build_container(settings)
+    stop = stop_event()
+    job_owner = owner_id("jobs")
+    try:
+        await validate_bot(container.bot, settings.bot_id)
+        handlers = JobHandlers(
+            bot=container.bot,
+            session_factory=container.session_factory,
+            participants=container.services.participants,
+            invitations=container.services.invitations,
+            settlement=container.services.settlement,
+            drawing=container.services.drawing,
+        )
+        job_worker = JobWorker(
+            owner_id=job_owner,
+            worker_name="scheduled-jobs",
+            session_factory=container.session_factory,
+            handlers=handlers,
+            poll_seconds=settings.worker_poll_seconds,
+        )
+        cipher = SecretCipher(settings.app_encryption_key)
+        outbox = OutboxWorker(
+            owner_id=owner_id("outbox"),
+            session_factory=container.session_factory,
+            gateway=TelegramGateway(container.bot, cipher),
+            cipher=cipher,
+        )
+        async with asyncio.TaskGroup() as tasks:
+            tasks.create_task(job_worker.run_forever(stop))
+            tasks.create_task(outbox.run_forever(stop))
+    finally:
+        await container.bot.session.close()
+        await container.engine.dispose()
+
+
+def main() -> None:
+    asyncio.run(run())
+
+
+if __name__ == "__main__":
+    main()

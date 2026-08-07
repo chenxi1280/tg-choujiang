@@ -1,0 +1,61 @@
+import argparse
+import asyncio
+from datetime import timedelta
+
+from sqlalchemy import select, text
+
+from tg_lottery.application.records import utcnow
+from tg_lottery.config import get_settings
+from tg_lottery.infrastructure.db import PollingOffset, WorkerHeartbeat
+from tg_lottery.infrastructure.db.session import create_engine, create_session_factory
+
+_POLLING_MAX_AGE_SECONDS = 180
+_WORKER_MAX_AGE_SECONDS = 180
+
+
+async def check(role: str) -> None:
+    settings = get_settings()
+    engine = create_engine(settings.database_url)
+    factory = create_session_factory(engine)
+    try:
+        async with factory() as session:
+            await session.execute(text("SELECT 1"))
+            await _check_role(session, role, settings.bot_id)
+    finally:
+        await engine.dispose()
+
+
+async def _check_role(session: object, role: str, bot_id: int) -> None:
+    if role == "app":
+        last_seen = await session.scalar(
+            select(PollingOffset.last_poll_succeeded_at).where(PollingOffset.bot_id == bot_id)
+        )
+        _require_fresh(last_seen, _POLLING_MAX_AGE_SECONDS, "polling")
+        return
+    if role == "worker":
+        last_seen = await session.scalar(
+            select(WorkerHeartbeat.last_seen_at).where(
+                WorkerHeartbeat.worker_name == "scheduled-jobs"
+            )
+        )
+        _require_fresh(last_seen, _WORKER_MAX_AGE_SECONDS, "worker")
+        return
+    raise ValueError(f"unknown healthcheck role: {role}")
+
+
+def _require_fresh(last_seen: object, max_age_seconds: int, label: str) -> None:
+    if last_seen is None:
+        raise RuntimeError(f"{label} heartbeat is missing")
+    if last_seen < utcnow() - timedelta(seconds=max_age_seconds):
+        raise RuntimeError(f"{label} heartbeat is stale: {last_seen}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--role", choices=["app", "worker"], required=True)
+    arguments = parser.parse_args()
+    asyncio.run(check(arguments.role))
+
+
+if __name__ == "__main__":
+    main()

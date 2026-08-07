@@ -1,0 +1,347 @@
+import asyncio
+import logging
+from datetime import datetime, timedelta
+from hashlib import sha256
+from uuid import UUID
+
+from aiogram.exceptions import (
+    TelegramBadRequest,
+    TelegramForbiddenError,
+    TelegramNetworkError,
+    TelegramRetryAfter,
+    TelegramServerError,
+    TelegramUnauthorizedError,
+)
+from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from tg_lottery.application.records import add_outbox, utcnow
+from tg_lottery.domain.enums import (
+    CampaignState,
+    DeliveryCertainty,
+    OutboxState,
+)
+from tg_lottery.infrastructure.db import (
+    Campaign,
+    DeliveryAttempt,
+    InviteLink,
+    Participant,
+    TelegramOutbox,
+)
+from tg_lottery.telegram.crypto import SecretCipher
+from tg_lottery.telegram.gateway import GatewayResult, TelegramGateway, invite_link_id
+
+_CLAIM_LEASE_SECONDS = 120
+_IDLE_WAIT_SECONDS = 0.5
+_EXPLICIT_ERRORS = (TelegramBadRequest, TelegramForbiddenError, TelegramUnauthorizedError)
+_UNKNOWN_ERRORS = (TelegramNetworkError, TelegramServerError, TimeoutError, ConnectionError)
+
+
+class OutboxWorker:
+    def __init__(
+        self,
+        *,
+        owner_id: str,
+        session_factory: async_sessionmaker[AsyncSession],
+        gateway: TelegramGateway,
+        cipher: SecretCipher,
+    ) -> None:
+        self._owner_id = owner_id
+        self._session_factory = session_factory
+        self._gateway = gateway
+        self._cipher = cipher
+        self._logger = logging.getLogger(__name__)
+
+    async def run_forever(self, stop: asyncio.Event) -> None:
+        while not stop.is_set():
+            await self._recover_ambiguous()
+            outbox = await self._claim_next()
+            if outbox is None:
+                await self._wait(stop)
+                continue
+            await self._deliver(outbox)
+
+    async def process_once(self) -> bool:
+        await self._recover_ambiguous()
+        outbox = await self._claim_next()
+        if outbox is None:
+            return False
+        await self._deliver(outbox)
+        return True
+
+    async def _deliver(self, outbox: TelegramOutbox) -> None:
+        attempt_number = await self._mark_gateway_started(outbox.id)
+        try:
+            link = await self._load_link(outbox)
+            result = await self._gateway.execute(outbox, link)
+        except TelegramRetryAfter as exc:
+            await self._retry(outbox.id, attempt_number, exc)
+        except _EXPLICIT_ERRORS as exc:
+            await self._pre_accept_failed(outbox.id, attempt_number, exc)
+        except ValueError as exc:
+            await self._pre_accept_failed(outbox.id, attempt_number, exc)
+        except _UNKNOWN_ERRORS as exc:
+            await self._unknown(outbox.id, attempt_number, exc)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self._logger.exception("unexpected Telegram gateway failure")
+            await self._unknown(outbox.id, attempt_number, exc)
+        else:
+            await self._confirm(outbox.id, attempt_number, result)
+
+    async def _claim_next(self) -> TelegramOutbox | None:
+        now = utcnow()
+        async with self._session_factory() as session, session.begin():
+            row = await session.scalar(
+                select(TelegramOutbox)
+                .where(
+                    or_(
+                        TelegramOutbox.state.in_(
+                            [OutboxState.PENDING, OutboxState.RETRY_SCHEDULED]
+                        ),
+                        (
+                            (TelegramOutbox.state == OutboxState.CLAIMED)
+                            & (TelegramOutbox.lease_until < now)
+                        ),
+                    ),
+                    TelegramOutbox.run_at <= now,
+                    TelegramOutbox.gateway_started_at.is_(None),
+                )
+                .order_by(TelegramOutbox.run_at, TelegramOutbox.created_at)
+                .limit(1)
+                .with_for_update(skip_locked=True)
+            )
+            if row is None:
+                return None
+            row.state = OutboxState.CLAIMED
+            row.lease_owner = self._owner_id
+            row.lease_until = now + timedelta(seconds=_CLAIM_LEASE_SECONDS)
+            await session.flush()
+            session.expunge(row)
+            return row
+
+    async def _mark_gateway_started(self, outbox_id: UUID) -> int:
+        async with self._session_factory() as session, session.begin():
+            row = await self._locked(session, outbox_id)
+            if row.state is not OutboxState.CLAIMED or row.lease_owner != self._owner_id:
+                raise RuntimeError("outbox claim ownership was lost")
+            if row.gateway_started_at is not None:
+                raise RuntimeError("gateway was already started for this mutation")
+            row.gateway_started_at = utcnow()
+            count = await session.scalar(
+                select(func.count(DeliveryAttempt.id)).where(DeliveryAttempt.outbox_id == outbox_id)
+            )
+            return int(count or 0) + 1
+
+    async def _confirm(self, outbox_id: UUID, attempt_number: int, result: GatewayResult) -> None:
+        async with self._session_factory() as session, session.begin():
+            row = await self._locked(session, outbox_id)
+            self._add_attempt(
+                session,
+                row=row,
+                attempt_number=attempt_number,
+                certainty=DeliveryCertainty.CONFIRMED,
+                remote_result=result.remote_result,
+            )
+            row.state = OutboxState.CONFIRMED
+            row.remote_message_id = result.remote_message_id
+            row.lease_owner = None
+            row.lease_until = None
+            await self._project_success(session, row, result)
+
+    async def _retry(self, outbox_id: UUID, attempt_number: int, exc: TelegramRetryAfter) -> None:
+        async with self._session_factory() as session, session.begin():
+            row = await self._locked(session, outbox_id)
+            self._add_attempt(
+                session,
+                row=row,
+                attempt_number=attempt_number,
+                certainty=DeliveryCertainty.EXPLICIT_REJECTION,
+                error_code="retry_after",
+                error_description=str(exc),
+            )
+            row.state = OutboxState.RETRY_SCHEDULED
+            row.run_at = utcnow() + timedelta(seconds=exc.retry_after)
+            row.gateway_started_at = None
+            row.lease_owner = None
+            row.lease_until = None
+
+    async def _pre_accept_failed(
+        self, outbox_id: UUID, attempt_number: int, exc: Exception
+    ) -> None:
+        async with self._session_factory() as session, session.begin():
+            row = await self._locked(session, outbox_id)
+            self._add_attempt(
+                session,
+                row=row,
+                attempt_number=attempt_number,
+                certainty=DeliveryCertainty.EXPLICIT_REJECTION,
+                error_code=type(exc).__name__,
+                error_description=str(exc),
+            )
+            row.state = OutboxState.PRE_ACCEPT_FAILED
+            row.last_error = str(exc)[:4000]
+            row.lease_owner = None
+            row.lease_until = None
+
+    async def _unknown(self, outbox_id: UUID, attempt_number: int, exc: Exception) -> None:
+        async with self._session_factory() as session, session.begin():
+            row = await self._locked(session, outbox_id)
+            self._add_attempt(
+                session,
+                row=row,
+                attempt_number=attempt_number,
+                certainty=DeliveryCertainty.UNKNOWN,
+                error_code=type(exc).__name__,
+                error_description=str(exc),
+            )
+            row.state = OutboxState.UNKNOWN_HOLD
+            row.last_error = str(exc)[:4000]
+            row.lease_owner = None
+            row.lease_until = None
+
+    async def _recover_ambiguous(self) -> None:
+        now = utcnow()
+        async with self._session_factory() as session, session.begin():
+            rows = (
+                await session.scalars(
+                    select(TelegramOutbox)
+                    .where(
+                        TelegramOutbox.state == OutboxState.CLAIMED,
+                        TelegramOutbox.lease_until < now,
+                        TelegramOutbox.gateway_started_at.is_not(None),
+                    )
+                    .with_for_update(skip_locked=True)
+                )
+            ).all()
+            for row in rows:
+                count = await session.scalar(
+                    select(func.count(DeliveryAttempt.id)).where(
+                        DeliveryAttempt.outbox_id == row.id
+                    )
+                )
+                self._add_attempt(
+                    session,
+                    row=row,
+                    attempt_number=int(count or 0) + 1,
+                    certainty=DeliveryCertainty.UNKNOWN,
+                    error_code="worker_lost_after_gateway_start",
+                    error_description="lease expired after gateway_started_at",
+                )
+                row.state = OutboxState.UNKNOWN_HOLD
+                row.lease_owner = None
+                row.lease_until = None
+
+    async def _project_success(
+        self, session: AsyncSession, row: TelegramOutbox, result: GatewayResult
+    ) -> None:
+        if row.operation == "send_campaign_card":
+            await self._project_campaign_card(session, row)
+        elif row.operation == "create_invite_link":
+            await self._project_invite_link(session, row, result)
+        elif row.operation == "revoke_invite_link":
+            link = await self._required_link(session, row)
+            link.revoked_at = utcnow()
+
+    async def _project_campaign_card(self, session: AsyncSession, row: TelegramOutbox) -> None:
+        campaign = await session.get(Campaign, UUID(row.aggregate_id), with_for_update=True)
+        if campaign is None:
+            raise RuntimeError("published campaign disappeared")
+        if campaign.state is not CampaignState.PUBLISHING:
+            raise RuntimeError("campaign publication projection has invalid state")
+        campaign.published_message_id = row.remote_message_id
+        campaign.state = (
+            CampaignState.RUNNING if utcnow() >= campaign.preheat_at else CampaignState.SCHEDULED
+        )
+
+    async def _project_invite_link(
+        self, session: AsyncSession, row: TelegramOutbox, result: GatewayResult
+    ) -> None:
+        if result.invite_link is None:
+            raise RuntimeError("Telegram success omitted invite_link")
+        participant_id = UUID(str(row.payload["participant_id"]))
+        existing = await session.scalar(
+            select(InviteLink).where(InviteLink.participant_id == participant_id)
+        )
+        if existing:
+            return
+        link = InviteLink(
+            campaign_id=UUID(str(row.payload["campaign_id"])),
+            participant_id=participant_id,
+            link_hash=sha256(result.invite_link.encode()).hexdigest(),
+            telegram_name=str(row.payload["name"]),
+            expire_at=datetime.fromisoformat(str(row.payload["expire_at"])),
+            remote_created_at=utcnow(),
+        )
+        session.add(link)
+        await session.flush()
+        link.encrypted_url = self._cipher.encrypt(
+            result.invite_link,
+            context=f"invite-link:{link.id}",
+        )
+        participant = await session.get(Participant, participant_id)
+        if participant is None:
+            raise RuntimeError("invite link participant disappeared")
+        add_outbox(
+            session,
+            operation="send_invite_link",
+            aggregate_type="invite_link",
+            aggregate_id=str(link.id),
+            recipient_chat_id=participant.user_id,
+            business_key=f"send_invite_link:{link.id}:{participant.user_id}",
+            payload={"invite_link_id": str(link.id)},
+        )
+
+    async def _load_link(self, outbox: TelegramOutbox) -> InviteLink | None:
+        link_id = invite_link_id(outbox)
+        if link_id is None:
+            return None
+        async with self._session_factory() as session:
+            link = await session.get(InviteLink, link_id)
+            if link:
+                session.expunge(link)
+            return link
+
+    async def _required_link(self, session: AsyncSession, outbox: TelegramOutbox) -> InviteLink:
+        link_id = invite_link_id(outbox)
+        link = await session.get(InviteLink, link_id, with_for_update=True) if link_id else None
+        if link is None:
+            raise RuntimeError("invite link projection target is missing")
+        return link
+
+    async def _locked(self, session: AsyncSession, outbox_id: UUID) -> TelegramOutbox:
+        row = await session.get(TelegramOutbox, outbox_id, with_for_update=True)
+        if row is None:
+            raise RuntimeError("outbox row disappeared")
+        return row
+
+    def _add_attempt(
+        self,
+        session: AsyncSession,
+        *,
+        row: TelegramOutbox,
+        attempt_number: int,
+        certainty: DeliveryCertainty,
+        error_code: str | None = None,
+        error_description: str | None = None,
+        remote_result: dict[str, object] | None = None,
+    ) -> None:
+        session.add(
+            DeliveryAttempt(
+                outbox_id=row.id,
+                attempt_number=attempt_number,
+                telegram_method=row.operation,
+                certainty=certainty,
+                error_code=error_code,
+                error_description=error_description,
+                remote_result=remote_result,
+                finished_at=utcnow(),
+            )
+        )
+
+    async def _wait(self, stop: asyncio.Event) -> None:
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=_IDLE_WAIT_SECONDS)
+        except TimeoutError:
+            return
