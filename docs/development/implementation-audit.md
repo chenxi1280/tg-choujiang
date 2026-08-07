@@ -42,8 +42,9 @@
 ## 当前线上证据
 
 - `@TGCCJBOT` Token 已配置并通过 `getMe`；Bot ID 为 `8713586647`。
-- 马来西亚生产已部署 `c05ff3fe37b447bbb8363bc859554a74a12864aa`，app/worker healthy、RestartCount=0，迁移 head 为 `a42b9c7d3e10`。
-- Deploy Production run `31212217749` 与独立 Production Health run `31212474227` 已通过；UNKNOWN、confirmed/unprojected、失败 Job 和失败 Update 计数均为 0。
+- 马来西亚生产已部署 `f43e16ee73ffcc58760e9f0079b280ef998807b4`，app/worker healthy、RestartCount=0，迁移 head 为 `a42b9c7d3e10`。
+- Python Checks run `31214772183`、Deploy Production run `31214953849` 与独立 Production Health run `31215223592` 已通过。
+- 线上 `POLL_TIMEOUT_SECONDS=30`、`POLL_LEASE_SECONDS=60`；UNKNOWN、confirmed/unprojected、失败 Job、失败/未处理 Update 计数均为 0。
 - 目标测试群尚未加入，生产库 groups=0、campaigns=0；真实报名、发言计票、邀请归因、截止排空、多奖品开奖和 Telegram 送达闭环仍未证明。
 
 上述未证明项不得由本地测试、GitHub Actions、服务器 Docker 健康或数据库迁移结果替代。

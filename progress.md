@@ -66,3 +66,5 @@
 - 2026-08-08：完成应用/状态机/并发第二轮复审并修复 11 类问题：预热与结算排空时间窗、延迟报名覆盖 draw 资格、邀请锁序、Inbox 严格顺序与 fencing、Update 失败退避、Job/Outbox 续租、Polling 配置、过期发布、奖品服务校验、callback 点击用户归属和领奖重放幂等。
 - 2026-08-08：新增 Inbox 顺序/旧 owner fencing、Job/Outbox 跨租约续期、截止排空消息/邀请、延迟资格、过期发布、轮询配置和 verify callback 用户归属回归；当前 54 项全量测试、Ruff、代码度量通过。
 - 2026-08-08：发布前门禁完成：compileall、diff check、Shell、Compose、Alembic head -> base -> head 与两次 `alembic check` 均通过，模型无漂移且无真实 Bot Token 入库。
+- 2026-08-08：提交 `f43e16e` 的 master Python Checks run `31214772183` 通过；release Deploy Production run `31214953849` 成功，独立 Production Health run `31215223592` 通过。
+- 2026-08-08：生产 current 指向 `20260807201557_f43e16e`；app/worker healthy、RestartCount=0、Alembic `a42b9c7d3e10`，Polling 30/60 秒配置有效，未决/失败事实均为 0。生产 groups=0、campaigns=0，真实 Telegram E2E 仍未证明。
