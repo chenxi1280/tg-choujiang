@@ -53,7 +53,7 @@ class TelegramGateway:
         )
         text = (
             f"🎁 {payload['name']}\n\n"
-            f"奖品池（共 {payload['total_prizes']} 份）:\n{_prize_lines(payload)}\n\n"
+            f"中奖名额（共 {payload['total_winners']} 人）:\n{_prize_lines(payload)}\n\n"
             f"截止时间: {payload['cutoff_at']}\n"
             f"开奖时间: {payload['draw_at']}\n\n"
             "报名后可通过每日活跃和有效邀请获得抽奖票。"
@@ -123,9 +123,19 @@ class TelegramGateway:
         lines = [f"🏆 {outbox.payload['campaign_name']} 开奖结果"]
         if winners:
             for item in winners:
-                lines.append(f"• {item['prize_name']}: {item['display_name']}")
+                lines.append(
+                    f"• 第{item['prize_position']}顺位 {item['prize_name']}"
+                    f"（名额 {item['prize_slot_no']}）: {item['display_name']}"
+                )
         else:
             lines.append("本期没有符合条件的中奖候选人。")
+        undistributed = outbox.payload.get("undistributed", [])
+        if undistributed:
+            lines.append("未分配名额:")
+            for item in undistributed:
+                lines.append(
+                    f"• 第{item['prize_position']}顺位 {item['prize_name']}: {item['count']} 人"
+                )
         lines.append(f"快照: {outbox.payload['snapshot_hash']}")
         message = await self._bot.send_message(outbox.recipient_chat_id, "\n".join(lines))
         return GatewayResult(
@@ -139,8 +149,8 @@ class TelegramGateway:
         payload = outbox.payload
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
-            f"恭喜你在「{payload['campaign_name']}」中获得: {payload['prize_name']}。"
-            "请按群内活动说明联系管理员领奖。",
+            f"恭喜你在「{payload['campaign_name']}」中获得: {payload['prize_name']}"
+            f"（名额 {payload['prize_slot_no']}）。\n领奖方式: {payload['claim_instructions']}",
         )
         return GatewayResult(
             remote_result=message.model_dump(mode="json", exclude_none=True),
@@ -155,4 +165,7 @@ def invite_link_id(outbox: TelegramOutbox) -> UUID | None:
 
 def _prize_lines(payload: dict[str, Any]) -> str:
     prizes = payload.get("prizes", [])
-    return "\n".join(f"• {item['name']} × {item['quantity']}" for item in prizes)
+    return "\n".join(
+        f"• 第{item['position']}顺位 {item['name']}：中奖 {item['winner_count']} 人"
+        for item in prizes
+    )

@@ -22,6 +22,10 @@
 - [complete] 14. 创建 GitHub 仓库与 Actions，按 master -> release 发布到马来西亚服务器
 - [in_progress] 15. 核验线上 SHA、迁移、容器、Telegram 连通性和真实抽奖业务闭环
 - [complete] 16. 对 V1.3 实现、数据一致性、Telegram 边界和生产运维做发布后复审并修复确认问题
+- [complete] 17. 复审每期奖品、中奖人数、随机抽取的产品规则、数据模型、交互和算法现状
+- [complete] 18. 补齐多奖品配置、名额校验、随机开奖与通知的设计和实现
+- [complete] 19. 更新 V1.4 PRD、验收清单、测试与迁移并完成文档视觉验收
+- [in_progress] 20. 通过质量门禁后发布生产并核验运行事实
 
 ## 关键约束
 
@@ -53,3 +57,7 @@
 | 新回归测试首次插入命中暂停邀请测试中段，导致语法错误并缺少测试 import | 1 | 恢复原测试体顺序、补齐 Campaign/UpdateState import，再运行 formatter 与测试 |
 | 新增 Outbox 回归使 `test_runtime_integrity.py` 超过 500 行且单测试超过 50 行 | 1 | 按职责拆分到 `test_outbox_projection.py`，长场景提取 seed/assert helper，不放宽度量阈值 |
 | V1.3 字体试改导致分页从 21 页膨胀到 26 页 | 1 | 撤销字体替换，仅保留内容级 PRD 修订；用文档原字体配合临时 QA 字体完成最终 31 页视觉验收 |
+| 首次多文件模型补丁因 Campaign 字段顺序不匹配而未应用 | 1 | 读取模型精确上下文后拆成小补丁，确认无部分写入再继续 |
+| macOS 不提供 GNU `timeout`，首次 60 秒测试命令无法执行 | 1 | 改用受控测试执行并确认全套测试在 8 秒内结束；未放宽后端 60 秒上限 |
+| `uv run` 重建环境时未安装 dev extra，pytest 入口误用系统环境 | 1 | 执行 `uv sync --extra dev` 后固定使用项目 `.venv/bin/python -m pytest` |
+| V1.4 前两次隔离渲染把 QA 字体放到错误层级，中文未加载 | 2 | 定位 LibreOffice 实际 `fonts/truetype` 目录，临时注入后完成 33 页视觉验收并立即移除字体副本 |

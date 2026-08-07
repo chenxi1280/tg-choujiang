@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy import exists, func, or_, select
 
 from tg_lottery.application.ports import UnitOfWorkFactory
+from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.domain.enums import (
     CampaignState,
     InvitationState,
@@ -21,6 +22,7 @@ from tg_lottery.infrastructure.db import (
     Invitation,
     Participant,
     PollingOffset,
+    Prize,
     QualificationCheck,
     TelegramUpdate,
     TicketLedger,
@@ -195,6 +197,7 @@ class SettlementService:
         entries: list[tuple[Participant, int]],
         now: datetime,
     ) -> DrawSnapshot:
+        current_prize_hash = await self._validated_prize_hash(session, campaign)
         watermark = await session.scalar(
             select(func.max(TicketLedger.created_at)).where(TicketLedger.campaign_id == campaign.id)
         )
@@ -202,6 +205,7 @@ class SettlementService:
         payload = {
             "campaign_id": str(campaign.id),
             "config_revision": campaign.config_revision,
+            "prize_plan_hash": current_prize_hash,
             "ledger_watermark": watermark.isoformat(),
             "entries": [(str(participant.id), weight) for participant, weight in entries],
         }
@@ -210,6 +214,7 @@ class SettlementService:
             config_revision=campaign.config_revision,
             ledger_watermark=watermark,
             snapshot_hash=canonical_hash(payload),
+            prize_plan_hash=current_prize_hash,
             total_weight=sum(weight for _, weight in entries),
         )
         session.add(snapshot)
@@ -226,6 +231,21 @@ class SettlementService:
                 )
             )
         return snapshot
+
+    async def _validated_prize_hash(self, session: object, campaign: Campaign) -> str:
+        prizes = (
+            await session.scalars(
+                select(Prize)
+                .where(Prize.campaign_id == campaign.id)
+                .order_by(Prize.position, Prize.id)
+            )
+        ).all()
+        current_hash = prize_plan_hash(prizes)
+        if campaign.prize_plan_hash is None:
+            raise SettlementBlocked("prize_plan_not_frozen")
+        if current_hash != campaign.prize_plan_hash:
+            raise SettlementBlocked("prize_plan_changed_after_publish")
+        return current_hash
 
     async def _latest_draw_check(self, session: object, participant_id: UUID) -> UUID | None:
         return await session.scalar(

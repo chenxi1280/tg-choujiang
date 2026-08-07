@@ -184,17 +184,19 @@ class AdminFlow:
             "draw_at": values[2].isoformat(),
         }
         await self._sessions.update(message.from_user.id, "prize", changes)
-        await message.answer("请输入奖品：奖品名称 | 数量 | 领取说明")
+        await message.answer("请输入奖品：奖品名称 | 中奖人数 | 领取说明")
 
     async def _receive_prize(self, message: Message, data: dict[str, Any]) -> None:
         parts = [part.strip() for part in (message.text or "").split("|", 2)]
         if len(parts) != 3 or not parts[0] or not parts[2]:
-            raise ValueError("奖品必须包含名称、数量和领取说明")
-        quantity = int(parts[1])
-        if quantity < 1:
-            raise ValueError("奖品数量必须大于 0")
+            raise ValueError("奖品必须包含名称、中奖人数和领取说明")
+        if len(parts[0]) > 120:
+            raise ValueError("奖品名称最多 120 字")
+        winner_count = int(parts[1])
+        if winner_count < 1:
+            raise ValueError("中奖人数必须大于 0")
         prizes = [*data.get("prizes", [])]
-        prizes.append({"name": parts[0], "quantity": quantity, "instructions": parts[2]})
+        prizes.append({"name": parts[0], "winner_count": winner_count, "instructions": parts[2]})
         await self._sessions.update(message.from_user.id, "prize_more", {"prizes": prizes})
         tokens = await self._tokens.create_many(
             owner_user_id=message.from_user.id,
@@ -214,7 +216,7 @@ class AdminFlow:
         if session is None or session.state != "prize_more":
             raise ValueError("创建会话已过期")
         await self._sessions.set(query.from_user.id, "prize", session.data)
-        await _message(query).answer("请输入下一个奖品：奖品名称 | 数量 | 领取说明")
+        await _message(query).answer("请输入下一个奖品：奖品名称 | 中奖人数 | 领取说明")
 
     async def _finish_prizes(self, query: CallbackQuery, _: CallbackGrant) -> None:
         session = await self._sessions.get(query.from_user.id)
@@ -256,7 +258,7 @@ class AdminFlow:
             rules=rules,
         )
         prizes = tuple(
-            PrizeSpec(str(item["name"]), int(item["quantity"]), str(item["instructions"]))
+            PrizeSpec(str(item["name"]), int(item["winner_count"]), str(item["instructions"]))
             for item in data["prizes"]
         )
         return await self._campaigns.create_draft(draft, prizes, message.from_user.id)
@@ -269,7 +271,9 @@ class AdminFlow:
             chat_id=message.chat.id,
             requests=(CallbackRequest("publish", campaign_id=campaign.id),),
         )
-        prize_text = "\n".join(f"• {item.name} × {item.quantity}" for item in prizes)
+        prize_text = "\n".join(
+            f"• 第{item.position}顺位 {item.name}：中奖 {item.winner_count} 人" for item in prizes
+        )
         text = (
             f"活动预览\n名称: {campaign.name}\n截止: {campaign.cutoff_at}\n"
             f"开奖: {campaign.draw_at}\n奖品:\n{prize_text}"

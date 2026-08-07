@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.domain.enums import CampaignState, QualificationState
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import (
@@ -36,7 +37,9 @@ async def seed_campaign(
     )
     session.add(campaign)
     await session.flush()
-    _add_campaign_config(session, campaign)
+    prize = _add_campaign_config(session, campaign)
+    await session.flush()
+    campaign.prize_plan_hash = prize_plan_hash((prize,))
     participant = _participant(campaign)
     session.add(participant)
     await session.flush()
@@ -66,7 +69,7 @@ def _campaign(
     )
 
 
-def _add_campaign_config(session: AsyncSession, campaign: Campaign) -> None:
+def _add_campaign_config(session: AsyncSession, campaign: Campaign) -> Prize:
     session.add(
         RuleRevision(
             campaign_id=campaign.id,
@@ -77,15 +80,15 @@ def _add_campaign_config(session: AsyncSession, campaign: Campaign) -> None:
             actor_user_id=101,
         )
     )
-    session.add(
-        Prize(
-            campaign_id=campaign.id,
-            position=1,
-            name="一等奖",
-            quantity=1,
-            claim_instructions="联系管理员",
-        )
+    prize = Prize(
+        campaign_id=campaign.id,
+        position=1,
+        name="一等奖",
+        winner_count=1,
+        claim_instructions="联系管理员",
     )
+    session.add(prize)
+    return prize
 
 
 def _participant(campaign: Campaign) -> Participant:

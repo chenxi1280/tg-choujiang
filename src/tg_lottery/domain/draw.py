@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from hashlib import sha256
 
-ALGORITHM_VERSION = "sha256-weighted-v1"
+ALGORITHM_VERSION = "sha256-weighted-v2"
+_HASH_SPACE = 1 << 256
 
 
 @dataclass(frozen=True)
@@ -23,9 +24,19 @@ def select_weighted(entries: tuple[WeightedEntry, ...], seed: str, round_number:
     total = sum(entry.weight for entry in valid_entries)
     if total <= 0:
         raise ValueError("weighted draw requires at least one positive weight")
-    digest = sha256(f"{seed}:{round_number}".encode()).digest()
-    selected_value = int.from_bytes(digest, "big") % total + 1
+    selected_value = _unbiased_value(seed, round_number, total)
     return _locate(valid_entries, selected_value)
+
+
+def _unbiased_value(seed: str, round_number: int, total: int) -> int:
+    limit = _HASH_SPACE - (_HASH_SPACE % total)
+    nonce = 0
+    while True:
+        digest = sha256(f"{seed}:{round_number}:{nonce}".encode()).digest()
+        value = int.from_bytes(digest, "big")
+        if value < limit:
+            return value % total + 1
+        nonce += 1
 
 
 def _locate(entries: tuple[WeightedEntry, ...], selected_value: int) -> Selection:

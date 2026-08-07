@@ -55,8 +55,14 @@ async def test_create_and_publish_freezes_rules_and_schedules_full_lifecycle(
             )
         )
         assert stored.state is CampaignState.PUBLISHING
+        assert stored.prize_plan_hash is not None
         assert job_count == 6
         assert outbox_count == 1
+        outbox = await session.scalar(
+            select(TelegramOutbox).where(TelegramOutbox.aggregate_id == str(campaign.id))
+        )
+        assert outbox.payload["total_winners"] == 1
+        assert outbox.payload["prizes"][0]["winner_count"] == 1
 
 
 async def test_activity_awards_one_daily_ticket_and_rejects_duplicates(

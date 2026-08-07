@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Integer,
@@ -45,6 +46,7 @@ class DrawSnapshot(Base, UuidPkMixin, CreatedAtMixin):
     config_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     ledger_watermark: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     snapshot_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    prize_plan_hash: Mapped[str | None] = mapped_column(String(64))
     total_weight: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
 
@@ -74,11 +76,18 @@ class DrawRun(Base, UuidPkMixin, TimestampMixin):
 
 class DrawRound(Base, UuidPkMixin, CreatedAtMixin):
     __tablename__ = "draw_rounds"
-    __table_args__ = (UniqueConstraint("draw_run_id", "round_number"),)
+    __table_args__ = (
+        CheckConstraint("prize_slot_no > 0", name="ck_draw_rounds_prize_slot_positive"),
+        UniqueConstraint("draw_run_id", "round_number"),
+        UniqueConstraint(
+            "draw_run_id", "prize_id", "prize_slot_no", name="uq_draw_rounds_prize_slot"
+        ),
+    )
 
     draw_run_id: Mapped[UUID] = mapped_column(ForeignKey("draw_runs.id", ondelete="CASCADE"))
     round_number: Mapped[int] = mapped_column(Integer, nullable=False)
     prize_id: Mapped[UUID] = mapped_column(ForeignKey("prizes.id", ondelete="RESTRICT"))
+    prize_slot_no: Mapped[int] = mapped_column(Integer, nullable=False)
     range_start: Mapped[int] = mapped_column(BigInteger, nullable=False)
     range_end: Mapped[int] = mapped_column(BigInteger, nullable=False)
     selected_value: Mapped[int | None] = mapped_column(BigInteger)

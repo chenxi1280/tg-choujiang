@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -118,6 +119,7 @@ class Campaign(Base, UuidPkMixin, TimestampMixin):
     draw_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     config_revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     rules: Mapped[dict[str, Any]] = mapped_column(nullable=False)
+    prize_plan_hash: Mapped[str | None] = mapped_column(String(64))
     created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
     published_message_id: Mapped[int | None] = mapped_column(BigInteger)
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -137,11 +139,16 @@ class RuleRevision(Base, UuidPkMixin, CreatedAtMixin):
 
 class Prize(Base, UuidPkMixin, TimestampMixin):
     __tablename__ = "prizes"
+    __table_args__ = (
+        CheckConstraint("position > 0", name="ck_prizes_position_positive"),
+        CheckConstraint("winner_count > 0", name="ck_prizes_winner_count_positive"),
+        UniqueConstraint("campaign_id", "position", name="uq_prizes_campaign_position"),
+    )
 
     campaign_id: Mapped[UUID] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"))
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
-    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    winner_count: Mapped[int] = mapped_column(Integer, nullable=False)
     claim_instructions: Mapped[str] = mapped_column(Text, nullable=False)
 
 

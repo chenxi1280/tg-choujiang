@@ -145,3 +145,17 @@
 - Durable Inbox 请求全部 aiogram UpdateType，并保存群/活动路由；结算只排空本活动或目标群 Update，其他群失败不能跨域阻断。
 - 自己使用自己的活动链接离群重入不得奖励；管理员升降级和 Bot 撤权同步缓存，领奖登记仍需实时 Telegram 管理员复核。
 - V1.3 PRD 已同步上述合同，并使用临时 QA 字体完整渲染 31 页；逐页检查中文、表格、分页、页眉页脚，无裁切、重叠或孤立尾页。
+
+## 每期奖品与随机中奖专项复审（2026-08-08）
+
+- 现有创建流程已允许每期依次添加多个 Prize，并按每个 Prize.quantity 创建相应抽奖轮次；每张票作为权重，`unique_winner=true` 时同一人一期最多中一次。
+- 核心缺口：开奖时读取 live `prizes`，而 DrawSnapshot/snapshot_hash 未包含奖品方案；发布后若奖品名、顺序或名额漂移，群卡片、快照与开奖结果可不一致。
+- `quantity` 同时容易被理解为库存数量和中奖人数；本轮应明确重命名为 `winner_count`，并在 Bot 交互中使用“中奖人数/名额”口径。
+- `claim_instructions` 已采集并持久化，但中奖私聊 payload 未携带，配置事实没有到达中奖人。
+- 候选人数不足时会创建 undistributed DrawRound，但群公告只列中奖者，不显示哪个奖品剩余多少未派出名额。
+- 当前 `sha256(seed:round) % total + 1` 存在可避免的取模偏差；应升级为确定性拒绝采样并版本化算法，继续保存 seed、轮次、命中值和权重区间以便复算。
+- DrawRound 只有全局 round_number，缺少奖品内 `prize_slot_no`；应增加每奖品名额序号和唯一约束，直接审计“第几个名额”。
+- 数据库 prizes 仅有应用层正数校验，缺少 winner_count/position CHECK 与 `(campaign_id, position)` 唯一约束；需要迁移补强。
+- 最终合同：奖品添加顺序即分配优先级；默认全期不重复中奖。当总中奖人数超过合格候选人数时，不复制中奖者补足，后续槽位写 `undistributed=true` 并在群公告中披露。
+- 奖品方案哈希覆盖 Prize ID、顺位、名称、中奖人数和领取说明；Campaign、DrawSnapshot 与开奖时当前方案必须一致，任何发布后漂移均明确阻断。
+- 每个计划名额都生成 DrawRound，`(draw_run_id, prize_id, prize_slot_no)` 唯一；Winner 仅在实际抽中时生成，群公告与中奖私聊作为独立 Telegram 送达事实。

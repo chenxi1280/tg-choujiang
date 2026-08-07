@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from tg_lottery.application.authorization import require_group_admin
 from tg_lottery.application.ports import UnitOfWorkFactory
+from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.application.records import add_audit, add_job, add_outbox, utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignDraft, CampaignRules, canonical_hash
@@ -16,7 +17,7 @@ from tg_lottery.infrastructure.db import Campaign, Group, Prize, RuleRevision, T
 @dataclass(frozen=True)
 class PrizeSpec:
     name: str
-    quantity: int
+    winner_count: int
     claim_instructions: str
 
 
@@ -66,6 +67,7 @@ class CampaignService:
             revision = await self._freeze_revision(uow.session, campaign)
             group = await self._group_by_id(uow.session, campaign.group_id)
             prizes = await self._prizes(uow.session, campaign.id)
+            campaign.prize_plan_hash = prize_plan_hash(prizes)
             self._schedule_lifecycle(uow.session, campaign)
             add_outbox(
                 uow.session,
@@ -152,8 +154,8 @@ class CampaignService:
     def _validate_prizes(self, prizes: tuple[PrizeSpec, ...]) -> None:
         if not prizes:
             raise ValueError("campaign requires at least one prize")
-        if any(prize.quantity < 1 or not prize.name.strip() for prize in prizes):
-            raise ValueError("each prize requires a name and positive quantity")
+        if any(prize.winner_count < 1 or not prize.name.strip() for prize in prizes):
+            raise ValueError("each prize requires a name and positive winner count")
 
     async def _group(self, session: object, group_id: int) -> Group:
         group = await session.scalar(select(Group).where(Group.chat_id == group_id))
@@ -206,7 +208,7 @@ class CampaignService:
                     campaign_id=campaign.id,
                     position=position,
                     name=spec.name,
-                    quantity=spec.quantity,
+                    winner_count=spec.winner_count,
                     claim_instructions=spec.claim_instructions,
                 )
             )
@@ -345,6 +347,13 @@ class CampaignService:
             "cutoff_at": campaign.cutoff_at.isoformat(),
             "draw_at": campaign.draw_at.isoformat(),
             "bot_username": bot_username,
-            "prizes": [{"name": prize.name, "quantity": prize.quantity} for prize in prizes],
-            "total_prizes": sum(prize.quantity for prize in prizes),
+            "prizes": [
+                {
+                    "position": prize.position,
+                    "name": prize.name,
+                    "winner_count": prize.winner_count,
+                }
+                for prize in prizes
+            ],
+            "total_winners": sum(prize.winner_count for prize in prizes),
         }
