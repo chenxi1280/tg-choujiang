@@ -1,4 +1,4 @@
-# V1.3 实现对齐审计
+# V1.4 实现对齐审计
 
 审计日期：2026-08-08
 
@@ -21,11 +21,19 @@
 - 拒绝邀请人使用自己的专属链接给自己发票；管理员升降级和 Bot 撤权会同步缓存；领奖登记点击时重新核验 Telegram 管理员。
 - 新迁移 head 为 `0d7f5bb6c9a1`，40 项 PostgreSQL/并发/恢复测试、Ruff、代码度量和迁移往返通过。
 
+## 每期多奖品与随机开奖
+
+- 每期独立配置一个或多个奖品，每个奖品使用明确的 `winner_count`；添加顺序即抽取和候选不足时的分配优先级。
+- 发布时冻结 `prize_plan_hash`，结算快照再次保存；结算和开奖都校验当前奖品方案、Campaign 与 DrawSnapshot 三者一致。
+- `sha256-weighted-v2` 使用确定性拒绝采样；每个奖品名额形成唯一 `prize_slot_no`，默认中奖者从全期后续槽位移除。
+- 候选人数不足时不重复中奖补足，后续 DrawRound 标记 `undistributed` 并在群公告披露；中奖私聊携带本奖品领取说明。
+- 新迁移 head 为 `a42b9c7d3e10`，42 项 PostgreSQL/并发/恢复测试、Ruff、代码度量、迁移往返与模型漂移检查通过。
+
 ## 当前线上证据
 
 - `@TGCCJBOT` Token 已配置并通过 `getMe`；Bot ID 为 `8713586647`。
-- 马来西亚生产已部署 `4c6379a40b2510eb8029d2b1f7d0bc53bb4cc69b`，app/worker healthy、RestartCount=0，迁移 head 为 `0d7f5bb6c9a1`。
-- Deploy Production run `31209826454` 与独立 Production Health run `31210214148` 已通过；UNKNOWN、confirmed/unprojected、失败 Job、失败 Update 和 DeliveryAttempt 邀请链接明文计数均为 0。
-- 目标测试群尚未加入，生产库 groups=0；真实报名、发言计票、邀请归因、截止排空、开奖和 Telegram 送达闭环仍未证明。
+- 马来西亚生产已部署 `c05ff3fe37b447bbb8363bc859554a74a12864aa`，app/worker healthy、RestartCount=0，迁移 head 为 `a42b9c7d3e10`。
+- Deploy Production run `31212217749` 与独立 Production Health run `31212474227` 已通过；UNKNOWN、confirmed/unprojected、失败 Job 和失败 Update 计数均为 0。
+- 目标测试群尚未加入，生产库 groups=0、campaigns=0；真实报名、发言计票、邀请归因、截止排空、多奖品开奖和 Telegram 送达闭环仍未证明。
 
 上述未证明项不得由本地测试、GitHub Actions、服务器 Docker 健康或数据库迁移结果替代。

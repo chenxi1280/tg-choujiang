@@ -60,3 +60,5 @@
 - 2026-08-08：随机算法升级为 `sha256-weighted-v2` 确定性拒绝采样，保留随机输入、轮次、命中值和权重区间复算能力；算法版本变更阻止与旧 DrawRun 混用。
 - 2026-08-08：新增迁移 `a42b9c7d3e10`，PostgreSQL 16 已通过 base -> head 往返和 `alembic check`；42 项测试、Ruff、代码度量、Compose 与 diff 检查通过。
 - 2026-08-08：生成 V1.4 多奖品随机开奖版 PRD；临时注入 QA 字体后完整渲染 33 页并逐页检查，中文、表格、分页和新增第 32 节均无裁切或重叠，临时字体已移除。
+- 2026-08-08：提交 `c05ff3f` 后 master Python Checks run `31212062264` 通过；release Deploy Production run `31212217749` 成功，独立 Production Health run `31212474227` 通过。
+- 2026-08-08：生产 current 指向 `20260807193823_c05ff3f`，app/worker healthy 且 RestartCount=0，Alembic `a42b9c7d3e10`；groups/campaigns/UNKNOWN/unprojected/失败 Job/失败 Update 均为 0。真实群抽奖闭环仍未证明，阶段 15 保持进行中。
