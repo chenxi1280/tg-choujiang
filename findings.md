@@ -19,6 +19,7 @@
 - GitHub 定时生产健康工作流已建立，但在首个真实 release 验收前由 `PRODUCTION_ENABLED=false` 显式关闭，防止空 Bot 配置产生误报警或错误上线。
 - `BOT_ID` 与 Bot Token 的数字前缀是重复配置，且空值会在 Compose/Pydantic 两层提前阻断；现由 Token 严格派生并在 `getMe` 中校验实际 Bot ID，显式不一致仍直接失败。
 - 当前授权事实来自 `my_chat_member` 同步的群管理员和敏感动作前的 Telegram 实时复核；`ADMIN_IDS` 未参与授权判断，因此不再把它误列为生产启动必需项。
+- 首次 release 暴露 Actions SSH 用户传递缺口：workflow 的 SSH config 为 `admin`，但 `release.sh` 默认目标为 `root@production-server`，显式用户覆盖了 config；工作流必须把 `PRODUCTION_USER` 传给 `--user`。
 
 ## 原始文档
 

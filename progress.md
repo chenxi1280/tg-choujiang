@@ -39,3 +39,4 @@
 - 2026-08-08：创建 GitHub `production` Environment，并限制只有 `release` 分支可部署；私有仓库当前套餐不支持 branch protection，已明确保留该能力边界。
 - 2026-08-08：移除重复配置门槛：`BOT_ID` 默认从 BOT_TOKEN 数字前缀严格解析并由 `getMe` 二次校验，`ADMIN_IDS` 明确为非启动必需；测试增至 33 项全部通过。
 - 2026-08-08：重新读取马来西亚服务器：Docker 26.1.3、`tg_lottery` 数据库和 0600 环境文件就绪，尚无 release/current；唯一外部发布阻断收敛为新 BOT_TOKEN 与真实测试群。
+- 2026-08-08：配置并回读验证 `@TGCCJBOT` Token；首次 production run 的 checks/build 通过但 deploy 因 `release.sh` 默认 root 覆盖 SSH config 失败，未创建 release/current；已修复工作流显式传递 `PRODUCTION_USER`。
