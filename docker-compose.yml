@@ -7,7 +7,7 @@ x-runtime: &runtime
     - ${ENV_FILE:-.env.docker.example}
   environment:
     BOT_TOKEN: ${BOT_TOKEN:?BOT_TOKEN is required}
-    BOT_ID: ${BOT_ID:?BOT_ID is required}
+    BOT_ID: ${BOT_ID:-}
     DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
     APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}
     ADMIN_IDS: ${ADMIN_IDS:-}
@@ -60,4 +60,3 @@ networks:
   infra_default:
     name: ${INFRA_NETWORK_NAME:-infra_default}
     external: true
-

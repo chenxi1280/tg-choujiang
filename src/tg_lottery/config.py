@@ -1,7 +1,7 @@
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     bot_token: str = Field(min_length=20)
-    bot_id: int
+    bot_id: int = 0
     database_url: str
     app_encryption_key: str = Field(min_length=43, max_length=44)
     admin_ids: frozenset[int] = frozenset()
@@ -27,6 +27,22 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return frozenset(int(item.strip()) for item in value.split(",") if item.strip())
         return value
+
+    @field_validator("bot_id", mode="before")
+    @classmethod
+    def blank_bot_id_uses_token(cls, value: object) -> object:
+        return 0 if value in {None, ""} else value
+
+    @model_validator(mode="after")
+    def derive_bot_id(self) -> "Settings":
+        token_prefix, separator, _ = self.bot_token.partition(":")
+        if not separator or not token_prefix.isdecimal():
+            raise ValueError("BOT_TOKEN must start with the numeric Telegram bot id")
+        token_bot_id = int(token_prefix)
+        if self.bot_id not in {0, token_bot_id}:
+            raise ValueError("BOT_ID does not match BOT_TOKEN")
+        self.bot_id = token_bot_id
+        return self
 
     @field_validator("timezone")
     @classmethod

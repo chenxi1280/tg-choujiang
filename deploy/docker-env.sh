@@ -34,7 +34,7 @@ ensure_runtime_env() {
   [[ -n "$action_ghcr_username" ]] && export GHCR_USERNAME="$action_ghcr_username"
   [[ -n "$action_ghcr_token" ]] && export GHCR_TOKEN="$action_ghcr_token"
 
-  local required=(BOT_TOKEN BOT_ID DATABASE_URL APP_ENCRYPTION_KEY TG_LOTTERY_APP_IMAGE)
+  local required=(BOT_TOKEN DATABASE_URL APP_ENCRYPTION_KEY TG_LOTTERY_APP_IMAGE)
   local missing=()
   local key
   for key in "${required[@]}"; do

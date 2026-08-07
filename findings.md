@@ -17,6 +17,8 @@
 - Polling 仅记录最后 durable update 仍不足以判断 24 小时断档；现增加 update_id gap 与中断时长诊断，出现组合风险时健康检查明确失败并要求人工完整性复核。
 - 生产部署用户需通过 `sudo -n docker` 操作容器；所有部署、备份和健康脚本已统一解析 Docker 命令，迁移前执行 custom-format pg_dump 并保留 14 份。
 - GitHub 定时生产健康工作流已建立，但在首个真实 release 验收前由 `PRODUCTION_ENABLED=false` 显式关闭，防止空 Bot 配置产生误报警或错误上线。
+- `BOT_ID` 与 Bot Token 的数字前缀是重复配置，且空值会在 Compose/Pydantic 两层提前阻断；现由 Token 严格派生并在 `getMe` 中校验实际 Bot ID，显式不一致仍直接失败。
+- 当前授权事实来自 `my_chat_member` 同步的群管理员和敏感动作前的 Telegram 实时复核；`ADMIN_IDS` 未参与授权判断，因此不再把它误列为生产启动必需项。
 
 ## 原始文档
 

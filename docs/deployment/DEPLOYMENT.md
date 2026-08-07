@@ -13,7 +13,7 @@
 - 外部 Docker 网络：`infra_default`
 - PostgreSQL 主机：`app-infra-postgres`
 
-共享配置必须提供 `BOT_TOKEN`、`BOT_ID`、`DATABASE_URL`、`APP_ENCRYPTION_KEY`，并设置实际超级管理员 `ADMIN_IDS`。一个 Bot Token 只能有一个长轮询消费者，禁止与其他服务复用。
+共享配置必须提供 `BOT_TOKEN`、`DATABASE_URL`、`APP_ENCRYPTION_KEY`。`BOT_ID` 默认从 Token 的数字前缀解析，并在启动时通过 `getMe` 再校验；也可显式配置一致值。`ADMIN_IDS` 仅作为可选预留项，实际群管理权限以机器人入群时同步并在敏感动作前实时复核的 Telegram 管理员身份为准。一个 Bot Token 只能有一个长轮询消费者，禁止与其他服务复用。
 
 ## GitHub 配置
 

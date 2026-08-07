@@ -15,7 +15,7 @@
 
 ## 尚未在线证明
 
-- `BOT_TOKEN`、`BOT_ID`、管理员 Telegram 数字 ID 与目标测试群尚未配置。
+- `BOT_TOKEN` 与目标测试群尚未提供；`BOT_ID` 可由 Token 严格解析，管理员身份由 Telegram 群成员事实同步并实时复核。
 - 未推送 `release`，因此马来西亚服务器上的 deployed SHA、容器、迁移和 Bot API 连通性均为未证明。
 - 未执行真实 Telegram 报名、发言计票、邀请归因、截止排空、开奖及群内/私聊送达闭环。
 

@@ -36,3 +36,6 @@
 - 2026-08-08：发现并修复开奖通知在 Winner flush 前构造导致 `aggregate_id/business_key=None` 的缺陷；新增回归断言。
 - 2026-08-08：全量 30 项测试通过；Ruff、代码度量、compileall、Shell、Compose、Alembic base->head 往返和模型漂移检查全部通过。
 - 2026-08-08：马来西亚服务器 `admin` 无直接 Docker 权限但具备 `sudo -n docker`；部署脚本已兼容并完成生产 pg_dump 只读预检。因 BOT_TOKEN/BOT_ID 尚为空，未推 release、未声明线上业务完成。
+- 2026-08-08：创建 GitHub `production` Environment，并限制只有 `release` 分支可部署；私有仓库当前套餐不支持 branch protection，已明确保留该能力边界。
+- 2026-08-08：移除重复配置门槛：`BOT_ID` 默认从 BOT_TOKEN 数字前缀严格解析并由 `getMe` 二次校验，`ADMIN_IDS` 明确为非启动必需；测试增至 33 项全部通过。
+- 2026-08-08：重新读取马来西亚服务器：Docker 26.1.3、`tg_lottery` 数据库和 0600 环境文件就绪，尚无 release/current；唯一外部发布阻断收敛为新 BOT_TOKEN 与真实测试群。
