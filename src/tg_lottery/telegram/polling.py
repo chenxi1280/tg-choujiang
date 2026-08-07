@@ -5,8 +5,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from hashlib import sha256
 from typing import Any
+from uuid import UUID
 
 from aiogram import Bot
+from aiogram.enums import UpdateType
 from aiogram.types import Update
 from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
@@ -16,13 +18,7 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import UpdateState
 from tg_lottery.infrastructure.db import BotRuntimeLease, PollingOffset, TelegramUpdate
 
-ALLOWED_UPDATES = [
-    "message",
-    "callback_query",
-    "chat_member",
-    "my_chat_member",
-    "chat_join_request",
-]
+ALLOWED_UPDATES = [update_type.value for update_type in UpdateType]
 _LEASE_RETRY_SECONDS = 5
 _INTEGRITY_REVIEW_AFTER_HOURS = 24
 
@@ -108,6 +104,8 @@ class TelegramPollingAdapter:
                     bot_id=self._bot_id,
                     update_id=update.update_id,
                     update_type=_update_type(update),
+                    routing_chat_id=_routing_chat_id(update),
+                    routing_campaign_id=_routing_campaign_id(update),
                     event_at=_event_at(update, now),
                     payload=payload,
                     payload_hash=_payload_hash(payload),
@@ -227,6 +225,35 @@ def _event_at(update: Update, received_at: datetime) -> datetime:
     message = getattr(event, "message", None)
     message_date = getattr(message, "date", None)
     return message_date or received_at
+
+
+def _routing_chat_id(update: Update) -> int | None:
+    event = update.event
+    chat = getattr(event, "chat", None)
+    if chat is not None:
+        return int(chat.id)
+    message = getattr(event, "message", None)
+    message_chat = getattr(message, "chat", None)
+    return int(message_chat.id) if message_chat is not None else None
+
+
+def _routing_campaign_id(update: Update) -> str | None:
+    message = update.message
+    if message is not None and message.chat.type == "private":
+        value = _uuid_suffix((message.text or "").strip(), "/start join_")
+        if value is not None:
+            return value
+    query = update.callback_query
+    return _uuid_suffix(query.data or "", "member:verify:") if query is not None else None
+
+
+def _uuid_suffix(value: str, prefix: str) -> str | None:
+    if not value.startswith(prefix):
+        return None
+    try:
+        return str(UUID(value.removeprefix(prefix)))
+    except ValueError:
+        return None
 
 
 def _update_gap(next_offset: int | None, updates: Sequence[Update]) -> tuple[int, int] | None:

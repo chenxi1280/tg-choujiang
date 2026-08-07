@@ -343,6 +343,7 @@ class AdminFlow:
         await _message(query).answer("数据库中奖结果已生成；群公告和私聊通知正在独立送达。")
 
     async def _mark_claimed(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        await self._verify_admin(_campaign_id(grant), query.from_user.id)
         winner_id = UUID(str(grant.payload["winner_id"]))
         await self._winners.mark_claimed(winner_id, query.from_user.id)
         await _message(query).answer("领奖状态已登记。")
@@ -387,7 +388,11 @@ class AdminFlow:
         rows = await self._queries.winners(campaign_id)
         pending = [row for row in rows if row.winner.claim_state is PrizeClaimState.PENDING]
         requests = tuple(
-            CallbackRequest("mark_claimed", payload={"winner_id": str(row.winner.id)})
+            CallbackRequest(
+                "mark_claimed",
+                campaign_id=campaign_id,
+                payload={"winner_id": str(row.winner.id)},
+            )
             for row in pending
         )
         tokens = await self._tokens.create_many(

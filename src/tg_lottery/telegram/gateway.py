@@ -78,8 +78,10 @@ class TelegramGateway:
             expire_date=datetime.fromisoformat(str(payload["expire_at"])),
             creates_join_request=False,
         )
+        remote_result = link.model_dump(mode="json", exclude_none=True)
+        remote_result.pop("invite_link", None)
         return GatewayResult(
-            remote_result=link.model_dump(mode="json", exclude_none=True),
+            remote_result=remote_result,
             invite_link=link.invite_link,
         )
 

@@ -51,6 +51,8 @@ class InvitationService:
             return None
         async with self._uow_factory() as uow:
             link, campaign = await self._link_and_campaign(uow.session, observation.invite_link_id)
+            if await self._is_self_invite(uow.session, link, observation.invitee_user_id):
+                return None
             if not self._accepts_attribution(campaign, observation.event_at):
                 return None
             return await self._upsert_candidate(
@@ -65,6 +67,8 @@ class InvitationService:
             return None
         async with self._uow_factory() as uow:
             link, campaign = await self._link_and_campaign(uow.session, observation.invite_link_id)
+            if await self._is_self_invite(uow.session, link, observation.invitee_user_id):
+                return None
             if not self._accepts_attribution(campaign, observation.event_at):
                 return None
             invitation = await self._upsert_candidate(
@@ -318,6 +322,16 @@ class InvitationService:
         if campaign is None:
             raise ValueError("invite link campaign is missing")
         return link, campaign
+
+    async def _is_self_invite(
+        self, session: object, link: InviteLink, invitee_user_id: int
+    ) -> bool:
+        inviter_user_id = await session.scalar(
+            select(Participant.user_id).where(Participant.id == link.participant_id)
+        )
+        if inviter_user_id is None:
+            raise ValueError("invite link participant is missing")
+        return inviter_user_id == invitee_user_id
 
     async def _upsert_candidate(
         self,

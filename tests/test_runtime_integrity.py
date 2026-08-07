@@ -3,8 +3,10 @@ import base64
 import os
 from datetime import UTC, datetime, timedelta
 from functools import partial
+from uuid import uuid4
 
 import pytest
+from aiogram.enums import UpdateType
 from aiogram.types import Update
 from sqlalchemy import func, select
 
@@ -30,10 +32,15 @@ from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway import GatewayResult
 from tg_lottery.telegram.inbox import InboxProcessor
 from tg_lottery.telegram.outbox import OutboxWorker
-from tg_lottery.telegram.polling import TelegramPollingAdapter
+from tg_lottery.telegram.polling import (
+    ALLOWED_UPDATES,
+    TelegramPollingAdapter,
+    _routing_campaign_id,
+    _routing_chat_id,
+)
 
 
-def _update(update_id: int) -> Update:
+def _update(update_id: int, text: str = "/start") -> Update:
     timestamp = int(datetime.now(UTC).timestamp())
     return Update.model_validate(
         {
@@ -43,18 +50,28 @@ def _update(update_id: int) -> Update:
                 "date": timestamp,
                 "chat": {"id": 201, "type": "private"},
                 "from": {"id": 201, "is_bot": False, "first_name": "Tester"},
-                "text": "/start",
+                "text": text,
             },
         }
     )
 
 
+def test_private_registration_update_routes_to_campaign() -> None:
+    campaign_id = uuid4()
+    update = _update(9, f"/start join_{campaign_id}")
+
+    assert _routing_chat_id(update) == 201
+    assert _routing_campaign_id(update) == str(campaign_id)
+
+
 class FakePollingBot:
     def __init__(self) -> None:
         self.offsets: list[int | None] = []
+        self.allowed_updates: list[str] = []
 
     async def get_updates(self, *, offset, timeout, allowed_updates):  # noqa: ASYNC109
         self.offsets.append(offset)
+        self.allowed_updates = allowed_updates
         return [_update(10)] if len(self.offsets) == 1 else []
 
 
@@ -75,6 +92,8 @@ async def test_polling_persists_batch_before_advancing_offset(session_factory) -
         offset = await session.get(PollingOffset, 123)
         update = await session.scalar(select(TelegramUpdate))
         assert bot.offsets == [None, 11]
+        assert bot.allowed_updates == [item.value for item in UpdateType]
+        assert ALLOWED_UPDATES == bot.allowed_updates
         assert offset.last_durable_update_id == 10
         assert update.state is UpdateState.RECEIVED
 

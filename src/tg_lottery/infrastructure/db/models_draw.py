@@ -4,7 +4,16 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tg_lottery.domain.enums import DeliveryCertainty, JobState, OutboxState, PrizeClaimState
@@ -109,6 +118,8 @@ class TelegramOutbox(Base, UuidPkMixin, TimestampMixin):
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     gateway_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     remote_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    encrypted_remote_secret: Mapped[bytes | None] = mapped_column(LargeBinary)
+    projected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
 
 

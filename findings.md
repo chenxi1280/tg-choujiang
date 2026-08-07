@@ -20,6 +20,22 @@
 - `BOT_ID` 与 Bot Token 的数字前缀是重复配置，且空值会在 Compose/Pydantic 两层提前阻断；现由 Token 严格派生并在 `getMe` 中校验实际 Bot ID，显式不一致仍直接失败。
 - 当前授权事实来自 `my_chat_member` 同步的群管理员和敏感动作前的 Telegram 实时复核；`ADMIN_IDS` 未参与授权判断，因此不再把它误列为生产启动必需项。
 - 首次 release 暴露 Actions SSH 用户传递缺口：workflow 的 SSH config 为 `admin`，但 `release.sh` 默认目标为 `root@production-server`，显式用户覆盖了 config；工作流必须把 `PRODUCTION_USER` 传给 `--user`。
+- 生产发布最终在 `a18b7c143cd8e653469ca98b9092c644da8ce11d` 成功；app/worker 使用同一 SHA 镜像，均 healthy、RestartCount=0，current 指向 `20260807182605_a18b7c1`。
+- 生产 Alembic 为 `992c1dd08da2 (head)`；PollingOffset 绑定 bot `8713586647`，最近轮询成功且完整性为 `ok`，无 gap；worker 心跳新鲜，失败 update 和 unknown outbox 均为 0。
+- 发布后真实暴露并修复四个工程问题：Compose 在 sudo Docker 下丢失 `.image.env`、旧 GHCR PAT 权限不足、空 `ADMIN_IDS` 在 Pydantic JSON 预解析阶段失败、重启中容器会让发布健康等待拖满超时。
+- 独立 Production Health workflow `31207282220` 已通过且 `PRODUCTION_ENABLED=true`；真实群数量仍为 0，因此群权限、活动发布、报名、邀请、开奖和领奖 E2E 尚未证实。
+
+## 发布后实现复审（2026-08-08）
+
+- 高风险：`OutboxWorker._confirm()` 将 CONFIRMED DeliveryAttempt、Outbox 确认状态和业务投影放在同一事务；投影异常会回滚已经获得的 Telegram 成功事实，租约到期后又会把它错误恢复为 UNKNOWN。
+- 高风险：`create_invite_link` 的 `GatewayResult.remote_result` 当前保存 Telegram 完整对象，其中包含明文 `invite_link`；这违反邀请链接只允许密文持久化的安全合同。
+- 修复方向：先独立提交已净化的远端成功事实和密文远端 secret，再以可重放的 `projected_at` 投影；worker 启动和每轮处理都重试 confirmed/unprojected，健康检查显式报告未完成投影。
+- 文档漂移：README 仍指向 V1.2，implementation audit 仍声称 Token/发布缺失，部署文档仍要求已不再使用的自定义 GHCR PAT；需与当前 V1.3 和 workflow token 合同同步。
+- 高风险：邀请归因未排除 `invitee_user_id == inviter participant.user_id`；参与者退出后使用自己的专属链接重入，可在留存期后给自己发邀请票。
+- 多群隔离风险：Settlement 的 `inbox_pending_before_cutoff` 查询扫描 Bot 全部未决 Update；其他群或无关私聊的一条旧失败 Update 会阻断所有活动快照。需结合 Durable Update 的业务溯源设计活动级未决判断，不能简单忽略失败事实。
+- 权限风险：`mark_claimed` callback 未绑定 campaign，点击时没有 Telegram 实时管理员复核；10 分钟 token 有效期内被撤权的管理员仍可能登记领奖。
+- 权限投影漂移：`chat_member` 中其他用户的管理员升降级未同步 `group_admins`，Bot 自身失去管理员时也未停用缓存；新管理员无法进入管理列表，旧管理员持续显示，虽多数敏感动作会被实时 API 拦截。
+- 连续性误报：Polling 只请求 5 类 Update，却把 `update_id` 缺口作为全量连续性证据；未请求的 edited/channel/reaction 等 Update 会形成正常编号跳跃，中断超过 24 小时后可被误报为 `integrity_review_required`。入口应请求并持久化 aiogram 当前全部 Update 类型，业务层再忽略无关类型。
 
 ## 原始文档
 
@@ -121,3 +137,11 @@
 - 第 11–20 页复核通过；自定义 PollingAdapter 已同步到技术选型、核心数据模型、并发入口合同、问题修订表和端到端总链路。
 - 第 21–31 页数据流、独立步骤编号、事务/约束、恢复矩阵与冻结参数均通过视觉复核；第 32 页仅剩两行结语，属于需消除的孤立尾页。
 - 最终修订后结语回收到第 31 页，第 4 页绝对化链接失效表述改为数据库停止归因、创建撤销 outbox、远端结果独立核验；无剩余视觉阻断项。
+
+## V1.3 发布后复审修复
+
+- Telegram CONFIRMED 必须先独立提交净化后的远端事实，再做可重放业务投影；投影失败不能把远端成功回滚为 UNKNOWN，也不能触发重复发送。
+- 创建邀请链接的明文 URL 不得进入 `DeliveryAttempt.remote_result`；仅允许在 Outbox 临时密文中跨事务传递，投影到 InviteLink 密文后立即清理。
+- Durable Inbox 请求全部 aiogram UpdateType，并保存群/活动路由；结算只排空本活动或目标群 Update，其他群失败不能跨域阻断。
+- 自己使用自己的活动链接离群重入不得奖励；管理员升降级和 Bot 撤权同步缓存，领奖登记仍需实时 Telegram 管理员复核。
+- V1.3 PRD 已同步上述合同，并使用临时 QA 字体完整渲染 31 页；逐页检查中文、表格、分页、页眉页脚，无裁切、重叠或孤立尾页。

@@ -62,6 +62,8 @@ class TelegramUpdate(Base, TimestampMixin):
     bot_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     update_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     update_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    routing_chat_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    routing_campaign_id: Mapped[str | None] = mapped_column(String(36), index=True)
     event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     payload: Mapped[dict[str, Any] | None]
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)

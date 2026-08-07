@@ -54,6 +54,7 @@
 - [x] ScheduledJob 使用租约和 `FOR UPDATE SKIP LOCKED`；该语义不用于账本、快照或开奖读取。
 - [x] Outbox 在业务事务内创建；Bot API 调用前提交 gateway_started，调用后追加 DeliveryAttempt/远端事实。
 - [x] confirmed 保存远端对象/message_id；明确限流可重试；权限/参数错误 pre_accept_failed；调用后超时进入 unknown_hold 且禁止盲重发。
+- [x] Telegram CONFIRMED 先独立提交净化后的远端事实，再执行可重放投影；投影失败不重发，confirmed/unprojected 由 worker 重放并触发健康告警。
 - [x] 权威事实分别落在 Inbox、Participant、Ledger、Invitation、Snapshot、Winner、DeliveryAttempt，并溯源到 Durable Update。
 
 ## G. 安全、运维与交付
@@ -64,4 +65,5 @@
 - [x] 分别提供数据库、polling freshness/continuity、worker heartbeat 和未决事实健康检查。
 - [x] PostgreSQL 16 集成测试覆盖迁移、唯一约束、并发领取、时区、重放、截止竞态、重复开奖和 unknown delivery。
 - [x] 发布路径固定为 master -> release -> GitHub Actions -> 马来西亚服务器 releases/current；production Environment 只允许 release 分支。
-- [ ] 最终分别证明 deployed SHA、迁移版本、app/worker 健康、Bot API 连通及真实 Telegram 报名/计票/邀请/开奖/通知事实。
+- [x] 已证明 deployed SHA、迁移版本、app/worker 健康、Bot API 连通和独立 Production Health。
+- [ ] 真实 Telegram 报名、计票、邀请、开奖、群公告和中奖私聊仍需目标测试群完成 E2E。

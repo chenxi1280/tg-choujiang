@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, or_, select
 
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.domain.enums import (
@@ -17,6 +17,7 @@ from tg_lottery.infrastructure.db import (
     Campaign,
     DrawEntry,
     DrawSnapshot,
+    Group,
     Invitation,
     Participant,
     PollingOffset,
@@ -115,11 +116,18 @@ class SettlementService:
             raise SettlementBlocked(",".join(blockers))
 
     async def _has_pending_updates(self, session: object, campaign: Campaign) -> bool:
+        chat_id = await session.scalar(select(Group.chat_id).where(Group.id == campaign.group_id))
+        if chat_id is None:
+            raise SettlementBlocked("campaign_group_missing")
         update_id = await session.scalar(
             select(TelegramUpdate.id)
             .where(
                 TelegramUpdate.event_at <= campaign.cutoff_at,
                 TelegramUpdate.state.in_(_PENDING_UPDATE_STATES),
+                or_(
+                    TelegramUpdate.routing_campaign_id == str(campaign.id),
+                    TelegramUpdate.routing_chat_id == chat_id,
+                ),
             )
             .limit(1)
         )

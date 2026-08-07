@@ -35,6 +35,10 @@ _CLAIM_LEASE_SECONDS = 120
 _IDLE_WAIT_SECONDS = 0.5
 _EXPLICIT_ERRORS = (TelegramBadRequest, TelegramForbiddenError, TelegramUnauthorizedError)
 _UNKNOWN_ERRORS = (TelegramNetworkError, TelegramServerError, TimeoutError, ConnectionError)
+_PROJECTED_OPERATIONS = frozenset(
+    {"send_campaign_card", "create_invite_link", "revoke_invite_link"}
+)
+_PROJECTION_RETRY_SECONDS = 30
 
 
 class OutboxWorker:
@@ -55,6 +59,7 @@ class OutboxWorker:
     async def run_forever(self, stop: asyncio.Event) -> None:
         while not stop.is_set():
             await self._recover_ambiguous()
+            await self._project_pending_confirmations()
             outbox = await self._claim_next()
             if outbox is None:
                 await self._wait(stop)
@@ -63,9 +68,10 @@ class OutboxWorker:
 
     async def process_once(self) -> bool:
         await self._recover_ambiguous()
+        projected = await self._project_pending_confirmations()
         outbox = await self._claim_next()
         if outbox is None:
-            return False
+            return projected > 0
         await self._deliver(outbox)
         return True
 
@@ -162,6 +168,12 @@ class OutboxWorker:
             return int(count or 0) + 1
 
     async def _confirm(self, outbox_id: UUID, attempt_number: int, result: GatewayResult) -> None:
+        await self._store_confirmation(outbox_id, attempt_number, result)
+        await self._try_project_confirmation(outbox_id)
+
+    async def _store_confirmation(
+        self, outbox_id: UUID, attempt_number: int, result: GatewayResult
+    ) -> None:
         async with self._session_factory() as session, session.begin():
             row = await self._locked_owned_claim(session, outbox_id)
             self._add_attempt(
@@ -169,13 +181,20 @@ class OutboxWorker:
                 row=row,
                 attempt_number=attempt_number,
                 certainty=DeliveryCertainty.CONFIRMED,
-                remote_result=result.remote_result,
+                remote_result=_sanitized_remote_result(result.remote_result),
             )
             row.state = OutboxState.CONFIRMED
             row.remote_message_id = result.remote_message_id
+            if result.invite_link is not None:
+                row.encrypted_remote_secret = self._cipher.encrypt(
+                    result.invite_link,
+                    context=f"outbox-result:{row.id}",
+                )
+            if row.operation not in _PROJECTED_OPERATIONS:
+                row.projected_at = utcnow()
+            row.last_error = None
             row.lease_owner = None
             row.lease_until = None
-            await self._project_success(session, row, result)
 
     async def _retry(self, outbox_id: UUID, attempt_number: int, exc: TelegramRetryAfter) -> None:
         async with self._session_factory() as session, session.begin():
@@ -260,6 +279,68 @@ class OutboxWorker:
                 row.lease_owner = None
                 row.lease_until = None
 
+    async def _project_pending_confirmations(self) -> int:
+        async with self._session_factory() as session:
+            row_ids = (
+                await session.scalars(
+                    select(TelegramOutbox.id)
+                    .where(
+                        TelegramOutbox.state == OutboxState.CONFIRMED,
+                        TelegramOutbox.projected_at.is_(None),
+                        TelegramOutbox.run_at <= utcnow(),
+                    )
+                    .order_by(TelegramOutbox.updated_at)
+                )
+            ).all()
+        projected = 0
+        for row_id in row_ids:
+            projected += int(await self._try_project_confirmation(row_id))
+        return projected
+
+    async def _try_project_confirmation(self, outbox_id: UUID) -> bool:
+        try:
+            await self._project_confirmation(outbox_id)
+        except Exception as exc:
+            self._logger.exception(
+                "confirmed Telegram result projection failed",
+                extra={"outbox_id": str(outbox_id), "certainty": "confirmed"},
+            )
+            await self._record_projection_failure(outbox_id, exc)
+            return False
+        return True
+
+    async def _project_confirmation(self, outbox_id: UUID) -> None:
+        async with self._session_factory() as session, session.begin():
+            row = await self._locked(session, outbox_id)
+            if row.state is not OutboxState.CONFIRMED:
+                raise RuntimeError("only confirmed outbox rows can be projected")
+            if row.projected_at is not None:
+                return
+            await self._project_success(session, row, self._stored_result(row))
+            row.projected_at = utcnow()
+            row.encrypted_remote_secret = None
+            row.last_error = None
+
+    async def _record_projection_failure(self, outbox_id: UUID, exc: Exception) -> None:
+        async with self._session_factory() as session, session.begin():
+            row = await self._locked(session, outbox_id)
+            if row.state is OutboxState.CONFIRMED and row.projected_at is None:
+                row.last_error = f"projection: {type(exc).__name__}: {exc}"[:4000]
+                row.run_at = utcnow() + timedelta(seconds=_PROJECTION_RETRY_SECONDS)
+
+    def _stored_result(self, row: TelegramOutbox) -> GatewayResult:
+        secret = None
+        if row.encrypted_remote_secret is not None:
+            secret = self._cipher.decrypt(
+                row.encrypted_remote_secret,
+                context=f"outbox-result:{row.id}",
+            )
+        return GatewayResult(
+            remote_result={},
+            remote_message_id=row.remote_message_id,
+            invite_link=secret,
+        )
+
     async def _project_success(
         self, session: AsyncSession, row: TelegramOutbox, result: GatewayResult
     ) -> None:
@@ -275,6 +356,11 @@ class OutboxWorker:
         campaign = await session.get(Campaign, UUID(row.aggregate_id), with_for_update=True)
         if campaign is None:
             raise RuntimeError("published campaign disappeared")
+        if campaign.published_message_id == row.remote_message_id and campaign.state in {
+            CampaignState.SCHEDULED,
+            CampaignState.RUNNING,
+        }:
+            return
         if campaign.state is not CampaignState.PUBLISHING:
             raise RuntimeError("campaign publication projection has invalid state")
         campaign.published_message_id = row.remote_message_id
@@ -285,14 +371,14 @@ class OutboxWorker:
     async def _project_invite_link(
         self, session: AsyncSession, row: TelegramOutbox, result: GatewayResult
     ) -> None:
-        if result.invite_link is None:
-            raise RuntimeError("Telegram success omitted invite_link")
         participant_id = UUID(str(row.payload["participant_id"]))
         existing = await session.scalar(
             select(InviteLink).where(InviteLink.participant_id == participant_id)
         )
         if existing:
             return
+        if result.invite_link is None:
+            raise RuntimeError("Telegram success omitted encrypted invite_link")
         link = InviteLink(
             campaign_id=UUID(str(row.payload["campaign_id"])),
             participant_id=participant_id,
@@ -389,3 +475,9 @@ def _delivery_log_context(outbox: TelegramOutbox, attempt_number: int) -> dict[s
         "operation": outbox.operation,
         "attempt_number": attempt_number,
     }
+
+
+def _sanitized_remote_result(remote_result: dict[str, object]) -> dict[str, object]:
+    sanitized = dict(remote_result)
+    sanitized.pop("invite_link", None)
+    return sanitized

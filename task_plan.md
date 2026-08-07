@@ -19,8 +19,9 @@
 - [complete] 11. 实现 Durable Inbox、活动/报名/计票/邀请/结算/开奖/Outbox 全链路
 - [complete] 12. 实现 Bot 交互、worker、健康检查、Docker 与运维文档
 - [complete] 13. 建立单元/集成/并发/故障恢复测试并完成本地验收
-- [in_progress] 14. 创建 GitHub 仓库与 Actions，按 master -> release 发布到马来西亚服务器
-- [pending] 15. 核验线上 SHA、迁移、容器、Telegram 连通性和真实抽奖业务闭环
+- [complete] 14. 创建 GitHub 仓库与 Actions，按 master -> release 发布到马来西亚服务器
+- [in_progress] 15. 核验线上 SHA、迁移、容器、Telegram 连通性和真实抽奖业务闭环
+- [in_progress] 16. 对 V1.3 实现、数据一致性、Telegram 边界和生产运维做发布后复审并修复确认问题
 
 ## 关键约束
 
@@ -47,4 +48,8 @@
 | Alembic 异步连接缺少 greenlet | 1 | 将依赖改为 `SQLAlchemy[asyncio]`，确保开发、CI 和生产迁移均显式安装异步 extra |
 | Alembic check 误报 10 个 Enum CHECK 待删除，3 个外部 ID 主键生成序列 | 1 | 外部 ID 主键显式 `autoincrement=False`；diff 仅忽略已由模型定义并实际保留的 Enum CHECK 名称 |
 | 本机 Docker build 停在 Docker Hub `python:3.12-slim` 元数据获取 | 1 | 已停止挂起构建；Compose/脚本/源码检查均已通过，GitHub Actions 继续执行真实 BuildKit 构建并作为发布硬闸门 |
-| V1.3 在 LibreOffice 26.2 预览中中文显示为空框 | 3 | DOCX 文本、结构和 21 页布局可解析；确认属于本机 LibreOffice 中文字体兼容，未用破坏跨平台兼容性的字体替换掩盖问题 |
+| V1.3 在隔离 LibreOffice 中中文显示为空框 | 3 | 确认打包运行时未加载系统中文字体；仅在 QA 运行时临时注入系统 Arial Unicode，完成 31 页逐页渲染后移除临时副本，未改系统或仓库依赖 |
+| 发布后修复首轮 Ruff format 检查发现 `groups.py` 一处可折叠换行 | 1 | 使用项目 Ruff formatter 做机械格式化后重新执行全部质量门禁 |
+| 新回归测试首次插入命中暂停邀请测试中段，导致语法错误并缺少测试 import | 1 | 恢复原测试体顺序、补齐 Campaign/UpdateState import，再运行 formatter 与测试 |
+| 新增 Outbox 回归使 `test_runtime_integrity.py` 超过 500 行且单测试超过 50 行 | 1 | 按职责拆分到 `test_outbox_projection.py`，长场景提取 seed/assert helper，不放宽度量阈值 |
+| V1.3 字体试改导致分页从 21 页膨胀到 26 页 | 1 | 撤销字体替换，仅保留内容级 PRD 修订；用文档原字体配合临时 QA 字体完成最终 31 页视觉验收 |

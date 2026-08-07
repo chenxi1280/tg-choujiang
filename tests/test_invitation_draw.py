@@ -16,15 +16,18 @@ from tg_lottery.domain.enums import (
     InvitationState,
     QualificationState,
     TicketSource,
+    UpdateState,
 )
 from tg_lottery.domain.errors import InvitationValidationDeferred, SettlementBlocked
 from tg_lottery.infrastructure.db import (
     DrawEntry,
     DrawSnapshot,
+    Invitation,
     InviteLink,
     PollingOffset,
     QualificationCheck,
     TelegramOutbox,
+    TelegramUpdate,
     TicketLedger,
     Winner,
 )
@@ -106,6 +109,63 @@ async def test_invitation_reward_is_deferred_while_campaign_paused(session_facto
             observed_at=now + timedelta(hours=24),
             is_current_member=True,
         )
+
+
+async def test_self_invitation_is_rejected(session_factory) -> None:
+    now = datetime.now(UTC)
+    async with session_factory() as session, session.begin():
+        _, campaign, participant = await seed_campaign(session)
+        link = InviteLink(
+            campaign_id=campaign.id,
+            participant_id=participant.id,
+            link_hash=sha256(b"self-link").hexdigest(),
+            telegram_name="lot_self",
+            expire_at=campaign.cutoff_at,
+        )
+        session.add(link)
+        await session.flush()
+        link_id = link.id
+        inviter_user_id = participant.user_id
+    service = InvitationService(partial(UnitOfWork, session_factory))
+    assert await service.record_join_request(JoinObservation(link_id, inviter_user_id, now)) is None
+    assert await service.record_joined(JoinObservation(link_id, inviter_user_id, now)) is None
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count(Invitation.id))) == 0
+
+
+async def test_settlement_ignores_unrelated_group_failed_update(session_factory) -> None:
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(minutes=10)
+    campaign_id, participant_id = await _seed_settlement_case(
+        session_factory, now=now, cutoff=cutoff
+    )
+    async with session_factory() as session, session.begin():
+        session.add(
+            QualificationCheck(
+                participant_id=participant_id,
+                phase="draw",
+                state=QualificationState.ELIGIBLE,
+                observed_status="not_required",
+                observed_at=now,
+            )
+        )
+        session.add(
+            TelegramUpdate(
+                bot_id=123,
+                update_id=49,
+                update_type="message",
+                routing_chat_id=-100999,
+                event_at=cutoff - timedelta(minutes=1),
+                payload={"update_id": 49},
+                payload_hash="9" * 64,
+                state=UpdateState.FAILED,
+                attempts=1,
+            )
+        )
+    snapshot = await SettlementService(partial(UnitOfWork, session_factory)).settle(
+        campaign_id, now
+    )
+    assert snapshot.campaign_id == campaign_id
 
 
 async def test_settlement_blocks_without_draw_qualification_then_draws_once(

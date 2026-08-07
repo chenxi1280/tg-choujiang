@@ -49,6 +49,49 @@ class GroupService:
             group.migrated_from_chat_id = old_chat_id
             group.chat_id = new_chat_id
 
+    async def sync_admin(
+        self,
+        *,
+        chat_id: int,
+        admin: TelegramAdmin,
+        active: bool,
+    ) -> None:
+        async with self._uow_factory() as uow:
+            group = await uow.session.scalar(select(Group).where(Group.chat_id == chat_id))
+            if group is None:
+                return
+            row = await uow.session.scalar(
+                select(GroupAdmin).where(
+                    GroupAdmin.group_id == group.id,
+                    GroupAdmin.user_id == admin.user_id,
+                )
+            )
+            if row is None:
+                if active:
+                    uow.session.add(
+                        GroupAdmin(
+                            group_id=group.id,
+                            user_id=admin.user_id,
+                            source=admin.source,
+                            active=True,
+                        )
+                    )
+                return
+            row.source = admin.source
+            row.active = active
+
+    async def deactivate_group(self, chat_id: int, observed_at: datetime) -> None:
+        async with self._uow_factory() as uow:
+            group = await uow.session.scalar(select(Group).where(Group.chat_id == chat_id))
+            if group is None:
+                return
+            group.permission_checked_at = observed_at
+            rows = (
+                await uow.session.scalars(select(GroupAdmin).where(GroupAdmin.group_id == group.id))
+            ).all()
+            for row in rows:
+                row.active = False
+
     async def _replace_admins(
         self,
         session: object,

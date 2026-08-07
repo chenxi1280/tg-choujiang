@@ -173,9 +173,26 @@ class LotteryUpdateHandler:
             invitation = await self._queries.invitation_for_chat_user(event.chat.id, user.id)
             if invitation:
                 await self._invitations.record_left(invitation.campaign_id, user.id, event.date)
+        await self._sync_admin_change(event)
+
+    async def _sync_admin_change(self, event: ChatMemberUpdated) -> None:
+        old_admin = _is_admin(event.old_chat_member)
+        new_admin = _is_admin(event.new_chat_member)
+        if old_admin == new_admin:
+            return
+        status = str(event.new_chat_member.status)
+        await self._groups.sync_admin(
+            chat_id=event.chat.id,
+            admin=TelegramAdmin(
+                user_id=event.new_chat_member.user.id,
+                source="owner" if status == "creator" else "telegram_admin",
+            ),
+            active=new_admin,
+        )
 
     async def _my_chat_member(self, event: ChatMemberUpdated) -> None:
         if not _is_admin(event.new_chat_member):
+            await self._groups.deactivate_group(event.chat.id, event.date)
             return
         admins = await self._bot.get_chat_administrators(event.chat.id)
         records = tuple(

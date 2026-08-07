@@ -40,3 +40,14 @@
 - 2026-08-08：移除重复配置门槛：`BOT_ID` 默认从 BOT_TOKEN 数字前缀严格解析并由 `getMe` 二次校验，`ADMIN_IDS` 明确为非启动必需；测试增至 33 项全部通过。
 - 2026-08-08：重新读取马来西亚服务器：Docker 26.1.3、`tg_lottery` 数据库和 0600 环境文件就绪，尚无 release/current；唯一外部发布阻断收敛为新 BOT_TOKEN 与真实测试群。
 - 2026-08-08：配置并回读验证 `@TGCCJBOT` Token；首次 production run 的 checks/build 通过但 deploy 因 `release.sh` 默认 root 覆盖 SSH config 失败，未创建 release/current；已修复工作流显式传递 `PRODUCTION_USER`。
+- 2026-08-08：继续修复发布链路：显式加载 `.image.env`、改用 workflow `GITHUB_TOKEN` 拉取私有 GHCR 镜像、允许空 `ADMIN_IDS`、对 restarting/exited/dead 容器快速失败；本地 34 项测试和质量门禁通过。
+- 2026-08-08：生产部署 run `31206766571` 成功，线上 SHA `a18b7c1`、app/worker healthy 且无重启、Alembic head、Polling integrity=ok、队列无失败事实；独立健康 run `31207282220` 通过。
+- 2026-08-08：开始发布后全量复审；真实 Telegram 群 E2E 仍等待测试群将 `@TGCCJBOT` 设为具备邀请链接权限的管理员。
+- 2026-08-08：发布后第一轮 Outbox 审计发现“远端 CONFIRMED 与投影同事务导致事实可回滚”和“邀请链接明文进入 DeliveryAttempt.remote_result”两个高风险问题；进入跨事务可重放投影设计。
+- 2026-08-08：第二轮业务审计发现自邀刷票缺口和 Settlement 全 Bot 未决 Update 导致的跨群阻断风险；继续核验 Update 业务溯源、管理员权限和状态机入口。
+- 2026-08-08：第三轮权限审计确认领奖登记缺少点击时实时管理员复核、管理员升降级与 Bot 撤权未同步缓存；纳入修复范围。
+- 2026-08-08：入口审计确认 `allowed_updates` 过滤会制造假 update_id gap；决定改为全类型 Durable Inbox，再由 handler 忽略无关 Update。
+- 2026-08-08：完成第一批模型/迁移/执行链修改：Update 路由、Outbox confirmed 后可重放投影、远端 secret 密文、活动级结算阻断、自邀拒绝、管理员缓存同步和领奖实时复核；首轮 Ruff 仅剩一处机械格式差异。
+- 2026-08-08：完成发布后修复回归：40 项 PostgreSQL/并发/恢复测试通过；Ruff、代码度量、Shell、Compose 均通过。
+- 2026-08-08：新增迁移 `0d7f5bb6c9a1`，在 PostgreSQL 16 完成 base -> head 往返与 `alembic check`，无模型漂移。
+- 2026-08-08：V1.3 PRD 同步 confirmed/unprojected、自邀、Update 路由、跨群隔离和管理员权限漂移合同；临时注入系统字体后完成 31 页逐页视觉验收，未保留 QA 字体或中间产物。
