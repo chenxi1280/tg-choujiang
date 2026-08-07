@@ -64,5 +64,9 @@ docker_cmd() {
 }
 
 compose() {
-  (cd "$APP_DIR" && docker_cmd compose --env-file "$ENV_FILE" -f "$APP_DIR/docker-compose.yml" "$@")
+  local env_args=(--env-file "$ENV_FILE")
+  if [[ -f "$IMAGE_ENV_FILE" ]]; then
+    env_args+=(--env-file "$IMAGE_ENV_FILE")
+  fi
+  (cd "$APP_DIR" && docker_cmd compose "${env_args[@]}" -f "$APP_DIR/docker-compose.yml" "$@")
 }
