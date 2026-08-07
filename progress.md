@@ -71,3 +71,5 @@
 - 2026-08-08：按用户要求启动第三轮独立代码检查与生产发布；基线 master `36287b9`、生产/release `f43e16e`，工作树干净，继续保持真实 Telegram E2E 与服务健康分开验收。
 - 2026-08-08：第三轮确认并修复取消活动永久 JobRetry、活动卡片取消/确认竞态和 Polling gap 未阻断结算；新增取消补偿编辑、终态任务吸收、短 gap 与 continuity 结算回归，32 项定向测试通过。
 - 2026-08-08：第三轮完整门禁通过：59 项测试、Ruff、代码度量、compileall、diff、Shell、Compose、Alembic head -> base -> head 与双 `alembic check` 全部成功，无迁移漂移和真实 Token 入库。
+- 2026-08-08：提交 `ca4c116` 后 master Python Checks run `31216334497` 通过；release Deploy Production run `31216494106` 成功，独立 Production Health run `31216745366` 通过。
+- 2026-08-08：生产 current 指向 `20260807203703_ca4c116`；app/worker healthy、RestartCount=0、镜像 SHA `ca4c116cef0b8eb1cb082a051d4afd94480f34c1`、Alembic `a42b9c7d3e10`。groups/campaigns/未决 Update/连续性异常/失败 Job/UNKNOWN_HOLD/confirmed-unprojected 均为 0；线上代码已确认包含取消卡片补偿操作。真实 Telegram 报名到开奖 E2E 因无群和活动仍未证明，阶段 15 保持进行中。

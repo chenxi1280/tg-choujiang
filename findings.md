@@ -190,3 +190,5 @@
 - 发布脚本复核：新 release 在 current 切换前完成备份、迁移、容器启动和健康检查；若新容器启动失败不会自动恢复旧镜像。自动回滚属于新增生产 fallback，当前规则要求另行明确授权，本轮不静默加入；发布失败仍会明确暴露并保留旧 current 指针。
 - 已确认 P1：Polling 在短时间内发现 update_id gap 时只写 `gap_observed`，app health 仅拒绝 `integrity_review_required`，Settlement 更完全不检查 continuity 状态。因此另一个 poller 抢走/遗漏 Update 后，只要 polling 时间新鲜，仍可能生成不完整开奖快照。任何 gap 都必须进入人工完整性复核，且非 `ok` continuity 必须同时阻断健康与结算。
 - 第三轮修复结果：CANCELLED 生命周期任务改为幂等成功吸收；已确认或延迟确认的活动卡片都会生成唯一 `edit_campaign_card_cancelled` 补偿 Outbox，保留 Telegram success 事实并移除报名入口。Polling 任意 gap 统一升级为 `integrity_review_required`，health 和 settlement 对所有非 `ok` 状态失败关闭。
+- 第三轮发布事实：release run `31216494106` 的 checks、镜像构建和 deploy 全部成功；服务器 current、`.image.env` 与两个运行容器均回读为完整 SHA `ca4c116cef0b8eb1cb082a051d4afd94480f34c1`，容器 RestartCount 均为 0，独立健康 run `31216745366` 成功。
+- 第三轮业务事实：数据库回读为 groups=0、campaigns=0、未完成 Update=0、非 ok PollingOffset=0、blocked/failed_terminal Job=0、UNKNOWN_HOLD=0、confirmed/unprojected=0。运行状态通过，但因没有生产群和活动，真实 Telegram 报名、计票、邀请、随机开奖、群公告及中奖私聊仍为 `unproven`，不得由健康检查替代。
