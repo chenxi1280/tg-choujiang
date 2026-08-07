@@ -28,10 +28,13 @@ from tg_lottery.infrastructure.db import (
     Participant,
     TelegramOutbox,
 )
+from tg_lottery.infrastructure.heartbeat import run_with_heartbeat
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway import GatewayResult, TelegramGateway, invite_link_id
+from tg_lottery.telegram.outbox_records import delivery_log_context, sanitized_remote_result
 
 _CLAIM_LEASE_SECONDS = 120
+_LEASE_RENEW_INTERVAL_SECONDS = 30
 _IDLE_WAIT_SECONDS = 0.5
 _EXPLICIT_ERRORS = (TelegramBadRequest, TelegramForbiddenError, TelegramUnauthorizedError)
 _UNKNOWN_ERRORS = (TelegramNetworkError, TelegramServerError, TimeoutError, ConnectionError)
@@ -49,11 +52,17 @@ class OutboxWorker:
         session_factory: async_sessionmaker[AsyncSession],
         gateway: TelegramGateway,
         cipher: SecretCipher,
+        lease_seconds: int = _CLAIM_LEASE_SECONDS,
+        renew_interval_seconds: float = _LEASE_RENEW_INTERVAL_SECONDS,
     ) -> None:
+        if lease_seconds <= 0 or not 0 < renew_interval_seconds < lease_seconds:
+            raise ValueError("outbox lease renewal interval must be shorter than the lease")
         self._owner_id = owner_id
         self._session_factory = session_factory
         self._gateway = gateway
         self._cipher = cipher
+        self._lease_seconds = lease_seconds
+        self._renew_interval_seconds = renew_interval_seconds
         self._logger = logging.getLogger(__name__)
 
     async def run_forever(self, stop: asyncio.Event) -> None:
@@ -77,10 +86,9 @@ class OutboxWorker:
 
     async def _deliver(self, outbox: TelegramOutbox) -> None:
         attempt_number = await self._mark_gateway_started(outbox.id)
-        log_context = _delivery_log_context(outbox, attempt_number)
+        log_context = delivery_log_context(outbox, attempt_number)
         try:
-            link = await self._load_link(outbox)
-            result = await self._gateway.execute(outbox, link)
+            result = await self._execute_gateway(outbox)
         except TelegramRetryAfter as exc:
             await self._retry(outbox.id, attempt_number, exc)
             self._logger.warning(
@@ -123,6 +131,14 @@ class OutboxWorker:
                 extra=log_context | {"certainty": "confirmed"},
             )
 
+    async def _execute_gateway(self, outbox: TelegramOutbox) -> GatewayResult:
+        link = await self._load_link(outbox)
+        return await run_with_heartbeat(
+            self._gateway.execute(outbox, link),
+            lambda: self._renew_claim(outbox.id),
+            self._renew_interval_seconds,
+        )
+
     async def _claim_next(self) -> TelegramOutbox | None:
         now = utcnow()
         async with self._session_factory() as session, session.begin():
@@ -149,10 +165,15 @@ class OutboxWorker:
                 return None
             row.state = OutboxState.CLAIMED
             row.lease_owner = self._owner_id
-            row.lease_until = now + timedelta(seconds=_CLAIM_LEASE_SECONDS)
+            row.lease_until = now + timedelta(seconds=self._lease_seconds)
             await session.flush()
             session.expunge(row)
             return row
+
+    async def _renew_claim(self, outbox_id: UUID) -> None:
+        async with self._session_factory() as session, session.begin():
+            row = await self._locked_owned_claim(session, outbox_id)
+            row.lease_until = utcnow() + timedelta(seconds=self._lease_seconds)
 
     async def _mark_gateway_started(self, outbox_id: UUID) -> int:
         async with self._session_factory() as session, session.begin():
@@ -181,7 +202,7 @@ class OutboxWorker:
                 row=row,
                 attempt_number=attempt_number,
                 certainty=DeliveryCertainty.CONFIRMED,
-                remote_result=_sanitized_remote_result(result.remote_result),
+                remote_result=sanitized_remote_result(result.remote_result),
             )
             row.state = OutboxState.CONFIRMED
             row.remote_message_id = result.remote_message_id
@@ -467,17 +488,3 @@ class OutboxWorker:
             await asyncio.wait_for(stop.wait(), timeout=_IDLE_WAIT_SECONDS)
         except TimeoutError:
             return
-
-
-def _delivery_log_context(outbox: TelegramOutbox, attempt_number: int) -> dict[str, object]:
-    return {
-        "outbox_id": str(outbox.id),
-        "operation": outbox.operation,
-        "attempt_number": attempt_number,
-    }
-
-
-def _sanitized_remote_result(remote_result: dict[str, object]) -> dict[str, object]:
-    sanitized = dict(remote_result)
-    sanitized.pop("invite_link", None)
-    return sanitized

@@ -52,7 +52,9 @@ class ActivityService:
     ) -> ActivityEvent | InviteeActivityEvent | None:
         async with self._uow_factory() as uow:
             campaign = await self._active_campaign(uow.session, observation.chat_id)
-            if campaign is None or observation.event_at > campaign.cutoff_at:
+            if campaign is None or not (
+                campaign.preheat_at <= observation.event_at <= campaign.cutoff_at
+            ):
                 return None
             participant = await self._eligible_participant(
                 uow.session, campaign.id, observation.user_id
@@ -238,7 +240,10 @@ class ActivityService:
         return await session.scalar(
             select(Campaign)
             .join(Group, Group.id == Campaign.group_id)
-            .where(Group.chat_id == chat_id, Campaign.state == CampaignState.RUNNING)
+            .where(
+                Group.chat_id == chat_id,
+                Campaign.state.in_([CampaignState.RUNNING, CampaignState.SETTLING]),
+            )
             .with_for_update()
         )
 

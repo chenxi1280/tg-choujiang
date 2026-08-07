@@ -29,6 +29,16 @@
 - 候选人数不足时不重复中奖补足，后续 DrawRound 标记 `undistributed` 并在群公告披露；中奖私聊携带本奖品领取说明。
 - 新迁移 head 为 `a42b9c7d3e10`，42 项 PostgreSQL/并发/恢复测试、Ruff、代码度量、迁移往返与模型漂移检查通过。
 
+## V1.4 全量代码复审修复
+
+- Inbox 以最早未完成 Update 阻断后续项，FAILED 明确退避；完成/失败写入使用 attempts fencing，旧处理者不能覆盖接管后的结果。
+- ScheduledJob 与 Outbox 在执行期间持续续租；Job 续租同步刷新 WorkerHeartbeat，长资格复核不会被误接管或误报 worker 失联。
+- 活动消息和邀请归因统一使用 `[preheat_at, cutoff_at]`；Campaign 进入 SETTLING 后仍处理排空中的截止前事件。
+- 延迟报名观察只在报名期且观察时间不晚于 cutoff 时更新 Participant；不会覆盖 draw 资格或在结算后创建邀请链接。
+- Campaign、Invitation、Participant 相关路径统一 Campaign-first 锁序；发布时重新检查时间线，避免过期草稿进入生命周期任务。
+- `member:verify` 使用实际点击用户和点击时刻，不再误用 Bot 消息发送者；选择群开始创建时实时复核 Telegram 管理员。
+- 现有 Alembic head 无需变化；54 项测试、Ruff 和代码度量已通过，迁移往返及生产发布证据在本轮提交后重新核验。
+
 ## 当前线上证据
 
 - `@TGCCJBOT` Token 已配置并通过 `getMe`；Bot ID 为 `8713586647`。

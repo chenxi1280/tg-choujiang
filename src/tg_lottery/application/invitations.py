@@ -21,7 +21,12 @@ from tg_lottery.infrastructure.db import (
 )
 
 _ATTRIBUTION_STATES = frozenset(
-    {CampaignState.SCHEDULED, CampaignState.RUNNING, CampaignState.PAUSED}
+    {
+        CampaignState.SCHEDULED,
+        CampaignState.RUNNING,
+        CampaignState.PAUSED,
+        CampaignState.SETTLING,
+    }
 )
 
 
@@ -228,16 +233,21 @@ class InvitationService:
     async def _locked_invitation_campaign(
         self, session: object, invitation_id: UUID
     ) -> tuple[Invitation, Campaign]:
-        invitation = await session.scalar(
-            select(Invitation).where(Invitation.id == invitation_id).with_for_update()
+        campaign_id = await session.scalar(
+            select(Invitation.campaign_id).where(Invitation.id == invitation_id)
         )
-        if invitation is None:
+        if campaign_id is None:
             raise ValueError("invitation not found")
         campaign = await session.scalar(
-            select(Campaign).where(Campaign.id == invitation.campaign_id).with_for_update()
+            select(Campaign).where(Campaign.id == campaign_id).with_for_update()
         )
         if campaign is None:
             raise ValueError("invitation campaign is missing")
+        invitation = await session.scalar(
+            select(Invitation).where(Invitation.id == invitation_id).with_for_update()
+        )
+        if invitation is None or invitation.campaign_id != campaign.id:
+            raise ValueError("invitation not found")
         return invitation, campaign
 
     async def _current(self, invitation_id: UUID) -> Invitation:
@@ -365,4 +375,7 @@ class InvitationService:
         return invitation
 
     def _accepts_attribution(self, campaign: Campaign, event_at: datetime) -> bool:
-        return campaign.state in _ATTRIBUTION_STATES and event_at <= campaign.cutoff_at
+        return (
+            campaign.state in _ATTRIBUTION_STATES
+            and campaign.preheat_at <= event_at <= campaign.cutoff_at
+        )

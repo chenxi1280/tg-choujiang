@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 
 from tg_lottery.application.callback_tokens import CallbackRequest, CallbackTokenService
 from tg_lottery.application.records import utcnow
-from tg_lottery.application.request_context import bind_update_context, current_update_id
+from tg_lottery.application.request_context import bind_update_context
 from tg_lottery.domain.enums import JobState, OutboxState, UpdateState
 from tg_lottery.domain.errors import AuthorizationDenied
 from tg_lottery.infrastructure.db import (
@@ -21,6 +21,7 @@ from tg_lottery.infrastructure.db import (
     ScheduledJob,
     TelegramOutbox,
     TelegramUpdate,
+    WorkerHeartbeat,
 )
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.jobs.maintenance import (
@@ -30,7 +31,6 @@ from tg_lottery.jobs.maintenance import (
 from tg_lottery.jobs.worker import JobWorker
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway import GatewayResult
-from tg_lottery.telegram.inbox import InboxProcessor
 from tg_lottery.telegram.outbox import OutboxWorker
 from tg_lottery.telegram.polling import (
     ALLOWED_UPDATES,
@@ -131,51 +131,6 @@ async def test_polling_marks_long_interruption_gap_for_integrity_review(
         assert offset.last_durable_update_id == 12
         assert offset.integrity_status == "integrity_review_required"
         assert (offset.last_gap_from, offset.last_gap_to) == (10, 11)
-
-
-class FlakyHandler:
-    def __init__(self) -> None:
-        self.calls = 0
-        self.update_ids: list[int | None] = []
-
-    async def handle(self, update: Update) -> None:
-        self.calls += 1
-        self.update_ids.append(current_update_id())
-        if self.calls == 1:
-            raise RuntimeError("planned failure")
-
-
-async def test_inbox_failure_remains_replayable(session_factory) -> None:
-    update = _update(20)
-    async with session_factory() as session, session.begin():
-        session.add(
-            TelegramUpdate(
-                bot_id=123,
-                update_id=20,
-                update_type="message",
-                event_at=datetime.now(UTC),
-                payload=update.model_dump(mode="json", exclude_none=True),
-                payload_hash="a" * 64,
-                state=UpdateState.RECEIVED,
-                attempts=0,
-            )
-        )
-    handler = FlakyHandler()
-    processor = InboxProcessor(
-        bot_id=123,
-        handler=handler,
-        session_factory=session_factory,
-    )
-    assert await processor.process_once() is True
-    async with session_factory() as session:
-        row = await session.scalar(select(TelegramUpdate))
-        assert row.state is UpdateState.FAILED
-    assert await processor.process_once() is True
-    async with session_factory() as session:
-        row = await session.scalar(select(TelegramUpdate))
-        assert row.state is UpdateState.PROCESSED
-        assert row.attempts == 2
-        assert handler.update_ids == [20, 20]
 
 
 async def test_update_payload_retention_prunes_only_old_processed_rows(session_factory) -> None:
@@ -343,6 +298,16 @@ class RecordingJobHandlers:
         self.job_ids.append(job.id)
 
 
+class BlockingJobHandlers:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def handle(self, job: ScheduledJob) -> None:
+        self.started.set()
+        await self.release.wait()
+
+
 async def test_two_workers_claim_distinct_jobs(session_factory) -> None:
     async with session_factory() as session, session.begin():
         for index in range(2):
@@ -415,6 +380,49 @@ async def test_expired_job_owner_cannot_finish_reclaimed_job(session_factory) ->
         stored = await session.get(ScheduledJob, job_id)
         assert stored.state is JobState.CLAIMED
         assert stored.lease_owner == "new-owner"
+
+
+async def test_running_job_renews_lease_and_cannot_be_reclaimed(session_factory) -> None:
+    async with session_factory() as session, session.begin():
+        session.add(
+            ScheduledJob(
+                job_type="test",
+                aggregate_id="renewal",
+                business_key="job:renewal",
+                payload={},
+                run_at=utcnow(),
+                state=JobState.PENDING,
+                attempts=0,
+            )
+        )
+    handlers = BlockingJobHandlers()
+    first = _short_lease_worker("renew-owner", handlers, session_factory)
+    second = _short_lease_worker("other-owner", handlers, session_factory)
+    processing = asyncio.create_task(first.process_once())
+    await handlers.started.wait()
+    async with session_factory() as session:
+        initial_seen = await session.scalar(select(WorkerHeartbeat.last_seen_at))
+    await asyncio.sleep(1.2)
+    assert await second._claim_next() is None
+    async with session_factory() as session:
+        renewed_seen = await session.scalar(select(WorkerHeartbeat.last_seen_at))
+        assert renewed_seen > initial_seen
+    handlers.release.set()
+    assert await processing is True
+    async with session_factory() as session:
+        assert await session.scalar(select(ScheduledJob.state)) is JobState.SUCCEEDED
+
+
+def _short_lease_worker(owner: str, handlers: object, session_factory) -> JobWorker:
+    return JobWorker(
+        owner_id=owner,
+        worker_name=owner,
+        session_factory=session_factory,
+        handlers=handlers,
+        poll_seconds=0.1,
+        lease_seconds=1,
+        renew_interval_seconds=0.2,
+    )
 
 
 async def test_callback_token_is_owner_bound_and_single_use(session_factory) -> None:

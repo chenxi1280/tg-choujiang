@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import os
 
@@ -27,6 +28,17 @@ class CountingGateway:
     async def execute(self, outbox, invite_link=None):
         self.calls += 1
         return self.result
+
+
+class BlockingGateway:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def execute(self, outbox, invite_link=None):
+        self.started.set()
+        await self.release.wait()
+        return GatewayResult(remote_result={"ok": True}, remote_message_id=92)
 
 
 def _cipher() -> SecretCipher:
@@ -106,6 +118,49 @@ async def test_invite_link_remote_fact_is_sanitized_and_encrypted(session_factor
     )
     assert await _worker(session_factory, gateway, cipher).process_once() is True
     await _assert_invite_secrets(session_factory, outbox_id, cipher)
+
+
+async def test_running_outbox_delivery_renews_lease(session_factory) -> None:
+    async with session_factory() as session, session.begin():
+        session.add(_winner_notice_outbox())
+    gateway = BlockingGateway()
+    active = _short_lease_outbox("active", gateway, session_factory)
+    recovery = _short_lease_outbox("recovery", CountingGateway(GatewayResult({})), session_factory)
+    delivery = asyncio.create_task(active.process_once())
+    await gateway.started.wait()
+    await asyncio.sleep(1.2)
+    assert await recovery.process_once() is False
+    gateway.release.set()
+    assert await delivery is True
+    async with session_factory() as session:
+        row = await session.scalar(select(TelegramOutbox))
+        assert row.state is OutboxState.CONFIRMED
+        assert row.remote_message_id == 92
+
+
+def _short_lease_outbox(owner, gateway, session_factory) -> OutboxWorker:
+    return OutboxWorker(
+        owner_id=owner,
+        session_factory=session_factory,
+        gateway=gateway,
+        cipher=_cipher(),
+        lease_seconds=1,
+        renew_interval_seconds=0.2,
+    )
+
+
+def _winner_notice_outbox() -> TelegramOutbox:
+    return TelegramOutbox(
+        operation="send_winner_notice",
+        aggregate_type="winner",
+        aggregate_id="winner-renewal",
+        recipient_chat_id=201,
+        business_key="winner-renewal",
+        request_hash="1" * 64,
+        payload={"campaign_name": "test", "prize_name": "prize"},
+        state=OutboxState.PENDING,
+        run_at=utcnow(),
+    )
 
 
 async def _seed_invite_outbox(session_factory):

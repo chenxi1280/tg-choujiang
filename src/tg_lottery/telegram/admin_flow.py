@@ -150,10 +150,12 @@ class AdminFlow:
         await handler(query, grant)
 
     async def _select_group(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        chat_id = int(grant.payload["chat_id"])
+        await self._verify_chat_admin(chat_id, query.from_user.id)
         await self._sessions.set(
             query.from_user.id,
             "campaign_name",
-            {"chat_id": int(grant.payload["chat_id"]), "prizes": []},
+            {"chat_id": chat_id, "prizes": []},
         )
         await _message(query).answer("请输入活动名称（最多 120 字）：")
 

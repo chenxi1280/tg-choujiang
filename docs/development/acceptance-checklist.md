@@ -50,8 +50,8 @@
 
 - [x] DF-01 自定义 TelegramPollingAdapter：批次 Inbox 与 `last_durable_update_id` 同事务提交后再推进 offset。
 - [x] PostgreSQL runtime lease 保证同一 Bot token 只有一个 polling 进程。
-- [x] InboxProcessor 按 update_id 消费 received/failed，业务异常保留并可重放。
-- [x] ScheduledJob 使用租约和 `FOR UPDATE SKIP LOCKED`；该语义不用于账本、快照或开奖读取。
+- [x] InboxProcessor 严格按 update_id 消费；最早未完成项阻断后续项，FAILED 退避可重放，attempts fencing 拒绝旧 owner 覆盖。
+- [x] ScheduledJob 使用租约、执行期续租和 `FOR UPDATE SKIP LOCKED`；该语义不用于账本、快照或开奖读取。
 - [x] Outbox 在业务事务内创建；Bot API 调用前提交 gateway_started，调用后追加 DeliveryAttempt/远端事实。
 - [x] confirmed 保存远端对象/message_id；明确限流可重试；权限/参数错误 pre_accept_failed；调用后超时进入 unknown_hold 且禁止盲重发。
 - [x] Telegram CONFIRMED 先独立提交净化后的远端事实，再执行可重放投影；投影失败不重发，confirmed/unprojected 由 worker 重放并触发健康告警。

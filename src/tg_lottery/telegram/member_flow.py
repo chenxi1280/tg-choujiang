@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from aiogram import Bot
@@ -7,6 +8,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, U
 from tg_lottery.application.participants import (
     ParticipantService,
     QualificationResult,
+    RegistrationAttempt,
     RegistrationRequest,
 )
 from tg_lottery.application.queries import QueryService
@@ -26,33 +28,24 @@ class MemberFlow:
         self._participants = participants
         self._queries = queries
 
-    async def register(self, message: Message, campaign_id: UUID) -> None:
+    async def register(
+        self,
+        message: Message,
+        campaign_id: UUID,
+        *,
+        user: User | None = None,
+        observed_at: datetime | None = None,
+    ) -> None:
         campaign = await self._queries.campaign(campaign_id)
         if campaign is None:
             raise ValueError("活动不存在或已经失效")
-        user = _required_user(message)
+        user = user or _required_user(message)
         attempt = await self._participants.begin_registration(
-            RegistrationRequest(
-                campaign_id=campaign.id,
-                user_id=user.id,
-                username=user.username,
-                display_name=user.full_name,
-                observed_at=message.date,
-            )
+            _registration_request(campaign.id, user, observed_at or message.date)
         )
         state = attempt.state
         if attempt.requires_observation:
-            state, status, error = await self._qualification(attempt.required_channel_id, user.id)
-            await self._participants.complete_registration(
-                QualificationResult(
-                    participant_id=attempt.participant_id,
-                    qualification_check_id=attempt.qualification_check_id,
-                    state=state,
-                    observed_at=utcnow(),
-                    observed_status=status,
-                    error_code=error,
-                )
-            )
+            state = await self._complete_observation(attempt, user.id)
         if state is QualificationState.ELIGIBLE:
             await message.answer(
                 "报名成功。专属邀请链接创建并确认后会发送到这里。",
@@ -73,6 +66,22 @@ class MemberFlow:
             await message.answer("尚未满足频道关注条件。完成后请重新验证。", reply_markup=verify)
         else:
             await message.answer("当前无法核验频道资格，状态保持待核验。", reply_markup=verify)
+
+    async def _complete_observation(
+        self, attempt: RegistrationAttempt, user_id: int
+    ) -> QualificationState:
+        state, status, error = await self._qualification(attempt.required_channel_id, user_id)
+        participant = await self._participants.complete_registration(
+            QualificationResult(
+                participant_id=attempt.participant_id,
+                qualification_check_id=attempt.qualification_check_id,
+                state=state,
+                observed_at=utcnow(),
+                observed_status=status,
+                error_code=error,
+            )
+        )
+        return participant.qualification_state
 
     async def show_tickets(self, message: Message, user_id: int) -> None:
         summary = await self._queries.ticket_summary(user_id)
@@ -120,6 +129,18 @@ def _required_user(message: Message) -> User:
     if message.from_user is None:
         raise ValueError("Telegram message has no sender")
     return message.from_user
+
+
+def _registration_request(
+    campaign_id: UUID, user: User, observed_at: datetime
+) -> RegistrationRequest:
+    return RegistrationRequest(
+        campaign_id=campaign_id,
+        user_id=user.id,
+        username=user.username,
+        display_name=user.full_name,
+        observed_at=observed_at,
+    )
 
 
 def _is_member(member: object) -> bool:

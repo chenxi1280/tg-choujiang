@@ -72,10 +72,20 @@ class ParticipantService:
 
     async def complete_registration(self, result: QualificationResult) -> Participant:
         async with self._uow_factory() as uow:
+            campaign_id = await self._registration_campaign_id(uow.session, result)
+            campaign = await uow.session.scalar(
+                select(Campaign).where(Campaign.id == campaign_id).with_for_update()
+            )
+            if campaign is None:
+                raise ValueError("registration campaign is missing")
             check = await uow.session.get(
                 QualificationCheck, result.qualification_check_id, with_for_update=True
             )
-            if check is None or check.participant_id != result.participant_id:
+            if (
+                check is None
+                or check.participant_id != result.participant_id
+                or check.phase != "registration"
+            ):
                 raise ValueError("registration qualification check is missing")
             participant = await uow.session.get(
                 Participant, result.participant_id, with_for_update=True
@@ -84,10 +94,24 @@ class ParticipantService:
                 raise ValueError("registration participant is missing")
             if check.state is not QualificationState.PENDING:
                 return participant
-            self._apply_qualification_result(check, participant, result)
-            if result.state is QualificationState.ELIGIBLE:
-                await self._ensure_invite_link(uow.session, participant)
+            self._apply_check_result(check, result)
+            if self._can_apply_registration_result(campaign, result):
+                participant.qualification_state = result.state
+                if result.state is QualificationState.ELIGIBLE:
+                    await self._ensure_invite_link(uow.session, campaign, participant)
             return participant
+
+    async def _registration_campaign_id(self, session: object, result: QualificationResult) -> UUID:
+        row = (
+            await session.execute(
+                select(QualificationCheck.participant_id, Participant.campaign_id)
+                .join(Participant, Participant.id == QualificationCheck.participant_id)
+                .where(QualificationCheck.id == result.qualification_check_id)
+            )
+        ).one_or_none()
+        if row is None or row.participant_id != result.participant_id:
+            raise ValueError("registration qualification check is missing")
+        return row.campaign_id
 
     async def record_draw_qualification(
         self,
@@ -193,10 +217,11 @@ class ParticipantService:
             source_update_id=current_update_id(),
         )
 
-    async def _ensure_invite_link(self, session: object, participant: Participant) -> None:
-        campaign = await session.get(Campaign, participant.campaign_id)
+    async def _ensure_invite_link(
+        self, session: object, campaign: Campaign, participant: Participant
+    ) -> None:
         group = await session.get(Group, campaign.group_id) if campaign else None
-        if campaign is None or group is None:
+        if group is None:
             raise ValueError("registration campaign or group is missing")
         await self._request_invite_link(
             session,
@@ -205,17 +230,20 @@ class ParticipantService:
             participant=participant,
         )
 
-    def _apply_qualification_result(
+    def _apply_check_result(
         self,
         check: QualificationCheck,
-        participant: Participant,
         result: QualificationResult,
     ) -> None:
         check.state = result.state
         check.observed_status = result.observed_status
         check.error_code = result.error_code
         check.observed_at = result.observed_at
-        participant.qualification_state = result.state
+
+    def _can_apply_registration_result(
+        self, campaign: Campaign, result: QualificationResult
+    ) -> bool:
+        return campaign.state in _REGISTRATION_STATES and result.observed_at <= campaign.cutoff_at
 
     def _accepts_registration(self, campaign: Campaign | None, observed_at: datetime) -> bool:
         return bool(

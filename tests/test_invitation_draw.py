@@ -133,6 +133,61 @@ async def test_self_invitation_is_rejected(session_factory) -> None:
         assert await session.scalar(select(func.count(Invitation.id))) == 0
 
 
+async def test_pre_cutoff_join_is_attributed_while_inbox_drains(session_factory) -> None:
+    now = datetime.now(UTC)
+    link_id = await _seed_invite_link(
+        session_factory,
+        state=CampaignState.SETTLING,
+        cutoff_at=now,
+    )
+    invitation = await InvitationService(partial(UnitOfWork, session_factory)).record_joined(
+        JoinObservation(link_id, 303, now)
+    )
+    assert invitation is not None
+    assert invitation.state is InvitationState.JOINED_PENDING
+
+
+async def test_join_before_preheat_is_not_attributed(session_factory) -> None:
+    now = datetime.now(UTC)
+    link_id, preheat_at = await _seed_future_invite_link(session_factory, now)
+    invitation = await InvitationService(partial(UnitOfWork, session_factory)).record_joined(
+        JoinObservation(link_id, 304, preheat_at - timedelta(seconds=1))
+    )
+    assert invitation is None
+
+
+async def _seed_invite_link(session_factory, *, state, cutoff_at) -> UUID:
+    async with session_factory() as session, session.begin():
+        _, campaign, participant = await seed_campaign(session, state=state, cutoff_at=cutoff_at)
+        link = InviteLink(
+            campaign_id=campaign.id,
+            participant_id=participant.id,
+            link_hash=sha256(f"{state}".encode()).hexdigest(),
+            telegram_name="lot_drain",
+            expire_at=campaign.cutoff_at,
+        )
+        session.add(link)
+        await session.flush()
+        return link.id
+
+
+async def _seed_future_invite_link(session_factory, now: datetime) -> tuple[UUID, datetime]:
+    async with session_factory() as session, session.begin():
+        _, campaign, participant = await seed_campaign(session)
+        campaign.state = CampaignState.SCHEDULED
+        campaign.preheat_at = now + timedelta(hours=1)
+        link = InviteLink(
+            campaign_id=campaign.id,
+            participant_id=participant.id,
+            link_hash=sha256(b"future-link").hexdigest(),
+            telegram_name="lot_future",
+            expire_at=campaign.cutoff_at,
+        )
+        session.add(link)
+        await session.flush()
+        return link.id, campaign.preheat_at
+
+
 async def test_settlement_ignores_unrelated_group_failed_update(session_factory) -> None:
     now = datetime.now(UTC)
     cutoff = now - timedelta(minutes=10)

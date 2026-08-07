@@ -13,6 +13,8 @@ from tg_lottery.domain.rules import CampaignDraft, CampaignRules, canonical_hash
 from tg_lottery.domain.transitions import require_campaign_transition
 from tg_lottery.infrastructure.db import Campaign, Group, Prize, RuleRevision, TelegramOutbox
 
+_MAX_PRIZE_NAME_LENGTH = 120
+
 
 @dataclass(frozen=True)
 class PrizeSpec:
@@ -31,7 +33,7 @@ class CampaignService:
         prizes: tuple[PrizeSpec, ...],
         actor_user_id: int,
     ) -> Campaign:
-        self._validate_prizes(prizes)
+        prizes = self._validated_prizes(prizes)
         async with self._uow_factory() as uow:
             group = await self._group(uow.session, draft.group_id)
             await require_group_admin(uow.session, group_id=group.id, user_id=actor_user_id)
@@ -62,6 +64,7 @@ class CampaignService:
             )
             if await self._publication_already_requested(uow.session, campaign):
                 return
+            self._validate_publish_timeline(campaign, utcnow())
             require_campaign_transition(campaign.state, CampaignState.PUBLISHING)
             campaign.state = CampaignState.PUBLISHING
             revision = await self._freeze_revision(uow.session, campaign)
@@ -151,11 +154,26 @@ class CampaignService:
                 details={"cutoff_at": cutoff_at.isoformat()},
             )
 
-    def _validate_prizes(self, prizes: tuple[PrizeSpec, ...]) -> None:
+    def _validated_prizes(self, prizes: tuple[PrizeSpec, ...]) -> tuple[PrizeSpec, ...]:
         if not prizes:
             raise ValueError("campaign requires at least one prize")
-        if any(prize.winner_count < 1 or not prize.name.strip() for prize in prizes):
+        normalized = tuple(
+            PrizeSpec(prize.name.strip(), prize.winner_count, prize.claim_instructions.strip())
+            for prize in prizes
+        )
+        if any(prize.winner_count < 1 or not prize.name for prize in normalized):
             raise ValueError("each prize requires a name and positive winner count")
+        if any(len(prize.name) > _MAX_PRIZE_NAME_LENGTH for prize in normalized):
+            raise ValueError("prize name exceeds 120 characters")
+        if any(not prize.claim_instructions for prize in normalized):
+            raise ValueError("each prize requires claim instructions")
+        return normalized
+
+    def _validate_publish_timeline(self, campaign: Campaign, now: datetime) -> None:
+        if campaign.cutoff_at <= now:
+            raise ValueError("campaign cutoff must be in the future when published")
+        if campaign.draw_at <= campaign.cutoff_at:
+            raise ValueError("campaign draw must be after cutoff")
 
     async def _group(self, session: object, group_id: int) -> Group:
         group = await session.scalar(select(Group).where(Group.chat_id == group_id))

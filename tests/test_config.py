@@ -33,3 +33,10 @@ def test_explicit_bot_id_must_match_token() -> None:
 def test_token_requires_numeric_bot_id_prefix() -> None:
     with pytest.raises(ValidationError, match="numeric Telegram bot id"):
         _settings(bot_token="invalid-token-without-numeric-prefix")
+
+
+def test_polling_lease_must_cover_long_poll_timeout() -> None:
+    with pytest.raises(ValidationError, match="cover poll timeout"):
+        _settings(poll_timeout_seconds=50, poll_lease_seconds=59)
+
+    assert _settings(poll_timeout_seconds=50, poll_lease_seconds=60).poll_lease_seconds == 60

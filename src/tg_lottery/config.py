@@ -5,6 +5,8 @@ from zoneinfo import ZoneInfo
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+_POLL_LEASE_MARGIN_SECONDS = 10
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -35,13 +37,15 @@ class Settings(BaseSettings):
         return 0 if value in {None, ""} else value
 
     @model_validator(mode="after")
-    def derive_bot_id(self) -> "Settings":
+    def derive_bot_id_and_validate_polling(self) -> "Settings":
         token_prefix, separator, _ = self.bot_token.partition(":")
         if not separator or not token_prefix.isdecimal():
             raise ValueError("BOT_TOKEN must start with the numeric Telegram bot id")
         token_bot_id = int(token_prefix)
         if self.bot_id not in {0, token_bot_id}:
             raise ValueError("BOT_ID does not match BOT_TOKEN")
+        if self.poll_lease_seconds < self.poll_timeout_seconds + _POLL_LEASE_MARGIN_SECONDS:
+            raise ValueError("POLL_LEASE_SECONDS must cover poll timeout plus 10 seconds")
         self.bot_id = token_bot_id
         return self
 

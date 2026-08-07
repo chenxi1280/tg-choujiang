@@ -62,3 +62,7 @@
 - 2026-08-08：生成 V1.4 多奖品随机开奖版 PRD；临时注入 QA 字体后完整渲染 33 页并逐页检查，中文、表格、分页和新增第 32 节均无裁切或重叠，临时字体已移除。
 - 2026-08-08：提交 `c05ff3f` 后 master Python Checks run `31212062264` 通过；release Deploy Production run `31212217749` 成功，独立 Production Health run `31212474227` 通过。
 - 2026-08-08：生产 current 指向 `20260807193823_c05ff3f`，app/worker healthy 且 RestartCount=0，Alembic `a42b9c7d3e10`；groups/campaigns/UNKNOWN/unprojected/失败 Job/失败 Update 均为 0。真实群抽奖闭环仍未证明，阶段 15 保持进行中。
+- 2026-08-08：启动 V1.4 发布后全量代码复审；使用 planning-with-files 管理发现、复现、修复、回归与发布证据，当前工作树干净且 master 与 origin/master 一致。
+- 2026-08-08：完成应用/状态机/并发第二轮复审并修复 11 类问题：预热与结算排空时间窗、延迟报名覆盖 draw 资格、邀请锁序、Inbox 严格顺序与 fencing、Update 失败退避、Job/Outbox 续租、Polling 配置、过期发布、奖品服务校验、callback 点击用户归属和领奖重放幂等。
+- 2026-08-08：新增 Inbox 顺序/旧 owner fencing、Job/Outbox 跨租约续期、截止排空消息/邀请、延迟资格、过期发布、轮询配置和 verify callback 用户归属回归；当前 54 项全量测试、Ruff、代码度量通过。
+- 2026-08-08：发布前门禁完成：compileall、diff check、Shell、Compose、Alembic head -> base -> head 与两次 `alembic check` 均通过，模型无漂移且无真实 Bot Token 入库。

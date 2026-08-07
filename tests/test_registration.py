@@ -11,9 +11,9 @@ from tg_lottery.application.participants import (
     RegistrationRequest,
 )
 from tg_lottery.application.request_context import bind_update_context
-from tg_lottery.domain.enums import QualificationState
+from tg_lottery.domain.enums import CampaignState, QualificationState
 from tg_lottery.domain.rules import CampaignRules
-from tg_lottery.infrastructure.db import Participant, QualificationCheck, TelegramOutbox
+from tg_lottery.infrastructure.db import Campaign, Participant, QualificationCheck, TelegramOutbox
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 
 
@@ -74,6 +74,40 @@ async def test_registration_replay_reuses_source_update_check(session_factory) -
             )
         )
         assert check_count == 1
+
+
+async def test_late_registration_result_cannot_override_draw_qualification(
+    session_factory,
+) -> None:
+    now = datetime.now(UTC)
+    async with session_factory() as session, session.begin():
+        _, campaign, _ = await seed_campaign(session)
+        campaign_id = campaign.id
+    service = ParticipantService(partial(UnitOfWork, session_factory))
+    attempt = await service.begin_registration(_request(campaign_id, now))
+    async with session_factory() as session, session.begin():
+        campaign = await session.get(Campaign, campaign_id)
+        participant = await session.get(Participant, attempt.participant_id)
+        campaign.state = CampaignState.SETTLING
+        participant.qualification_state = QualificationState.INELIGIBLE
+        session.add(
+            QualificationCheck(
+                participant_id=participant.id,
+                phase="draw",
+                state=QualificationState.INELIGIBLE,
+                observed_status="left",
+                observed_at=now,
+            )
+        )
+    completed = await service.complete_registration(
+        _result(attempt, now, QualificationState.ELIGIBLE)
+    )
+    async with session_factory() as session:
+        outbox_count = await session.scalar(select(func.count(TelegramOutbox.id)))
+        registration = await session.get(QualificationCheck, attempt.qualification_check_id)
+        assert completed.qualification_state is QualificationState.INELIGIBLE
+        assert registration.state is QualificationState.ELIGIBLE
+        assert outbox_count == 0
 
 
 def _request(campaign_id, observed_at: datetime) -> RegistrationRequest:

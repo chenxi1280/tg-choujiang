@@ -41,8 +41,8 @@ class CampaignDraft(BaseModel, frozen=True):
 
     @model_validator(mode="after")
     def validate_timeline(self) -> CampaignDraft:
-        if not self.preheat_at < self.cutoff_at <= self.draw_at:
-            raise ValueError("timeline must satisfy preheat_at < cutoff_at <= draw_at")
+        if not self.preheat_at < self.cutoff_at < self.draw_at:
+            raise ValueError("timeline must satisfy preheat_at < cutoff_at < draw_at")
         return self
 
 

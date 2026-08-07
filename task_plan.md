@@ -26,6 +26,10 @@
 - [complete] 18. 补齐多奖品配置、名额校验、随机开奖与通知的设计和实现
 - [complete] 19. 更新 V1.4 PRD、验收清单、测试与迁移并完成文档视觉验收
 - [complete] 20. 通过质量门禁后发布生产并核验运行事实
+- [complete] 21. 全量复审应用服务、事务边界、状态机、并发幂等与 Telegram 交互
+- [complete] 22. 为确认缺陷建立可复现测试并实施根因修复
+- [complete] 23. 完成静态检查、42+ 项测试、迁移往返、漂移与生产配置验证
+- [in_progress] 24. 发布修复并分别核验线上版本、服务健康与真实业务证据
 
 ## 关键约束
 
@@ -61,3 +65,5 @@
 | macOS 不提供 GNU `timeout`，首次 60 秒测试命令无法执行 | 1 | 改用受控测试执行并确认全套测试在 8 秒内结束；未放宽后端 60 秒上限 |
 | `uv run` 重建环境时未安装 dev extra，pytest 入口误用系统环境 | 1 | 执行 `uv sync --extra dev` 后固定使用项目 `.venv/bin/python -m pytest` |
 | V1.4 前两次隔离渲染把 QA 字体放到错误层级，中文未加载 | 2 | 定位 LibreOffice 实际 `fonts/truetype` 目录，临时注入后完成 33 页视觉验收并立即移除字体副本 |
+| 复审读取命令的工作目录误写为 `/Users/xida/PychProjects/...` | 1 | 未执行任何代码或文件操作；改用已确认的仓库绝对路径后继续 |
+| zsh 对不存在的 `scripts/*.sh` glob 直接报 `no matches found` | 1 | Alembic 往返、漂移与 Compose 已先完成；Shell 校验改用 `rg --files -g '*.sh'` 枚举实际文件，不依赖空 glob |

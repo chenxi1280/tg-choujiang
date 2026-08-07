@@ -159,3 +159,24 @@
 - 最终合同：奖品添加顺序即分配优先级；默认全期不重复中奖。当总中奖人数超过合格候选人数时，不复制中奖者补足，后续槽位写 `undistributed=true` 并在群公告中披露。
 - 奖品方案哈希覆盖 Prize ID、顺位、名称、中奖人数和领取说明；Campaign、DrawSnapshot 与开奖时当前方案必须一致，任何发布后漂移均明确阻断。
 - 每个计划名额都生成 DrawRound，`(draw_run_id, prize_id, prize_slot_no)` 唯一；Winner 仅在实际抽中时生成，群公告与中奖私聊作为独立 Telegram 送达事实。
+
+## V1.4 全量代码复审（2026-08-08）
+
+- 基线：master `e4b88e9`，生产代码 `c05ff3f`，工作树在复审计划记录前干净；当前生产仍无 Group/Campaign，真实 Telegram E2E 未证明。
+- 审查重点锁定 6 个高风险面：Campaign 状态/冻结、账本与资格、邀请归因、开奖可复算、Durable Inbox/Polling、Outbox 远端事实与投影恢复；同时复核迁移和部署脚本。
+- 静态概览：生产 Python 文件均未超过 500 行，但 `telegram/outbox.py` 已达 483 行，需重点检查职责和异常分支；显式广义异常捕获集中在 Job/Inbox/Outbox/Polling 边界，必须逐处确认都有失败事实而非吞错。
+- Outbox 复审：远端调用前持久化 `gateway_started_at`，明确拒绝可重试/终止，网络歧义进入 UNKNOWN_HOLD，confirmed 先独立提交再投影；当前未发现吞错或 confirmed 自动重发。投影并发由行锁和 `projected_at` 幂等保护。
+- 报名/邀请复审：邀请事务锁定 Invitation 与 Campaign，first-attribution、self-invite、validation_version 和 TicketLedger business_key 边界完整；需要继续验证“延迟报名资格回写”与结算/快照并发，当前 complete_registration 只锁 QualificationCheck/Participant，未重新锁定 Campaign。
+- 已确认 P1：`ActivityService.record_message` 仅检查“当前 Campaign=RUNNING”和 `event_at <= cutoff_at`，没有检查 `event_at >= preheat_at`。Durable Inbox 若在活动开始后重放一条预热开始前的旧消息，会被错误计入活跃并可能发票。
+- 已确认 P1：ScheduledJob claim 固定租约 120 秒且执行期间不续租；`qualification_review` 会逐成员串行调用 Telegram，参与者较多时可超过租约。第二 Worker 可回收同一 Job 并重复外部读取/资格写入，原 Worker 最终还会因 fencing 丢失抛错。应在 handler 执行期间续租，而不是简单放大超时。
+- 结算与活动计票都锁定 Campaign，截止与消息发票能串行；Settlement 还要求目标活动/群 Inbox 排空、邀请/资格完成和 polling freshness，当前未发现部分快照路径。
+- 已确认 P1：Inbox `_claim_next` 只按最小“可领取” update 排序，不阻止另一进程在较小 update 已是 PROCESSING 时领取更大的 update。因此双 app/故障重叠可并发、乱序处理同一 Bot 的 Update，违反 Durable Inbox 顺序合同。
+- 已确认 P2：FAILED Update 立即再次可领取，永久性异常会每 0.5 秒热循环重试；应使用明确重试间隔，同时保持最早未完成 Update 阻断后续项，使故障可见而不打爆数据库/日志。
+- 已确认 P1 配置缺口：`poll_timeout_seconds` 可配置到 50、`poll_lease_seconds` 可低至 20，未约束租约覆盖 long polling。正常 getUpdates 阻塞即可让租约过期并触发双 Poller/事务回滚；需显式验证 lease 大于 timeout 并保留安全余量。
+- 已确认 P1：延迟返回的报名资格会在 Campaign 已进入结算后覆盖 Participant 的 draw 资格；极端时可把 draw check 已判不合格的参与者重新改为 ELIGIBLE 并纳入快照。修复为 Campaign-first 锁序，报名观察事实仍落库，但只在报名期且观察时间不晚于 cutoff 时更新当前资格/创建邀请链接。
+- 已确认 P1：截止 Job 先把 Campaign 改为 SETTLING 后，Activity/Invitation 只接受 RUNNING/SCHEDULED，导致 Inbox 排空期间 `event_at <= cutoff_at` 的消息和入群事件被静默丢弃，与 V1.4 排空合同相反。修复为 SETTLING 继续按 `[preheat_at, cutoff_at]` 事件时间接纳。
+- 已确认 P1：邀请校验原先先锁 Invitation 再锁 Campaign，而结算先锁 Campaign 再锁 Invitation，存在循环等待。统一为 Campaign -> Invitation 锁序。
+- 已确认 P1：`member:verify` callback 把 Bot 发送的旧消息作为注册消息，`message.from_user` 实际是 Bot，不是点击按钮的用户；会验证/报名错误用户。修复为显式传入 `query.from_user` 和点击时刻，并增加回归测试。
+- 已确认 P2：草稿创建时虽校验时间线，但延迟发布不会重新检查 cutoff；现已在发布事务中拒绝过期 cutoff，并统一要求 draw 严格晚于 cutoff。Prize 服务边界同时补齐 trim、名称 120 字和领取说明非空校验。
+- 已确认 P1：Inbox 过期领取没有 fencing，旧处理者可在新处理者完成后把 PROCESSED 覆盖为 FAILED；现以 attempts 作为 claim fence，所有完成/失败写入都校验 PROCESSING + claimed_attempt。
+- 已确认 P2：Outbox 外部调用与 ScheduledJob handler 执行期间均未续租。Outbox 虽不会自动重发 gateway_started mutation，但会把仍在执行的调用误判 UNKNOWN；两类 worker 现统一使用可取消的租约心跳，Job 心跳同时刷新 WorkerHeartbeat。

@@ -10,6 +10,7 @@ from tg_lottery.application.callback_tokens import CallbackTokenService
 from tg_lottery.application.groups import GroupService, TelegramAdmin
 from tg_lottery.application.invitations import InvitationService, JoinObservation
 from tg_lottery.application.queries import QueryService
+from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import DomainError
 from tg_lottery.telegram.admin_flow import AdminFlow
 from tg_lottery.telegram.member_flow import MemberFlow
@@ -122,7 +123,12 @@ class LotteryUpdateHandler:
             await self._member_flow.show_invitations(message, query.from_user.id)
             return
         if data.startswith("member:verify:"):
-            await self._member_flow.register(message, UUID(data.removeprefix("member:verify:")))
+            await self._member_flow.register(
+                message,
+                UUID(data.removeprefix("member:verify:")),
+                user=query.from_user,
+                observed_at=utcnow(),
+            )
             return
         if data.startswith("secure:"):
             await self._dispatch_secure_callback(query, data)

@@ -4,8 +4,9 @@ from datetime import timedelta
 from typing import Protocol
 
 from aiogram.types import Update
-from sqlalchemy import or_, select
+from sqlalchemy import exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import aliased
 
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.request_context import bind_update_context
@@ -13,6 +14,7 @@ from tg_lottery.domain.enums import UpdateState
 from tg_lottery.infrastructure.db import TelegramUpdate
 
 _PROCESSING_STALE_SECONDS = 300
+_FAILED_RETRY_SECONDS = 5
 _IDLE_WAIT_SECONDS = 0.5
 
 
@@ -51,18 +53,30 @@ class InboxProcessor:
         return True
 
     async def _claim_next(self) -> TelegramUpdate | None:
-        stale_before = utcnow() - timedelta(seconds=_PROCESSING_STALE_SECONDS)
+        now = utcnow()
+        stale_before = now - timedelta(seconds=_PROCESSING_STALE_SECONDS)
+        retry_before = now - timedelta(seconds=_FAILED_RETRY_SECONDS)
+        earlier = aliased(TelegramUpdate)
         async with self._session_factory() as session, session.begin():
             row = await session.scalar(
                 select(TelegramUpdate)
                 .where(
                     TelegramUpdate.bot_id == self._bot_id,
                     or_(
-                        TelegramUpdate.state.in_([UpdateState.RECEIVED, UpdateState.FAILED]),
+                        TelegramUpdate.state == UpdateState.RECEIVED,
+                        (
+                            (TelegramUpdate.state == UpdateState.FAILED)
+                            & (TelegramUpdate.updated_at <= retry_before)
+                        ),
                         (
                             (TelegramUpdate.state == UpdateState.PROCESSING)
                             & (TelegramUpdate.updated_at < stale_before)
                         ),
+                    ),
+                    ~exists().where(
+                        earlier.bot_id == TelegramUpdate.bot_id,
+                        earlier.update_id < TelegramUpdate.update_id,
+                        earlier.state != UpdateState.PROCESSED,
                     ),
                 )
                 .order_by(TelegramUpdate.update_id)
@@ -80,7 +94,9 @@ class InboxProcessor:
 
     async def _process(self, row: TelegramUpdate) -> bool:
         if row.payload is None:
-            await self._mark_failed(row.id, "update payload was pruned before processing")
+            await self._mark_failed(
+                row.id, row.attempts, "update payload was pruned before processing"
+            )
             return False
         try:
             update = Update.model_validate(row.payload)
@@ -93,31 +109,40 @@ class InboxProcessor:
                 "durable update processing failed",
                 extra={"bot_id": row.bot_id, "update_id": row.update_id},
             )
-            await self._mark_failed(row.id, f"{type(exc).__name__}: {exc}")
+            await self._mark_failed(row.id, row.attempts, f"{type(exc).__name__}: {exc}")
             return False
-        await self._mark_processed(row.id)
+        await self._mark_processed(row.id, row.attempts)
         self._logger.info(
             "durable update processed",
             extra={"bot_id": row.bot_id, "update_id": row.update_id},
         )
         return True
 
-    async def _mark_processed(self, row_id: int) -> None:
+    async def _mark_processed(self, row_id: int, claimed_attempt: int) -> None:
         async with self._session_factory() as session, session.begin():
-            row = await session.get(TelegramUpdate, row_id, with_for_update=True)
-            if row is None:
-                raise RuntimeError("claimed update disappeared")
+            row = await self._locked_claim(session, row_id, claimed_attempt)
             row.state = UpdateState.PROCESSED
             row.processed_at = utcnow()
             row.last_error = None
 
-    async def _mark_failed(self, row_id: int, error: str) -> None:
+    async def _mark_failed(self, row_id: int, claimed_attempt: int, error: str) -> None:
         async with self._session_factory() as session, session.begin():
-            row = await session.get(TelegramUpdate, row_id, with_for_update=True)
-            if row is None:
-                raise RuntimeError("claimed update disappeared")
+            row = await self._locked_claim(session, row_id, claimed_attempt)
             row.state = UpdateState.FAILED
             row.last_error = error[:4000]
+
+    async def _locked_claim(
+        self, session: AsyncSession, row_id: int, claimed_attempt: int
+    ) -> TelegramUpdate:
+        row = await session.get(TelegramUpdate, row_id, with_for_update=True)
+        if row is None:
+            raise RuntimeError("claimed update disappeared")
+        if row.state is not UpdateState.PROCESSING or row.attempts != claimed_attempt:
+            raise RuntimeError(
+                f"update claim ownership lost: update={row.update_id} "
+                f"attempt={claimed_attempt} current_attempt={row.attempts} state={row.state}"
+            )
+        return row
 
     async def _wait(self, stop: asyncio.Event) -> None:
         try:
