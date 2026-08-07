@@ -21,7 +21,7 @@
 - [complete] 13. 建立单元/集成/并发/故障恢复测试并完成本地验收
 - [complete] 14. 创建 GitHub 仓库与 Actions，按 master -> release 发布到马来西亚服务器
 - [in_progress] 15. 核验线上 SHA、迁移、容器、Telegram 连通性和真实抽奖业务闭环
-- [in_progress] 16. 对 V1.3 实现、数据一致性、Telegram 边界和生产运维做发布后复审并修复确认问题
+- [complete] 16. 对 V1.3 实现、数据一致性、Telegram 边界和生产运维做发布后复审并修复确认问题
 
 ## 关键约束
 

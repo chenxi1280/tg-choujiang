@@ -51,3 +51,6 @@
 - 2026-08-08：完成发布后修复回归：40 项 PostgreSQL/并发/恢复测试通过；Ruff、代码度量、Shell、Compose 均通过。
 - 2026-08-08：新增迁移 `0d7f5bb6c9a1`，在 PostgreSQL 16 完成 base -> head 往返与 `alembic check`，无模型漂移。
 - 2026-08-08：V1.3 PRD 同步 confirmed/unprojected、自邀、Update 路由、跨群隔离和管理员权限漂移合同；临时注入系统字体后完成 31 页逐页视觉验收，未保留 QA 字体或中间产物。
+- 2026-08-08：提交 `4c6379a` 的 master Python Checks run `31209679661` 通过；Deploy Production run `31209826454` 成功发布到马来西亚。
+- 2026-08-08：线上 `4c6379a`、Alembic `0d7f5bb6c9a1`、app/worker healthy 且重启 0；UNKNOWN、confirmed/unprojected、失败 Job/Update、邀请链接明文均为 0，独立 Production Health run `31210214148` 通过。
+- 2026-08-08：生产 groups=0，真实 Telegram 报名、计票、邀请、开奖、群公告与中奖私聊仍未证明，阶段 15 保持进行中。
