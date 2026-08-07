@@ -95,7 +95,7 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
           DEPLOY_HOST: ${{ secrets.PRODUCTION_HOST }}
           DEPLOY_USER: ${{ secrets.PRODUCTION_USER }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           test -n "${SSH_PRIVATE_KEY}"
@@ -132,8 +132,8 @@ jobs:
           PRODUCTION_BASE_DIR: ${{ vars.PRODUCTION_BASE_DIR }}
           RELEASE_BRANCHES: ${{ vars.RELEASE_BRANCHES }}
           DEPLOY_USER: ${{ secrets.PRODUCTION_USER }}
-          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.actor }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TG_LOTTERY_APP_IMAGE: ghcr.io/${{ env.GHCR_NAMESPACE }}/${{ env.APP_IMAGE_NAME }}:${{ github.sha }}
         run: |
           set -euo pipefail
