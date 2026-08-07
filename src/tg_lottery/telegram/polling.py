@@ -20,13 +20,11 @@ from tg_lottery.infrastructure.db import BotRuntimeLease, PollingOffset, Telegra
 
 ALLOWED_UPDATES = [update_type.value for update_type in UpdateType]
 _LEASE_RETRY_SECONDS = 5
-_INTEGRITY_REVIEW_AFTER_HOURS = 24
 
 
 @dataclass(frozen=True)
 class PollingCursor:
     next_offset: int | None
-    last_poll_succeeded_at: datetime | None
 
 
 class TelegramPollingAdapter:
@@ -83,17 +81,12 @@ class TelegramPollingAdapter:
 
     async def _durable_cursor(self) -> PollingCursor:
         async with self._session_factory() as session:
-            row = await session.execute(
-                select(
-                    PollingOffset.last_durable_update_id,
-                    PollingOffset.last_poll_succeeded_at,
-                ).where(PollingOffset.bot_id == self._bot_id)
+            last_id = await session.scalar(
+                select(PollingOffset.last_durable_update_id).where(
+                    PollingOffset.bot_id == self._bot_id
+                )
             )
-            values = row.one_or_none()
-            if values is None:
-                return PollingCursor(None, None)
-            last_id, last_poll = values
-            return PollingCursor(last_id + 1 if last_id is not None else None, last_poll)
+            return PollingCursor(last_id + 1 if last_id is not None else None)
 
     async def _persist_batch(self, updates: Sequence[Update], cursor: PollingCursor) -> None:
         now = utcnow()
@@ -143,7 +136,7 @@ class TelegramPollingAdapter:
             values["last_durable_update_id"] = last_update_id
         gap = _update_gap(cursor.next_offset, updates)
         if gap is not None:
-            values.update(_gap_values(gap, cursor.last_poll_succeeded_at, now))
+            values.update(_gap_values(gap, now))
             self._logger.warning(
                 "Telegram update gap observed",
                 extra={"bot_id": self._bot_id, "update_id": gap[1]},
@@ -262,14 +255,9 @@ def _update_gap(next_offset: int | None, updates: Sequence[Update]) -> tuple[int
     return next_offset, updates[0].update_id - 1
 
 
-def _gap_values(
-    gap: tuple[int, int], last_poll: datetime | None, now: datetime
-) -> dict[str, object]:
-    interrupted = last_poll is None or now - last_poll >= timedelta(
-        hours=_INTEGRITY_REVIEW_AFTER_HOURS
-    )
+def _gap_values(gap: tuple[int, int], now: datetime) -> dict[str, object]:
     return {
-        "integrity_status": "integrity_review_required" if interrupted else "gap_observed",
+        "integrity_status": "integrity_review_required",
         "last_gap_from": gap[0],
         "last_gap_to": gap[1],
         "last_gap_detected_at": now,

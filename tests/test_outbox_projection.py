@@ -68,7 +68,7 @@ async def test_confirmed_delivery_is_not_lost_or_resent_when_projection_fails(
 
 async def _seed_failed_campaign_projection(session_factory):
     async with session_factory() as session, session.begin():
-        group, campaign, _ = await seed_campaign(session, state=CampaignState.CANCELLED)
+        group, campaign, _ = await seed_campaign(session, state=CampaignState.DRAFT)
         row = TelegramOutbox(
             operation="send_campaign_card",
             aggregate_type="campaign",
@@ -136,6 +136,37 @@ async def test_running_outbox_delivery_renews_lease(session_factory) -> None:
         row = await session.scalar(select(TelegramOutbox))
         assert row.state is OutboxState.CONFIRMED
         assert row.remote_message_id == 92
+
+
+async def test_late_campaign_card_confirmation_queues_cancellation_edit(
+    session_factory,
+) -> None:
+    async with session_factory() as session, session.begin():
+        group, campaign, _ = await seed_campaign(session, state=CampaignState.CANCELLED)
+        row = TelegramOutbox(
+            operation="send_campaign_card",
+            aggregate_type="campaign",
+            aggregate_id=str(campaign.id),
+            recipient_chat_id=group.chat_id,
+            business_key="late-cancelled-card",
+            request_hash="2" * 64,
+            payload={},
+            state=OutboxState.PENDING,
+            run_at=utcnow(),
+        )
+        session.add(row)
+        await session.flush()
+        original_id = row.id
+    gateway = CountingGateway(GatewayResult(remote_result={"ok": True}, remote_message_id=93))
+    assert await _worker(session_factory, gateway, _cipher()).process_once() is True
+    async with session_factory() as session:
+        original = await session.get(TelegramOutbox, original_id)
+        compensation = await session.scalar(
+            select(TelegramOutbox).where(TelegramOutbox.operation == "edit_campaign_card_cancelled")
+        )
+        assert original.projected_at is not None
+        assert compensation.payload["message_id"] == 93
+        assert compensation.state is OutboxState.PENDING
 
 
 def _short_lease_outbox(owner, gateway, session_factory) -> OutboxWorker:

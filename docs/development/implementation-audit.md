@@ -48,3 +48,10 @@
 - 目标测试群尚未加入，生产库 groups=0、campaigns=0；真实报名、发言计票、邀请归因、截止排空、多奖品开奖和 Telegram 送达闭环仍未证明。
 
 上述未证明项不得由本地测试、GitHub Actions、服务器 Docker 健康或数据库迁移结果替代。
+
+## V1.4 第三轮代码复审修复
+
+- CANCELLED Campaign 的 start/qualification/settle/draw 生命周期 Job 以成功 no-op 收敛，不再永久 RETRY_SCHEDULED。
+- 取消已发布活动时创建唯一 `edit_campaign_card_cancelled` Outbox；发送与取消并发时，先保存 CONFIRMED/message_id，再投影补偿编辑，Telegram 成功事实不回滚。
+- 任意 polling update_id gap 都写 `integrity_review_required`；health 对所有非 `ok` continuity 失败，Settlement 同样禁止生成 DrawSnapshot。
+- 新增终态任务、正常取消、延迟卡片确认、短 gap、health 和 settlement continuity 回归；本轮 Alembic head 不变，59 项测试及全部本地质量门禁通过。

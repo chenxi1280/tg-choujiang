@@ -104,7 +104,7 @@ class GapPollingBot:
         return [_update(12)]
 
 
-async def test_polling_marks_long_interruption_gap_for_integrity_review(
+async def test_polling_marks_any_update_gap_for_integrity_review(
     session_factory,
 ) -> None:
     async with session_factory() as session, session.begin():
@@ -112,8 +112,8 @@ async def test_polling_marks_long_interruption_gap_for_integrity_review(
             PollingOffset(
                 bot_id=124,
                 last_durable_update_id=9,
-                last_poll_succeeded_at=utcnow() - timedelta(hours=25),
-                updated_at=utcnow() - timedelta(hours=25),
+                last_poll_succeeded_at=utcnow() - timedelta(minutes=1),
+                updated_at=utcnow() - timedelta(minutes=1),
             )
         )
     adapter = TelegramPollingAdapter(

@@ -37,6 +37,18 @@ from tg_lottery.jobs.maintenance import (
     schedule_update_retention,
 )
 
+_START_NOOP_STATES = frozenset(
+    {
+        CampaignState.SETTLING,
+        CampaignState.READY_TO_DRAW,
+        CampaignState.DRAWING,
+        CampaignState.DRAWN,
+        CampaignState.ARCHIVED,
+        CampaignState.CANCELLED,
+    }
+)
+_TERMINAL_STATES = frozenset({CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED})
+
 
 class JobHandlers:
     def __init__(
@@ -78,6 +90,8 @@ class JobHandlers:
             campaign = await self._locked_campaign(session, job.aggregate_id)
             if campaign.state is CampaignState.RUNNING:
                 return
+            if campaign.state in _START_NOOP_STATES:
+                return
             if campaign.state is not CampaignState.SCHEDULED:
                 raise JobRetry(f"campaign cannot start from {campaign.state}")
             require_campaign_transition(campaign.state, CampaignState.RUNNING)
@@ -108,6 +122,8 @@ class JobHandlers:
     async def _qualification_review(self, job: ScheduledJob) -> None:
         campaign_id = UUID(job.aggregate_id)
         campaign, participants = await self._campaign_and_participants(campaign_id)
+        if campaign.state in _TERMINAL_STATES:
+            return
         rules = CampaignRules.model_validate(campaign.rules)
         unresolved = False
         for participant in participants:
@@ -189,6 +205,8 @@ class JobHandlers:
                 )
 
     async def _campaign_settle(self, job: ScheduledJob) -> None:
+        if await self._campaign_state(UUID(job.aggregate_id)) in _TERMINAL_STATES:
+            return
         try:
             await self._settlement.settle(UUID(job.aggregate_id), utcnow())
         except SettlementBlocked as exc:
@@ -197,7 +215,7 @@ class JobHandlers:
     async def _campaign_draw(self, job: ScheduledJob) -> None:
         campaign_id = UUID(job.aggregate_id)
         state = await self._campaign_state(campaign_id)
-        if state is CampaignState.DRAWN:
+        if state in _TERMINAL_STATES:
             return
         if state is not CampaignState.READY_TO_DRAW:
             raise JobRetry(f"campaign is not ready to draw: {state}")

@@ -1,0 +1,48 @@
+from datetime import UTC, datetime
+
+from tg_lottery.application.drawing import DrawingService
+from tg_lottery.application.invitations import InvitationService
+from tg_lottery.application.participants import ParticipantService
+from tg_lottery.application.settlement import SettlementService
+from tg_lottery.domain.enums import CampaignState, JobState
+from tg_lottery.infrastructure.db import ScheduledJob
+from tg_lottery.infrastructure.db.uow import UnitOfWork
+from tg_lottery.jobs.handlers import JobHandlers
+
+
+async def test_cancelled_campaign_absorbs_remaining_lifecycle_jobs(session_factory) -> None:
+    from functools import partial
+
+    from tests.helpers import seed_campaign
+
+    async with session_factory() as session, session.begin():
+        _, campaign, _ = await seed_campaign(session, state=CampaignState.CANCELLED)
+        campaign_id = campaign.id
+    uow_factory = partial(UnitOfWork, session_factory)
+    handlers = JobHandlers(
+        bot=object(),
+        session_factory=session_factory,
+        participants=ParticipantService(uow_factory),
+        invitations=InvitationService(uow_factory),
+        settlement=SettlementService(uow_factory),
+        drawing=DrawingService(uow_factory),
+    )
+    for job_type in (
+        "campaign_start",
+        "qualification_review",
+        "campaign_settle",
+        "campaign_draw",
+    ):
+        await handlers.handle(_job(job_type, str(campaign_id)))
+
+
+def _job(job_type: str, aggregate_id: str) -> ScheduledJob:
+    return ScheduledJob(
+        job_type=job_type,
+        aggregate_id=aggregate_id,
+        business_key=f"test:{job_type}",
+        payload={},
+        run_at=datetime.now(UTC),
+        state=JobState.CLAIMED,
+        attempts=1,
+    )

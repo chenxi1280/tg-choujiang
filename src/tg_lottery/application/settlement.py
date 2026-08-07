@@ -169,8 +169,16 @@ class SettlementService:
         return participant_id is not None
 
     async def _polling_fresh_after_cutoff(self, session: object, cutoff_at: datetime) -> bool:
-        last_poll = await session.scalar(select(func.max(PollingOffset.last_poll_succeeded_at)))
-        return last_poll is not None and last_poll >= cutoff_at
+        row = (
+            await session.execute(
+                select(
+                    func.max(PollingOffset.last_poll_succeeded_at),
+                    func.count(PollingOffset.bot_id).filter(PollingOffset.integrity_status != "ok"),
+                )
+            )
+        ).one()
+        last_poll, integrity_issues = row
+        return last_poll is not None and last_poll >= cutoff_at and int(integrity_issues or 0) == 0
 
     async def _eligible_entries(
         self, session: object, campaign_id: UUID

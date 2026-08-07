@@ -15,6 +15,7 @@ from aiogram.exceptions import (
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.campaign_notifications import add_cancelled_campaign_card
 from tg_lottery.application.records import add_outbox, utcnow
 from tg_lottery.domain.enums import (
     CampaignState,
@@ -381,6 +382,10 @@ class OutboxWorker:
             CampaignState.SCHEDULED,
             CampaignState.RUNNING,
         }:
+            return
+        if campaign.state is CampaignState.CANCELLED:
+            campaign.published_message_id = row.remote_message_id
+            add_cancelled_campaign_card(session, campaign, row.recipient_chat_id)
             return
         if campaign.state is not CampaignState.PUBLISHING:
             raise RuntimeError("campaign publication projection has invalid state")

@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 
 from tg_lottery.application.authorization import require_group_admin
+from tg_lottery.application.campaign_notifications import add_cancelled_campaign_card
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.application.records import add_audit, add_job, add_outbox, utcnow
@@ -110,6 +111,8 @@ class CampaignService:
                 self._add_settlement_job(uow.session, campaign)
             if target is CampaignState.CANCELLED:
                 self._add_revoke_job(uow.session, campaign)
+                group = await self._group_by_id(uow.session, campaign.group_id)
+                add_cancelled_campaign_card(uow.session, campaign, group.chat_id)
             add_audit(
                 uow.session,
                 actor_user_id=actor_user_id,

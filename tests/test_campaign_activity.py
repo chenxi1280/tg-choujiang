@@ -236,3 +236,24 @@ async def test_stale_draft_cannot_be_published(session_factory) -> None:
         stored.draw_at = now + timedelta(minutes=1)
     with pytest.raises(ValueError, match="cutoff must be in the future"):
         await service.publish(campaign.id, 101, "lottery_test_bot")
+
+
+async def test_cancelling_published_campaign_queues_card_compensation(
+    session_factory,
+) -> None:
+    async with session_factory() as session, session.begin():
+        _, campaign, _ = await seed_campaign(session)
+        campaign.published_message_id = 321
+        campaign_id = campaign.id
+    service = CampaignService(partial(UnitOfWork, session_factory))
+    await service.change_state(
+        campaign_id,
+        actor_user_id=101,
+        target=CampaignState.CANCELLED,
+        reason="测试取消",
+    )
+    async with session_factory() as session:
+        outbox = await session.scalar(
+            select(TelegramOutbox).where(TelegramOutbox.operation == "edit_campaign_card_cancelled")
+        )
+        assert outbox.payload == {"campaign_name": "测试活动", "message_id": 321}

@@ -38,8 +38,8 @@ async def _check_role(session: object, role: str, bot_id: int) -> None:
             raise RuntimeError("polling heartbeat is missing")
         last_seen, integrity_status = row
         _require_fresh(last_seen, _POLLING_MAX_AGE_SECONDS, "polling")
-        if integrity_status == "integrity_review_required":
-            raise RuntimeError("polling update continuity requires review")
+        if integrity_status != "ok":
+            raise RuntimeError(f"polling update continuity is not ok: {integrity_status}")
         return
     if role == "worker":
         last_seen = await session.scalar(

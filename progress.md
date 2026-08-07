@@ -68,3 +68,6 @@
 - 2026-08-08：发布前门禁完成：compileall、diff check、Shell、Compose、Alembic head -> base -> head 与两次 `alembic check` 均通过，模型无漂移且无真实 Bot Token 入库。
 - 2026-08-08：提交 `f43e16e` 的 master Python Checks run `31214772183` 通过；release Deploy Production run `31214953849` 成功，独立 Production Health run `31215223592` 通过。
 - 2026-08-08：生产 current 指向 `20260807201557_f43e16e`；app/worker healthy、RestartCount=0、Alembic `a42b9c7d3e10`，Polling 30/60 秒配置有效，未决/失败事实均为 0。生产 groups=0、campaigns=0，真实 Telegram E2E 仍未证明。
+- 2026-08-08：按用户要求启动第三轮独立代码检查与生产发布；基线 master `36287b9`、生产/release `f43e16e`，工作树干净，继续保持真实 Telegram E2E 与服务健康分开验收。
+- 2026-08-08：第三轮确认并修复取消活动永久 JobRetry、活动卡片取消/确认竞态和 Polling gap 未阻断结算；新增取消补偿编辑、终态任务吸收、短 gap 与 continuity 结算回归，32 项定向测试通过。
+- 2026-08-08：第三轮完整门禁通过：59 项测试、Ruff、代码度量、compileall、diff、Shell、Compose、Alembic head -> base -> head 与双 `alembic check` 全部成功，无迁移漂移和真实 Token 入库。

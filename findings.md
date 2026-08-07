@@ -180,3 +180,13 @@
 - 已确认 P2：草稿创建时虽校验时间线，但延迟发布不会重新检查 cutoff；现已在发布事务中拒绝过期 cutoff，并统一要求 draw 严格晚于 cutoff。Prize 服务边界同时补齐 trim、名称 120 字和领取说明非空校验。
 - 已确认 P1：Inbox 过期领取没有 fencing，旧处理者可在新处理者完成后把 PROCESSED 覆盖为 FAILED；现以 attempts 作为 claim fence，所有完成/失败写入都校验 PROCESSING + claimed_attempt。
 - 已确认 P2：Outbox 外部调用与 ScheduledJob handler 执行期间均未续租。Outbox 虽不会自动重发 gateway_started mutation，但会把仍在执行的调用误判 UNKNOWN；两类 worker 现统一使用可取消的租约心跳，Job 心跳同时刷新 WorkerHeartbeat。
+
+## V1.4 第三轮独立代码复审（2026-08-08）
+
+- 基线：master `36287b9` 仅比生产/release `f43e16e` 多一笔发布证据文档提交；工作树在本轮计划记录前干净，生产 groups=0/campaigns=0。
+- 已确认 P1：Campaign 取消只新增撤销邀请链接 Job，没有终止或吸收既有生命周期 Job。`campaign_start`、`campaign_settle`、`campaign_draw` 在 CANCELLED 上会持续 JobRetry，形成永久重试噪声；qualification_review 仍会做无意义 Telegram 资格读取。
+- 已确认 P1：活动卡片 Outbox 与取消状态存在竞态。若发送已开始或确认投影晚于取消，Campaign 已为 CANCELLED 时 `_project_campaign_card` 永久失败为 confirmed/unprojected；即使投影成功后再取消，群内活动卡片也不会移除报名按钮或显示已取消。需要以 confirmed remote_message_id 为依据创建幂等补偿编辑，而不是把远端成功变回失败。
+- 开奖/快照复核：Campaign 行锁、唯一 DrawRun、同事务 DrawRound/Winner/Outbox、奖品方案哈希和 `sha256-weighted-v2` 的拒绝采样边界仍闭合；本轮未发现新的可导致重复开奖或不可复算结果的路径。
+- 发布脚本复核：新 release 在 current 切换前完成备份、迁移、容器启动和健康检查；若新容器启动失败不会自动恢复旧镜像。自动回滚属于新增生产 fallback，当前规则要求另行明确授权，本轮不静默加入；发布失败仍会明确暴露并保留旧 current 指针。
+- 已确认 P1：Polling 在短时间内发现 update_id gap 时只写 `gap_observed`，app health 仅拒绝 `integrity_review_required`，Settlement 更完全不检查 continuity 状态。因此另一个 poller 抢走/遗漏 Update 后，只要 polling 时间新鲜，仍可能生成不完整开奖快照。任何 gap 都必须进入人工完整性复核，且非 `ok` continuity 必须同时阻断健康与结算。
+- 第三轮修复结果：CANCELLED 生命周期任务改为幂等成功吸收；已确认或延迟确认的活动卡片都会生成唯一 `edit_campaign_card_cancelled` 补偿 Outbox，保留 Telegram success 事实并移除报名入口。Polling 任意 gap 统一升级为 `integrity_review_required`，health 和 settlement 对所有非 `ok` 状态失败关闭。

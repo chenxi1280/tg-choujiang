@@ -35,6 +35,7 @@
 - [x] 退出再入不换邀请人，连续留存从重入时间重新计算。
 - [x] 默认连续留群 24 小时且在 cutoff 前完成；每个有效邀请默认发 1 票。
 - [x] 截止/取消后数据库停止新归因，创建撤销链接 Outbox，远端撤销结果单独核验。
+- [x] 取消活动后吸收剩余生命周期 Job；已发送或延迟确认的活动卡片以 message_id 幂等编辑为“已取消”，移除报名入口。
 
 ## E. 账本、结算和开奖
 
@@ -50,6 +51,7 @@
 
 - [x] DF-01 自定义 TelegramPollingAdapter：批次 Inbox 与 `last_durable_update_id` 同事务提交后再推进 offset。
 - [x] PostgreSQL runtime lease 保证同一 Bot token 只有一个 polling 进程。
+- [x] 任意 update_id gap 均进入完整性复核；所有非 `ok` continuity 状态同时阻断 app 健康和结算快照。
 - [x] InboxProcessor 严格按 update_id 消费；最早未完成项阻断后续项，FAILED 退避可重放，attempts fencing 拒绝旧 owner 覆盖。
 - [x] ScheduledJob 使用租约、执行期续租和 `FOR UPDATE SKIP LOCKED`；该语义不用于账本、快照或开奖读取。
 - [x] Outbox 在业务事务内创建；Bot API 调用前提交 gateway_started，调用后追加 DeliveryAttempt/远端事实。

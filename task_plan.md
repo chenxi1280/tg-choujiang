@@ -30,6 +30,10 @@
 - [complete] 22. 为确认缺陷建立可复现测试并实施根因修复
 - [complete] 23. 完成静态检查、42+ 项测试、迁移往返、漂移与生产配置验证
 - [complete] 24. 发布修复并分别核验线上版本、服务健康与真实业务证据
+- [complete] 25. 第三轮独立审查生命周期任务、回调重放、资格快照、Outbox 与运维恢复边界
+- [complete] 26. 为新增确认缺陷补回归并完成根因修复
+- [complete] 27. 执行完整质量门禁、迁移漂移与发布前检查
+- [in_progress] 28. 发布第三轮修复并回读生产版本、运行状态和未决事实
 
 ## 关键约束
 
@@ -67,3 +71,4 @@
 | V1.4 前两次隔离渲染把 QA 字体放到错误层级，中文未加载 | 2 | 定位 LibreOffice 实际 `fonts/truetype` 目录，临时注入后完成 33 页视觉验收并立即移除字体副本 |
 | 复审读取命令的工作目录误写为 `/Users/xida/PychProjects/...` | 1 | 未执行任何代码或文件操作；改用已确认的仓库绝对路径后继续 |
 | zsh 对不存在的 `scripts/*.sh` glob 直接报 `no matches found` | 1 | Alembic 往返、漂移与 Compose 已先完成；Shell 校验改用 `rg --files -g '*.sh'` 枚举实际文件，不依赖空 glob |
+| 第三轮定向 Ruff 首次发现 `outbox.py` 新 import 顺序不符合 I001 | 1 | 使用 Ruff 仅机械排序该 import block；随后定向 Ruff、代码度量和 12 项相关回归通过 |

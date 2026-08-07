@@ -260,6 +260,28 @@ async def test_settlement_blocks_without_draw_qualification_then_draws_once(
     )
 
 
+async def test_settlement_blocks_non_ok_polling_continuity(session_factory) -> None:
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(minutes=10)
+    campaign_id, participant_id = await _seed_settlement_case(
+        session_factory, now=now, cutoff=cutoff
+    )
+    async with session_factory() as session, session.begin():
+        offset = await session.get(PollingOffset, 123)
+        offset.integrity_status = "gap_observed"
+        session.add(
+            QualificationCheck(
+                participant_id=participant_id,
+                phase="draw",
+                state=QualificationState.ELIGIBLE,
+                observed_status="not_required",
+                observed_at=now,
+            )
+        )
+    with pytest.raises(SettlementBlocked, match="polling_not_fresh_after_cutoff"):
+        await SettlementService(partial(UnitOfWork, session_factory)).settle(campaign_id, now)
+
+
 async def _seed_settlement_case(
     session_factory, *, now: datetime, cutoff: datetime
 ) -> tuple[UUID, UUID]:

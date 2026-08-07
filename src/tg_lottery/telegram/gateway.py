@@ -29,6 +29,7 @@ class TelegramGateway:
     ) -> GatewayResult:
         handlers = {
             "send_campaign_card": self._send_campaign_card,
+            "edit_campaign_card_cancelled": self._edit_campaign_card_cancelled,
             "create_invite_link": self._create_invite_link,
             "send_invite_link": self._send_invite_link,
             "revoke_invite_link": self._revoke_invite_link,
@@ -67,6 +68,23 @@ class TelegramGateway:
             remote_result=message.model_dump(mode="json", exclude_none=True),
             remote_message_id=message.message_id,
         )
+
+    async def _edit_campaign_card_cancelled(
+        self, outbox: TelegramOutbox, _: InviteLink | None
+    ) -> GatewayResult:
+        payload = outbox.payload
+        message_id = int(payload["message_id"])
+        result = await self._bot.edit_message_text(
+            f"⛔ {payload['campaign_name']}\n\n活动已取消，报名入口已关闭。",
+            chat_id=outbox.recipient_chat_id,
+            message_id=message_id,
+        )
+        remote_result = (
+            result.model_dump(mode="json", exclude_none=True)
+            if hasattr(result, "model_dump")
+            else {"ok": bool(result)}
+        )
+        return GatewayResult(remote_result=remote_result, remote_message_id=message_id)
 
     async def _create_invite_link(
         self, outbox: TelegramOutbox, _: InviteLink | None
