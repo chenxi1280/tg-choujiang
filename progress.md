@@ -30,3 +30,5 @@
 - 2026-08-08：新增可执行代码度量闸门，生产代码与测试均满足单文件、函数长度、位置参数、复杂度和嵌套深度限制。
 - 2026-08-08：完成 Docker Compose、不可变 release/current 发布脚本、回滚/健康检查、GitHub master 检查与 release 生产工作流；Shell、Compose 和静态配置校验通过。
 - 2026-08-08：本机 Docker Hub 元数据访问挂起，已中止本机构建；保留 Actions BuildKit 构建为发布前真实镜像证据。
+- 2026-08-08：创建私有 GitHub 仓库并推送 master；首次 Python Checks 在 Python 3.12/PostgreSQL 16 环境全部通过，随后为 master 检查增加独立 BuildKit 镜像构建任务。
+- 2026-08-08：配置生产 SSH/GHCR Secrets 与发布变量；按不存在前置条件在马来西亚主机创建独立 `tg_lottery` 角色、数据库和 0600 共享配置，Bot 凭据保持为空以阻止误启动。
