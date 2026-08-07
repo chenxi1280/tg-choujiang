@@ -6,7 +6,9 @@ from sqlalchemy import select
 
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import add_outbox
+from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import CampaignState, QualificationState
+from tg_lottery.domain.rules import canonical_hash
 from tg_lottery.infrastructure.db import (
     Campaign,
     Group,
@@ -26,8 +28,24 @@ class RegistrationRequest:
     username: str | None
     display_name: str
     observed_at: datetime
-    qualification_state: QualificationState
-    observed_channel_status: str | None = None
+
+
+@dataclass(frozen=True)
+class RegistrationAttempt:
+    participant_id: UUID
+    qualification_check_id: UUID
+    required_channel_id: int | None
+    state: QualificationState
+    requires_observation: bool
+
+
+@dataclass(frozen=True)
+class QualificationResult:
+    participant_id: UUID
+    qualification_check_id: UUID
+    state: QualificationState
+    observed_at: datetime
+    observed_status: str | None = None
     error_code: str | None = None
 
 
@@ -35,28 +53,40 @@ class ParticipantService:
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
 
-    async def register(self, request: RegistrationRequest) -> Participant:
+    async def begin_registration(self, request: RegistrationRequest) -> RegistrationAttempt:
         async with self._uow_factory() as uow:
             campaign = await uow.session.scalar(
                 select(Campaign).where(Campaign.id == request.campaign_id).with_for_update()
             )
-            if campaign is None or campaign.state not in _REGISTRATION_STATES:
+            if not self._accepts_registration(campaign, request.observed_at):
                 raise ValueError("campaign is not accepting registrations")
             participant = await self._participant(uow.session, request)
-            check = self._qualification_check(participant, campaign, request)
+            existing = await self._source_qualification_check(uow.session, participant.id)
+            if existing is not None:
+                return self._registration_attempt(existing)
+            participant.qualification_state = QualificationState.PENDING
+            check = self._pending_qualification_check(participant, campaign, request)
             uow.session.add(check)
-            participant.qualification_state = request.qualification_state
             await uow.session.flush()
-            if request.qualification_state is QualificationState.ELIGIBLE:
-                group = await uow.session.get(Group, campaign.group_id)
-                if group is None:
-                    raise ValueError("campaign group is missing")
-                await self._request_invite_link(
-                    uow.session,
-                    campaign=campaign,
-                    group=group,
-                    participant=participant,
-                )
+            return self._registration_attempt(check)
+
+    async def complete_registration(self, result: QualificationResult) -> Participant:
+        async with self._uow_factory() as uow:
+            check = await uow.session.get(
+                QualificationCheck, result.qualification_check_id, with_for_update=True
+            )
+            if check is None or check.participant_id != result.participant_id:
+                raise ValueError("registration qualification check is missing")
+            participant = await uow.session.get(
+                Participant, result.participant_id, with_for_update=True
+            )
+            if participant is None:
+                raise ValueError("registration participant is missing")
+            if check.state is not QualificationState.PENDING:
+                return participant
+            self._apply_qualification_result(check, participant, result)
+            if result.state is QualificationState.ELIGIBLE:
+                await self._ensure_invite_link(uow.session, participant)
             return participant
 
     async def record_draw_qualification(
@@ -81,6 +111,10 @@ class ParticipantService:
                 observed_status=observed_status,
                 error_code=error_code,
                 observed_at=observed_at,
+                request_hash=canonical_hash(
+                    {"participant_id": str(participant.id), "phase": "draw"}
+                ),
+                source_update_id=current_update_id(),
             )
             participant.qualification_state = state
             uow.session.add(check)
@@ -104,14 +138,38 @@ class ParticipantService:
             username=request.username,
             display_name=request.display_name,
             private_reachable=True,
-            qualification_state=request.qualification_state,
+            qualification_state=QualificationState.PENDING,
             registered_revision=1,
+            registered_source_update_id=current_update_id(),
         )
         session.add(participant)
         await session.flush()
         return participant
 
-    def _qualification_check(
+    async def _source_qualification_check(
+        self, session: object, participant_id: UUID
+    ) -> QualificationCheck | None:
+        source_update_id = current_update_id()
+        if source_update_id is None:
+            return None
+        return await session.scalar(
+            select(QualificationCheck).where(
+                QualificationCheck.participant_id == participant_id,
+                QualificationCheck.phase == "registration",
+                QualificationCheck.source_update_id == source_update_id,
+            )
+        )
+
+    def _registration_attempt(self, check: QualificationCheck) -> RegistrationAttempt:
+        return RegistrationAttempt(
+            participant_id=check.participant_id,
+            qualification_check_id=check.id,
+            required_channel_id=check.channel_id,
+            state=check.state,
+            requires_observation=check.state is QualificationState.PENDING,
+        )
+
+    def _pending_qualification_check(
         self,
         participant: Participant,
         campaign: Campaign,
@@ -120,11 +178,50 @@ class ParticipantService:
         return QualificationCheck(
             participant_id=participant.id,
             phase="registration",
-            state=request.qualification_state,
+            state=QualificationState.PENDING,
             channel_id=campaign.rules.get("required_channel_id"),
-            observed_status=request.observed_channel_status,
-            error_code=request.error_code,
+            observed_status="checking",
             observed_at=request.observed_at,
+            request_hash=canonical_hash(
+                {
+                    "campaign_id": str(campaign.id),
+                    "user_id": request.user_id,
+                    "observed_at": request.observed_at.isoformat(),
+                    "channel_id": campaign.rules.get("required_channel_id"),
+                }
+            ),
+            source_update_id=current_update_id(),
+        )
+
+    async def _ensure_invite_link(self, session: object, participant: Participant) -> None:
+        campaign = await session.get(Campaign, participant.campaign_id)
+        group = await session.get(Group, campaign.group_id) if campaign else None
+        if campaign is None or group is None:
+            raise ValueError("registration campaign or group is missing")
+        await self._request_invite_link(
+            session,
+            campaign=campaign,
+            group=group,
+            participant=participant,
+        )
+
+    def _apply_qualification_result(
+        self,
+        check: QualificationCheck,
+        participant: Participant,
+        result: QualificationResult,
+    ) -> None:
+        check.state = result.state
+        check.observed_status = result.observed_status
+        check.error_code = result.error_code
+        check.observed_at = result.observed_at
+        participant.qualification_state = result.state
+
+    def _accepts_registration(self, campaign: Campaign | None, observed_at: datetime) -> bool:
+        return bool(
+            campaign
+            and campaign.state in _REGISTRATION_STATES
+            and observed_at <= campaign.cutoff_at
         )
 
     async def _request_invite_link(

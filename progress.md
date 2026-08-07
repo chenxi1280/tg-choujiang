@@ -32,3 +32,7 @@
 - 2026-08-08：本机 Docker Hub 元数据访问挂起，已中止本机构建；保留 Actions BuildKit 构建为发布前真实镜像证据。
 - 2026-08-08：创建私有 GitHub 仓库并推送 master；首次 Python Checks 在 Python 3.12/PostgreSQL 16 环境全部通过，随后为 master 检查增加独立 BuildKit 镜像构建任务。
 - 2026-08-08：配置生产 SSH/GHCR Secrets 与发布变量；按不存在前置条件在马来西亚主机创建独立 `tg_lottery` 角色、数据库和 0600 共享配置，Bot 凭据保持为空以阻止误启动。
+- 2026-08-08：完成实现对齐审计并生成 V1.3 PRD；修正 callback ACK/Outbox 边界、Worker 租约 fencing、注册与邀请两阶段事实、Update 溯源、Polling 连续性、备份与告警合同。
+- 2026-08-08：发现并修复开奖通知在 Winner flush 前构造导致 `aggregate_id/business_key=None` 的缺陷；新增回归断言。
+- 2026-08-08：全量 30 项测试通过；Ruff、代码度量、compileall、Shell、Compose、Alembic base->head 往返和模型漂移检查全部通过。
+- 2026-08-08：马来西亚服务器 `admin` 无直接 Docker 权限但具备 `sudo -n docker`；部署脚本已兼容并完成生产 pg_dump 只读预检。因 BOT_TOKEN/BOT_ID 尚为空，未推 release、未声明线上业务完成。

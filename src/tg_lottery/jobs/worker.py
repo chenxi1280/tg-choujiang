@@ -69,6 +69,10 @@ class JobWorker:
             await self._retry(job.id, f"{type(exc).__name__}: {exc}", _UNEXPECTED_RETRY_SECONDS)
         else:
             await self._finish(job.id, JobState.SUCCEEDED, None)
+            self._logger.info(
+                "scheduled job succeeded",
+                extra={"job_id": str(job.id), "job_type": job.job_type},
+            )
 
     async def _claim_next(self) -> ScheduledJob | None:
         now = utcnow()
@@ -101,9 +105,7 @@ class JobWorker:
 
     async def _retry(self, job_id: object, error: str, delay_seconds: int) -> None:
         async with self._session_factory() as session, session.begin():
-            job = await session.get(ScheduledJob, job_id, with_for_update=True)
-            if job is None:
-                raise RuntimeError("claimed job disappeared")
+            job = await self._locked_owned_job(session, job_id)
             job.state = JobState.RETRY_SCHEDULED
             job.run_at = utcnow() + timedelta(seconds=delay_seconds)
             job.last_error = error[:4000]
@@ -112,13 +114,22 @@ class JobWorker:
 
     async def _finish(self, job_id: object, state: JobState, error: str | None) -> None:
         async with self._session_factory() as session, session.begin():
-            job = await session.get(ScheduledJob, job_id, with_for_update=True)
-            if job is None:
-                raise RuntimeError("claimed job disappeared")
+            job = await self._locked_owned_job(session, job_id)
             job.state = state
             job.last_error = error[:4000] if error else None
             job.lease_owner = None
             job.lease_until = None
+
+    async def _locked_owned_job(self, session: AsyncSession, job_id: object) -> ScheduledJob:
+        job = await session.get(ScheduledJob, job_id, with_for_update=True)
+        if job is None:
+            raise RuntimeError("claimed job disappeared")
+        if job.state is not JobState.CLAIMED or job.lease_owner != self._owner_id:
+            raise RuntimeError(
+                f"job claim ownership lost: job={job.id} owner={self._owner_id} "
+                f"current_owner={job.lease_owner} state={job.state}"
+            )
+        return job
 
     async def _heartbeat(self) -> None:
         now = utcnow()

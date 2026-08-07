@@ -114,6 +114,7 @@ class TelegramOutbox(Base, UuidPkMixin, TimestampMixin):
 
 class DeliveryAttempt(Base, UuidPkMixin, CreatedAtMixin):
     __tablename__ = "delivery_attempts"
+    __table_args__ = (UniqueConstraint("outbox_id", "attempt_number"),)
 
     outbox_id: Mapped[UUID] = mapped_column(ForeignKey("telegram_outbox.id", ondelete="CASCADE"))
     attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)

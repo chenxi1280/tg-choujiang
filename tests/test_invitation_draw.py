@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from tests.helpers import seed_campaign
 from tg_lottery.application.drawing import DrawingService
 from tg_lottery.application.invitations import InvitationService, JoinObservation
+from tg_lottery.application.queries import QueryService
 from tg_lottery.application.settlement import SettlementService
 from tg_lottery.domain.enums import (
     CampaignState,
@@ -49,7 +50,15 @@ async def test_invitation_first_attribution_and_reward_are_idempotent(session_fa
     observation = JoinObservation(link_id, 301, now)
     invitation = await service.record_joined(observation)
     assert invitation is not None
-    validated = await service.validate(
+    attempt = await service.begin_validation(
+        invitation.id,
+        observed_at=now + timedelta(hours=24),
+    )
+    assert attempt.requires_observation is True
+    async with session_factory() as session:
+        checking = await session.get(type(invitation), invitation.id)
+        assert checking.state is InvitationState.CHECKING
+    validated = await service.complete_validation(
         invitation.id,
         observed_at=now + timedelta(hours=24),
         is_current_member=True,
@@ -125,6 +134,9 @@ async def test_settlement_blocks_without_draw_qualification_then_draws_once(
     drawing = DrawingService(uow_factory)
     first = await drawing.run(campaign_id, actor_user_id=101)
     second = await drawing.run(campaign_id, actor_user_id=101)
+    deliveries = await QueryService(session_factory).delivery_summary(campaign_id)
+    assert deliveries.pending == 2
+    assert deliveries.confirmed == 0
     await _assert_draw_result(
         session_factory,
         snapshot=snapshot,
@@ -174,9 +186,12 @@ async def _assert_draw_result(
         entry_count = await session.scalar(select(func.count(DrawEntry.id)))
         winner_count = await session.scalar(select(func.count(Winner.id)))
         outbox_count = await session.scalar(select(func.count(TelegramOutbox.id)))
+        outboxes = (await session.scalars(select(TelegramOutbox))).all()
         assert snapshot.total_weight == 3
         assert snapshot_count == 1
         assert entry_count == 1
         assert winner_count == 1
         assert outbox_count == 2
+        assert all(row.aggregate_id != "None" for row in outboxes)
+        assert all("None" not in row.business_key for row in outboxes)
         assert first_id == second_id

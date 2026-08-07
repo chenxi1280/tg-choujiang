@@ -27,10 +27,19 @@ async def check(role: str) -> None:
 
 async def _check_role(session: object, role: str, bot_id: int) -> None:
     if role == "app":
-        last_seen = await session.scalar(
-            select(PollingOffset.last_poll_succeeded_at).where(PollingOffset.bot_id == bot_id)
+        result = await session.execute(
+            select(
+                PollingOffset.last_poll_succeeded_at,
+                PollingOffset.integrity_status,
+            ).where(PollingOffset.bot_id == bot_id)
         )
+        row = result.one_or_none()
+        if row is None:
+            raise RuntimeError("polling heartbeat is missing")
+        last_seen, integrity_status = row
         _require_fresh(last_seen, _POLLING_MAX_AGE_SECONDS, "polling")
+        if integrity_status == "integrity_review_required":
+            raise RuntimeError("polling update continuity requires review")
         return
     if role == "worker":
         last_seen = await session.scalar(

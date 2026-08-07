@@ -17,7 +17,9 @@
 
 ## GitHub 配置
 
-仓库 Secrets：`PRODUCTION_HOST`、`PRODUCTION_USER`、`PRODUCTION_PORT`、`PRODUCTION_SSH_PRIVATE_KEY`、`GHCR_USERNAME`、`GHCR_TOKEN`。仓库 Variables：`PRODUCTION_BASE_DIR=/data/tg-lottery`、`RELEASE_BRANCHES=release`。
+仓库 Secrets：`PRODUCTION_HOST`、`PRODUCTION_USER`、`PRODUCTION_PORT`、`PRODUCTION_SSH_PRIVATE_KEY`、`GHCR_USERNAME`、`GHCR_TOKEN`。仓库 Variables：`PRODUCTION_BASE_DIR=/data/tg-lottery`、`RELEASE_BRANCHES=release`；首次上线验收通过后设置 `PRODUCTION_ENABLED=true`，启用每 15 分钟健康与未决事实检查。
+
+每次迁移前会通过共享 PostgreSQL 容器生成 custom-format 备份到 `/data/tg-lottery/backups/postgres`，默认保留最近 14 份。`admin` 发布用户通过 `sudo -n docker` 操作 Docker，不依赖 Docker socket 组权限。
 
 ## 验收证据
 

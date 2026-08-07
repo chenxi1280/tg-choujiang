@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from tg_lottery.application.ports import UnitOfWorkFactory
+from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import (
     CampaignState,
     InvitationState,
@@ -108,6 +109,7 @@ class ActivityService:
             event_at=observation.event_at,
             content_hash=content_hash,
             accepted=reason is None and not duplicate,
+            source_update_id=current_update_id(),
         )
         session.add(event)
         return event
@@ -144,6 +146,7 @@ class ActivityService:
             content_hash=content_hash,
             accepted=reason is None,
             rejection_reason=reason,
+            source_update_id=current_update_id(),
         )
         session.add(event)
         if reason is None:
@@ -225,6 +228,7 @@ class ActivityService:
                         f"{progress.local_date.isoformat()}:{ordinal}"
                     ),
                     occurred_at=event_at,
+                    source_update_id=current_update_id(),
                 )
             )
             participant.ticket_total_cache += 1

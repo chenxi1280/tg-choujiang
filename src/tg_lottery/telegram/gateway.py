@@ -53,6 +53,7 @@ class TelegramGateway:
         )
         text = (
             f"🎁 {payload['name']}\n\n"
+            f"奖品池（共 {payload['total_prizes']} 份）:\n{_prize_lines(payload)}\n\n"
             f"截止时间: {payload['cutoff_at']}\n"
             f"开奖时间: {payload['draw_at']}\n\n"
             "报名后可通过每日活跃和有效邀请获得抽奖票。"
@@ -148,3 +149,8 @@ class TelegramGateway:
 def invite_link_id(outbox: TelegramOutbox) -> UUID | None:
     value = outbox.payload.get("invite_link_id")
     return UUID(str(value)) if value else None
+
+
+def _prize_lines(payload: dict[str, Any]) -> str:
+    prizes = payload.get("prizes", [])
+    return "\n".join(f"• {item['name']} × {item['quantity']}" for item in prizes)

@@ -2,21 +2,29 @@
 
 set -euo pipefail
 
-BASE_DIR="${BASE_DIR:-/data/tg-lottery}"
-ENV_FILE="${ENV_FILE:-${BASE_DIR}/shared/.env}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/docker-env.sh"
 
-if [[ -f "$ENV_FILE" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
+ensure_runtime_env
+
+docker_cmd inspect tg-lottery-app --format 'app {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}'
+docker_cmd inspect tg-lottery-worker --format 'worker {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}'
+docker_cmd exec tg-lottery-app python -m tg_lottery.healthcheck --role app
+docker_cmd exec tg-lottery-worker python -m tg_lottery.healthcheck --role worker
+docker_cmd exec tg-lottery-worker alembic current
+
+IFS='|' read -r unknown_deliveries failed_jobs failed_updates < <(
+  docker_cmd exec app-infra-postgres psql -U postgres -d tg_lottery -tA -F '|' -c \
+    "SELECT
+       (SELECT count(*) FROM telegram_outbox WHERE state = 'unknown_hold'),
+       (SELECT count(*) FROM scheduled_jobs WHERE state IN ('blocked', 'failed_terminal')),
+       (SELECT count(*) FROM telegram_updates WHERE state = 'failed');"
+)
+
+if (( unknown_deliveries > 0 || failed_jobs > 0 || failed_updates > 0 )); then
+  echo "STATUS=DEGRADED unknown_deliveries=${unknown_deliveries} failed_jobs=${failed_jobs} failed_updates=${failed_updates}" >&2
+  exit 1
 fi
 
-docker inspect tg-lottery-app --format 'app {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}'
-docker inspect tg-lottery-worker --format 'worker {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}'
-docker exec tg-lottery-app python -m tg_lottery.healthcheck --role app
-docker exec tg-lottery-worker python -m tg_lottery.healthcheck --role worker
-docker exec tg-lottery-worker alembic current
-
 echo "STATUS=HEALTHY"
-

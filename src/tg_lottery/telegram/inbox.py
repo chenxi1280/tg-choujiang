@@ -8,6 +8,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tg_lottery.application.records import utcnow
+from tg_lottery.application.request_context import bind_update_context
 from tg_lottery.domain.enums import UpdateState
 from tg_lottery.infrastructure.db import TelegramUpdate
 
@@ -83,7 +84,8 @@ class InboxProcessor:
             return False
         try:
             update = Update.model_validate(row.payload)
-            await self._handler.handle(update)
+            with bind_update_context(row.bot_id, row.update_id):
+                await self._handler.handle(update)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -94,6 +96,10 @@ class InboxProcessor:
             await self._mark_failed(row.id, f"{type(exc).__name__}: {exc}")
             return False
         await self._mark_processed(row.id)
+        self._logger.info(
+            "durable update processed",
+            extra={"bot_id": row.bot_id, "update_id": row.update_id},
+        )
         return True
 
     async def _mark_processed(self, row_id: int) -> None:

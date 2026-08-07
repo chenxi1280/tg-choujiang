@@ -7,6 +7,7 @@ BASE_DIR="${BASE_DIR:-/data/tg-lottery}"
 SHARED_DIR="${SHARED_DIR:-${BASE_DIR}/shared}"
 ENV_FILE="${ENV_FILE:-${SHARED_DIR}/.env}"
 IMAGE_ENV_FILE="${IMAGE_ENV_FILE:-${APP_DIR}/.image.env}"
+DOCKER_COMMAND=()
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || { echo "Missing command: $1" >&2; exit 1; }
@@ -14,6 +15,7 @@ require_command() {
 
 ensure_runtime_env() {
   require_command docker
+  resolve_docker_command
   if [[ ! -f "$ENV_FILE" ]]; then
     echo "Missing env file: ${ENV_FILE}" >&2
     exit 1
@@ -44,7 +46,23 @@ ensure_runtime_env() {
   fi
 }
 
-compose() {
-  (cd "$APP_DIR" && docker compose --env-file "$ENV_FILE" -f "$APP_DIR/docker-compose.yml" "$@")
+resolve_docker_command() {
+  if docker info >/dev/null 2>&1; then
+    DOCKER_COMMAND=(docker)
+    return
+  fi
+  if command -v sudo >/dev/null 2>&1 && sudo -n docker info >/dev/null 2>&1; then
+    DOCKER_COMMAND=(sudo -n docker)
+    return
+  fi
+  echo "Current user cannot access Docker directly or through passwordless sudo" >&2
+  exit 1
 }
 
+docker_cmd() {
+  "${DOCKER_COMMAND[@]}" "$@"
+}
+
+compose() {
+  (cd "$APP_DIR" && docker_cmd compose --env-file "$ENV_FILE" -f "$APP_DIR/docker-compose.yml" "$@")
+}

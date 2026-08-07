@@ -246,6 +246,7 @@ class AdminFlow:
         await self._show_preview(message, campaign.id)
 
     async def _create_draft(self, message: Message, data: dict[str, Any], rules: CampaignRules):
+        await self._verify_chat_admin(int(data["chat_id"]), message.from_user.id)
         draft = CampaignDraft(
             group_id=int(data["chat_id"]),
             name=str(data["name"]),
@@ -349,6 +350,7 @@ class AdminFlow:
     async def _show_campaign(self, message: Message, campaign_id: UUID, user_id: int) -> None:
         campaign = await self._required_campaign(campaign_id)
         stats = await self._queries.campaign_stats(campaign_id)
+        deliveries = await self._queries.delivery_summary(campaign_id)
         actions = _campaign_actions(campaign.state)
         requests = tuple(CallbackRequest(action, campaign_id=campaign_id) for action in actions)
         labels = {
@@ -372,7 +374,9 @@ class AdminFlow:
         text = (
             f"{campaign.name}\n状态: {campaign.state.value}\n"
             f"报名: {stats.participants}\n有效邀请: {stats.valid_invitations}\n"
-            f"待验证邀请: {stats.pending_invitations}\n总票数: {stats.tickets}"
+            f"待验证邀请: {stats.pending_invitations}\n总票数: {stats.tickets}\n"
+            f"送达: 已确认 {deliveries.confirmed} / 待处理 {deliveries.pending} / "
+            f"失败 {deliveries.failed} / 未知 {deliveries.unknown}"
         )
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
         await message.answer(text, reply_markup=keyboard)
@@ -405,8 +409,13 @@ class AdminFlow:
         self, campaign_id: UUID, user_id: int, *, require_invites: bool = False
     ) -> None:
         group = await self._queries.campaign_group(campaign_id)
-        user = await self._bot.get_chat_member(group.chat_id, user_id)
-        bot = await self._bot.get_chat_member(group.chat_id, self._bot.id)
+        await self._verify_chat_admin(group.chat_id, user_id, require_invites=require_invites)
+
+    async def _verify_chat_admin(
+        self, chat_id: int, user_id: int, *, require_invites: bool = False
+    ) -> None:
+        user = await self._bot.get_chat_member(chat_id, user_id)
+        bot = await self._bot.get_chat_member(chat_id, self._bot.id)
         if not _is_admin(user) or not _is_admin(bot):
             raise AuthorizationDenied("当前 Telegram 管理员身份无效")
         if require_invites and not bool(getattr(bot, "can_invite_users", False)):

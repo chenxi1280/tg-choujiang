@@ -6,11 +6,13 @@ from sqlalchemy import func, select
 
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import add_job
+from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import CampaignState, InvitationState, TicketSource
 from tg_lottery.domain.errors import InvitationValidationDeferred
 from tg_lottery.domain.rules import CampaignRules, invite_due_at
 from tg_lottery.infrastructure.db import (
     Campaign,
+    Group,
     Invitation,
     InviteeActivityEvent,
     InviteLink,
@@ -30,6 +32,14 @@ class JoinObservation:
     event_at: datetime
     is_bot: bool = False
     was_already_member: bool = False
+
+
+@dataclass(frozen=True)
+class InvitationValidationAttempt:
+    invitation_id: UUID
+    invitee_user_id: int
+    chat_id: int | None
+    requires_observation: bool
 
 
 class InvitationService:
@@ -73,6 +83,7 @@ class InvitationService:
             invitation.left_at = None
             invitation.due_at = due_at
             invitation.state = InvitationState.JOINED_PENDING
+            invitation.source_update_id = current_update_id()
             add_job(
                 uow.session,
                 job_type="validate_invitation",
@@ -106,19 +117,64 @@ class InvitationService:
         observed_at: datetime,
         is_current_member: bool | None,
     ) -> Invitation:
+        attempt = await self.begin_validation(invitation_id, observed_at=observed_at)
+        if not attempt.requires_observation:
+            return await self._current(invitation_id)
+        return await self.complete_validation(
+            invitation_id,
+            observed_at=observed_at,
+            is_current_member=is_current_member,
+        )
+
+    async def begin_validation(
+        self, invitation_id: UUID, *, observed_at: datetime
+    ) -> InvitationValidationAttempt:
         async with self._uow_factory() as uow:
-            invitation = await uow.session.scalar(
-                select(Invitation).where(Invitation.id == invitation_id).with_for_update()
+            invitation, campaign = await self._locked_invitation_campaign(
+                uow.session, invitation_id
             )
-            if invitation is None:
-                raise ValueError("invitation not found")
-            campaign = await uow.session.scalar(
-                select(Campaign).where(Campaign.id == invitation.campaign_id).with_for_update()
+            if invitation.state is InvitationState.VALID:
+                return self._no_observation(invitation)
+            self._require_validation_window(invitation, campaign, observed_at)
+            if invitation.due_at is None or invitation.due_at > campaign.cutoff_at:
+                invitation.state = InvitationState.EXPIRED_UNQUALIFIED
+                return self._no_observation(invitation)
+            if campaign.state not in {CampaignState.RUNNING, CampaignState.SETTLING}:
+                invitation.state = InvitationState.EXPIRED_UNQUALIFIED
+                return self._no_observation(invitation)
+            if invitation.state in {
+                InvitationState.LEFT_BEFORE_VALID,
+                InvitationState.INVALID,
+                InvitationState.EXPIRED_UNQUALIFIED,
+            }:
+                return self._no_observation(invitation)
+            group = await uow.session.get(Group, campaign.group_id)
+            if group is None:
+                raise ValueError("invitation group is missing")
+            invitation.state = InvitationState.CHECKING
+            invitation.validation_error = None
+            return InvitationValidationAttempt(
+                invitation_id=invitation.id,
+                invitee_user_id=invitation.invitee_user_id,
+                chat_id=group.chat_id,
+                requires_observation=True,
             )
-            if campaign is None:
-                raise ValueError("invitation campaign is missing")
+
+    async def complete_validation(
+        self,
+        invitation_id: UUID,
+        *,
+        observed_at: datetime,
+        is_current_member: bool | None,
+    ) -> Invitation:
+        async with self._uow_factory() as uow:
+            invitation, campaign = await self._locked_invitation_campaign(
+                uow.session, invitation_id
+            )
             if invitation.state is InvitationState.VALID:
                 return invitation
+            if invitation.state is not InvitationState.CHECKING:
+                raise ValueError("invitation validation was not started")
             return await self._apply_validation(
                 uow.session,
                 invitation=invitation,
@@ -136,7 +192,6 @@ class InvitationService:
         observed_at: datetime,
         is_current_member: bool | None,
     ) -> Invitation:
-        invitation.state = InvitationState.CHECKING
         if campaign.state in {CampaignState.SCHEDULED, CampaignState.PAUSED}:
             raise InvitationValidationDeferred(
                 f"campaign {campaign.state} is not accepting new tickets"
@@ -151,11 +206,6 @@ class InvitationService:
         if not is_current_member:
             invitation.state = InvitationState.LEFT_BEFORE_VALID
             return invitation
-        if invitation.due_at is None or invitation.due_at > campaign.cutoff_at:
-            invitation.state = InvitationState.EXPIRED_UNQUALIFIED
-            return invitation
-        if observed_at < invitation.due_at:
-            raise ValueError("invitation retention period has not elapsed")
         rules = CampaignRules.model_validate(campaign.rules)
         if not await self._activity_requirement_met(session, invitation, rules):
             invitation.state = InvitationState.INVALID
@@ -170,6 +220,46 @@ class InvitationService:
         invitation.state = InvitationState.VALID
         invitation.validation_error = None
         return invitation
+
+    async def _locked_invitation_campaign(
+        self, session: object, invitation_id: UUID
+    ) -> tuple[Invitation, Campaign]:
+        invitation = await session.scalar(
+            select(Invitation).where(Invitation.id == invitation_id).with_for_update()
+        )
+        if invitation is None:
+            raise ValueError("invitation not found")
+        campaign = await session.scalar(
+            select(Campaign).where(Campaign.id == invitation.campaign_id).with_for_update()
+        )
+        if campaign is None:
+            raise ValueError("invitation campaign is missing")
+        return invitation, campaign
+
+    async def _current(self, invitation_id: UUID) -> Invitation:
+        async with self._uow_factory() as uow:
+            invitation = await uow.session.get(Invitation, invitation_id)
+            if invitation is None:
+                raise ValueError("invitation not found")
+            return invitation
+
+    def _require_validation_window(
+        self, invitation: Invitation, campaign: Campaign, observed_at: datetime
+    ) -> None:
+        if campaign.state in {CampaignState.SCHEDULED, CampaignState.PAUSED}:
+            raise InvitationValidationDeferred(
+                f"campaign {campaign.state} is not accepting new tickets"
+            )
+        if invitation.due_at is not None and observed_at < invitation.due_at:
+            raise ValueError("invitation retention period has not elapsed")
+
+    def _no_observation(self, invitation: Invitation) -> InvitationValidationAttempt:
+        return InvitationValidationAttempt(
+            invitation_id=invitation.id,
+            invitee_user_id=invitation.invitee_user_id,
+            chat_id=None,
+            requires_observation=False,
+        )
 
     async def _activity_requirement_met(
         self, session: object, invitation: Invitation, rules: CampaignRules
@@ -211,6 +301,7 @@ class InvitationService:
                 source_ref=str(invitation.id),
                 business_key=business_key,
                 occurred_at=invitation.due_at,
+                source_update_id=invitation.source_update_id,
             )
         )
         participant.ticket_total_cache += reward
@@ -253,6 +344,7 @@ class InvitationService:
             invitee_user_id=observation.invitee_user_id,
             state=InvitationState.ATTRIBUTION_CANDIDATE,
             candidate_at=observation.event_at,
+            source_update_id=current_update_id(),
         )
         session.add(invitation)
         await session.flush()

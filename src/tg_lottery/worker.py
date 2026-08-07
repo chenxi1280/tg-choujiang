@@ -1,8 +1,10 @@
 import asyncio
 
+from tg_lottery.application.records import utcnow
 from tg_lottery.bootstrap import build_container
 from tg_lottery.config import get_settings
 from tg_lottery.jobs.handlers import JobHandlers
+from tg_lottery.jobs.maintenance import ensure_maintenance_jobs
 from tg_lottery.jobs.worker import JobWorker
 from tg_lottery.runtime import configure_logging, owner_id, stop_event, validate_bot
 from tg_lottery.telegram.crypto import SecretCipher
@@ -18,6 +20,7 @@ async def run() -> None:
     job_owner = owner_id("jobs")
     try:
         await validate_bot(container.bot, settings.bot_id)
+        await ensure_maintenance_jobs(container.session_factory, utcnow())
         handlers = JobHandlers(
             bot=container.bot,
             session_factory=container.session_factory,

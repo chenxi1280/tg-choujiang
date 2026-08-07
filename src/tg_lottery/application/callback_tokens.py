@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import utcnow
+from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.errors import AuthorizationDenied
 from tg_lottery.infrastructure.db import CallbackToken
 
@@ -74,9 +75,15 @@ class CallbackTokenService:
                 raise AuthorizationDenied("callback token does not exist")
             if row.owner_user_id != owner_user_id or row.chat_id != chat_id:
                 raise AuthorizationDenied("callback token owner or chat does not match")
-            if row.consumed_at is not None or row.expires_at <= utcnow():
+            update_id = current_update_id()
+            if row.consumed_at is not None:
+                if update_id is not None and row.consumed_by_update_id == update_id:
+                    return CallbackGrant(row.action, row.campaign_id, row.payload)
+                raise AuthorizationDenied("callback token is expired or already used")
+            if row.expires_at <= utcnow():
                 raise AuthorizationDenied("callback token is expired or already used")
             row.consumed_at = utcnow()
+            row.consumed_by_update_id = update_id
             return CallbackGrant(row.action, row.campaign_id, row.payload)
 
 

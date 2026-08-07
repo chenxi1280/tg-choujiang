@@ -37,6 +37,7 @@ class ActivityEvent(Base, UuidPkMixin, CreatedAtMixin):
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     accepted: Mapped[bool] = mapped_column(Boolean, nullable=False)
     rejection_reason: Mapped[str | None] = mapped_column(String(64))
+    source_update_id: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class DailyProgress(Base, UuidPkMixin, TimestampMixin):
@@ -85,6 +86,7 @@ class Invitation(Base, UuidPkMixin, TimestampMixin):
     left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     validation_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     validation_error: Mapped[str | None] = mapped_column(String(120))
+    source_update_id: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class InviteeActivityEvent(Base, UuidPkMixin, CreatedAtMixin):
@@ -99,6 +101,7 @@ class InviteeActivityEvent(Base, UuidPkMixin, CreatedAtMixin):
     event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     accepted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    source_update_id: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class TicketLedger(Base, UuidPkMixin, CreatedAtMixin):
@@ -113,3 +116,4 @@ class TicketLedger(Base, UuidPkMixin, CreatedAtMixin):
     source_ref: Mapped[str] = mapped_column(String(120), nullable=False)
     business_key: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_update_id: Mapped[int | None] = mapped_column(BigInteger)

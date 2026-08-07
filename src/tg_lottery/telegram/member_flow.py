@@ -4,11 +4,14 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, User
 
-from tg_lottery.application.participants import ParticipantService, RegistrationRequest
+from tg_lottery.application.participants import (
+    ParticipantService,
+    QualificationResult,
+    RegistrationRequest,
+)
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import QualificationState
-from tg_lottery.domain.rules import CampaignRules
 
 
 class MemberFlow:
@@ -28,20 +31,28 @@ class MemberFlow:
         if campaign is None:
             raise ValueError("活动不存在或已经失效")
         user = _required_user(message)
-        rules = CampaignRules.model_validate(campaign.rules)
-        state, status, error = await self._qualification(rules.required_channel_id, user.id)
-        await self._participants.register(
+        attempt = await self._participants.begin_registration(
             RegistrationRequest(
                 campaign_id=campaign.id,
                 user_id=user.id,
                 username=user.username,
                 display_name=user.full_name,
-                observed_at=utcnow(),
-                qualification_state=state,
-                observed_channel_status=status,
-                error_code=error,
+                observed_at=message.date,
             )
         )
+        state = attempt.state
+        if attempt.requires_observation:
+            state, status, error = await self._qualification(attempt.required_channel_id, user.id)
+            await self._participants.complete_registration(
+                QualificationResult(
+                    participant_id=attempt.participant_id,
+                    qualification_check_id=attempt.qualification_check_id,
+                    state=state,
+                    observed_at=utcnow(),
+                    observed_status=status,
+                    error_code=error,
+                )
+            )
         if state is QualificationState.ELIGIBLE:
             await message.answer(
                 "报名成功。专属邀请链接创建并确认后会发送到这里。",

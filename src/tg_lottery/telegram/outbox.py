@@ -71,24 +71,51 @@ class OutboxWorker:
 
     async def _deliver(self, outbox: TelegramOutbox) -> None:
         attempt_number = await self._mark_gateway_started(outbox.id)
+        log_context = _delivery_log_context(outbox, attempt_number)
         try:
             link = await self._load_link(outbox)
             result = await self._gateway.execute(outbox, link)
         except TelegramRetryAfter as exc:
             await self._retry(outbox.id, attempt_number, exc)
+            self._logger.warning(
+                "Telegram delivery rate limited",
+                extra=log_context
+                | {"certainty": "explicit_rejection", "error_code": "retry_after"},
+            )
         except _EXPLICIT_ERRORS as exc:
             await self._pre_accept_failed(outbox.id, attempt_number, exc)
+            self._logger.warning(
+                "Telegram delivery explicitly rejected",
+                extra=log_context
+                | {"certainty": "explicit_rejection", "error_code": type(exc).__name__},
+            )
         except ValueError as exc:
             await self._pre_accept_failed(outbox.id, attempt_number, exc)
+            self._logger.warning(
+                "Telegram delivery payload rejected",
+                extra=log_context
+                | {"certainty": "explicit_rejection", "error_code": type(exc).__name__},
+            )
         except _UNKNOWN_ERRORS as exc:
             await self._unknown(outbox.id, attempt_number, exc)
+            self._logger.error(
+                "Telegram delivery certainty unknown",
+                extra=log_context | {"certainty": "unknown", "error_code": type(exc).__name__},
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            self._logger.exception("unexpected Telegram gateway failure")
+            self._logger.exception(
+                "unexpected Telegram gateway failure",
+                extra=log_context | {"certainty": "unknown", "error_code": type(exc).__name__},
+            )
             await self._unknown(outbox.id, attempt_number, exc)
         else:
             await self._confirm(outbox.id, attempt_number, result)
+            self._logger.info(
+                "Telegram delivery confirmed",
+                extra=log_context | {"certainty": "confirmed"},
+            )
 
     async def _claim_next(self) -> TelegramOutbox | None:
         now = utcnow()
@@ -136,7 +163,7 @@ class OutboxWorker:
 
     async def _confirm(self, outbox_id: UUID, attempt_number: int, result: GatewayResult) -> None:
         async with self._session_factory() as session, session.begin():
-            row = await self._locked(session, outbox_id)
+            row = await self._locked_owned_claim(session, outbox_id)
             self._add_attempt(
                 session,
                 row=row,
@@ -152,7 +179,7 @@ class OutboxWorker:
 
     async def _retry(self, outbox_id: UUID, attempt_number: int, exc: TelegramRetryAfter) -> None:
         async with self._session_factory() as session, session.begin():
-            row = await self._locked(session, outbox_id)
+            row = await self._locked_owned_claim(session, outbox_id)
             self._add_attempt(
                 session,
                 row=row,
@@ -171,7 +198,7 @@ class OutboxWorker:
         self, outbox_id: UUID, attempt_number: int, exc: Exception
     ) -> None:
         async with self._session_factory() as session, session.begin():
-            row = await self._locked(session, outbox_id)
+            row = await self._locked_owned_claim(session, outbox_id)
             self._add_attempt(
                 session,
                 row=row,
@@ -187,7 +214,7 @@ class OutboxWorker:
 
     async def _unknown(self, outbox_id: UUID, attempt_number: int, exc: Exception) -> None:
         async with self._session_factory() as session, session.begin():
-            row = await self._locked(session, outbox_id)
+            row = await self._locked_owned_claim(session, outbox_id)
             self._add_attempt(
                 session,
                 row=row,
@@ -316,6 +343,15 @@ class OutboxWorker:
             raise RuntimeError("outbox row disappeared")
         return row
 
+    async def _locked_owned_claim(self, session: AsyncSession, outbox_id: UUID) -> TelegramOutbox:
+        row = await self._locked(session, outbox_id)
+        if row.state is not OutboxState.CLAIMED or row.lease_owner != self._owner_id:
+            raise RuntimeError(
+                f"outbox claim ownership lost: outbox={row.id} owner={self._owner_id} "
+                f"current_owner={row.lease_owner} state={row.state}"
+            )
+        return row
+
     def _add_attempt(
         self,
         session: AsyncSession,
@@ -345,3 +381,11 @@ class OutboxWorker:
             await asyncio.wait_for(stop.wait(), timeout=_IDLE_WAIT_SECONDS)
         except TimeoutError:
             return
+
+
+def _delivery_log_context(outbox: TelegramOutbox, attempt_number: int) -> dict[str, object]:
+    return {
+        "outbox_id": str(outbox.id),
+        "operation": outbox.operation,
+        "attempt_number": attempt_number,
+    }

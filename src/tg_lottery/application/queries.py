@@ -5,15 +5,18 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tg_lottery.domain.enums import CampaignState, InvitationState, TicketSource
+from tg_lottery.domain.enums import CampaignState, InvitationState, OutboxState, TicketSource
 from tg_lottery.infrastructure.db import (
     Campaign,
+    DrawRun,
+    DrawSnapshot,
     Group,
     GroupAdmin,
     Invitation,
     InviteLink,
     Participant,
     Prize,
+    TelegramOutbox,
     TicketLedger,
     Winner,
 )
@@ -40,6 +43,14 @@ class CampaignStats:
     valid_invitations: int
     pending_invitations: int
     tickets: int
+
+
+@dataclass(frozen=True)
+class DeliverySummary:
+    confirmed: int
+    pending: int
+    failed: int
+    unknown: int
 
 
 @dataclass(frozen=True)
@@ -242,6 +253,56 @@ class QueryService:
                 int(pending or 0),
                 int(tickets or 0),
             )
+
+    async def delivery_summary(self, campaign_id: UUID) -> DeliverySummary:
+        async with self._session_factory() as session:
+            aggregate_ids = await self._delivery_aggregate_ids(session, campaign_id)
+            rows = (
+                await session.execute(
+                    select(TelegramOutbox.state, func.count(TelegramOutbox.id))
+                    .where(TelegramOutbox.aggregate_id.in_(aggregate_ids))
+                    .group_by(TelegramOutbox.state)
+                )
+            ).all()
+            counts = {state: int(count) for state, count in rows}
+            pending = sum(
+                counts.get(state, 0)
+                for state in (
+                    OutboxState.PENDING,
+                    OutboxState.CLAIMED,
+                    OutboxState.RETRY_SCHEDULED,
+                )
+            )
+            return DeliverySummary(
+                confirmed=counts.get(OutboxState.CONFIRMED, 0),
+                pending=pending,
+                failed=counts.get(OutboxState.PRE_ACCEPT_FAILED, 0)
+                + counts.get(OutboxState.CANCELLED, 0),
+                unknown=counts.get(OutboxState.UNKNOWN_HOLD, 0),
+            )
+
+    async def _delivery_aggregate_ids(
+        self, session: AsyncSession, campaign_id: UUID
+    ) -> tuple[str, ...]:
+        participant_ids = await session.scalars(
+            select(Participant.id).where(Participant.campaign_id == campaign_id)
+        )
+        link_ids = await session.scalars(
+            select(InviteLink.id).where(InviteLink.campaign_id == campaign_id)
+        )
+        draw_run_ids = await session.scalars(
+            select(DrawRun.id)
+            .join(DrawSnapshot, DrawSnapshot.id == DrawRun.snapshot_id)
+            .where(DrawSnapshot.campaign_id == campaign_id)
+        )
+        winner_ids = await session.scalars(
+            select(Winner.id)
+            .join(DrawRun, DrawRun.id == Winner.draw_run_id)
+            .join(DrawSnapshot, DrawSnapshot.id == DrawRun.snapshot_id)
+            .where(DrawSnapshot.campaign_id == campaign_id)
+        )
+        identifiers = (campaign_id, *participant_ids, *link_ids, *draw_run_ids, *winner_ids)
+        return tuple(str(identifier) for identifier in identifiers)
 
     async def winners(self, campaign_id: UUID) -> list[WinnerRow]:
         async with self._session_factory() as session:

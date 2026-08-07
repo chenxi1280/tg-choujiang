@@ -12,7 +12,6 @@ from tg_lottery.application.records import add_outbox, utcnow
 from tg_lottery.application.settlement import SettlementService
 from tg_lottery.domain.enums import (
     CampaignState,
-    InvitationState,
     QualificationState,
 )
 from tg_lottery.domain.errors import InvitationValidationDeferred, SettlementBlocked
@@ -21,7 +20,6 @@ from tg_lottery.domain.transitions import require_campaign_transition
 from tg_lottery.infrastructure.db import (
     Campaign,
     Group,
-    Invitation,
     InviteLink,
     Participant,
     QualificationCheck,
@@ -29,6 +27,15 @@ from tg_lottery.infrastructure.db import (
     TelegramOutbox,
 )
 from tg_lottery.jobs.errors import JobRetry
+from tg_lottery.jobs.maintenance import (
+    TICKET_RECONCILE_JOB_TYPE,
+    UPDATE_RETENTION_JOB_TYPE,
+    next_maintenance_at,
+    prune_processed_update_payloads,
+    reconcile_ticket_caches,
+    schedule_ticket_reconcile,
+    schedule_update_retention,
+)
 
 
 class JobHandlers:
@@ -58,6 +65,8 @@ class JobHandlers:
             "revoke_invite_links": self._revoke_invite_links,
             "campaign_settle": self._campaign_settle,
             "campaign_draw": self._campaign_draw,
+            UPDATE_RETENTION_JOB_TYPE: self._telegram_update_retention,
+            TICKET_RECONCILE_JOB_TYPE: self._ticket_cache_reconcile,
         }
         handler = handlers.get(job.job_type)
         if handler is None:
@@ -120,21 +129,24 @@ class JobHandlers:
 
     async def _validate_invitation(self, job: ScheduledJob) -> None:
         invitation_id = UUID(job.aggregate_id)
-        invitation, chat_id = await self._invitation_and_chat(invitation_id)
-        if invitation.state is InvitationState.VALID:
+        try:
+            attempt = await self._invitations.begin_validation(invitation_id, observed_at=utcnow())
+        except InvitationValidationDeferred as exc:
+            raise JobRetry(str(exc)) from exc
+        if not attempt.requires_observation or attempt.chat_id is None:
             return
         try:
-            member = await self._bot.get_chat_member(chat_id, invitation.invitee_user_id)
+            member = await self._bot.get_chat_member(attempt.chat_id, attempt.invitee_user_id)
             is_member = _is_member(member)
         except TelegramAPIError as exc:
-            await self._invitations.validate(
+            await self._invitations.complete_validation(
                 invitation_id,
                 observed_at=utcnow(),
                 is_current_member=None,
             )
             raise JobRetry(f"membership observation failed: {exc}") from exc
         try:
-            await self._invitations.validate(
+            await self._invitations.complete_validation(
                 invitation_id,
                 observed_at=utcnow(),
                 is_current_member=is_member,
@@ -191,6 +203,22 @@ class JobHandlers:
             raise JobRetry(f"campaign is not ready to draw: {state}")
         await self._drawing.run(campaign_id)
 
+    async def _telegram_update_retention(self, job: ScheduledJob) -> None:
+        if job.aggregate_id != "system":
+            raise ValueError("update retention job requires system aggregate")
+        now = utcnow()
+        async with self._session_factory() as session, session.begin():
+            await prune_processed_update_payloads(session, now)
+            await schedule_update_retention(session, next_maintenance_at(now))
+
+    async def _ticket_cache_reconcile(self, job: ScheduledJob) -> None:
+        if job.aggregate_id != "system":
+            raise ValueError("ticket reconcile job requires system aggregate")
+        now = utcnow()
+        async with self._session_factory() as session, session.begin():
+            await reconcile_ticket_caches(session)
+            await schedule_ticket_reconcile(session, next_maintenance_at(now))
+
     async def _campaign_and_participants(
         self, campaign_id: UUID
     ) -> tuple[Campaign, list[Participant]]:
@@ -230,19 +258,6 @@ class JobHandlers:
                 .limit(1)
             )
             return state in {QualificationState.ELIGIBLE, QualificationState.INELIGIBLE}
-
-    async def _invitation_and_chat(self, invitation_id: UUID) -> tuple[Invitation, int]:
-        async with self._session_factory() as session:
-            invitation = await session.get(Invitation, invitation_id)
-            if invitation is None:
-                raise ValueError("invitation not found")
-            if invitation.state is InvitationState.VALID:
-                return invitation, 0
-            campaign = await session.get(Campaign, invitation.campaign_id)
-            group = await session.get(Group, campaign.group_id) if campaign else None
-            if group is None:
-                raise ValueError("invitation group not found")
-            return invitation, group.chat_id
 
     async def _campaign_state(self, campaign_id: UUID) -> CampaignState:
         async with self._session_factory() as session:

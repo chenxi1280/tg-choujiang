@@ -2,7 +2,7 @@
 
 ## 目标
 
-以 V1.2 PRD 为开发合同，完成 Python + PostgreSQL 抽奖机器人、自动化测试、GitHub Actions 发布链路，并部署到马来西亚生产服务器完成运行与 Telegram 业务验证。
+以 V1.3 PRD 为开发合同，完成 Python + PostgreSQL 抽奖机器人、自动化测试、GitHub Actions 发布链路，并部署到马来西亚生产服务器完成运行与 Telegram 业务验证。
 
 ## 阶段
 
@@ -47,3 +47,4 @@
 | Alembic 异步连接缺少 greenlet | 1 | 将依赖改为 `SQLAlchemy[asyncio]`，确保开发、CI 和生产迁移均显式安装异步 extra |
 | Alembic check 误报 10 个 Enum CHECK 待删除，3 个外部 ID 主键生成序列 | 1 | 外部 ID 主键显式 `autoincrement=False`；diff 仅忽略已由模型定义并实际保留的 Enum CHECK 名称 |
 | 本机 Docker build 停在 Docker Hub `python:3.12-slim` 元数据获取 | 1 | 已停止挂起构建；Compose/脚本/源码检查均已通过，GitHub Actions 继续执行真实 BuildKit 构建并作为发布硬闸门 |
+| V1.3 在 LibreOffice 26.2 预览中中文显示为空框 | 3 | DOCX 文本、结构和 21 页布局可解析；确认属于本机 LibreOffice 中文字体兼容，未用破坏跨平台兼容性的字体替换掩盖问题 |

@@ -10,7 +10,7 @@ from tg_lottery.application.records import add_audit, add_job, add_outbox, utcno
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignDraft, CampaignRules, canonical_hash
 from tg_lottery.domain.transitions import require_campaign_transition
-from tg_lottery.infrastructure.db import Campaign, Group, Prize, RuleRevision
+from tg_lottery.infrastructure.db import Campaign, Group, Prize, RuleRevision, TelegramOutbox
 
 
 @dataclass(frozen=True)
@@ -59,10 +59,13 @@ class CampaignService:
             await require_group_admin(
                 uow.session, group_id=campaign.group_id, user_id=actor_user_id
             )
+            if await self._publication_already_requested(uow.session, campaign):
+                return
             require_campaign_transition(campaign.state, CampaignState.PUBLISHING)
             campaign.state = CampaignState.PUBLISHING
             revision = await self._freeze_revision(uow.session, campaign)
             group = await self._group_by_id(uow.session, campaign.group_id)
+            prizes = await self._prizes(uow.session, campaign.id)
             self._schedule_lifecycle(uow.session, campaign)
             add_outbox(
                 uow.session,
@@ -71,7 +74,7 @@ class CampaignService:
                 aggregate_id=str(campaign.id),
                 recipient_chat_id=group.chat_id,
                 business_key=f"publish:{campaign.id}:{revision.revision}",
-                payload=self._campaign_card(campaign, bot_username),
+                payload=self._campaign_card(campaign, bot_username, prizes),
             )
             add_audit(
                 uow.session,
@@ -94,6 +97,8 @@ class CampaignService:
             await require_group_admin(
                 uow.session, group_id=campaign.group_id, user_id=actor_user_id
             )
+            if campaign.state is target:
+                return
             require_campaign_transition(campaign.state, target)
             campaign.state = target
             if target is CampaignState.SETTLING:
@@ -122,6 +127,8 @@ class CampaignService:
             await require_group_admin(
                 uow.session, group_id=campaign.group_id, user_id=actor_user_id
             )
+            if campaign.state is CampaignState.SETTLING:
+                return
             require_campaign_transition(campaign.state, CampaignState.SETTLING)
             campaign.cutoff_at = cutoff_at
             campaign.state = CampaignState.SETTLING
@@ -224,6 +231,23 @@ class CampaignService:
         revision.frozen = True
         return revision
 
+    async def _prizes(self, session: object, campaign_id: UUID) -> tuple[Prize, ...]:
+        rows = await session.scalars(
+            select(Prize).where(Prize.campaign_id == campaign_id).order_by(Prize.position, Prize.id)
+        )
+        return tuple(rows)
+
+    async def _publication_already_requested(self, session: object, campaign: Campaign) -> bool:
+        if campaign.state is CampaignState.DRAFT:
+            return False
+        business_key = f"publish:{campaign.id}:{campaign.config_revision}"
+        outbox_id = await session.scalar(
+            select(TelegramOutbox.id).where(TelegramOutbox.business_key == business_key)
+        )
+        if outbox_id is None:
+            raise ValueError("campaign left draft without a publication outbox")
+        return True
+
     def _schedule_lifecycle(self, session: object, campaign: Campaign) -> None:
         rules = CampaignRules.model_validate(campaign.rules)
         add_job(
@@ -312,11 +336,15 @@ class CampaignService:
             run_at=cutoff_at + timedelta(seconds=rules.settlement_drain_seconds),
         )
 
-    def _campaign_card(self, campaign: Campaign, bot_username: str) -> dict[str, object]:
+    def _campaign_card(
+        self, campaign: Campaign, bot_username: str, prizes: tuple[Prize, ...]
+    ) -> dict[str, object]:
         return {
             "campaign_id": str(campaign.id),
             "name": campaign.name,
             "cutoff_at": campaign.cutoff_at.isoformat(),
             "draw_at": campaign.draw_at.isoformat(),
             "bot_username": bot_username,
+            "prizes": [{"name": prize.name, "quantity": prize.quantity} for prize in prizes],
+            "total_prizes": sum(prize.quantity for prize in prizes),
         }

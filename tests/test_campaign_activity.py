@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from functools import partial
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 
@@ -7,9 +8,10 @@ from tests.helpers import seed_campaign
 from tg_lottery.application.activity import ActivityService, MessageObservation
 from tg_lottery.application.campaigns import CampaignService, PrizeSpec
 from tg_lottery.domain.enums import CampaignState
-from tg_lottery.domain.rules import CampaignDraft
+from tg_lottery.domain.rules import ActivityRule, CampaignDraft, CampaignRules
 from tg_lottery.infrastructure.db import (
     Campaign,
+    DailyProgress,
     Group,
     GroupAdmin,
     ScheduledJob,
@@ -40,6 +42,7 @@ async def test_create_and_publish_freezes_rules_and_schedules_full_lifecycle(
         (PrizeSpec("一等奖", 1, "联系管理员"),),
         101,
     )
+    await service.publish(campaign.id, 101, "lottery_test_bot")
     await service.publish(campaign.id, 101, "lottery_test_bot")
     async with session_factory() as session:
         stored = await session.get(Campaign, campaign.id)
@@ -105,3 +108,50 @@ async def test_activity_awards_one_daily_ticket_and_rejects_duplicates(
         assert stored.ticket_total_cache == 1
         assert duplicate is not None and duplicate.accepted is False
         assert replay is not None and replay.message_id == 1
+
+
+async def test_activity_uses_campaign_timezone_and_inclusive_cutoff(session_factory) -> None:
+    zone = ZoneInfo("Asia/Kuala_Lumpur")
+    local_now = datetime.now(zone)
+    next_midnight = (local_now + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    before_midnight = next_midnight - timedelta(minutes=1)
+    after_midnight = next_midnight + timedelta(minutes=1)
+    rules = CampaignRules(
+        timezone=zone.key,
+        activity=ActivityRule(message_threshold=1, daily_ticket_cap=1),
+    )
+    async with session_factory() as session, session.begin():
+        group, campaign, _ = await seed_campaign(session, rules=rules, cutoff_at=after_midnight)
+        campaign_id = campaign.id
+        chat_id = group.chat_id
+    service = ActivityService(partial(UnitOfWork, session_factory))
+    for message_id, event_at in ((1, before_midnight), (2, after_midnight)):
+        event = await service.record_message(
+            MessageObservation(
+                chat_id=chat_id,
+                message_id=message_id,
+                user_id=201,
+                event_at=event_at,
+                text=f"跨日有效消息 {message_id}",
+            )
+        )
+        assert event is not None and event.accepted is True
+    rejected = await service.record_message(
+        MessageObservation(
+            chat_id=chat_id,
+            message_id=3,
+            user_id=201,
+            event_at=after_midnight + timedelta(seconds=1),
+            text="截止后的消息",
+        )
+    )
+    async with session_factory() as session:
+        ticket_total = await session.scalar(
+            select(func.sum(TicketLedger.delta)).where(TicketLedger.campaign_id == campaign_id)
+        )
+        day_count = await session.scalar(select(func.count(DailyProgress.id)))
+        assert rejected is None
+        assert ticket_total == 2
+        assert day_count == 2

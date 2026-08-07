@@ -46,6 +46,12 @@ class PollingOffset(Base):
     last_durable_update_id: Mapped[int | None] = mapped_column(BigInteger)
     last_poll_succeeded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    integrity_status: Mapped[str] = mapped_column(
+        String(40), default="ok", server_default="ok", nullable=False
+    )
+    last_gap_from: Mapped[int | None] = mapped_column(BigInteger)
+    last_gap_to: Mapped[int | None] = mapped_column(BigInteger)
+    last_gap_detected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class TelegramUpdate(Base, TimestampMixin):
@@ -150,11 +156,20 @@ class Participant(Base, UuidPkMixin, TimestampMixin):
         enum_type(QualificationState, "qualification_state"), nullable=False
     )
     registered_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    registered_source_update_id: Mapped[int | None] = mapped_column(BigInteger)
     ticket_total_cache: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
 class QualificationCheck(Base, UuidPkMixin, CreatedAtMixin):
     __tablename__ = "qualification_checks"
+    __table_args__ = (
+        UniqueConstraint(
+            "participant_id",
+            "phase",
+            "source_update_id",
+            name="uq_qualification_checks_source_update",
+        ),
+    )
 
     participant_id: Mapped[UUID] = mapped_column(
         ForeignKey("participants.id", ondelete="CASCADE"), index=True
@@ -166,6 +181,8 @@ class QualificationCheck(Base, UuidPkMixin, CreatedAtMixin):
     channel_id: Mapped[int | None] = mapped_column(BigInteger)
     observed_status: Mapped[str | None] = mapped_column(String(40))
     error_code: Mapped[str | None] = mapped_column(String(80))
+    request_hash: Mapped[str | None] = mapped_column(String(64))
+    source_update_id: Mapped[int | None] = mapped_column(BigInteger)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
@@ -189,6 +206,7 @@ class CallbackToken(Base, UuidPkMixin, CreatedAtMixin):
     payload: Mapped[dict[str, Any]] = mapped_column(default=dict, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consumed_by_update_id: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class AuditLog(Base, UuidPkMixin, CreatedAtMixin):
@@ -202,3 +220,4 @@ class AuditLog(Base, UuidPkMixin, CreatedAtMixin):
     after_hash: Mapped[str | None] = mapped_column(String(64))
     reason: Mapped[str | None] = mapped_column(Text)
     details: Mapped[dict[str, Any]] = mapped_column(default=dict, nullable=False)
+    source_update_id: Mapped[int | None] = mapped_column(BigInteger)

@@ -155,6 +155,7 @@ class DrawingService:
             participant_id=participant.id,
         )
         session.add(winner)
+        await session.flush()
         return winner, participant
 
     def _undistributed_round(self, draw_run: DrawRun, prize: Prize, round_number: int) -> DrawRound:

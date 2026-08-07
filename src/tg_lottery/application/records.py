@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import JobState, OutboxState
 from tg_lottery.domain.rules import canonical_hash
 from tg_lottery.infrastructure.db import AuditLog, ScheduledJob, TelegramOutbox
@@ -75,6 +76,7 @@ def add_audit(
         aggregate_id=aggregate_id,
         reason=reason,
         details=details or {},
+        source_update_id=current_update_id(),
     )
     session.add(audit)
     return audit

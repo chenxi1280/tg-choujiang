@@ -12,6 +12,11 @@
 - 新项目没有可用 BOT_TOKEN 证据；不得复用正在运行的 `tggrouprobot` token，否则会造成同 token 双 polling。该缺口只影响最终 Telegram E2E，不改变应用、迁移、Actions 和服务部署实现。
 - 应用、迁移和测试已在本地真实 PostgreSQL 16 验证；17 项测试通过，Alembic 无漂移，代码度量和 Ruff 均通过。
 - 生产工作流已固定 Python 3.12 + PostgreSQL 16，release 推送后先 checks，再构建带 commit SHA 的 GHCR 镜像，最后通过不可变发布脚本部署；任何阶段失败均不会切换 `current`。
+- V1.2 实现复审发现两个高风险并发缺口：租约过期后的迟到 Worker 可覆盖新 owner 状态；Winner 尚未 flush 就构造通知会生成含 `None` 的远端幂等键。两项均已修复并有 PostgreSQL 回归测试。
+- 报名资格与邀请留存原先均在 Telegram 调用后才落库，无法区分“尚未调用、调用中、结果未知”；V1.3 改为先持久化 checking/request_hash，再追加明确或 UNKNOWN 结果。
+- Polling 仅记录最后 durable update 仍不足以判断 24 小时断档；现增加 update_id gap 与中断时长诊断，出现组合风险时健康检查明确失败并要求人工完整性复核。
+- 生产部署用户需通过 `sudo -n docker` 操作容器；所有部署、备份和健康脚本已统一解析 Docker 命令，迁移前执行 custom-format pg_dump 并保留 14 份。
+- GitHub 定时生产健康工作流已建立，但在首个真实 release 验收前由 `PRODUCTION_ENABLED=false` 显式关闭，防止空 Bot 配置产生误报警或错误上线。
 
 ## 原始文档
 
