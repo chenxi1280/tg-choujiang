@@ -29,7 +29,7 @@ def _complete_draft() -> dict[str, object]:
 def test_new_draft_only_requires_three_simple_fields() -> None:
     data = new_draft(chat_id=-1001, group_title="测试群", timezone="Asia/Shanghai")
 
-    assert missing_fields(data) == ("活动标题", "开奖时间", "至少一个奖品")
+    assert missing_fields(data) == ("抽奖标题", "至少一个奖品", "开奖时间")
     assert "只需设置标题、开奖时间和奖品" in panel_text(data)
     assert "开奖前 5 分钟" in panel_text(data)
     assert "系统自动" in panel_text(data)

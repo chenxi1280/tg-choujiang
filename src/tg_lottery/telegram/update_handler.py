@@ -92,6 +92,9 @@ class LotteryUpdateHandler:
             if text == "/menu":
                 await self._admin_flow.show_main(message)
                 return
+            if text == "/new":
+                await self._admin_flow.start_create_message(message)
+                return
             if not await self._admin_flow.handle_text(message):
                 await self._admin_flow.show_main(message)
         except (DomainError, ValueError) as exc:

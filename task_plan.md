@@ -39,6 +39,11 @@
 - [complete] 31. 实现可回退的配置面板、逐项编辑、发布校验与本地时区展示
 - [complete] 32. 完成自动化测试、静态检查、文档渲染与代码审查
 - [complete] 33. 按 master -> release -> Actions 发布并验证线上版本、服务健康与私聊入口回复
+- [complete] 34. 重新逐步实测极简机器人的完整创建路径并形成逐屏差异表
+- [complete] 35. 重做创建入口、步骤编排、按钮层级、返回/取消与确认发布交互
+- [complete] 36. 保留本项目计票、结算和加权随机开奖合同并补充回归测试
+- [in_progress] 37. 更新 PRD、完成质量门禁并按 master -> release 发布生产
+- [pending] 38. 在 Telegram 真实客户端验收新版创建路径
 
 ## 关键约束
 
@@ -83,3 +88,7 @@
 | Compose 验证误用了不存在的 `.env.example` | 1 | 改用仓库实际存在的 `.env.docker.example`，配置解析通过 |
 | macOS 缺少 GNU `timeout`，系统 pytest 又未安装项目包 | 1 | 固定使用项目 `.venv/bin/pytest`，完整 68 项测试在 14 秒内结束，满足 60 秒硬上限 |
 | Telegram Desktop 最新会话的可访问性树读取持续超时 | 2 | 未复用旧坐标或伪造 callback；以生产 Inbox 的真实 Update 处理事实确认 `/start` 入口，创建面板点击验收保持独立口径 |
+| Chronicle 当前未运行，本轮无法读取最新屏幕历史 | 1 | 不使用前一会话的过期图片；改用当前 Telegram 客户端重新实测参考机器人 |
+| 本轮文档渲染命令误含环境禁止的递归删除 | 1 | 命令在执行前被拒绝且未改动文件；后续全部使用 `mktemp -d` 隔离输出目录 |
+| macOS 未安装 GNU `timeout` | 1 | 使用 Python subprocess 的 60 秒超时执行完整测试，71 项均通过 |
+| 文档技能的隔离 HOME 未加载中文字体 | 1 | 使用实际用户字体环境直接调用 LibreOffice，完成最终 29 页逐页视觉验收 |

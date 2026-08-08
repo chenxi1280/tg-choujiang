@@ -15,7 +15,8 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.application.winners import WinnerService
 from tg_lottery.domain.enums import CampaignState, PrizeClaimState
 from tg_lottery.telegram.admin_authorization import verify_chat_admin
-from tg_lottery.telegram.campaign_creator import CREATOR_ACTIONS, CampaignCreator
+from tg_lottery.telegram.campaign_creator import CampaignCreator
+from tg_lottery.telegram.creator_actions import CREATOR_ACTIONS
 
 
 class AdminFlow:
@@ -41,7 +42,7 @@ class AdminFlow:
     async def show_main(self, message: Message) -> None:
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="创建抽奖", callback_data="nav:create")],
+                [InlineKeyboardButton(text="创建/继续抽奖", callback_data="nav:create")],
                 [InlineKeyboardButton(text="我的活动", callback_data="nav:campaigns")],
                 [InlineKeyboardButton(text="我的票数", callback_data="member:tickets")],
                 [InlineKeyboardButton(text="邀请记录", callback_data="member:invites")],
@@ -51,6 +52,9 @@ class AdminFlow:
 
     async def start_create(self, query: CallbackQuery) -> None:
         await self._creator.start(query)
+
+    async def start_create_message(self, message: Message) -> None:
+        await self._creator.start_message(message)
 
     async def show_campaigns(self, query: CallbackQuery) -> None:
         message = _message(query)

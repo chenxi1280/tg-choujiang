@@ -21,7 +21,12 @@ INVITE_PRESETS = {
 }
 
 
-def new_draft(*, chat_id: int, group_title: str, timezone: str) -> dict[str, Any]:
+def new_draft(
+    *,
+    chat_id: int | None = None,
+    group_title: str = "",
+    timezone: str = "Asia/Shanghai",
+) -> dict[str, Any]:
     return {
         "chat_id": chat_id,
         "group_title": group_title,
@@ -83,18 +88,20 @@ def rules_from_data(data: dict[str, Any]) -> CampaignRules:
 
 def missing_fields(data: dict[str, Any]) -> tuple[str, ...]:
     missing: list[str] = []
+    if data.get("chat_id") is None:
+        missing.append("活动群")
     if not str(data.get("title", "")).strip():
-        missing.append("活动标题")
-    if not data.get("draw_at"):
-        missing.append("开奖时间")
+        missing.append("抽奖标题")
     if not data.get("prizes"):
         missing.append("至少一个奖品")
+    if not data.get("draw_at"):
+        missing.append("开奖时间")
     return tuple(missing)
 
 
-def format_local(value: str, timezone: str) -> str:
+def format_local(value: str, timezone: str, *, waiting: str = "等待设置") -> str:
     if not value:
-        return "等待设置"
+        return waiting
     return datetime.fromisoformat(value).astimezone(ZoneInfo(timezone)).strftime(LOCAL_TIME_FORMAT)
 
 
