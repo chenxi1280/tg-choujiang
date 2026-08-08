@@ -61,3 +61,9 @@
 - 生产 Update `162314859` 已由 Polling 持久化，但 Durable Inbox 使用 `Update.model_validate(payload)` 重建对象时没有传入 Bot context；所有 `message.answer()` / `query.answer()` 都会抛出未绑定 Bot 的运行时异常。
 - InboxProcessor 现在显式注入生产 Bot，并通过 Pydantic validation context 把同一 Bot 绑定到整棵 Update 对象；修复覆盖私聊回复、回调 ACK 和后续交互，不是 `/start` 单点绕过。
 - 新增持久化 `/start` 自动生成 `sendMessage` 的回归；全量 60 项测试、静态门禁和镜像构建通过。生产 `e0bfd00` 上原失败 Update 自动重放为 PROCESSED，Telegram 客户端于 09:28 收到“请选择操作”，独立 Production Health run `31232796287` 通过。
+
+## 未登记群迁移阻塞修复（2026-08-08）
+
+- 用户将 Bot 加入新超级群后，Telegram 先提交新 chat_id 的管理员事件，再提交旧基础群到新超级群的迁移服务消息。新群已登记，但旧 chat_id 从未登记，原 `migrate_group` 永久抛错并按严格 Inbox 顺序阻塞后续 callback 与 `/start`。
+- 未登记旧群的迁移事件现在明确成功忽略；已登记旧群仍在行锁事务内更新 `chat_id` 与 `migrated_from_chat_id`。新增两条正反回归后全量 62 项测试通过。
+- 生产 `fd73101` 自动重放 update `162314866` 并顺序处理至 `162314871`；所有 Update 均为 PROCESSED，app/worker healthy、RestartCount=0，独立 Production Health run `31235247389` 通过。

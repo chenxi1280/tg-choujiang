@@ -198,3 +198,5 @@
 - Telegram 已在 09:20 将 `/start` 作为 update `162314859` 送达，Polling 也已提交 PostgreSQL；故障发生在 Inbox 业务处理，不是 Token、网络、Polling 或 Telegram 客户端发送问题。
 - 根因是持久化 JSON 经 `Update.model_validate` 重建时没有 `context={"bot": bot}`。aiogram 的 Message/CallbackQuery 因 `_bot=None` 无法执行快捷回复方法，Update 进入 FAILED 并按 5 秒间隔重试。
 - 修复发布后同一 Update 自动重放成功，服务日志记录 `durable update processed`，客户端显示机器人 09:28 回复“请选择操作”。这证明生产私聊入口和回复已经闭环；群内管理员授权、活动创建、报名、计票、邀请与开奖仍需独立 E2E。
+- 后续新增群暴露第二个阻塞：Telegram 的事件顺序可能先登记新超级群 chat_id，再发送旧基础群迁移消息。若旧 chat_id 不属于本系统，迁移应是无业务对象的成功 no-op，不能成为永久 FAILED poison pill；已登记旧群迁移仍必须保留行锁与审计字段更新。
+- 生产 `fd73101` 回放后，poison pill 866、三条 Bot 管理员状态 867–869、旧 callback 870 和 `/start` 871 全部 PROCESSED。旧 callback ACK 因超过 Telegram 时限被拒绝，但 handler 业务完成；这是历史延迟事实，不是当前队列失败。

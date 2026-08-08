@@ -75,3 +75,5 @@
 - 2026-08-08：生产 current 指向 `20260807203703_ca4c116`；app/worker healthy、RestartCount=0、镜像 SHA `ca4c116cef0b8eb1cb082a051d4afd94480f34c1`、Alembic `a42b9c7d3e10`。groups/campaigns/未决 Update/连续性异常/失败 Job/UNKNOWN_HOLD/confirmed-unprojected 均为 0；线上代码已确认包含取消卡片补偿操作。真实 Telegram 报名到开奖 E2E 因无群和活动仍未证明，阶段 15 保持进行中。
 - 2026-08-08：用户生产 `/start` Update `162314859` 已入库但持续失败，线上日志确认根因为 Durable Inbox 重建 aiogram Update 时未绑定 Bot，`message.answer()` 无法执行；修复为 InboxProcessor 显式注入 Bot 并通过 validation context 绑定整棵对象，新增端到端形态回归后全量 60 项测试通过。
 - 2026-08-08：提交 `e0bfd00` 的 master Python Checks run `31232527872` 通过；release Deploy Production run `31232613825` 成功，生产 current 为 `20260808012727_e0bfd00`，app/worker healthy、RestartCount=0、Alembic head。原失败 Update 自动重放为 PROCESSED，Telegram 客户端 09:28 实际收到“请选择操作”，独立 Production Health run `31232796287` 通过。
+- 2026-08-08：用户再次报告 10:18 `/start` 无响应；确认永久失败的群迁移 update `162314866` 阻塞后续 867–871。根因是新超级群已先登记，而旧基础群 chat_id 从未登记，迁移服务错误地把无关旧群视为失败。
+- 2026-08-08：未登记旧群迁移改为成功忽略，已登记群仍执行原子 chat_id 迁移；62 项测试与全部门禁通过。提交 `fd73101` 的 master run `31234979923`、生产部署 run `31235075312` 和健康 run `31235247389` 成功；生产 866–871 全部自动重放为 PROCESSED。
