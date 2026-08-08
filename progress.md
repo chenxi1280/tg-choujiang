@@ -83,3 +83,6 @@
 - 2026-08-08：完成 V1.5 单消息配置面板实现：字段可乱序独立编辑，奖品按名称/人数两步添加，活动与邀请规则改为预设，草稿保存 24 小时，发布时统一校验并派生预热/截止时间。
 - 2026-08-08：代码复审发现创建草稿 24 小时与旧回调 10 分钟不一致；新增可指定回调期限，并仅对创建面板延长到 24 小时，其他管理操作保持 10 分钟。
 - 2026-08-08：68 项测试、Ruff、代码度量、compileall、Compose、diff 检查全部通过；V1.5 DOCX 35 页完成最终渲染复核，31 张表几何与压缩结构审计通过。
+- 2026-08-08：提交 `d37bd0e` 后 master Python Checks run `31237960148` 通过；release Deploy Production run `31238039611` 成功，独立 Production Health run `31238262405` 通过。
+- 2026-08-08：生产 current 指向 `20260808035058_d37bd0e`，app/worker healthy、RestartCount=0、镜像 SHA 为完整 `d37bd0ef58cba7038ade6fd7eac5d660febbf725`，Alembic `a42b9c7d3e10 (head)`；app/worker 正式健康检查均退出 0。
+- 2026-08-08：生产在 11:58:25 拉取真实 `/start` Update `162314882`，11:58:26 完成持久化 Inbox 处理；该处理包含 `message.answer("请选择操作")` 的 Telegram API 成功返回，因此私聊入口回复为 pass。Telegram Desktop 可访问性树随后连续超时，未以旧坐标代替证据；新版“创建抽奖→选群→极简面板”的人工点击链仍单列为 unproven，不由部署或健康检查替代。

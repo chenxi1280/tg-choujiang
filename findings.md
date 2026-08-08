@@ -212,3 +212,5 @@
 - 草稿先保存在 `AdminSession.data`，点击发布时统一校验并创建数据库 Campaign/Prize，避免未完成向导制造持久化半成品。所有面板回调继续使用一次性、用户和私聊绑定的安全 token。
 - 实现复审确认旧回调 token 固定 10 分钟，若直接复用会导致 24 小时草稿尚在但按钮全部失效。现将 `CallbackTokenService` 支持显式期限，创建面板使用 24 小时；旧管理菜单继续使用默认 10 分钟，不扩大敏感操作窗口。
 - 活动卡片的 cutoff/draw 展示已改为 Campaign 冻结时区下的 `YYYY-MM-DD HH:MM`，新增测试直接校验 Outbox payload，不再用 UTC ISO 字符串替代用户本地时间。
+- V1.5 生产发布事实：`d37bd0e` 已经由 release 分支和 GitHub Actions 部署，生产镜像、current release、容器和健康检查均回读一致；这证明代码已上线，但不替代 Telegram 按钮点击事实。
+- 11:58 的真实 `/start` Update `162314882` 已由生产 Inbox 处理成功。由于 `show_main()` 只有在 Telegram `message.answer()` 返回后 handler 才能完成并写 PROCESSED，私聊菜单的服务器端回发链路闭合；桌面客户端的创建按钮点击链因可访问性树超时仍为 `unproven`，未静默写成通过。

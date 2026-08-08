@@ -38,7 +38,7 @@
 - [complete] 30. 更新 V1.5 PRD，冻结极简创建与数据流转合同
 - [complete] 31. 实现可回退的配置面板、逐项编辑、发布校验与本地时区展示
 - [complete] 32. 完成自动化测试、静态检查、文档渲染与代码审查
-- [in_progress] 33. 按 master -> release -> Actions 发布并验证线上创建流程
+- [complete] 33. 按 master -> release -> Actions 发布并验证线上版本、服务健康与私聊入口回复
 
 ## 关键约束
 
@@ -82,3 +82,4 @@
 | V1.5 首轮隔离渲染未加载中文字体，中文显示为空框且分页压缩为 23 页 | 1 | 文档 XML 中文完整；按 V1.4 已验证方式向任务级 LibreOffice QA 运行时临时注入系统中文字体后重新渲染，完成检查后移除副本 |
 | Compose 验证误用了不存在的 `.env.example` | 1 | 改用仓库实际存在的 `.env.docker.example`，配置解析通过 |
 | macOS 缺少 GNU `timeout`，系统 pytest 又未安装项目包 | 1 | 固定使用项目 `.venv/bin/pytest`，完整 68 项测试在 14 秒内结束，满足 60 秒硬上限 |
+| Telegram Desktop 最新会话的可访问性树读取持续超时 | 2 | 未复用旧坐标或伪造 callback；以生产 Inbox 的真实 Update 处理事实确认 `/start` 入口，创建面板点击验收保持独立口径 |
