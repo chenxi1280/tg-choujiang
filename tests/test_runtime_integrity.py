@@ -16,6 +16,7 @@ from tg_lottery.application.request_context import bind_update_context
 from tg_lottery.domain.enums import JobState, OutboxState, UpdateState
 from tg_lottery.domain.errors import AuthorizationDenied
 from tg_lottery.infrastructure.db import (
+    CallbackToken,
     DeliveryAttempt,
     PollingOffset,
     ScheduledJob,
@@ -456,3 +457,20 @@ async def test_callback_token_replay_is_allowed_only_for_same_durable_update(
     with bind_update_context(123, 89):
         with pytest.raises(AuthorizationDenied, match="already used"):
             await service.consume(token, owner_user_id=201, chat_id=201)
+
+
+async def test_callback_token_supports_explicit_long_lifetime(session_factory) -> None:
+    service = CallbackTokenService(partial(UnitOfWork, session_factory))
+    before = utcnow()
+    await service.create_many(
+        owner_user_id=201,
+        chat_id=201,
+        requests=(CallbackRequest("draft_publish"),),
+        expires_in=timedelta(hours=24),
+    )
+
+    async with session_factory() as session:
+        stored = await session.scalar(select(CallbackToken))
+
+    assert stored is not None
+    assert stored.expires_at >= before + timedelta(hours=23, minutes=59)

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
@@ -362,11 +363,12 @@ class CampaignService:
     def _campaign_card(
         self, campaign: Campaign, bot_username: str, prizes: tuple[Prize, ...]
     ) -> dict[str, object]:
+        zone = ZoneInfo(campaign.timezone)
         return {
             "campaign_id": str(campaign.id),
             "name": campaign.name,
-            "cutoff_at": campaign.cutoff_at.isoformat(),
-            "draw_at": campaign.draw_at.isoformat(),
+            "cutoff_at": campaign.cutoff_at.astimezone(zone).strftime("%Y-%m-%d %H:%M"),
+            "draw_at": campaign.draw_at.astimezone(zone).strftime("%Y-%m-%d %H:%M"),
             "bot_username": bot_username,
             "prizes": [
                 {

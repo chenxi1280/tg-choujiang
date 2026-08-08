@@ -28,8 +28,7 @@ class FakeAdminBot:
 def _flow(bot: FakeAdminBot) -> AdminFlow:
     return AdminFlow(
         bot=bot,
-        bot_username="test_bot",
-        sessions=None,
+        creator=None,
         tokens=None,
         campaigns=None,
         drawing=None,

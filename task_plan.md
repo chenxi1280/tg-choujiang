@@ -34,6 +34,11 @@
 - [complete] 26. 为新增确认缺陷补回归并完成根因修复
 - [complete] 27. 执行完整质量门禁、迁移漂移与发布前检查
 - [complete] 28. 发布第三轮修复并回读生产版本、运行状态和未决事实
+- [complete] 29. 对照极简抽奖机器人，提取面板式创建交互与本项目差异
+- [complete] 30. 更新 V1.5 PRD，冻结极简创建与数据流转合同
+- [complete] 31. 实现可回退的配置面板、逐项编辑、发布校验与本地时区展示
+- [complete] 32. 完成自动化测试、静态检查、文档渲染与代码审查
+- [in_progress] 33. 按 master -> release -> Actions 发布并验证线上创建流程
 
 ## 关键约束
 
@@ -72,3 +77,8 @@
 | 复审读取命令的工作目录误写为 `/Users/xida/PychProjects/...` | 1 | 未执行任何代码或文件操作；改用已确认的仓库绝对路径后继续 |
 | zsh 对不存在的 `scripts/*.sh` glob 直接报 `no matches found` | 1 | Alembic 往返、漂移与 Compose 已先完成；Shell 校验改用 `rg --files -g '*.sh'` 枚举实际文件，不依赖空 glob |
 | 第三轮定向 Ruff 首次发现 `outbox.py` 新 import 顺序不符合 I001 | 1 | 使用 Ruff 仅机械排序该 import block；随后定向 Ruff、代码度量和 12 项相关回归通过 |
+| Chronicle 当前未运行，无法回看用户所指“极简”历史界面 | 1 | 改用当前 Telegram 客户端搜索并实测 `@LotteryBestBot` 的创建面板；仅创建临时草稿，不发布活动 |
+| 首次 V1.5 渲染组合命令包含被环境禁止的 `rm -rf` | 1 | 命令在执行前被拒绝、未改动文件；改用 `mktemp -d` 创建唯一 QA 输出目录 |
+| V1.5 首轮隔离渲染未加载中文字体，中文显示为空框且分页压缩为 23 页 | 1 | 文档 XML 中文完整；按 V1.4 已验证方式向任务级 LibreOffice QA 运行时临时注入系统中文字体后重新渲染，完成检查后移除副本 |
+| Compose 验证误用了不存在的 `.env.example` | 1 | 改用仓库实际存在的 `.env.docker.example`，配置解析通过 |
+| macOS 缺少 GNU `timeout`，系统 pytest 又未安装项目包 | 1 | 固定使用项目 `.venv/bin/pytest`，完整 68 项测试在 14 秒内结束，满足 60 秒硬上限 |

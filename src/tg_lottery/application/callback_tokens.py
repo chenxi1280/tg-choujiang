@@ -39,7 +39,9 @@ class CallbackTokenService:
         owner_user_id: int,
         chat_id: int,
         requests: tuple[CallbackRequest, ...],
+        expires_in: timedelta | None = None,
     ) -> tuple[str, ...]:
+        token_lifetime = expires_in or timedelta(minutes=_TOKEN_TTL_MINUTES)
         async with self._uow_factory() as uow:
             tokens: list[str] = []
             for request in requests:
@@ -53,7 +55,7 @@ class CallbackTokenService:
                         campaign_id=request.campaign_id,
                         action=request.action,
                         payload=request.payload or {},
-                        expires_at=utcnow() + timedelta(minutes=_TOKEN_TTL_MINUTES),
+                        expires_at=utcnow() + token_lifetime,
                     )
                 )
             return tuple(tokens)

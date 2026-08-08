@@ -6,7 +6,7 @@ from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import utcnow
 from tg_lottery.infrastructure.db import AdminSession
 
-_SESSION_TTL_MINUTES = 30
+_SESSION_TTL_HOURS = 24
 
 
 class AdminSessionService:
@@ -21,7 +21,7 @@ class AdminSessionService:
                 uow.session.add(row)
             row.state = state
             row.data = data
-            row.expires_at = utcnow() + timedelta(minutes=_SESSION_TTL_MINUTES)
+            row.expires_at = utcnow() + timedelta(hours=_SESSION_TTL_HOURS)
 
     async def get(self, user_id: int) -> AdminSession | None:
         async with self._uow_factory() as uow:

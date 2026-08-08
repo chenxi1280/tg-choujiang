@@ -19,6 +19,7 @@ from tg_lottery.config import Settings
 from tg_lottery.infrastructure.db.session import create_engine, create_session_factory
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.telegram.admin_flow import AdminFlow
+from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.update_handler import LotteryUpdateHandler
 
@@ -75,10 +76,17 @@ def build_container(settings: Settings) -> Container:
 
 def build_update_handler(container: Container, bot_username: str) -> LotteryUpdateHandler:
     services = container.services
-    admin_flow = AdminFlow(
+    creator = CampaignCreator(
         bot=container.bot,
         bot_username=bot_username,
         sessions=services.sessions,
+        tokens=services.tokens,
+        campaigns=services.campaigns,
+        queries=services.queries,
+    )
+    admin_flow = AdminFlow(
+        bot=container.bot,
+        creator=creator,
         tokens=services.tokens,
         campaigns=services.campaigns,
         drawing=services.drawing,
