@@ -42,8 +42,8 @@
 - [complete] 34. 重新逐步实测极简机器人的完整创建路径并形成逐屏差异表
 - [complete] 35. 重做创建入口、步骤编排、按钮层级、返回/取消与确认发布交互
 - [complete] 36. 保留本项目计票、结算和加权随机开奖合同并补充回归测试
-- [in_progress] 37. 更新 PRD、完成质量门禁并按 master -> release 发布生产
-- [pending] 38. 在 Telegram 真实客户端验收新版创建路径
+- [complete] 37. 更新 PRD、完成质量门禁并按 master -> release 发布生产
+- [complete] 38. 在 Telegram 真实客户端验收新版创建路径
 
 ## 关键约束
 
@@ -92,3 +92,4 @@
 | 本轮文档渲染命令误含环境禁止的递归删除 | 1 | 命令在执行前被拒绝且未改动文件；后续全部使用 `mktemp -d` 隔离输出目录 |
 | macOS 未安装 GNU `timeout` | 1 | 使用 Python subprocess 的 60 秒超时执行完整测试，71 项均通过 |
 | 文档技能的隔离 HOME 未加载中文字体 | 1 | 使用实际用户字体环境直接调用 LibreOffice，完成最终 29 页逐页视觉验收 |
+| 交互后再次派发健康工作流时 GitHub API 连续返回 EOF | 2 | 不把网络错误记为健康失败；改用生产 SSH 只读执行同一 `check-services.sh`，服务、迁移与未决事实检查通过 |
