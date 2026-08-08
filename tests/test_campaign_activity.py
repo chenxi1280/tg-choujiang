@@ -21,6 +21,8 @@ from tg_lottery.infrastructure.db import (
 )
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 
+DAILY_ACTIVITY_TEST_HOUR = 12
+
 
 async def test_create_and_publish_freezes_rules_and_schedules_full_lifecycle(
     session_factory,
@@ -82,7 +84,11 @@ async def test_activity_awards_one_daily_ticket_and_rejects_duplicates(
         participant_id = participant.id
         chat_id = group.chat_id
     service = ActivityService(partial(UnitOfWork, session_factory))
-    base = datetime.now(UTC)
+    base = (
+        datetime.now(ZoneInfo("Asia/Shanghai"))
+        .replace(hour=DAILY_ACTIVITY_TEST_HOUR, minute=0, second=0, microsecond=0)
+        .astimezone(UTC)
+    )
     for index in range(10):
         await service.record_message(
             MessageObservation(

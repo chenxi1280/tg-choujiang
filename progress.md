@@ -141,4 +141,5 @@
 - V1.7 应用提交 `bf27e9f` 的 master Python Checks run `31265098350` 全部通过；release Deploy Production run `31265194548` 成功，生产 release 为 `20260808154605_bf27e9f`。
 - 独立 Production Health run `31265354364` 通过：app/worker 均 running+healthy，Alembic 为 `2a4e91b6f703 (head)`，未决投递、未投影确认、失败 Job 与失败 Update 均为 0。
 - 发布日志未打印容器 RestartCount 精确数值，且 Telegram 客户端仍处于锁屏状态；这两项保持未证明，不由健康检查或自动化测试替代。
+- 证据提交 `92ebfc0` 的 CI 在上海时区午夜前运行，暴露活动用例“当前时间 + 9 分钟”跨日不稳定；已将该用例锚定在活动时区当天中午，定向与 81 项全量回归均在 60 秒硬超时内通过。
 - 首次本地提交 `b043a01` 在检查报出合同文件两行行尾空格后仍生成；提交尚未推送，已清理并纳入 amend，未绕过远端质量门禁。
