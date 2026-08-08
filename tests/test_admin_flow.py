@@ -3,11 +3,13 @@ from functools import partial
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import select
 
 from tests.helpers import seed_campaign
 from tg_lottery.application.groups import GroupService, TelegramAdmin
 from tg_lottery.application.queries import QueryService
 from tg_lottery.domain.errors import AuthorizationDenied
+from tg_lottery.infrastructure.db import Group
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.telegram.admin_flow import AdminFlow
 
@@ -71,3 +73,25 @@ async def test_admin_promotion_and_bot_removal_update_cached_access(session_fact
     await service.deactivate_group(chat_id, observed_at=datetime.now(UTC))
     assert await queries.admin_groups(101) == []
     assert await queries.admin_groups(202) == []
+
+
+async def test_unregistered_group_migration_is_ignored(session_factory) -> None:
+    service = GroupService(partial(UnitOfWork, session_factory))
+
+    await service.migrate_group(-5001, -1005001)
+
+    async with session_factory() as session:
+        assert await session.scalar(select(Group)) is None
+
+
+async def test_registered_group_migration_updates_chat_id(session_factory) -> None:
+    async with session_factory() as session, session.begin():
+        session.add(Group(chat_id=-5002, title="迁移群", timezone="Asia/Shanghai"))
+    service = GroupService(partial(UnitOfWork, session_factory))
+
+    await service.migrate_group(-5002, -1005002)
+
+    async with session_factory() as session:
+        group = await session.scalar(select(Group))
+        assert group.chat_id == -1005002
+        assert group.migrated_from_chat_id == -5002

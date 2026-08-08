@@ -45,7 +45,7 @@ class GroupService:
                 select(Group).where(Group.chat_id == old_chat_id).with_for_update()
             )
             if group is None:
-                raise ValueError("group to migrate was not registered")
+                return
             group.migrated_from_chat_id = old_chat_id
             group.chat_id = new_chat_id
 
