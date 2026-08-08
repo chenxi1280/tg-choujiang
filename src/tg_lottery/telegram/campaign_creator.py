@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import CallbackQuery, Message
 
 from tg_lottery.application.admin_sessions import AdminSessionService
@@ -12,32 +13,22 @@ from tg_lottery.application.callback_tokens import (
 from tg_lottery.application.campaigns import CampaignService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
+from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.infrastructure.db import Group
 from tg_lottery.telegram.admin_authorization import verify_chat_admin
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
-from tg_lottery.telegram.creator_schedule import (
-    positive_int,
-    quick_draw_at,
-    validate_draw_time,
-)
+from tg_lottery.telegram.creator_schedule import positive_int
+from tg_lottery.telegram.creator_settings import CreatorSettings
 from tg_lottery.telegram.creator_views import (
     dashboard_rows,
-    draw_prompt_text,
     main_keyboard,
     preview_text,
     prize_count_text,
     prize_prompt_text,
     prizes_text,
-    rules_text,
     title_prompt_text,
 )
-from tg_lottery.telegram.draft_config import (
-    DEFAULT_CLAIM_INSTRUCTIONS,
-    LOCAL_TIME_FORMAT,
-    campaign_input,
-    new_draft,
-    parse_draw_at,
-)
+from tg_lottery.telegram.draft_config import campaign_input, new_draft, presentation_from_data
 
 
 class CampaignCreator:
@@ -50,6 +41,8 @@ class CampaignCreator:
         campaigns: CampaignService,
         queries: QueryService,
         renderer: CreatorRenderer,
+        settings: CreatorSettings,
+        profiles: UserProfileService,
     ) -> None:
         self._bot = bot
         self._bot_username = bot_username
@@ -57,6 +50,8 @@ class CampaignCreator:
         self._campaigns = campaigns
         self._queries = queries
         self._renderer = renderer
+        self._settings = settings
+        self._profiles = profiles
 
     async def start(self, query: CallbackQuery) -> None:
         await self._open(query.from_user.id, query.from_user.full_name, _message(query))
@@ -104,12 +99,12 @@ class CampaignCreator:
         return await self.handle_text(message, session.state, dict(session.data))
 
     async def handle_text(self, message: Message, state: str, data: dict[str, Any]) -> bool:
+        if await self._settings.handle_message(message, state, data):
+            return True
         handlers = {
             "draft:title": self._receive_title,
-            "draft:draw": self._receive_draw,
             "draft:prize_name": self._receive_prize_name,
             "draft:prize_count": self._receive_prize_count,
-            "draft:claim": self._receive_claim,
         }
         handler = handlers.get(state)
         if handler is not None:
@@ -129,23 +124,18 @@ class CampaignCreator:
             "draft_add_prize": self._show_prize_prompt,
             "draft_delete_prize": self._delete_prize,
             "draft_clear_prizes": self._clear_prizes,
-            "draft_draw": self._show_draw,
-            "draft_draw_hour": self._set_quick_draw,
-            "draft_draw_evening": self._set_quick_draw,
-            "draft_draw_tomorrow": self._set_quick_draw,
-            "draft_draw_custom": self._edit_custom_draw,
-            "draft_claim": self._edit_claim,
-            "draft_claim_default": self._use_default_claim,
-            "draft_rules": self._show_rules,
-            "draft_rules_standard": self._set_rules,
-            "draft_rules_active": self._set_rules,
             "draft_back": self._show_dashboard,
             "draft_clear": self._confirm_clear,
             "draft_clear_confirm": self._clear,
             "draft_home": self._home,
             "draft_publish": self._publish,
         }
-        await handlers[grant.action](query, grant)
+        handler = handlers.get(grant.action)
+        if handler is not None:
+            await handler(query, grant)
+            return
+        if not await self._settings.handle_grant(query, grant):
+            raise ValueError("创建操作不存在或已经失效")
 
     async def _show_groups(self, query: CallbackQuery, _: CallbackGrant) -> None:
         await self._set_state(query, "draft:idle", guided=False)
@@ -182,45 +172,6 @@ class CampaignCreator:
             data=data,
             text=prize_prompt_text(data),
             rows=_back_rows(),
-        )
-
-    async def _show_draw(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:idle", guided=False)
-        await self._render_text(
-            query.from_user.id,
-            _message(query),
-            data=data,
-            text=draw_prompt_text(data),
-            rows=_draw_rows(),
-        )
-
-    async def _edit_custom_draw(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:draw", guided=False)
-        text = draw_prompt_text(data) + f"\n\n格式：{LOCAL_TIME_FORMAT}"
-        await self._render_text(
-            query.from_user.id, _message(query), data=data, text=text, rows=_back_rows()
-        )
-
-    async def _edit_claim(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:claim", guided=False)
-        rows = [[("使用默认说明", "draft_claim_default")], *_back_rows()]
-        text = "⚠️ 设置领奖说明\n\n请回复中奖后的领取方式（最多 500 字）："
-        await self._render_text(
-            query.from_user.id, _message(query), data=data, text=text, rows=rows
-        )
-
-    async def _show_rules(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:idle", guided=False)
-        rows = [
-            [("标准群聊", "draft_rules_standard"), ("高活跃群聊", "draft_rules_active")],
-            *_back_rows(),
-        ]
-        await self._render_text(
-            query.from_user.id,
-            _message(query),
-            data=data,
-            text=rules_text(data),
-            rows=rows,
         )
 
     async def _receive_prize_name(self, message: Message, data: dict[str, Any]) -> None:
@@ -267,35 +218,6 @@ class CampaignCreator:
             return
         await self._render_dashboard_from_text(message, updated | {"guided": False})
 
-    async def _receive_draw(self, message: Message, data: dict[str, Any]) -> None:
-        draw_at = parse_draw_at(message.text or "", str(data["timezone"]))
-        validate_draw_time(draw_at)
-        updated = data | {"draw_at": draw_at.isoformat(), "guided": False}
-        await self._sessions.set(_user(message).id, "draft:idle", updated)
-        await self._render_dashboard_from_text(message, updated)
-
-    async def _receive_claim(self, message: Message, data: dict[str, Any]) -> None:
-        instructions = (message.text or "").strip()
-        if not 1 <= len(instructions) <= 500:
-            raise ValueError("领奖说明长度必须为 1–500 字")
-        await self._render_dashboard_from_text(message, data | {"claim_instructions": instructions})
-
-    async def _set_quick_draw(self, query: CallbackQuery, grant: CallbackGrant) -> None:
-        data = await self._required_session(query.from_user.id)
-        draw_at = quick_draw_at(grant.action, str(data["timezone"]))
-        await self._update_and_dashboard(query, {"draw_at": draw_at.isoformat()})
-
-    async def _use_default_claim(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        await self._update_and_dashboard(query, {"claim_instructions": DEFAULT_CLAIM_INSTRUCTIONS})
-
-    async def _set_rules(self, query: CallbackQuery, grant: CallbackGrant) -> None:
-        active = grant.action.endswith("active")
-        changes = {
-            "activity_preset": "active" if active else "standard",
-            "invite_preset": "standard",
-        }
-        await self._update_and_dashboard(query, changes)
-
     async def _delete_prize(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._required_session(query.from_user.id)
         prizes = list(data.get("prizes", []))
@@ -341,14 +263,52 @@ class CampaignCreator:
 
     async def _publish(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._required_session(query.from_user.id)
-        draft, prizes = campaign_input(data, now=utcnow())
+        now = utcnow()
+        campaign_input(data, now=now)
         await verify_chat_admin(
             self._bot, int(data["chat_id"]), query.from_user.id, require_invites=True
         )
+        required_chats = await self._resolve_required_chats(data)
+        resolved = data | {
+            "required_chat_ids": [item["id"] for item in required_chats],
+            "required_chats": required_chats,
+        }
+        draft, prizes = campaign_input(resolved, now=now)
         campaign = await self._campaigns.create_draft(draft, prizes, query.from_user.id)
         await self._campaigns.publish(campaign.id, query.from_user.id, self._bot_username)
+        await self._profiles.save_last_draft(
+            query.from_user.id, resolved | presentation_from_data(resolved), utcnow()
+        )
         await self._sessions.clear(query.from_user.id)
         await _message(query).edit_text("🎉 发布请求已提交，群活动卡片确认送达后正式开始。")
+
+    async def _resolve_required_chats(self, data: dict[str, Any]) -> list[dict[str, Any]]:
+        refs = data.get("required_chat_refs") or data.get("required_chat_ids", [])
+        records: list[dict[str, Any]] = []
+        seen: set[int] = {int(data["chat_id"])}
+        for ref in refs:
+            record = await self._required_chat_record(ref)
+            chat_id = int(record["id"])
+            if chat_id in seen:
+                continue
+            seen.add(chat_id)
+            records.append(record)
+        return records
+
+    async def _required_chat_record(self, ref: int | str) -> dict[str, Any]:
+        try:
+            chat = await self._bot.get_chat(ref)
+            member = await self._bot.get_chat_member(chat.id, self._bot.id)
+        except TelegramAPIError as exc:
+            raise ValueError(f"无法验证参与条件 {ref}: {exc}") from exc
+        if str(member.status) not in {"administrator", "creator"}:
+            raise ValueError(f"机器人必须是参与条件 {ref} 的管理员")
+        return {
+            "id": chat.id,
+            "title": chat.title or chat.full_name or str(chat.id),
+            "type": str(chat.type),
+            "username": chat.username,
+        }
 
     async def _prompt_title(self, user_id: int, message: Message, data: dict[str, Any]) -> None:
         await self._sessions.set(user_id, "draft:title", data)
@@ -387,7 +347,10 @@ class CampaignCreator:
     async def _render_draw_from_text(self, message: Message, data: dict[str, Any]) -> None:
         await self._sessions.set(_user(message).id, "draft:idle", data)
         await self._edit_from_text(
-            message, data=data, text=draw_prompt_text(data), rows=_draw_rows()
+            message,
+            data=data,
+            text="🌀 请选择开奖方式：",
+            rows=[[("满人开奖", "draft_draw_full"), ("定时开奖", "draft_draw_fixed")]],
         )
 
     async def _render_dashboard_from_text(self, message: Message, data: dict[str, Any]) -> None:
@@ -481,11 +444,3 @@ def _bind_group(data: dict[str, Any], group: Group) -> dict[str, Any]:
 
 def _back_rows() -> list[list[tuple[str, str]]]:
     return [[("↩ 返回上一层", "draft_back")]]
-
-
-def _draw_rows() -> list[list[tuple[str, str]]]:
-    return [
-        [("1小时后", "draft_draw_hour"), ("今晚20:00", "draft_draw_evening")],
-        [("明晚20:00", "draft_draw_tomorrow"), ("自定义时间", "draft_draw_custom")],
-        *_back_rows(),
-    ]

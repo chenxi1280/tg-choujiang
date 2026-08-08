@@ -13,6 +13,8 @@ from tg_lottery.infrastructure.db.models_core import (
     QualificationCheck,
     RuleRevision,
     TelegramUpdate,
+    UserProfile,
+    UserRegionChange,
 )
 from tg_lottery.infrastructure.db.models_draw import (
     DeliveryAttempt,
@@ -62,6 +64,8 @@ __all__ = [
     "TelegramOutbox",
     "TelegramUpdate",
     "TicketLedger",
+    "UserProfile",
+    "UserRegionChange",
     "Winner",
     "WorkerHeartbeat",
 ]

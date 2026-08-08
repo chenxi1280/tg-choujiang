@@ -19,6 +19,7 @@ from tg_lottery.domain.enums import (
     UpdateState,
 )
 from tg_lottery.domain.errors import InvitationValidationDeferred, SettlementBlocked
+from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import (
     DrawEntry,
     DrawSnapshot,
@@ -80,6 +81,46 @@ async def test_invitation_first_attribution_and_reward_are_idempotent(session_fa
         )
         assert validated.state is InvitationState.VALID
         assert ledger_count == 1
+
+
+async def test_luck_off_validates_invitation_without_awarding_ticket(session_factory) -> None:
+    now = datetime.now(UTC)
+    async with session_factory() as session, session.begin():
+        _, campaign, participant = await seed_campaign(
+            session,
+            rules=CampaignRules(luck_mode="off"),
+            cutoff_at=now + timedelta(days=2),
+        )
+        link = InviteLink(
+            campaign_id=campaign.id,
+            participant_id=participant.id,
+            link_hash=sha256(b"luck-off-link").hexdigest(),
+            telegram_name="lot_luck_off",
+            expire_at=campaign.cutoff_at,
+        )
+        session.add(link)
+        await session.flush()
+        link_id = link.id
+        campaign_id = campaign.id
+    service = InvitationService(partial(UnitOfWork, session_factory))
+    invitation = await service.record_joined(JoinObservation(link_id, 303, now))
+    assert invitation is not None
+
+    validated = await service.validate(
+        invitation.id,
+        observed_at=now + timedelta(hours=24),
+        is_current_member=True,
+    )
+
+    async with session_factory() as session:
+        ticket_count = await session.scalar(
+            select(func.count(TicketLedger.id)).where(
+                TicketLedger.campaign_id == campaign_id,
+                TicketLedger.source_type == TicketSource.INVITATION,
+            )
+        )
+    assert validated.state is InvitationState.VALID
+    assert ticket_count == 0
 
 
 async def test_invitation_reward_is_deferred_while_campaign_paused(session_factory) -> None:

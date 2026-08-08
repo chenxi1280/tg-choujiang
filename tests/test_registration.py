@@ -11,9 +11,16 @@ from tg_lottery.application.participants import (
     RegistrationRequest,
 )
 from tg_lottery.application.request_context import bind_update_context
-from tg_lottery.domain.enums import CampaignState, QualificationState
+from tg_lottery.domain.enums import CampaignState, QualificationState, TicketSource
 from tg_lottery.domain.rules import CampaignRules
-from tg_lottery.infrastructure.db import Campaign, Participant, QualificationCheck, TelegramOutbox
+from tg_lottery.infrastructure.db import (
+    Campaign,
+    Participant,
+    QualificationCheck,
+    TelegramOutbox,
+    TicketLedger,
+    UserProfile,
+)
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 
 
@@ -40,7 +47,15 @@ async def test_registration_persists_pending_before_external_result(session_fact
     async with session_factory() as session:
         participant = await session.get(Participant, attempt.participant_id)
         outbox_count = await session.scalar(select(func.count(TelegramOutbox.id)))
+        registration_tickets = await session.scalar(
+            select(func.count(TicketLedger.id)).where(
+                TicketLedger.participant_id == attempt.participant_id,
+                TicketLedger.source_type == TicketSource.REGISTRATION,
+            )
+        )
         assert participant.qualification_state is QualificationState.ELIGIBLE
+        assert participant.ticket_total_cache == 1
+        assert registration_tickets == 1
         assert outbox_count == 1
 
 
@@ -108,6 +123,38 @@ async def test_late_registration_result_cannot_override_draw_qualification(
         assert completed.qualification_state is QualificationState.INELIGIBLE
         assert registration.state is QualificationState.ELIGIBLE
         assert outbox_count == 0
+
+
+async def test_registration_enforces_username_region_and_all_required_chats(
+    session_factory,
+) -> None:
+    now = datetime.now(UTC)
+    rules = CampaignRules(
+        username_required=True,
+        allowed_regions=("河南",),
+        required_chat_ids=(-1002, -1003),
+    )
+    async with session_factory() as session, session.begin():
+        _, campaign, _ = await seed_campaign(session, rules=rules)
+        campaign_id = campaign.id
+    service = ParticipantService(partial(UnitOfWork, session_factory))
+    no_username = RegistrationRequest(
+        campaign_id=campaign_id,
+        user_id=202,
+        username=None,
+        display_name="成员二",
+        observed_at=now,
+    )
+    with pytest.raises(ValueError, match="Telegram 用户名"):
+        await service.begin_registration(no_username)
+    with pytest.raises(ValueError, match="请先使用 /region"):
+        await service.begin_registration(_request(campaign_id, now))
+    async with session_factory() as session, session.begin():
+        session.add(UserProfile(user_id=202, region="河南", last_draft={}))
+
+    attempt = await service.begin_registration(_request(campaign_id, now))
+
+    assert attempt.required_chat_ids == (-1002, -1003)
 
 
 def _request(campaign_id, observed_at: datetime) -> RegistrationRequest:

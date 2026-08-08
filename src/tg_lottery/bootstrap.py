@@ -14,6 +14,7 @@ from tg_lottery.application.invitations import InvitationService
 from tg_lottery.application.participants import ParticipantService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.settlement import SettlementService
+from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.application.winners import WinnerService
 from tg_lottery.config import Settings
 from tg_lottery.infrastructure.db.session import create_engine, create_session_factory
@@ -21,7 +22,9 @@ from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.telegram.admin_flow import AdminFlow
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_renderer import CreatorRenderer
+from tg_lottery.telegram.creator_settings import CreatorSettings
 from tg_lottery.telegram.member_flow import MemberFlow
+from tg_lottery.telegram.personal_flow import PersonalFlow
 from tg_lottery.telegram.update_handler import LotteryUpdateHandler
 
 
@@ -38,6 +41,7 @@ class Services:
     tokens: CallbackTokenService
     sessions: AdminSessionService
     queries: QueryService
+    profiles: UserProfileService
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,7 @@ def build_container(settings: Settings) -> Container:
         tokens=CallbackTokenService(uow_factory),
         sessions=AdminSessionService(uow_factory),
         queries=QueryService(session_factory),
+        profiles=UserProfileService(uow_factory),
     )
     return Container(
         settings=settings,
@@ -77,19 +82,7 @@ def build_container(settings: Settings) -> Container:
 
 def build_update_handler(container: Container, bot_username: str) -> LotteryUpdateHandler:
     services = container.services
-    renderer = CreatorRenderer(
-        bot=container.bot,
-        tokens=services.tokens,
-        queries=services.queries,
-    )
-    creator = CampaignCreator(
-        bot=container.bot,
-        bot_username=bot_username,
-        sessions=services.sessions,
-        campaigns=services.campaigns,
-        queries=services.queries,
-        renderer=renderer,
-    )
+    creator = _build_creator(container, bot_username)
     admin_flow = AdminFlow(
         bot=container.bot,
         creator=creator,
@@ -103,15 +96,46 @@ def build_update_handler(container: Container, bot_username: str) -> LotteryUpda
         bot=container.bot,
         participants=services.participants,
         queries=services.queries,
+        campaigns=services.campaigns,
+    )
+    personal_flow = PersonalFlow(
+        profiles=services.profiles,
+        queries=services.queries,
+        bot_username=bot_username,
     )
     return LotteryUpdateHandler(
         bot=container.bot,
         default_timezone=container.settings.timezone,
         admin_flow=admin_flow,
         member_flow=member_flow,
+        personal_flow=personal_flow,
         tokens=services.tokens,
         groups=services.groups,
         activity=services.activity,
         invitations=services.invitations,
         queries=services.queries,
+    )
+
+
+def _build_creator(container: Container, bot_username: str) -> CampaignCreator:
+    services = container.services
+    renderer = CreatorRenderer(
+        bot=container.bot,
+        tokens=services.tokens,
+        queries=services.queries,
+    )
+    creator_settings = CreatorSettings(
+        sessions=services.sessions,
+        renderer=renderer,
+        profiles=services.profiles,
+    )
+    return CampaignCreator(
+        bot=container.bot,
+        bot_username=bot_username,
+        sessions=services.sessions,
+        campaigns=services.campaigns,
+        queries=services.queries,
+        renderer=renderer,
+        settings=creator_settings,
+        profiles=services.profiles,
     )

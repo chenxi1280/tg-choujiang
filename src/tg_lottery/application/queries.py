@@ -1,11 +1,18 @@
 from dataclasses import dataclass
+from datetime import datetime
 from hashlib import sha256
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tg_lottery.domain.enums import CampaignState, InvitationState, OutboxState, TicketSource
+from tg_lottery.domain.enums import (
+    CampaignState,
+    InvitationState,
+    OutboxState,
+    QualificationState,
+    TicketSource,
+)
 from tg_lottery.infrastructure.db import (
     Campaign,
     DrawRun,
@@ -26,6 +33,7 @@ from tg_lottery.infrastructure.db import (
 class TicketSummary:
     campaign_name: str
     total: int
+    registration: int
     popularity: int
     invitation: int
 
@@ -43,6 +51,23 @@ class CampaignStats:
     valid_invitations: int
     pending_invitations: int
     tickets: int
+
+
+@dataclass(frozen=True)
+class AdminCampaignSummary:
+    total: int
+    active: int
+    drawn: int
+    cancelled: int
+
+
+@dataclass(frozen=True)
+class ParticipatedCampaign:
+    name: str
+    state: CampaignState
+    qualification: QualificationState
+    tickets: int
+    draw_at: datetime
 
 
 @dataclass(frozen=True)
@@ -83,6 +108,61 @@ class QueryService:
                     select(Campaign)
                     .join(GroupAdmin, GroupAdmin.group_id == Campaign.group_id)
                     .where(GroupAdmin.user_id == user_id, GroupAdmin.active.is_(True))
+                    .order_by(Campaign.created_at.desc())
+                    .limit(20)
+                )
+            ).all()
+            return list(rows)
+
+    async def admin_campaign_summary(self, user_id: int) -> AdminCampaignSummary:
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    select(Campaign.state, func.count(Campaign.id))
+                    .where(Campaign.created_by == user_id)
+                    .group_by(Campaign.state)
+                )
+            ).all()
+        counts = {state: int(count) for state, count in rows}
+        terminal = {CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED}
+        return AdminCampaignSummary(
+            total=sum(counts.values()),
+            active=sum(count for state, count in counts.items() if state not in terminal),
+            drawn=counts.get(CampaignState.DRAWN, 0) + counts.get(CampaignState.ARCHIVED, 0),
+            cancelled=counts.get(CampaignState.CANCELLED, 0),
+        )
+
+    async def participated_campaigns(self, user_id: int) -> list[ParticipatedCampaign]:
+        async with self._session_factory() as session:
+            rows = (
+                await session.execute(
+                    select(
+                        Campaign.name,
+                        Campaign.state,
+                        Participant.qualification_state,
+                        func.coalesce(func.sum(TicketLedger.delta), 0),
+                        Campaign.draw_at,
+                    )
+                    .join(Participant, Participant.campaign_id == Campaign.id)
+                    .outerjoin(TicketLedger, TicketLedger.participant_id == Participant.id)
+                    .where(Participant.user_id == user_id)
+                    .group_by(Campaign.id, Participant.id)
+                    .order_by(Participant.created_at.desc())
+                    .limit(20)
+                )
+            ).all()
+        return [
+            ParticipatedCampaign(name, state, qualification, int(tickets), draw_at)
+            for name, state, qualification, tickets, draw_at in rows
+        ]
+
+    async def created_campaigns(self, user_id: int, category: str) -> list[Campaign]:
+        states = _campaign_category_states(category)
+        async with self._session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(Campaign)
+                    .where(Campaign.created_by == user_id, Campaign.state.in_(states))
                     .order_by(Campaign.created_at.desc())
                     .limit(20)
                 )
@@ -161,6 +241,7 @@ class QueryService:
             return TicketSummary(
                 campaign_name=campaign.name if campaign else "未知活动",
                 total=sum(totals.values()),
+                registration=totals.get(TicketSource.REGISTRATION, 0),
                 popularity=totals.get(TicketSource.POPULARITY, 0),
                 invitation=totals.get(TicketSource.INVITATION, 0),
             )
@@ -254,6 +335,16 @@ class QueryService:
                 int(tickets or 0),
             )
 
+    async def eligible_participant_count(self, campaign_id: UUID) -> int:
+        async with self._session_factory() as session:
+            count = await session.scalar(
+                select(func.count(Participant.id)).where(
+                    Participant.campaign_id == campaign_id,
+                    Participant.qualification_state == QualificationState.ELIGIBLE,
+                )
+            )
+            return int(count or 0)
+
     async def delivery_summary(self, campaign_id: UUID) -> DeliverySummary:
         async with self._session_factory() as session:
             aggregate_ids = await self._delivery_aggregate_ids(session, campaign_id)
@@ -328,3 +419,14 @@ class QueryService:
             )
         ).all()
         return {source: int(total) for source, total in rows}
+
+
+def _campaign_category_states(category: str) -> tuple[CampaignState, ...]:
+    if category == "drawn":
+        return (CampaignState.DRAWN, CampaignState.ARCHIVED)
+    if category == "cancelled":
+        return (CampaignState.CANCELLED,)
+    if category != "active":
+        raise ValueError("抽奖分类无效")
+    terminal = {CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED}
+    return tuple(state for state in CampaignState if state not in terminal)

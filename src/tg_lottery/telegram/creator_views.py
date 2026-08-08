@@ -17,10 +17,11 @@ ButtonRows = list[list[tuple[str, str]]]
 def main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="🎁 抽奖管理", callback_data="nav:index")],
             [InlineKeyboardButton(text="创建/继续抽奖", callback_data="nav:create")],
-            [InlineKeyboardButton(text="我的活动", callback_data="nav:campaigns")],
-            [InlineKeyboardButton(text="我的票数", callback_data="member:tickets")],
-            [InlineKeyboardButton(text="邀请记录", callback_data="member:invites")],
+            [InlineKeyboardButton(text="我参加的抽奖", callback_data="nav:join")],
+            [InlineKeyboardButton(text="设置归属地区", callback_data="nav:region")],
+            [InlineKeyboardButton(text="查看我的 ID", callback_data="nav:myid")],
         ]
     )
 
@@ -30,32 +31,37 @@ def preview_text(data: dict[str, Any]) -> str:
     status = "可以发布" if not missing else "还需设置：" + "、".join(missing)
     return (
         "🎰 抽奖预览\n\n"
-        f"👥 活动群：{data.get('group_title') or '【等待设置】'}\n"
-        f"🏷 抽奖标题：{data.get('title') or '【等待设置】'}\n"
+        f"🎰 抽奖标题：{data.get('title') or '【等待设置】'}\n\n"
+        f"🏞️ 封面设置：{'【已设置】' if data.get('cover_file_id') else '【等待设置】'}\n\n"
+        f"🪪 用户限制：{_user_limits(data)}\n\n"
+        f"🌏️ 地区限制：{_region_limits(data)}\n\n"
+        f"📮 参与条件：{_participation(data)}\n\n"
         f"🎁 奖品内容：\n{_prize_lines(data.get('prizes', []))}\n"
-        f"🌀 开奖时间：{_draw_text(data)}\n"
-        f"⚠️ 领奖说明：{data.get('claim_instructions') or '【等待设置】'}\n"
-        f"⚖️ 中奖规则：{_rule_summary(data)}\n\n"
-        f"👤 发起人：{data.get('creator_name') or '当前管理员'}\n\n"
+        f"⚠️ 抽奖说明：{data.get('description') or '【等待设置】'}\n\n"
+        f"🔋 人品加成：{_luck_text(data)}\n\n"
+        f"🌀 开奖方式：{_draw_text(data)}\n\n"
+        f"🎅 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}\n\n"
         f"当前状态：{status}\n"
-        "（本页面为抽奖卡片预览，点击下方按钮修改）"
+        "（本页面为预览文案，不是正式效果）"
     )
 
 
 def dashboard_rows() -> ButtonRows:
     return [
         [
-            ("活动群", "draft_group"),
-            ("抽奖标题", "draft_title"),
-            ("奖品内容", "draft_prizes"),
+            ("活动标题", "draft_title"),
+            ("上传封面", "draft_cover"),
+            ("用户限制", "draft_user_limits"),
         ],
         [
-            ("开奖时间", "draft_draw"),
-            ("领奖说明", "draft_claim"),
-            ("中奖规则", "draft_rules"),
+            ("参与条件", "draft_participation"),
+            ("奖品内容", "draft_prizes"),
+            ("抽奖说明", "draft_description"),
         ],
-        [("🎉 发布抽奖", "draft_publish")],
-        [("🗑 清空配置", "draft_clear"), ("↩ 返回首页", "draft_home")],
+        [("人品加成", "draft_rules"), ("开奖方式", "draft_draw"), ("发奖人员", "draft_issuer")],
+        [("消息提示", "draft_messages"), ("🎉 发布抽奖", "draft_publish")],
+        [("🗑 清空配置", "draft_clear"), ("载入上次抽奖", "draft_load_last")],
+        [("↩ 返回首页", "draft_home")],
     ]
 
 
@@ -90,9 +96,8 @@ def title_prompt_text(data: dict[str, Any]) -> str:
 def draw_prompt_text(data: dict[str, Any]) -> str:
     return (
         "🌀 创建抽奖·设置开奖时间（必填项）\n\n"
-        f"当前时间：{_draw_text(data)}\n"
-        "报名将在开奖前 5 分钟自动截止。\n\n"
-        "请选择快捷时间，或输入自定义时间："
+        f"当前设置：{_draw_text(data)}\n\n"
+        "请选择满人开奖或定时开奖："
     )
 
 
@@ -111,6 +116,9 @@ def rules_text(data: dict[str, Any]) -> str:
 
 
 def _draw_text(data: dict[str, Any]) -> str:
+    if data.get("draw_mode") == "full":
+        target = data.get("participant_target") or "【等待设置】"
+        return f"满 {target} 人开奖（30 天兜底）"
     timezone = str(data.get("timezone") or "Asia/Shanghai")
     return format_local(str(data.get("draw_at") or ""), timezone, waiting="【等待设置】")
 
@@ -120,6 +128,27 @@ def _rule_summary(data: dict[str, Any]) -> str:
     invite = INVITE_PRESETS[str(data["invite_preset"])]
     return (
         f"活跃 {activity.message_threshold} 条得票；有效邀请留存 {invite.retention_hours} 小时得票"
+    )
+
+
+def _user_limits(data: dict[str, Any]) -> str:
+    return "用户名必填" if data.get("username_required") else "用户名可为空"
+
+
+def _region_limits(data: dict[str, Any]) -> str:
+    regions = data.get("allowed_regions", [])
+    return "、".join(regions) if regions else "全国"
+
+
+def _participation(data: dict[str, Any]) -> str:
+    group = data.get("group_title") or "【等待设置】"
+    count = len(data.get("required_chat_refs") or data.get("required_chat_ids", []))
+    return f"加入 {group}" + (f" 等 {count + 1} 个群/频道" if count else "")
+
+
+def _luck_text(data: dict[str, Any]) -> str:
+    return {"off": "关闭", "standard": "标准", "active": "高活跃"}.get(
+        str(data.get("luck_mode", "standard")), "标准"
     )
 
 

@@ -44,6 +44,13 @@
 - [complete] 36. 保留本项目计票、结算和加权随机开奖合同并补充回归测试
 - [complete] 37. 更新 PRD、完成质量门禁并按 master -> release 发布生产
 - [complete] 38. 在 Telegram 真实客户端验收新版创建路径
+- [blocked] 39. 实测 `@LotteryBestBot` 全部命令、管理入口、创建字段与参与端流程，形成逐屏功能清单（已完成可访问页面；Mac 被用户锁屏后，消息提示等剩余参考页无法继续实测）
+- [complete] 40. 对照现有实现形成完整差异矩阵，并更新 V1.7 产品合同与验收清单
+- [complete] 41. 实现用户资料、地区、参抽记录、完整创建字段与抽奖管理入口
+- [complete] 42. 实现封面、用户限制、参与条件、抽奖说明、人品加成和本项目开奖方式的交互闭环
+- [complete] 43. 完成自动化测试、静态检查、迁移检查与 DOCX 渲染验收
+- [in_progress] 44. 按 master -> release -> GitHub Actions 发布并核验线上版本与服务健康
+- [pending] 45. 在 Telegram 真实客户端验收命令、创建、管理与参与链路，发布动作使用“不发布”测试草稿
 
 ## 关键约束
 
@@ -93,3 +100,12 @@
 | macOS 未安装 GNU `timeout` | 1 | 使用 Python subprocess 的 60 秒超时执行完整测试，71 项均通过 |
 | 文档技能的隔离 HOME 未加载中文字体 | 1 | 使用实际用户字体环境直接调用 LibreOffice，完成最终 29 页逐页视觉验收 |
 | 交互后再次派发健康工作流时 GitHub API 连续返回 EOF | 2 | 不把网络错误记为健康失败；改用生产 SSH 只读执行同一 `check-services.sh`，服务、迁移与未决事实检查通过 |
+| planning-with-files 恢复脚本误写为下划线文件名 | 1 | 未改动项目文件；确认技能实际脚本为 `session-catchup.py` 后重新执行 |
+| Chronicle 本轮未运行 | 1 | 不使用过期屏幕历史；改用当前 Telegram 实时界面逐项实测参考 Bot |
+| Telegram bundle identifier 同时匹配正式应用与更新临时副本 | 1 | 改用 `/Applications/Telegram.app` 绝对路径定位当前客户端 |
+| 首次应用定位失败发生在 `tgState` 初始化前 | 1 | 重新以 `var` 声明持久变量，再读取绝对路径应用状态 |
+| findings 补丁假定了不存在的 V1.6 标题 | 1 | 读取文件尾部实际结构后，改在现有末尾追加 V1.7 章节 |
+| V1.7 文档脚本误用项目虚拟环境，缺少 `python-docx` | 1 | 不修改生产依赖；改用 Codex 工作区文档运行时执行同一脚本 |
+| 最终门禁假定 shell 已导出 `TEST_DATABASE_URL` | 1 | 前置门禁全部通过；读取测试夹具默认连接后，以同一测试库显式执行 Alembic 漂移检查 |
+| 系统未安装 ImageMagick `montage` | 1 | PDF 与逐页 PNG 已成功生成；使用工作区 Pillow 只做 QA 联系表拼接，不修改交付文档 |
+| 首次提交命令未设置失败即停，`diff --cached --check` 报两行 Markdown 行尾空格后仍提交 | 1 | 提交尚未推送；清除行尾空格、严格复查并 amend 本地提交 |

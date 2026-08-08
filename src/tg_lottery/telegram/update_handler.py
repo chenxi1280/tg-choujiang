@@ -14,6 +14,7 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import DomainError
 from tg_lottery.telegram.admin_flow import AdminFlow
 from tg_lottery.telegram.member_flow import MemberFlow
+from tg_lottery.telegram.personal_flow import PersonalFlow
 
 
 class LotteryUpdateHandler:
@@ -24,6 +25,7 @@ class LotteryUpdateHandler:
         default_timezone: str,
         admin_flow: AdminFlow,
         member_flow: MemberFlow,
+        personal_flow: PersonalFlow,
         tokens: CallbackTokenService,
         groups: GroupService,
         activity: ActivityService,
@@ -34,6 +36,7 @@ class LotteryUpdateHandler:
         self._default_timezone = default_timezone
         self._admin_flow = admin_flow
         self._member_flow = member_flow
+        self._personal_flow = personal_flow
         self._tokens = tokens
         self._groups = groups
         self._activity = activity
@@ -87,13 +90,15 @@ class LotteryUpdateHandler:
                 if payload.startswith("join_"):
                     await self._member_flow.register(message, UUID(payload.removeprefix("join_")))
                 else:
-                    await self._admin_flow.show_main(message)
+                    await self._personal_flow.show_guide(message)
                 return
             if text == "/menu":
                 await self._admin_flow.show_main(message)
                 return
             if text == "/new":
                 await self._admin_flow.start_create_message(message)
+                return
+            if await self._personal_flow.handle_command(message, text):
                 return
             if not await self._admin_flow.handle_text(message):
                 await self._admin_flow.show_main(message)
@@ -112,6 +117,8 @@ class LotteryUpdateHandler:
     async def _dispatch_callback(self, query: CallbackQuery, data: str) -> None:
         message = query.message
         if not isinstance(message, Message):
+            return
+        if await self._personal_flow.handle_callback(query, data):
             return
         if data == "nav:create":
             await self._admin_flow.start_create(query)

@@ -16,6 +16,7 @@ from tg_lottery.domain.transitions import require_campaign_transition
 from tg_lottery.infrastructure.db import Campaign, Group, Prize, RuleRevision, TelegramOutbox
 
 _MAX_PRIZE_NAME_LENGTH = 120
+_EARLY_DRAW_DELAY_SECONDS = 1
 
 
 @dataclass(frozen=True)
@@ -139,9 +140,12 @@ class CampaignService:
             if campaign.state is CampaignState.SETTLING:
                 return
             require_campaign_transition(campaign.state, CampaignState.SETTLING)
-            campaign.cutoff_at = cutoff_at
-            campaign.state = CampaignState.SETTLING
             rules = CampaignRules.model_validate(campaign.rules)
+            campaign.cutoff_at = cutoff_at
+            campaign.draw_at = cutoff_at + timedelta(
+                seconds=rules.settlement_drain_seconds + _EARLY_DRAW_DELAY_SECONDS
+            )
+            campaign.state = CampaignState.SETTLING
             self._schedule_early_cutoff_jobs(
                 uow.session,
                 campaign=campaign,
@@ -201,6 +205,7 @@ class CampaignService:
             cutoff_at=draft.cutoff_at,
             draw_at=draft.draw_at,
             rules=draft.rules.model_dump(mode="json"),
+            presentation=draft.presentation,
             created_by=actor,
         )
 
@@ -359,6 +364,14 @@ class CampaignService:
             business_key=f"campaign_settle_early:{campaign.id}:{suffix}",
             run_at=cutoff_at + timedelta(seconds=rules.settlement_drain_seconds),
         )
+        add_job(
+            session,
+            job_type="campaign_draw",
+            aggregate_id=str(campaign.id),
+            business_key=f"campaign_draw_early:{campaign.id}:{suffix}",
+            run_at=cutoff_at
+            + timedelta(seconds=rules.settlement_drain_seconds + _EARLY_DRAW_DELAY_SECONDS),
+        )
 
     def _campaign_card(
         self, campaign: Campaign, bot_username: str, prizes: tuple[Prize, ...]
@@ -370,6 +383,8 @@ class CampaignService:
             "cutoff_at": campaign.cutoff_at.astimezone(zone).strftime("%Y-%m-%d %H:%M"),
             "draw_at": campaign.draw_at.astimezone(zone).strftime("%Y-%m-%d %H:%M"),
             "bot_username": bot_username,
+            "presentation": campaign.presentation,
+            "rules": campaign.rules,
             "prizes": [
                 {
                     "position": prize.position,

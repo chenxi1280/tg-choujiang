@@ -296,6 +296,8 @@ class InvitationService:
         campaign: Campaign,
         rules: CampaignRules,
     ) -> None:
+        if rules.luck_mode == "off":
+            return
         business_key = f"invite:{invitation.id}:{invitation.validation_version}"
         existing = await session.scalar(
             select(TicketLedger.id).where(TicketLedger.business_key == business_key)

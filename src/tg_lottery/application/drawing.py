@@ -279,13 +279,41 @@ class DrawingService:
         group = await session.get(Group, campaign.group_id)
         if group is None:
             raise ValueError("campaign group is missing")
+        presentation = campaign.presentation or {}
+        extended_tips = bool(presentation.get("message_tips", True))
+        await self._queue_group_result(
+            session,
+            campaign=campaign,
+            draw_run=draw_run,
+            outcome=outcome,
+            chat_id=group.chat_id,
+            extended_tips=extended_tips,
+        )
+        self._queue_winner_notices(
+            session,
+            campaign=campaign,
+            outcome=outcome,
+            presentation=presentation,
+            extended_tips=extended_tips,
+        )
+
+    async def _queue_group_result(
+        self,
+        session: object,
+        *,
+        campaign: Campaign,
+        draw_run: DrawRun,
+        outcome: DrawOutcome,
+        chat_id: int,
+        extended_tips: bool,
+    ) -> None:
         add_outbox(
             session,
             operation="send_draw_result",
             aggregate_type="draw_run",
             aggregate_id=str(draw_run.id),
-            recipient_chat_id=group.chat_id,
-            business_key=f"draw_result_group:{draw_run.id}:{group.chat_id}",
+            recipient_chat_id=chat_id,
+            business_key=f"draw_result_group:{draw_run.id}:{chat_id}",
             payload={
                 "campaign_name": campaign.name,
                 "snapshot_hash": (await self._snapshot(session, campaign.id)).snapshot_hash,
@@ -298,8 +326,19 @@ class DrawingService:
                     }
                     for item in outcome.undistributed
                 ],
+                "extended_tips": extended_tips,
             },
         )
+
+    def _queue_winner_notices(
+        self,
+        session: object,
+        *,
+        campaign: Campaign,
+        outcome: DrawOutcome,
+        presentation: dict[str, object],
+        extended_tips: bool,
+    ) -> None:
         for item in outcome.awards:
             add_outbox(
                 session,
@@ -313,6 +352,8 @@ class DrawingService:
                     "prize_name": item.prize.name,
                     "prize_slot_no": item.prize_slot_no,
                     "claim_instructions": item.prize.claim_instructions,
+                    "extended_tips": extended_tips,
+                    "issuer_name": presentation.get("issuer_name") or "活动创建者",
                 },
             )
 

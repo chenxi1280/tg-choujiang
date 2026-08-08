@@ -7,8 +7,8 @@ from sqlalchemy import select
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import add_outbox
 from tg_lottery.application.request_context import current_update_id
-from tg_lottery.domain.enums import CampaignState, QualificationState
-from tg_lottery.domain.rules import canonical_hash
+from tg_lottery.domain.enums import CampaignState, QualificationState, TicketSource
+from tg_lottery.domain.rules import CampaignRules, canonical_hash
 from tg_lottery.infrastructure.db import (
     Campaign,
     Group,
@@ -16,6 +16,8 @@ from tg_lottery.infrastructure.db import (
     Participant,
     QualificationCheck,
     TelegramOutbox,
+    TicketLedger,
+    UserProfile,
 )
 
 _REGISTRATION_STATES = frozenset({CampaignState.SCHEDULED, CampaignState.RUNNING})
@@ -35,6 +37,7 @@ class RegistrationAttempt:
     participant_id: UUID
     qualification_check_id: UUID
     required_channel_id: int | None
+    required_chat_ids: tuple[int, ...]
     state: QualificationState
     requires_observation: bool
 
@@ -60,15 +63,16 @@ class ParticipantService:
             )
             if not self._accepts_registration(campaign, request.observed_at):
                 raise ValueError("campaign is not accepting registrations")
+            await self._validate_profile_requirements(uow.session, campaign, request)
             participant = await self._participant(uow.session, request)
             existing = await self._source_qualification_check(uow.session, participant.id)
             if existing is not None:
-                return self._registration_attempt(existing)
+                return self._registration_attempt(existing, campaign)
             participant.qualification_state = QualificationState.PENDING
             check = self._pending_qualification_check(participant, campaign, request)
             uow.session.add(check)
             await uow.session.flush()
-            return self._registration_attempt(check)
+            return self._registration_attempt(check, campaign)
 
     async def complete_registration(self, result: QualificationResult) -> Participant:
         async with self._uow_factory() as uow:
@@ -98,6 +102,12 @@ class ParticipantService:
             if self._can_apply_registration_result(campaign, result):
                 participant.qualification_state = result.state
                 if result.state is QualificationState.ELIGIBLE:
+                    await self._ensure_registration_ticket(
+                        uow.session,
+                        campaign=campaign,
+                        participant=participant,
+                        observed_at=result.observed_at,
+                    )
                     await self._ensure_invite_link(uow.session, campaign, participant)
             return participant
 
@@ -184,11 +194,15 @@ class ParticipantService:
             )
         )
 
-    def _registration_attempt(self, check: QualificationCheck) -> RegistrationAttempt:
+    def _registration_attempt(
+        self, check: QualificationCheck, campaign: Campaign
+    ) -> RegistrationAttempt:
+        required_chat_ids = _required_chat_ids(CampaignRules.model_validate(campaign.rules))
         return RegistrationAttempt(
             participant_id=check.participant_id,
             qualification_check_id=check.id,
             required_channel_id=check.channel_id,
+            required_chat_ids=required_chat_ids,
             state=check.state,
             requires_observation=check.state is QualificationState.PENDING,
         )
@@ -199,11 +213,13 @@ class ParticipantService:
         campaign: Campaign,
         request: RegistrationRequest,
     ) -> QualificationCheck:
+        rules = CampaignRules.model_validate(campaign.rules)
+        required_chat_ids = _required_chat_ids(rules)
         return QualificationCheck(
             participant_id=participant.id,
             phase="registration",
             state=QualificationState.PENDING,
-            channel_id=campaign.rules.get("required_channel_id"),
+            channel_id=required_chat_ids[0] if required_chat_ids else None,
             observed_status="checking",
             observed_at=request.observed_at,
             request_hash=canonical_hash(
@@ -211,11 +227,24 @@ class ParticipantService:
                     "campaign_id": str(campaign.id),
                     "user_id": request.user_id,
                     "observed_at": request.observed_at.isoformat(),
-                    "channel_id": campaign.rules.get("required_channel_id"),
+                    "required_chat_ids": required_chat_ids,
                 }
             ),
             source_update_id=current_update_id(),
         )
+
+    async def _validate_profile_requirements(
+        self, session: object, campaign: Campaign, request: RegistrationRequest
+    ) -> None:
+        rules = CampaignRules.model_validate(campaign.rules)
+        if rules.username_required and not request.username:
+            raise ValueError("本抽奖要求设置 Telegram 用户名")
+        if not rules.allowed_regions:
+            return
+        profile = await session.get(UserProfile, request.user_id)
+        if profile is None or profile.region not in rules.allowed_regions:
+            allowed = "、".join(rules.allowed_regions)
+            raise ValueError(f"本抽奖仅限地区: {allowed}, 请先使用 /region 设置")
 
     async def _ensure_invite_link(
         self, session: object, campaign: Campaign, participant: Participant
@@ -229,6 +258,34 @@ class ParticipantService:
             group=group,
             participant=participant,
         )
+
+    async def _ensure_registration_ticket(
+        self,
+        session: object,
+        *,
+        campaign: Campaign,
+        participant: Participant,
+        observed_at: datetime,
+    ) -> None:
+        business_key = f"registration:{campaign.id}:{participant.id}"
+        existing = await session.scalar(
+            select(TicketLedger.id).where(TicketLedger.business_key == business_key)
+        )
+        if existing is not None:
+            return
+        session.add(
+            TicketLedger(
+                campaign_id=campaign.id,
+                participant_id=participant.id,
+                delta=1,
+                source_type=TicketSource.REGISTRATION,
+                source_ref=str(participant.id),
+                business_key=business_key,
+                occurred_at=observed_at,
+                source_update_id=current_update_id(),
+            )
+        )
+        participant.ticket_total_cache += 1
 
     def _apply_check_result(
         self,
@@ -283,3 +340,10 @@ class ParticipantService:
                 "name": f"lot_{participant.id.hex[:20]}",
             },
         )
+
+
+def _required_chat_ids(rules: CampaignRules) -> tuple[int, ...]:
+    values = ([rules.required_channel_id] if rules.required_channel_id else []) + list(
+        rules.required_chat_ids
+    )
+    return tuple(dict.fromkeys(values))

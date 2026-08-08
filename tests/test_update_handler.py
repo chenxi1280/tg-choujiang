@@ -24,6 +24,11 @@ class RecordingAdminFlow:
         self.started = True
 
 
+class PassthroughPersonalFlow:
+    async def handle_callback(self, query, data) -> bool:
+        return False
+
+
 async def test_verify_callback_registers_clicking_user_not_bot_message_sender() -> None:
     flow = RecordingMemberFlow()
     handler = LotteryUpdateHandler(
@@ -31,6 +36,7 @@ async def test_verify_callback_registers_clicking_user_not_bot_message_sender() 
         default_timezone="Asia/Shanghai",
         admin_flow=object(),
         member_flow=flow,
+        personal_flow=PassthroughPersonalFlow(),
         tokens=object(),
         groups=object(),
         activity=object(),
@@ -50,6 +56,7 @@ async def test_new_command_enters_creation_directly() -> None:
         default_timezone="Asia/Shanghai",
         admin_flow=admin_flow,
         member_flow=object(),
+        personal_flow=PassthroughPersonalFlow(),
         tokens=object(),
         groups=object(),
         activity=object(),

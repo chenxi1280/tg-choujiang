@@ -63,3 +63,33 @@ def test_publish_rejects_draw_without_settlement_window() -> None:
 
     with pytest.raises(ValueError, match="至少需要晚于当前时间 5 分钟"):
         campaign_input(data, now=now)
+
+
+def test_full_draw_freezes_fallback_rules_and_presentation() -> None:
+    data = _complete_draft()
+    data.update(
+        {
+            "draw_at": "",
+            "draw_mode": "full",
+            "participant_target": 88,
+            "cover_file_id": "telegram-file-id",
+            "description": "满员后进入安全结算",
+            "username_required": True,
+            "allowed_regions": ["河南", "北京"],
+            "required_chat_ids": [-1002, -1003],
+            "issuer_name": "发奖专员",
+            "luck_mode": "off",
+            "message_tips": False,
+        }
+    )
+    now = datetime(2026, 8, 9, 10, 0, tzinfo=UTC)
+
+    draft, _ = campaign_input(data, now=now)
+
+    assert draft.draw_at == now + timedelta(days=30)
+    assert draft.rules.participant_target == 88
+    assert draft.rules.allowed_regions == ("河南", "北京")
+    assert draft.rules.required_chat_ids == (-1002, -1003)
+    assert draft.rules.luck_mode == "off"
+    assert draft.presentation["cover_file_id"] == "telegram-file-id"
+    assert draft.presentation["message_tips"] is False

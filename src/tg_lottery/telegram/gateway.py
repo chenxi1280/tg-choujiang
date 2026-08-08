@@ -57,13 +57,20 @@ class TelegramGateway:
             f"中奖名额（共 {payload['total_winners']} 人）:\n{_prize_lines(payload)}\n\n"
             f"截止时间: {payload['cutoff_at']}\n"
             f"开奖时间: {payload['draw_at']}\n\n"
-            "报名后可通过每日活跃和有效邀请获得抽奖票。"
+            f"{_campaign_draw_mode(payload)}\n"
+            f"发奖人员: {_campaign_issuer(payload)}\n"
+            f"{_campaign_requirements(payload)}\n"
+            f"{_campaign_description(payload)}"
         )
-        message = await self._bot.send_message(
-            outbox.recipient_chat_id,
-            text,
-            reply_markup=keyboard,
-        )
+        cover = payload.get("presentation", {}).get("cover_file_id")
+        if cover:
+            message = await self._bot.send_photo(
+                outbox.recipient_chat_id, cover, caption=text, reply_markup=keyboard
+            )
+        else:
+            message = await self._bot.send_message(
+                outbox.recipient_chat_id, text, reply_markup=keyboard
+            )
         return GatewayResult(
             remote_result=message.model_dump(mode="json", exclude_none=True),
             remote_message_id=message.message_id,
@@ -74,11 +81,15 @@ class TelegramGateway:
     ) -> GatewayResult:
         payload = outbox.payload
         message_id = int(payload["message_id"])
-        result = await self._bot.edit_message_text(
-            f"⛔ {payload['campaign_name']}\n\n活动已取消，报名入口已关闭。",
-            chat_id=outbox.recipient_chat_id,
-            message_id=message_id,
-        )
+        text = f"⛔ {payload['campaign_name']}\n\n活动已取消，报名入口已关闭。"
+        if payload.get("has_cover"):
+            result = await self._bot.edit_message_caption(
+                caption=text, chat_id=outbox.recipient_chat_id, message_id=message_id
+            )
+        else:
+            result = await self._bot.edit_message_text(
+                text, chat_id=outbox.recipient_chat_id, message_id=message_id
+            )
         remote_result = (
             result.model_dump(mode="json", exclude_none=True)
             if hasattr(result, "model_dump")
@@ -155,6 +166,8 @@ class TelegramGateway:
                     f"• 第{item['prize_position']}顺位 {item['prize_name']}: {item['count']} 人"
                 )
         lines.append(f"快照: {outbox.payload['snapshot_hash']}")
+        if outbox.payload.get("extended_tips"):
+            lines.append("结果基于冻结资格与票数快照，可按快照标识复核。")
         message = await self._bot.send_message(outbox.recipient_chat_id, "\n".join(lines))
         return GatewayResult(
             remote_result=message.model_dump(mode="json", exclude_none=True),
@@ -165,10 +178,15 @@ class TelegramGateway:
         self, outbox: TelegramOutbox, _: InviteLink | None
     ) -> GatewayResult:
         payload = outbox.payload
+        text = (
+            f"恭喜你在「{payload['campaign_name']}」中获得: {payload['prize_name']}"
+            f"（名额 {payload['prize_slot_no']}）。\n领奖方式: {payload['claim_instructions']}"
+        )
+        if payload.get("extended_tips"):
+            text += f"\n发奖人员: {payload['issuer_name']}"
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
-            f"恭喜你在「{payload['campaign_name']}」中获得: {payload['prize_name']}"
-            f"（名额 {payload['prize_slot_no']}）。\n领奖方式: {payload['claim_instructions']}",
+            text,
         )
         return GatewayResult(
             remote_result=message.model_dump(mode="json", exclude_none=True),
@@ -187,3 +205,34 @@ def _prize_lines(payload: dict[str, Any]) -> str:
         f"• 第{item['position']}顺位 {item['name']}：中奖 {item['winner_count']} 人"
         for item in prizes
     )
+
+
+def _campaign_requirements(payload: dict[str, Any]) -> str:
+    rules = payload.get("rules", {})
+    username = "用户名必填" if rules.get("username_required") else "用户名可为空"
+    regions = rules.get("allowed_regions") or []
+    region_text = "、".join(regions) if regions else "全国"
+    chats = payload.get("presentation", {}).get("required_chats") or []
+    chat_text = "、".join(str(item["title"]) for item in chats) if chats else "无额外要求"
+    return f"参与条件: {username}; 地区 {region_text}; 额外群/频道 {chat_text}"
+
+
+def _campaign_description(payload: dict[str, Any]) -> str:
+    description = payload.get("presentation", {}).get("description")
+    if description:
+        return f"抽奖说明: {description}"
+    if payload.get("rules", {}).get("luck_mode") == "off":
+        return "每位合格报名者获得 1 张基础票。"
+    return "报名后可通过群活跃和有效邀请增加抽奖票。"
+
+
+def _campaign_draw_mode(payload: dict[str, Any]) -> str:
+    rules = payload.get("rules", {})
+    if rules.get("draw_mode") == "full":
+        return f"开奖方式: 满 {rules['participant_target']} 人启动安全结算（30 天兜底）"
+    return "开奖方式: 定时开奖"
+
+
+def _campaign_issuer(payload: dict[str, Any]) -> str:
+    presentation = payload.get("presentation", {})
+    return str(presentation.get("issuer_name") or "活动创建者")

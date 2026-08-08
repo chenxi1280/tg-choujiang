@@ -97,6 +97,27 @@ class GroupAdmin(Base, UuidPkMixin, TimestampMixin):
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
+class UserProfile(Base, TimestampMixin):
+    __tablename__ = "user_profiles"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    region: Mapped[str | None] = mapped_column(String(32))
+    region_selected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    region_editable_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    region_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_draft: Mapped[dict[str, Any]] = mapped_column(default=dict, nullable=False)
+    last_draft_saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class UserRegionChange(Base, UuidPkMixin, CreatedAtMixin):
+    __tablename__ = "user_region_changes"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    old_region: Mapped[str | None] = mapped_column(String(32))
+    new_region: Mapped[str] = mapped_column(String(32), nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class Campaign(Base, UuidPkMixin, TimestampMixin):
     __tablename__ = "campaigns"
     __table_args__ = (
@@ -119,6 +140,7 @@ class Campaign(Base, UuidPkMixin, TimestampMixin):
     draw_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     config_revision: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     rules: Mapped[dict[str, Any]] = mapped_column(nullable=False)
+    presentation: Mapped[dict[str, Any]] = mapped_column(default=dict, nullable=False)
     prize_plan_hash: Mapped[str | None] = mapped_column(String(64))
     created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
     published_message_id: Mapped[int | None] = mapped_column(BigInteger)

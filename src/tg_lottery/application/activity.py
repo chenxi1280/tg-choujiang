@@ -192,6 +192,8 @@ class ActivityService:
         if progress is None:
             raise RuntimeError("daily progress upsert failed")
         progress.valid_message_count += 1
+        if rules.luck_mode == "off":
+            return
         target = min(
             rules.activity.daily_ticket_cap,
             progress.valid_message_count

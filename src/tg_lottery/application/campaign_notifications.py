@@ -17,5 +17,6 @@ def add_cancelled_campaign_card(
         payload={
             "campaign_name": campaign.name,
             "message_id": campaign.published_message_id,
+            "has_cover": bool(campaign.presentation.get("cover_file_id")),
         },
     )

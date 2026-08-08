@@ -50,6 +50,8 @@ async def test_multiple_prizes_draw_unique_winners_and_report_unfilled_slots(
         {"prize_position": 2, "prize_name": "二等奖", "count": 1}
     ]
     notices = [row.payload for row in outboxes if row.operation == "send_winner_notice"]
+    assert group_payload["extended_tips"] is True
+    assert all(notice["extended_tips"] is True for notice in notices)
     assert all(item["claim_instructions"] for item in notices)
     assert {item["prize_slot_no"] for item in notices} <= {1, 2}
 

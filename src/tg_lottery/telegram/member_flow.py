@@ -5,6 +5,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, User
 
+from tg_lottery.application.campaigns import CampaignService
 from tg_lottery.application.participants import (
     ParticipantService,
     QualificationResult,
@@ -14,6 +15,7 @@ from tg_lottery.application.participants import (
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import QualificationState
+from tg_lottery.domain.rules import CampaignRules
 
 
 class MemberFlow:
@@ -23,10 +25,12 @@ class MemberFlow:
         bot: Bot,
         participants: ParticipantService,
         queries: QueryService,
+        campaigns: CampaignService,
     ) -> None:
         self._bot = bot
         self._participants = participants
         self._queries = queries
+        self._campaigns = campaigns
 
     async def register(
         self,
@@ -45,12 +49,16 @@ class MemberFlow:
         )
         state = attempt.state
         if attempt.requires_observation:
-            state = await self._complete_observation(attempt, user.id)
-        if state is QualificationState.ELIGIBLE:
-            await message.answer(
-                "报名成功。专属邀请链接创建并确认后会发送到这里。",
-                reply_markup=member_keyboard(),
+            group = await self._queries.campaign_group(campaign.id)
+            state = await self._complete_observation(
+                attempt, user_id=user.id, main_chat_id=group.chat_id
             )
+        if state is QualificationState.ELIGIBLE:
+            await self._trigger_full_draw(campaign)
+            text = "报名成功。"
+            if _extended_tips(campaign):
+                text += " 专属邀请链接创建并确认后会发送到这里。"
+            await message.answer(text, reply_markup=member_keyboard())
             return
         verify = InlineKeyboardMarkup(
             inline_keyboard=[
@@ -63,14 +71,21 @@ class MemberFlow:
             ]
         )
         if state is QualificationState.INELIGIBLE:
-            await message.answer("尚未满足频道关注条件。完成后请重新验证。", reply_markup=verify)
+            text = "尚未满足全部群/频道参与条件。"
+            if _extended_tips(campaign):
+                text += " 完成后请重新验证。"
+            await message.answer(text, reply_markup=verify)
         else:
-            await message.answer("当前无法核验频道资格，状态保持待核验。", reply_markup=verify)
+            text = "当前无法核验群/频道资格，状态保持待核验。"
+            if _extended_tips(campaign):
+                text += " 请稍后点击验证资格重试。"
+            await message.answer(text, reply_markup=verify)
 
     async def _complete_observation(
-        self, attempt: RegistrationAttempt, user_id: int
+        self, attempt: RegistrationAttempt, *, user_id: int, main_chat_id: int
     ) -> QualificationState:
-        state, status, error = await self._qualification(attempt.required_channel_id, user_id)
+        chat_ids = tuple(dict.fromkeys((main_chat_id, *attempt.required_chat_ids)))
+        state, status, error = await self._qualification(chat_ids, user_id)
         participant = await self._participants.complete_registration(
             QualificationResult(
                 participant_id=attempt.participant_id,
@@ -90,6 +105,7 @@ class MemberFlow:
             return
         await message.answer(
             f"{summary.campaign_name}\n总票数: {summary.total}\n"
+            f"基础票: {summary.registration}\n"
             f"人气票: {summary.popularity}\n邀请票: {summary.invitation}"
         )
 
@@ -103,17 +119,35 @@ class MemberFlow:
         )
 
     async def _qualification(
-        self, channel_id: int | None, user_id: int
+        self, chat_ids: tuple[int, ...], user_id: int
     ) -> tuple[QualificationState, str, str | None]:
-        if channel_id is None:
+        if not chat_ids:
             return QualificationState.ELIGIBLE, "not_required", None
-        try:
-            member = await self._bot.get_chat_member(channel_id, user_id)
-        except TelegramAPIError as exc:
-            return QualificationState.UNKNOWN, "unavailable", type(exc).__name__
-        status = str(member.status)
-        state = QualificationState.ELIGIBLE if _is_member(member) else QualificationState.INELIGIBLE
-        return state, status, None
+        statuses: list[str] = []
+        for chat_id in chat_ids:
+            try:
+                member = await self._bot.get_chat_member(chat_id, user_id)
+            except TelegramAPIError as exc:
+                return QualificationState.UNKNOWN, "unavailable", type(exc).__name__
+            status = str(member.status)
+            statuses.append(f"{chat_id}:{status}")
+            if not _is_member(member):
+                return QualificationState.INELIGIBLE, ";".join(statuses), None
+        return QualificationState.ELIGIBLE, ";".join(statuses), None
+
+    async def _trigger_full_draw(self, campaign: object) -> None:
+        rules = CampaignRules.model_validate(campaign.rules)
+        if rules.draw_mode != "full" or rules.participant_target is None:
+            return
+        count = await self._queries.eligible_participant_count(campaign.id)
+        if count < rules.participant_target:
+            return
+        await self._campaigns.early_cutoff(
+            campaign.id,
+            actor_user_id=campaign.created_by,
+            cutoff_at=utcnow(),
+            reason=f"满人开奖达到 {count}/{rules.participant_target}",
+        )
 
 
 def member_keyboard() -> InlineKeyboardMarkup:
@@ -148,3 +182,8 @@ def _is_member(member: object) -> bool:
     if status in {"member", "administrator", "creator"}:
         return True
     return status == "restricted" and bool(getattr(member, "is_member", False))
+
+
+def _extended_tips(campaign: object) -> bool:
+    presentation = getattr(campaign, "presentation", {}) or {}
+    return bool(presentation.get("message_tips", True))

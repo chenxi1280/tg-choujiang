@@ -124,6 +124,37 @@ async def test_activity_awards_one_daily_ticket_and_rejects_duplicates(
         assert replay is not None and replay.message_id == 1
 
 
+async def test_luck_off_records_activity_without_awarding_tickets(session_factory) -> None:
+    rules = CampaignRules(
+        luck_mode="off",
+        activity=ActivityRule(message_threshold=1, daily_ticket_cap=1),
+    )
+    async with session_factory() as session, session.begin():
+        group, campaign, participant = await seed_campaign(session, rules=rules)
+        campaign_id = campaign.id
+        participant_id = participant.id
+    service = ActivityService(partial(UnitOfWork, session_factory))
+
+    event = await service.record_message(
+        MessageObservation(
+            chat_id=group.chat_id,
+            message_id=1,
+            user_id=201,
+            event_at=datetime.now(UTC),
+            text="关闭加成仍记录有效活跃",
+        )
+    )
+
+    async with session_factory() as session:
+        ticket_count = await session.scalar(
+            select(func.count(TicketLedger.id)).where(TicketLedger.campaign_id == campaign_id)
+        )
+        stored = await session.get(type(participant), participant_id)
+    assert event is not None and event.accepted is True
+    assert ticket_count == 0
+    assert stored.ticket_total_cache == 0
+
+
 async def test_activity_uses_campaign_timezone_and_inclusive_cutoff(session_factory) -> None:
     zone = ZoneInfo("Asia/Kuala_Lumpur")
     local_now = datetime.now(zone)
@@ -263,4 +294,8 @@ async def test_cancelling_published_campaign_queues_card_compensation(
         outbox = await session.scalar(
             select(TelegramOutbox).where(TelegramOutbox.operation == "edit_campaign_card_cancelled")
         )
-        assert outbox.payload == {"campaign_name": "测试活动", "message_id": 321}
+        assert outbox.payload == {
+            "campaign_name": "测试活动",
+            "has_cover": False,
+            "message_id": 321,
+        }

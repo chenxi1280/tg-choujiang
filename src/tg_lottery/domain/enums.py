@@ -66,6 +66,7 @@ class DeliveryCertainty(StrEnum):
 
 
 class TicketSource(StrEnum):
+    REGISTRATION = "registration"
     POPULARITY = "popularity"
     INVITATION = "invitation"
     REVERSAL = "reversal"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from hashlib import sha256
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -27,6 +27,12 @@ class CampaignRules(BaseModel, frozen=True):
     activity: ActivityRule = ActivityRule()
     invite: InviteRule = InviteRule()
     required_channel_id: int | None = None
+    required_chat_ids: tuple[int, ...] = ()
+    username_required: bool = False
+    allowed_regions: tuple[str, ...] = Field(default=(), max_length=3)
+    draw_mode: Literal["fixed", "full"] = "fixed"
+    participant_target: int | None = Field(default=None, ge=1)
+    luck_mode: Literal["off", "standard", "active"] = "standard"
     unique_winner: bool = True
     settlement_drain_seconds: int = Field(default=300, ge=0)
 
@@ -38,11 +44,18 @@ class CampaignDraft(BaseModel, frozen=True):
     cutoff_at: datetime
     draw_at: datetime
     rules: CampaignRules = CampaignRules()
+    presentation: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_timeline(self) -> CampaignDraft:
         if not self.preheat_at < self.cutoff_at < self.draw_at:
             raise ValueError("timeline must satisfy preheat_at < cutoff_at < draw_at")
+        return self
+
+    @model_validator(mode="after")
+    def validate_draw_mode(self) -> CampaignDraft:
+        if self.rules.draw_mode == "full" and self.rules.participant_target is None:
+            raise ValueError("full draw mode requires participant_target")
         return self
 
 
