@@ -73,3 +73,5 @@
 - 2026-08-08：第三轮完整门禁通过：59 项测试、Ruff、代码度量、compileall、diff、Shell、Compose、Alembic head -> base -> head 与双 `alembic check` 全部成功，无迁移漂移和真实 Token 入库。
 - 2026-08-08：提交 `ca4c116` 后 master Python Checks run `31216334497` 通过；release Deploy Production run `31216494106` 成功，独立 Production Health run `31216745366` 通过。
 - 2026-08-08：生产 current 指向 `20260807203703_ca4c116`；app/worker healthy、RestartCount=0、镜像 SHA `ca4c116cef0b8eb1cb082a051d4afd94480f34c1`、Alembic `a42b9c7d3e10`。groups/campaigns/未决 Update/连续性异常/失败 Job/UNKNOWN_HOLD/confirmed-unprojected 均为 0；线上代码已确认包含取消卡片补偿操作。真实 Telegram 报名到开奖 E2E 因无群和活动仍未证明，阶段 15 保持进行中。
+- 2026-08-08：用户生产 `/start` Update `162314859` 已入库但持续失败，线上日志确认根因为 Durable Inbox 重建 aiogram Update 时未绑定 Bot，`message.answer()` 无法执行；修复为 InboxProcessor 显式注入 Bot 并通过 validation context 绑定整棵对象，新增端到端形态回归后全量 60 项测试通过。
+- 2026-08-08：提交 `e0bfd00` 的 master Python Checks run `31232527872` 通过；release Deploy Production run `31232613825` 成功，生产 current 为 `20260808012727_e0bfd00`，app/worker healthy、RestartCount=0、Alembic head。原失败 Update 自动重放为 PROCESSED，Telegram 客户端 09:28 实际收到“请选择操作”，独立 Production Health run `31232796287` 通过。

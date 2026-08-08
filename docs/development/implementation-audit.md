@@ -42,10 +42,10 @@
 ## 当前线上证据
 
 - `@TGCCJBOT` Token 已配置并通过 `getMe`；Bot ID 为 `8713586647`。
-- 马来西亚生产已部署 `f43e16ee73ffcc58760e9f0079b280ef998807b4`，app/worker healthy、RestartCount=0，迁移 head 为 `a42b9c7d3e10`。
-- Python Checks run `31214772183`、Deploy Production run `31214953849` 与独立 Production Health run `31215223592` 已通过。
+- 马来西亚生产已部署 `e0bfd00de31fe86450fff1dd6ebbf00e55b9ac2d`，app/worker healthy、RestartCount=0，迁移 head 为 `a42b9c7d3e10`。
+- Python Checks run `31232527872`、Deploy Production run `31232613825` 与独立 Production Health run `31232796287` 已通过。
 - 线上 `POLL_TIMEOUT_SECONDS=30`、`POLL_LEASE_SECONDS=60`；UNKNOWN、confirmed/unprojected、失败 Job、失败/未处理 Update 计数均为 0。
-- 目标测试群尚未加入，生产库 groups=0、campaigns=0；真实报名、发言计票、邀请归因、截止排空、多奖品开奖和 Telegram 送达闭环仍未证明。
+- 生产私聊 `/start` 收发已完成客户端闭环；目标测试群尚未加入，生产库 groups=0、campaigns=0，真实报名、发言计票、邀请归因、截止排空、多奖品开奖和群内/中奖送达闭环仍未证明。
 
 上述未证明项不得由本地测试、GitHub Actions、服务器 Docker 健康或数据库迁移结果替代。
 
@@ -55,3 +55,9 @@
 - 取消已发布活动时创建唯一 `edit_campaign_card_cancelled` Outbox；发送与取消并发时，先保存 CONFIRMED/message_id，再投影补偿编辑，Telegram 成功事实不回滚。
 - 任意 polling update_id gap 都写 `integrity_review_required`；health 对所有非 `ok` continuity 失败，Settlement 同样禁止生成 DrawSnapshot。
 - 新增终态任务、正常取消、延迟卡片确认、短 gap、health 和 settlement continuity 回归；本轮 Alembic head 不变，59 项测试及全部本地质量门禁通过。
+
+## 生产 `/start` 无响应修复（2026-08-08）
+
+- 生产 Update `162314859` 已由 Polling 持久化，但 Durable Inbox 使用 `Update.model_validate(payload)` 重建对象时没有传入 Bot context；所有 `message.answer()` / `query.answer()` 都会抛出未绑定 Bot 的运行时异常。
+- InboxProcessor 现在显式注入生产 Bot，并通过 Pydantic validation context 把同一 Bot 绑定到整棵 Update 对象；修复覆盖私聊回复、回调 ACK 和后续交互，不是 `/start` 单点绕过。
+- 新增持久化 `/start` 自动生成 `sendMessage` 的回归；全量 60 项测试、静态门禁和镜像构建通过。生产 `e0bfd00` 上原失败 Update 自动重放为 PROCESSED，Telegram 客户端于 09:28 收到“请选择操作”，独立 Production Health run `31232796287` 通过。

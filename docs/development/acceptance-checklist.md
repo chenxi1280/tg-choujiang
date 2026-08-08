@@ -68,4 +68,5 @@
 - [x] PostgreSQL 16 集成测试覆盖迁移、唯一约束、并发领取、时区、重放、截止竞态、重复开奖和 unknown delivery。
 - [x] 发布路径固定为 master -> release -> GitHub Actions -> 马来西亚服务器 releases/current；production Environment 只允许 release 分支。
 - [x] 已证明 deployed SHA、迁移版本、app/worker 健康、Bot API 连通和独立 Production Health。
+- [x] 生产私聊 `/start` 已从 Telegram Update 持久化、Inbox 自动重放到客户端收到“请选择操作”完成闭环；重建 Update 时统一绑定 Bot 实例。
 - [ ] 真实 Telegram 报名、计票、邀请、开奖、群公告和中奖私聊仍需目标测试群完成 E2E。

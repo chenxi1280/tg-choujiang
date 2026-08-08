@@ -192,3 +192,9 @@
 - 第三轮修复结果：CANCELLED 生命周期任务改为幂等成功吸收；已确认或延迟确认的活动卡片都会生成唯一 `edit_campaign_card_cancelled` 补偿 Outbox，保留 Telegram success 事实并移除报名入口。Polling 任意 gap 统一升级为 `integrity_review_required`，health 和 settlement 对所有非 `ok` 状态失败关闭。
 - 第三轮发布事实：release run `31216494106` 的 checks、镜像构建和 deploy 全部成功；服务器 current、`.image.env` 与两个运行容器均回读为完整 SHA `ca4c116cef0b8eb1cb082a051d4afd94480f34c1`，容器 RestartCount 均为 0，独立健康 run `31216745366` 成功。
 - 第三轮业务事实：数据库回读为 groups=0、campaigns=0、未完成 Update=0、非 ok PollingOffset=0、blocked/failed_terminal Job=0、UNKNOWN_HOLD=0、confirmed/unprojected=0。运行状态通过，但因没有生产群和活动，真实 Telegram 报名、计票、邀请、随机开奖、群公告及中奖私聊仍为 `unproven`，不得由健康检查替代。
+
+## 生产 `/start` 事件（2026-08-08）
+
+- Telegram 已在 09:20 将 `/start` 作为 update `162314859` 送达，Polling 也已提交 PostgreSQL；故障发生在 Inbox 业务处理，不是 Token、网络、Polling 或 Telegram 客户端发送问题。
+- 根因是持久化 JSON 经 `Update.model_validate` 重建时没有 `context={"bot": bot}`。aiogram 的 Message/CallbackQuery 因 `_bot=None` 无法执行快捷回复方法，Update 进入 FAILED 并按 5 秒间隔重试。
+- 修复发布后同一 Update 自动重放成功，服务日志记录 `durable update processed`，客户端显示机器人 09:28 回复“请选择操作”。这证明生产私聊入口和回复已经闭环；群内管理员授权、活动创建、报名、计票、邀请与开奖仍需独立 E2E。
