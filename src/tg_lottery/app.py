@@ -24,6 +24,7 @@ async def run() -> None:
             lease_seconds=settings.poll_lease_seconds,
         )
         inbox = InboxProcessor(
+            bot=container.bot,
             bot_id=settings.bot_id,
             handler=handler,
             session_factory=container.session_factory,

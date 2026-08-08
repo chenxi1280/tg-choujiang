@@ -3,6 +3,7 @@ import logging
 from datetime import timedelta
 from typing import Protocol
 
+from aiogram import Bot
 from aiogram.types import Update
 from sqlalchemy import exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -26,10 +27,12 @@ class InboxProcessor:
     def __init__(
         self,
         *,
+        bot: Bot,
         bot_id: int,
         handler: UpdateHandler,
         session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
+        self._bot = bot
         self._bot_id = bot_id
         self._handler = handler
         self._session_factory = session_factory
@@ -99,7 +102,7 @@ class InboxProcessor:
             )
             return False
         try:
-            update = Update.model_validate(row.payload)
+            update = Update.model_validate(row.payload, context={"bot": self._bot})
             with bind_update_context(row.bot_id, row.update_id):
                 await self._handler.handle(update)
         except asyncio.CancelledError:

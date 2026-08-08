@@ -23,6 +23,20 @@ class FlakyHandler:
             raise RuntimeError("planned failure")
 
 
+class RecordingBot:
+    def __init__(self) -> None:
+        self.methods = []
+
+    async def __call__(self, method, request_timeout=None):
+        self.methods.append(method)
+        return object()
+
+
+class ReplyingHandler:
+    async def handle(self, update: Update) -> None:
+        await update.message.answer("请选择操作:")
+
+
 async def test_inbox_failure_remains_replayable(session_factory) -> None:
     async with session_factory() as session, session.begin():
         session.add(_stored_update(20))
@@ -74,8 +88,25 @@ async def test_stale_inbox_owner_cannot_overwrite_reclaimed_result(session_facto
         await first._mark_failed(stale_claim.id, stale_claim.attempts, "late failure")
 
 
-def _processor(handler, session_factory) -> InboxProcessor:
-    return InboxProcessor(bot_id=123, handler=handler, session_factory=session_factory)
+async def test_inbox_mounts_bot_before_private_start_reply(session_factory) -> None:
+    async with session_factory() as session, session.begin():
+        session.add(_stored_update(43))
+    bot = RecordingBot()
+    processor = _processor(ReplyingHandler(), session_factory, bot=bot)
+
+    assert await processor.process_once() is True
+    assert len(bot.methods) == 1
+    assert bot.methods[0].chat_id == 201
+    assert bot.methods[0].text == "请选择操作:"
+
+
+def _processor(handler, session_factory, *, bot=None) -> InboxProcessor:
+    return InboxProcessor(
+        bot=bot or RecordingBot(),
+        bot_id=123,
+        handler=handler,
+        session_factory=session_factory,
+    )
 
 
 def _stored_update(update_id: int) -> TelegramUpdate:
