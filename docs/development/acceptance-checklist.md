@@ -88,5 +88,6 @@
 - [x] 消息提示开关仅控制扩展说明，必要的资格失败、开奖结果和中奖事实始终明确发送。
 - [x] Campaign 冻结 presentation 与扩展规则；新增地区审计、报名票源及票源列宽迁移。
 - [x] V1.7 全量 81 项自动化、Ruff、代码度量、Alembic 往返、模型漂移与 DOCX 40 页逐页视觉验收全部通过。
-- [ ] V1.7 生产 deployed SHA、迁移 head、app/worker 健康与 RestartCount 待发布后回读。
-- [ ] V1.7 Telegram 命令、全部创建按钮和“不发布”草稿 E2E 因当前客户端锁屏待验证；不得由本地测试代替。
+- [x] V1.7 生产 deployed SHA `bf27e9f256430cd560be430049b7543fb5298759`、迁移 `2a4e91b6f703 (head)` 与 app/worker running+healthy 已由独立 Production Health 回读。
+- [ ] V1.7 容器 RestartCount 精确计数未出现在本次发布/健康日志；不得由容器健康状态推断。
+- [ ] V1.7 Telegram 命令、全部创建按钮和“不发布”草稿 E2E 因当前客户端锁屏未证明；不得由本地测试代替。

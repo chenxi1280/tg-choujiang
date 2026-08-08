@@ -138,4 +138,7 @@
 - V1.7 最终门禁中 Ruff、格式、代码度量、compileall、81 项全量测试、diff、Shell 与 Compose 均通过；末尾 Alembic 检查因当前 shell 未导出 `TEST_DATABASE_URL` 而未执行，需使用测试夹具同一默认库显式复跑。
 - 测试库 Alembic 已确认为 `2a4e91b6f703 (head)`，`alembic check` 返回无新增操作；最终 DOCX 已渲染为 40 页 PDF/PNG。系统未安装 ImageMagick `montage`，逐页 QA 联系表改由工作区 Pillow 生成。
 - V1.7 最终 DOCX 40 页已全部逐页检查：中文、表格、标题、页眉页脚与新增第 35 节均完整，无裁切、重叠、空框或异常分页；阶段 43 完成。
+- V1.7 应用提交 `bf27e9f` 的 master Python Checks run `31265098350` 全部通过；release Deploy Production run `31265194548` 成功，生产 release 为 `20260808154605_bf27e9f`。
+- 独立 Production Health run `31265354364` 通过：app/worker 均 running+healthy，Alembic 为 `2a4e91b6f703 (head)`，未决投递、未投影确认、失败 Job 与失败 Update 均为 0。
+- 发布日志未打印容器 RestartCount 精确数值，且 Telegram 客户端仍处于锁屏状态；这两项保持未证明，不由健康检查或自动化测试替代。
 - 首次本地提交 `b043a01` 在检查报出合同文件两行行尾空格后仍生成；提交尚未推送，已清理并纳入 amend，未绕过远端质量门禁。

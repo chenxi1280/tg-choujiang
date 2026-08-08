@@ -325,3 +325,5 @@
 - 最终代码度量首次发现 3 个硬指标超限：bootstrap 构造函数 54 行、PersonalFlow 回调分派嵌套 6 层、开奖通知排队函数 52 行。它们是可机械拆分的职责混合，不需要放宽指标。
 - Alembic 往返已成功，但模型漂移检查发现票源列被扩为宽松 `VARCHAR(20)`，而非原生 Enum 的最大合法值长度是 12；应精确使用 `VARCHAR(12)`，让列宽、检查约束与模型枚举共同构成一致边界。
 - V1.7 最终文档字段已与代码统一：地区锁定字段使用 `region_editable_until`/`region_locked_until`；额外参与条件在发布时冻结 Telegram 解析事实；消息提示关闭不抑制关键结果或错误。
+- V1.7 生产发布事实：release run `31265194548` 成功，current 指向 `20260808154605_bf27e9f`，镜像为完整 SHA `bf27e9f256430cd560be430049b7543fb5298759`；独立健康 run `31265354364` 确认 app/worker running+healthy、Alembic `2a4e91b6f703 (head)`。
+- 本次发布/健康日志没有输出容器 RestartCount 精确计数；Telegram 客户端锁屏也阻断了发布后命令和创建链路 E2E，因此二者只标记为未证明，不推断成功。

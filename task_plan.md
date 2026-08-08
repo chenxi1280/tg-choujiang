@@ -49,8 +49,8 @@
 - [complete] 41. 实现用户资料、地区、参抽记录、完整创建字段与抽奖管理入口
 - [complete] 42. 实现封面、用户限制、参与条件、抽奖说明、人品加成和本项目开奖方式的交互闭环
 - [complete] 43. 完成自动化测试、静态检查、迁移检查与 DOCX 渲染验收
-- [in_progress] 44. 按 master -> release -> GitHub Actions 发布并核验线上版本与服务健康
-- [pending] 45. 在 Telegram 真实客户端验收命令、创建、管理与参与链路，发布动作使用“不发布”测试草稿
+- [complete] 44. 按 master -> release -> GitHub Actions 发布并核验线上版本与服务健康
+- [blocked] 45. 在 Telegram 真实客户端验收命令、创建、管理与参与链路，发布动作使用“不发布”测试草稿（客户端锁屏，发布后 Telegram E2E 未证明）
 
 ## 关键约束
 
