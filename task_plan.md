@@ -70,7 +70,7 @@
 - [complete] 62. 将自定义开奖时间提示改为按活动时区动态生成的未来示例
 - [complete] 63. 补齐故障、迁移和时间过期回归并执行完整质量门禁
 - [complete] 64. 提交 master、同步 release，并核验精确 SHA 的 GitHub Actions 发布结果
-- [in_progress] 65. 提交本轮确定性 V1.8 修复、推送 master/release，并核验精确 SHA 的 GitHub Actions 与生产健康
+- [complete] 65. 提交本轮确定性 V1.8 修复、推送 master/release，并核验精确 SHA 的 GitHub Actions 与生产健康
 
 ## 关键约束
 

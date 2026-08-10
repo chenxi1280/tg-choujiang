@@ -245,3 +245,8 @@
 - 上述规则页回归首次触发测试目录 RUF001 的全角括号检查；已统一为项目允许的 ASCII 括号，未放宽 lint 规则。
 - 发奖人 `@username` 路径复核发现 Bot API 不能把任意个人用户名直接作为 `getChat` 的权威输入；已改为从历史参与者取得候选用户 ID，再按 ID 回查 Telegram 当前私聊类型和当前用户名，两者一致才冻结，找不到时明确要求使用用户 ID。
 - 新增用户名候选大小写/去重数据库回归；最终完整回归为 141/141，通过 Python 子进程 60 秒硬超时。Ruff、代码度量、compileall、Compose、Alembic head/漂移和 `git diff --check` 同步通过。
+- 完整实现提交为 `f7a2a89df26276721982f6ec42c0be0cb670fc00`；`master` 的 Python Checks `31408141954` 中静态检查、迁移、141 项测试、Compose 与镜像构建均成功。
+- `release` 已严格快进到同一 SHA；Deploy Production `31408397531` 的 checks、镜像构建和不可变部署全部成功，生产迁移依次执行 `d4c8a1f2b903 -> e7a9c2d4f601 -> f8b0d3e5a712`。
+- 生产 release 已切换为 current；app/worker 均运行 `f7a2a89df26276721982f6ec42c0be0cb670fc00` 镜像并为 healthy。
+- 独立 Production Health `31408788873` 成功：app/worker 为 `running healthy`，Alembic 为 `f8b0d3e5a712 (head)`，脚本返回 `STATUS=HEALTHY`。
+- 修复后的 Telegram 真实客户端创建、规则、报名、满人触发和开奖 E2E 尚未执行；因此代码、CI、迁移、部署与运行健康为 `pass`，客户端业务链路仍为 `unproven`，不得混写为已验收。
