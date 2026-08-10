@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
@@ -8,6 +9,8 @@ from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import add_outbox
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import CampaignState, QualificationState, TicketSource
+from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.domain.public_refs import is_neutral_invite_link_name, new_invite_link_name
 from tg_lottery.domain.rules import CampaignRules, canonical_hash
 from tg_lottery.infrastructure.db import (
     Campaign,
@@ -53,8 +56,14 @@ class QualificationResult:
 
 
 class ParticipantService:
-    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+    def __init__(
+        self,
+        uow_factory: UnitOfWorkFactory,
+        *,
+        invite_name_factory: Callable[[], str] = new_invite_link_name,
+    ) -> None:
         self._uow_factory = uow_factory
+        self._invite_name_factory = invite_name_factory
 
     async def begin_registration(self, request: RegistrationRequest) -> RegistrationAttempt:
         async with self._uow_factory() as uow:
@@ -62,7 +71,7 @@ class ParticipantService:
                 select(Campaign).where(Campaign.id == request.campaign_id).with_for_update()
             )
             if not self._accepts_registration(campaign, request.observed_at):
-                raise ValueError("campaign is not accepting registrations")
+                raise UserFacingError("活动当前不接受报名")
             await self._validate_profile_requirements(uow.session, campaign, request)
             participant = await self._participant(uow.session, request)
             existing = await self._source_qualification_check(uow.session, participant.id)
@@ -238,13 +247,13 @@ class ParticipantService:
     ) -> None:
         rules = CampaignRules.model_validate(campaign.rules)
         if rules.username_required and not request.username:
-            raise ValueError("本抽奖要求设置 Telegram 用户名")
+            raise UserFacingError("本抽奖要求设置 Telegram 用户名")
         if not rules.allowed_regions:
             return
         profile = await session.get(UserProfile, request.user_id)
         if profile is None or profile.region not in rules.allowed_regions:
             allowed = "、".join(rules.allowed_regions)
-            raise ValueError(f"本抽奖仅限地区: {allowed}, 请先使用 /region 设置")
+            raise UserFacingError(f"本抽奖仅限地区: {allowed}, 请先使用 /region 设置")
 
     async def _ensure_invite_link(
         self, session: object, campaign: Campaign, participant: Participant
@@ -326,6 +335,9 @@ class ParticipantService:
         )
         if existing_link or existing_outbox:
             return
+        invite_name = self._invite_name_factory()
+        if not is_neutral_invite_link_name(invite_name):
+            raise ValueError("invite link name is invalid")
         add_outbox(
             session,
             operation="create_invite_link",
@@ -337,7 +349,7 @@ class ParticipantService:
                 "campaign_id": str(campaign.id),
                 "participant_id": str(participant.id),
                 "expire_at": campaign.cutoff_at.isoformat(),
-                "name": f"lot_{participant.id.hex[:20]}",
+                "name": invite_name,
             },
         )
 

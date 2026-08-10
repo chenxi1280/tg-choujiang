@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy import func, select
 
 from tg_lottery.application.user_profiles import UserProfileService
+from tg_lottery.domain.errors import RegionLockedError
 from tg_lottery.infrastructure.db import UserRegionChange
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 
@@ -15,12 +16,13 @@ async def test_region_edit_window_lock_cycle_and_audit(session_factory) -> None:
 
     first = await service.set_region(202, "河南", started_at)
     edited = await service.set_region(202, "北京", started_at + timedelta(minutes=4))
-    with pytest.raises(ValueError, match="地区已锁定"):
+    with pytest.raises(RegionLockedError) as error:
         await service.set_region(202, "上海", started_at + timedelta(minutes=6))
     renewed = await service.set_region(202, "上海", started_at + timedelta(days=30))
 
     assert first.region_selected_at == started_at
     assert edited.region == "北京"
+    assert error.value.locked_until == started_at + timedelta(days=30)
     assert renewed.region == "上海"
     async with session_factory() as session:
         changes = await session.scalar(select(func.count(UserRegionChange.id)))

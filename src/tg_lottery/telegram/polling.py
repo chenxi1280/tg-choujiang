@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from hashlib import sha256
 from typing import Any
-from uuid import UUID
 
 from aiogram import Bot
 from aiogram.enums import UpdateType
@@ -14,6 +13,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.campaign_references import resolve_campaign_reference
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import UpdateState
 from tg_lottery.infrastructure.db import BotRuntimeLease, PollingOffset, TelegramUpdate
@@ -98,7 +98,7 @@ class TelegramPollingAdapter:
                     update_id=update.update_id,
                     update_type=_update_type(update),
                     routing_chat_id=_routing_chat_id(update),
-                    routing_campaign_id=_routing_campaign_id(update),
+                    routing_campaign_id=await _routing_campaign_id(session, update),
                     event_at=_event_at(update, now),
                     payload=payload,
                     payload_hash=_payload_hash(payload),
@@ -230,23 +230,29 @@ def _routing_chat_id(update: Update) -> int | None:
     return int(message_chat.id) if message_chat is not None else None
 
 
-def _routing_campaign_id(update: Update) -> str | None:
+async def _routing_campaign_id(session: AsyncSession, update: Update) -> str | None:
+    reference = _routing_campaign_reference(update)
+    if reference is None:
+        return None
+    campaign = await resolve_campaign_reference(session, reference)
+    return str(campaign.id) if campaign else None
+
+
+def _routing_campaign_reference(update: Update) -> str | None:
     message = update.message
     if message is not None and message.chat.type == "private":
-        value = _uuid_suffix((message.text or "").strip(), "/start join_")
+        value = _reference_suffix((message.text or "").strip(), "/start join_")
         if value is not None:
             return value
     query = update.callback_query
-    return _uuid_suffix(query.data or "", "member:verify:") if query is not None else None
+    return _reference_suffix(query.data or "", "member:verify:") if query is not None else None
 
 
-def _uuid_suffix(value: str, prefix: str) -> str | None:
+def _reference_suffix(value: str, prefix: str) -> str | None:
     if not value.startswith(prefix):
         return None
-    try:
-        return str(UUID(value.removeprefix(prefix)))
-    except ValueError:
-        return None
+    reference = value.removeprefix(prefix)
+    return reference or None
 
 
 def _update_gap(next_offset: int | None, updates: Sequence[Update]) -> tuple[int, int] | None:

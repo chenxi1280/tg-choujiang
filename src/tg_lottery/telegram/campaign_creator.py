@@ -14,6 +14,7 @@ from tg_lottery.application.campaigns import CampaignService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.infrastructure.db import Group
 from tg_lottery.telegram.admin_authorization import verify_chat_admin
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
@@ -82,7 +83,7 @@ class CampaignCreator:
     ) -> dict[str, Any]:
         groups = await self._queries.admin_groups(user_id)
         if not groups:
-            raise ValueError("没有可管理的群，请先将机器人设为群管理员")
+            raise UserFacingError("没有可管理的群，请先将机器人设为群管理员")
         data = new_draft()
         if len(groups) == 1:
             data = _bind_group(data, groups[0])
@@ -135,7 +136,7 @@ class CampaignCreator:
             await handler(query, grant)
             return
         if not await self._settings.handle_grant(query, grant):
-            raise ValueError("创建操作不存在或已经失效")
+            raise UserFacingError("创建操作不存在或已经失效")
 
     async def _show_groups(self, query: CallbackQuery, _: CallbackGrant) -> None:
         await self._set_state(query, "draft:idle", guided=False)
@@ -146,7 +147,7 @@ class CampaignCreator:
         await verify_chat_admin(self._bot, chat_id, query.from_user.id)
         group = await self._queries.group_by_chat_id(chat_id)
         if group is None:
-            raise ValueError("活动群不存在")
+            raise UserFacingError("活动群不存在")
         data = _bind_group(await self._required_session(query.from_user.id), group)
         await self._sessions.set(query.from_user.id, "draft:idle", data)
         if data.get("guided") and not data.get("title"):
@@ -177,7 +178,7 @@ class CampaignCreator:
     async def _receive_prize_name(self, message: Message, data: dict[str, Any]) -> None:
         name = (message.text or "").strip()
         if not 1 <= len(name) <= 120:
-            raise ValueError("奖品名称长度必须为 1–120 字")
+            raise UserFacingError("奖品名称长度必须为 1–120 字")
         updated = data | {"pending_prize_name": name}
         await self._sessions.set(_user(message).id, "draft:prize_count", updated)
         await self._edit_from_text(
@@ -210,7 +211,7 @@ class CampaignCreator:
     async def _receive_title(self, message: Message, data: dict[str, Any]) -> None:
         title = (message.text or "").strip()
         if not 1 <= len(title) <= 80:
-            raise ValueError("抽奖标题长度必须为 1–80 字")
+            raise UserFacingError("抽奖标题长度必须为 1–80 字")
         updated = data | {"title": title}
         await self._sessions.set(_user(message).id, "draft:idle", updated)
         if updated.get("guided") and not updated.get("draw_at"):
@@ -300,12 +301,12 @@ class CampaignCreator:
             chat = await self._bot.get_chat(ref)
             member = await self._bot.get_chat_member(chat.id, self._bot.id)
         except TelegramAPIError as exc:
-            raise ValueError(f"无法验证参与条件 {ref}: {exc}") from exc
+            raise UserFacingError("无法验证其中一个参与条件，请确认机器人权限后重试") from exc
         if str(member.status) not in {"administrator", "creator"}:
-            raise ValueError(f"机器人必须是参与条件 {ref} 的管理员")
+            raise UserFacingError("机器人必须是每个参与条件群/频道的管理员")
         return {
             "id": chat.id,
-            "title": chat.title or chat.full_name or str(chat.id),
+            "title": chat.title or chat.full_name or "未命名群组/频道",
             "type": str(chat.type),
             "username": chat.username,
         }
@@ -389,7 +390,7 @@ class CampaignCreator:
     async def _required_session(self, user_id: int) -> dict[str, Any]:
         session = await self._sessions.get(user_id)
         if session is None or not session.state.startswith("draft:"):
-            raise ValueError("创建草稿已过期，请发送 /new 重新创建")
+            raise UserFacingError("创建草稿已过期，请发送 /new 重新创建")
         return dict(session.data)
 
     async def _render_text(

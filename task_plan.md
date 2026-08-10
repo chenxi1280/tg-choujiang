@@ -51,6 +51,25 @@
 - [complete] 43. 完成自动化测试、静态检查、迁移检查与 DOCX 渲染验收
 - [complete] 44. 按 master -> release -> GitHub Actions 发布并核验线上版本与服务健康
 - [blocked] 45. 在 Telegram 真实客户端验收命令、创建、管理与参与链路，发布动作使用“不发布”测试草稿（客户端锁屏，发布后 Telegram E2E 未证明）
+- [complete] 46. 第二轮只读核对参考 Bot、V1.7 合同、当前代码和测试覆盖，确认 3 个 P0 与后续差距
+- [complete] 47. 修订 V1.8 对齐合同与验收清单，纠正消息提示、人品加成、默认值和管理入口语义
+- [pending] 48. 修复创建器安全回调、逐步创建、参与条件累加、身份解析和发布卡交互
+- [pending] 49. 修复开奖前多群资格复核、满人触发持久化与 30 天中午兜底
+- [pending] 50. 实现参考 Bot 的人品积分、兑换票、排行/规则/管理审计与延迟删除提示
+- [pending] 51. 补齐抽奖管理、客户等级与导航/精选推送门槛能力，并完成迁移与自动化回归
+- [pending] 52. 执行静态检查、60 秒全量测试、迁移往返/漂移与真实 Telegram 不发布 E2E 验收
+- [complete] 53. 从用户提供的 Telegram 旧消息取证公开卡片的 UTC ISO 时间与完整快照哈希泄露
+- [complete] 54. 先修订公开投影合同，再统一活动卡/开奖结果的最终展示边界并保留内部快照审计事实
+- [complete] 55. 增加新旧载荷兼容回归，执行 Ruff、代码度量与 60 秒全量测试
+- [complete] 56. 盘点全部 Telegram 发送、编辑、回调提示和异常回复路径，建立公开技术字段泄露清单
+- [complete] 57. 把统一公开投影规则写入 V1.8 合同与验收清单，明确允许显示的业务标识和禁止字段
+- [complete] 58. 在最终展示边界统一时间、状态、标识和错误文案，并为每类确认问题增加回归
+- [complete] 59. 执行 Ruff、代码度量、60 秒全量测试及 V1.8 DOCX 重建与视觉/结构验收
+- [complete] 60. 修复 Outbox 本地投影与 Gateway 开始标记的事务边界
+- [complete] 61. 保护 Campaign 公开引用迁移，拒绝不可逆 downgrade
+- [complete] 62. 将自定义开奖时间提示改为按活动时区动态生成的未来示例
+- [complete] 63. 补齐故障、迁移和时间过期回归并执行完整质量门禁
+- [in_progress] 64. 提交 master、同步 release，并核验精确 SHA 的 GitHub Actions 发布结果
 
 ## 关键约束
 
@@ -61,6 +80,7 @@
 - 生产应用代码只通过 GitHub Actions 发布；SSH 只用于只读核验和必要的非代码环境配置。
 - 发布成功、服务健康与 Telegram 业务完成分别取证，不互相替代。
 - 所有 PRD 明示规则均进入验收清单，不以 MVP 名义静默删减。
+- 公开 Telegram 文案与内部审计事实分层：不可变快照及完整哈希保留在数据库/Outbox，群消息不得直接展示内部校验值。
 
 ## 错误记录
 
@@ -109,3 +129,9 @@
 | 最终门禁假定 shell 已导出 `TEST_DATABASE_URL` | 1 | 前置门禁全部通过；读取测试夹具默认连接后，以同一测试库显式执行 Alembic 漂移检查 |
 | 系统未安装 ImageMagick `montage` | 1 | PDF 与逐页 PNG 已成功生成；使用工作区 Pillow 只做 QA 联系表拼接，不修改交付文档 |
 | 首次提交命令未设置失败即停，`diff --cached --check` 报两行 Markdown 行尾空格后仍提交 | 1 | 提交尚未推送；清除行尾空格、严格复查并 amend 本地提交 |
+| V1.8 增量 DOCX 的 canonical 隔离渲染器再次缺少中文字形 | 1 | 明确拒绝该渲染结果；使用真实 macOS 字体环境和唯一 LibreOffice profile 重渲染 58 页并逐页检查，未修改系统或源模板 |
+| DOCX 内容探针首次使用了与合同不完全一致的预期短语 | 1 | 保留失败为显式校验信号；改按文档实际合同原文核对 R-P1-09、公开 snapshot_hash 禁止项与内部 Outbox 保留项 |
+| 新增 GatewayRequest 文件首次 Ruff format check 报一处可折叠换行 | 1 | 使用项目 Ruff formatter 做机械格式化，再次执行全仓格式、规则、代码度量与测试门禁 |
+| 会话恢复前误调用不存在的占位 Python 路径 `.venv-placeholder` | 1 | 调用被捕获且未改动文件；立即改用系统 `python3` 执行 planning-with-files 的真实 `session-catchup.py` |
+| Alembic 最终复核首次未提供测试库连接，命中占位密码 | 1 | 未修改数据库；按测试夹具的 PostgreSQL 连接显式重跑，确认 `d4c8a1f2b903 (head)` 且 `alembic check` 无新增操作 |
+| 最终指纹复核首次误用不存在的 V1.7 文件后缀“对齐版” | 1 | 通过 `rg --files doc` 解析真实文件名“完整对标版”，重新核对 V1.7/V1.8 SHA 与交付文件大小 |

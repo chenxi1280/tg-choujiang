@@ -1,13 +1,14 @@
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from uuid import UUID
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from tg_lottery.infrastructure.db import InviteLink, TelegramOutbox
+from tg_lottery.infrastructure.db import InviteLink
 from tg_lottery.telegram.crypto import SecretCipher
+from tg_lottery.telegram.gateway_requests import GatewayRequest
+from tg_lottery.telegram.public_projection import format_public_time
 
 
 @dataclass(frozen=True)
@@ -24,7 +25,7 @@ class TelegramGateway:
 
     async def execute(
         self,
-        outbox: TelegramOutbox,
+        outbox: GatewayRequest,
         invite_link: InviteLink | None = None,
     ) -> GatewayResult:
         handlers = {
@@ -42,26 +43,17 @@ class TelegramGateway:
         return await handler(outbox, invite_link)
 
     async def _send_campaign_card(
-        self, outbox: TelegramOutbox, _: InviteLink | None
+        self, outbox: GatewayRequest, _: InviteLink | None
     ) -> GatewayResult:
         payload = outbox.payload
-        deep_link = f"https://t.me/{payload['bot_username']}?start=join_{payload['campaign_id']}"
+        deep_link = _campaign_deep_link(payload)
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="立即报名", url=deep_link)],
                 [InlineKeyboardButton(text="查看活动规则", url=deep_link)],
             ]
         )
-        text = (
-            f"🎁 {payload['name']}\n\n"
-            f"中奖名额（共 {payload['total_winners']} 人）:\n{_prize_lines(payload)}\n\n"
-            f"截止时间: {payload['cutoff_at']}\n"
-            f"开奖时间: {payload['draw_at']}\n\n"
-            f"{_campaign_draw_mode(payload)}\n"
-            f"发奖人员: {_campaign_issuer(payload)}\n"
-            f"{_campaign_requirements(payload)}\n"
-            f"{_campaign_description(payload)}"
-        )
+        text = _campaign_card_text(payload)
         cover = payload.get("presentation", {}).get("cover_file_id")
         if cover:
             message = await self._bot.send_photo(
@@ -77,7 +69,7 @@ class TelegramGateway:
         )
 
     async def _edit_campaign_card_cancelled(
-        self, outbox: TelegramOutbox, _: InviteLink | None
+        self, outbox: GatewayRequest, _: InviteLink | None
     ) -> GatewayResult:
         payload = outbox.payload
         message_id = int(payload["message_id"])
@@ -98,7 +90,7 @@ class TelegramGateway:
         return GatewayResult(remote_result=remote_result, remote_message_id=message_id)
 
     async def _create_invite_link(
-        self, outbox: TelegramOutbox, _: InviteLink | None
+        self, outbox: GatewayRequest, _: InviteLink | None
     ) -> GatewayResult:
         payload = outbox.payload
         link = await self._bot.create_chat_invite_link(
@@ -115,7 +107,7 @@ class TelegramGateway:
         )
 
     async def _send_invite_link(
-        self, outbox: TelegramOutbox, invite_link: InviteLink | None
+        self, outbox: GatewayRequest, invite_link: InviteLink | None
     ) -> GatewayResult:
         if invite_link is None or invite_link.encrypted_url is None:
             raise ValueError("send_invite_link requires a stored encrypted invite link")
@@ -134,7 +126,7 @@ class TelegramGateway:
         )
 
     async def _revoke_invite_link(
-        self, outbox: TelegramOutbox, invite_link: InviteLink | None
+        self, outbox: GatewayRequest, invite_link: InviteLink | None
     ) -> GatewayResult:
         if invite_link is None or invite_link.encrypted_url is None:
             raise ValueError("revoke_invite_link requires a stored encrypted invite link")
@@ -146,36 +138,18 @@ class TelegramGateway:
         return GatewayResult(remote_result=result.model_dump(mode="json", exclude_none=True))
 
     async def _send_draw_result(
-        self, outbox: TelegramOutbox, _: InviteLink | None
+        self, outbox: GatewayRequest, _: InviteLink | None
     ) -> GatewayResult:
-        winners = outbox.payload.get("winners", [])
-        lines = [f"🏆 {outbox.payload['campaign_name']} 开奖结果"]
-        if winners:
-            for item in winners:
-                lines.append(
-                    f"• 第{item['prize_position']}顺位 {item['prize_name']}"
-                    f"（名额 {item['prize_slot_no']}）: {item['display_name']}"
-                )
-        else:
-            lines.append("本期没有符合条件的中奖候选人。")
-        undistributed = outbox.payload.get("undistributed", [])
-        if undistributed:
-            lines.append("未分配名额:")
-            for item in undistributed:
-                lines.append(
-                    f"• 第{item['prize_position']}顺位 {item['prize_name']}: {item['count']} 人"
-                )
-        lines.append(f"快照: {outbox.payload['snapshot_hash']}")
-        if outbox.payload.get("extended_tips"):
-            lines.append("结果基于冻结资格与票数快照，可按快照标识复核。")
-        message = await self._bot.send_message(outbox.recipient_chat_id, "\n".join(lines))
+        message = await self._bot.send_message(
+            outbox.recipient_chat_id, _draw_result_text(outbox.payload)
+        )
         return GatewayResult(
             remote_result=message.model_dump(mode="json", exclude_none=True),
             remote_message_id=message.message_id,
         )
 
     async def _send_winner_notice(
-        self, outbox: TelegramOutbox, _: InviteLink | None
+        self, outbox: GatewayRequest, _: InviteLink | None
     ) -> GatewayResult:
         payload = outbox.payload
         text = (
@@ -194,9 +168,54 @@ class TelegramGateway:
         )
 
 
-def invite_link_id(outbox: TelegramOutbox) -> UUID | None:
-    value = outbox.payload.get("invite_link_id")
-    return UUID(str(value)) if value else None
+def _campaign_deep_link(payload: dict[str, Any]) -> str:
+    return f"https://t.me/{payload['bot_username']}?start=join_{payload['campaign_ref']}"
+
+
+def _campaign_card_text(payload: dict[str, Any]) -> str:
+    timezone = payload.get("timezone")
+    if not timezone:
+        raise ValueError("campaign card timezone is required")
+    cutoff = format_public_time(str(payload["cutoff_at"]), str(timezone))
+    draw = format_public_time(str(payload["draw_at"]), str(timezone))
+    return (
+        f"🎁 {payload['name']}\n\n"
+        f"中奖名额（共 {payload['total_winners']} 人）:\n{_prize_lines(payload)}\n\n"
+        f"报名截止: {cutoff}\n"
+        f"开奖时间: {draw}\n\n"
+        f"{_campaign_draw_mode(payload)}\n"
+        f"发奖人员: {_campaign_issuer(payload)}\n"
+        f"{_campaign_requirements(payload)}\n"
+        f"{_campaign_description(payload)}"
+    )
+
+
+def _draw_result_text(payload: dict[str, Any]) -> str:
+    lines = [f"🏆 {payload['campaign_name']} 开奖结果"]
+    _append_winners(lines, payload.get("winners", []))
+    _append_undistributed(lines, payload.get("undistributed", []))
+    if payload.get("extended_tips"):
+        lines.append("本次结果按开奖时冻结的报名资格和抽奖票计算。")
+    return "\n".join(lines)
+
+
+def _append_winners(lines: list[str], winners: list[dict[str, Any]]) -> None:
+    if not winners:
+        lines.append("本期没有符合条件的中奖候选人。")
+        return
+    for item in winners:
+        lines.append(
+            f"• 第{item['prize_position']}顺位 {item['prize_name']}"
+            f"（名额 {item['prize_slot_no']}）: {item['display_name']}"
+        )
+
+
+def _append_undistributed(lines: list[str], items: list[dict[str, Any]]) -> None:
+    if not items:
+        return
+    lines.append("未分配名额:")
+    for item in items:
+        lines.append(f"• 第{item['prize_position']}顺位 {item['prize_name']}: {item['count']} 人")
 
 
 def _prize_lines(payload: dict[str, Any]) -> str:

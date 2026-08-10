@@ -74,13 +74,11 @@ async def test_create_and_publish_freezes_rules_and_schedules_full_lifecycle(
         )
         assert outbox.payload["total_winners"] == 1
         assert outbox.payload["prizes"][0]["winner_count"] == 1
-        zone = ZoneInfo(stored.timezone)
-        assert outbox.payload["cutoff_at"] == stored.cutoff_at.astimezone(zone).strftime(
-            "%Y-%m-%d %H:%M"
-        )
-        assert outbox.payload["draw_at"] == stored.draw_at.astimezone(zone).strftime(
-            "%Y-%m-%d %H:%M"
-        )
+        assert outbox.payload["cutoff_at"] == stored.cutoff_at.isoformat()
+        assert outbox.payload["draw_at"] == stored.draw_at.isoformat()
+        assert outbox.payload["timezone"] == stored.timezone
+        assert outbox.payload["campaign_ref"] == stored.public_ref
+        assert stored.public_ref != str(stored.id)
 
 
 async def test_activity_awards_one_daily_ticket_and_rejects_duplicates(

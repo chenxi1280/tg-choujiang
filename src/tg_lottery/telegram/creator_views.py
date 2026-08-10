@@ -7,9 +7,9 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from tg_lottery.telegram.draft_config import (
     ACTIVITY_PRESETS,
     INVITE_PRESETS,
-    format_local,
     missing_fields,
 )
+from tg_lottery.telegram.public_projection import format_public_time
 
 ButtonRows = list[list[tuple[str, str]]]
 
@@ -120,7 +120,8 @@ def _draw_text(data: dict[str, Any]) -> str:
         target = data.get("participant_target") or "【等待设置】"
         return f"满 {target} 人开奖（30 天兜底）"
     timezone = str(data.get("timezone") or "Asia/Shanghai")
-    return format_local(str(data.get("draw_at") or ""), timezone, waiting="【等待设置】")
+    value = str(data.get("draw_at") or "")
+    return format_public_time(value, timezone) if value else "【等待设置】"
 
 
 def _rule_summary(data: dict[str, Any]) -> str:

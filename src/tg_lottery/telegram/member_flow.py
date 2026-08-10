@@ -15,6 +15,7 @@ from tg_lottery.application.participants import (
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import QualificationState
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 
 
@@ -35,14 +36,14 @@ class MemberFlow:
     async def register(
         self,
         message: Message,
-        campaign_id: UUID,
+        campaign_reference: str | UUID,
         *,
         user: User | None = None,
         observed_at: datetime | None = None,
     ) -> None:
-        campaign = await self._queries.campaign(campaign_id)
+        campaign = await self._queries.campaign_by_reference(campaign_reference)
         if campaign is None:
-            raise ValueError("活动不存在或已经失效")
+            raise UserFacingError("活动不存在或已经失效")
         user = user or _required_user(message)
         attempt = await self._participants.begin_registration(
             _registration_request(campaign.id, user, observed_at or message.date)
@@ -65,7 +66,7 @@ class MemberFlow:
                 [
                     InlineKeyboardButton(
                         text="验证资格",
-                        callback_data=f"member:verify:{campaign.id}",
+                        callback_data=f"member:verify:{campaign.public_ref}",
                     )
                 ]
             ]

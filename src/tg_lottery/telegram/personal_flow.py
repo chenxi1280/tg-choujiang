@@ -4,6 +4,11 @@ from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.telegram.creator_views import main_keyboard
+from tg_lottery.telegram.public_projection import (
+    campaign_state_text,
+    format_public_time,
+    qualification_state_text,
+)
 
 REGIONS = (
     "北京",
@@ -121,8 +126,9 @@ class PersonalFlow:
             await message.answer("您未参与任何抽奖")
             return
         lines = [
-            f"• {row.name}｜{row.state.value}｜资格 {row.qualification.value}｜"
-            f"{row.tickets} 票｜开奖 {row.draw_at:%Y-%m-%d %H:%M}"
+            f"• {row.name}｜{campaign_state_text(row.state)}｜"
+            f"资格 {qualification_state_text(row.qualification)}｜{row.tickets} 票｜"
+            f"开奖 {format_public_time(row.draw_at, row.timezone)}"
             for row in rows
         ]
         await message.answer("🎟 我参加的抽奖\n\n" + "\n".join(lines))
@@ -136,7 +142,7 @@ class PersonalFlow:
         )
 
     async def show_user_id(self, message: Message) -> None:
-        await message.answer(f"你的用户ID: {_user(message).id}")
+        await message.answer(f"你的 Telegram 用户 ID：{_user(message).id}")
 
     async def _show_created(self, message: Message, category: str) -> None:
         campaigns = await self._queries.created_campaigns(_user(message).id, category)
@@ -149,7 +155,8 @@ class PersonalFlow:
             )
             return
         lines = [
-            f"• {item.name}｜{item.state.value}｜{item.draw_at:%Y-%m-%d %H:%M}"
+            f"• {item.name}｜{campaign_state_text(item.state)}｜"
+            f"{format_public_time(item.draw_at, item.timezone)}"
             for item in campaigns
         ]
         await message.answer(f"🎁 {title}\n\n" + "\n".join(lines))

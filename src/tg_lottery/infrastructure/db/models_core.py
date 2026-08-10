@@ -21,6 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tg_lottery.domain.enums import CampaignState, QualificationState, UpdateState
+from tg_lottery.domain.public_refs import CAMPAIGN_PUBLIC_REF_LENGTH
 from tg_lottery.infrastructure.db.base import (
     Base,
     CreatedAtMixin,
@@ -121,6 +122,7 @@ class UserRegionChange(Base, UuidPkMixin, CreatedAtMixin):
 class Campaign(Base, UuidPkMixin, TimestampMixin):
     __tablename__ = "campaigns"
     __table_args__ = (
+        UniqueConstraint("public_ref", name="uq_campaigns_public_ref"),
         Index(
             "uq_campaigns_group_nonterminal",
             "group_id",
@@ -130,6 +132,13 @@ class Campaign(Base, UuidPkMixin, TimestampMixin):
     )
 
     group_id: Mapped[UUID] = mapped_column(ForeignKey("groups.id", ondelete="RESTRICT"))
+    public_ref: Mapped[str] = mapped_column(
+        String(CAMPAIGN_PUBLIC_REF_LENGTH),
+        nullable=False,
+        server_default=text(
+            "rtrim(translate(encode(uuid_send(gen_random_uuid()), 'base64'), '+/', '-_'), '=')"
+        ),
+    )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     state: Mapped[CampaignState] = mapped_column(
         enum_type(CampaignState, "campaign_state"), default=CampaignState.DRAFT, nullable=False

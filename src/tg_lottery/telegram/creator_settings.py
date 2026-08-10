@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Any
 
 from aiogram.types import CallbackQuery, Message
@@ -10,6 +11,7 @@ from tg_lottery.application.admin_sessions import AdminSessionService
 from tg_lottery.application.callback_tokens import CallbackGrant
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
 from tg_lottery.telegram.creator_schedule import positive_int, quick_draw_at, validate_draw_time
 from tg_lottery.telegram.creator_views import (
@@ -24,6 +26,7 @@ from tg_lottery.telegram.draft_config import (
     parse_draw_at,
 )
 from tg_lottery.telegram.personal_flow import REGIONS
+from tg_lottery.telegram.public_projection import public_timezone_label
 
 Handler = Callable[[CallbackQuery, CallbackGrant], Awaitable[None]]
 TextHandler = Callable[[Message, dict[str, Any]], Awaitable[None]]
@@ -123,7 +126,7 @@ class CreatorSettings:
         await self._render(
             query,
             data=data,
-            text=f"🕒 回复开奖时间\n\n格式：{LOCAL_TIME_FORMAT}",
+            text=custom_draw_prompt(str(data["timezone"])),
             rows=_back_rows(),
         )
 
@@ -184,7 +187,7 @@ class CreatorSettings:
 
     async def _receive_cover(self, message: Message, data: dict[str, Any]) -> None:
         if not message.photo:
-            raise ValueError("封面必须发送 Telegram 图片")
+            raise UserFacingError("封面必须发送 Telegram 图片")
         await self._dashboard_from_message(
             message, data | {"cover_file_id": message.photo[-1].file_id}
         )
@@ -219,7 +222,7 @@ class CreatorSettings:
         text = (message.text or "").strip()
         regions = [] if text == "全国" else _split_values(text)
         if len(regions) > 3 or any(region not in REGIONS for region in regions):
-            raise ValueError("地区必须是省级选项且最多 3 个")
+            raise UserFacingError("地区必须是省级选项且最多 3 个")
         await self._dashboard_from_message(message, data | {"allowed_regions": regions})
 
     async def _edit_participation(self, query: CallbackQuery, _: CallbackGrant) -> None:
@@ -234,7 +237,7 @@ class CreatorSettings:
         text = (message.text or "").strip()
         values = [] if text == "无" else _parse_chat_refs(text)
         if len(values) > MAX_REQUIRED_CHATS:
-            raise ValueError(f"额外参与条件最多 {MAX_REQUIRED_CHATS} 个")
+            raise UserFacingError(f"额外参与条件最多 {MAX_REQUIRED_CHATS} 个")
         await self._dashboard_from_message(message, data | {"required_chat_refs": values})
 
     async def _edit_description(self, query: CallbackQuery, _: CallbackGrant) -> None:
@@ -255,7 +258,7 @@ class CreatorSettings:
     async def _receive_issuer(self, message: Message, data: dict[str, Any]) -> None:
         value = (message.text or "").strip()
         if not 1 <= len(value) <= 64:
-            raise ValueError("发奖人员长度必须为 1–64 字")
+            raise UserFacingError("发奖人员长度必须为 1–64 字")
         await self._dashboard_from_message(message, data | {"issuer": value, "issuer_name": value})
 
     async def _show_messages(self, query: CallbackQuery, _: CallbackGrant) -> None:
@@ -272,7 +275,7 @@ class CreatorSettings:
         current = await self._required_data(query.from_user.id)
         last_draft = await self._profiles.recent_last_draft(query.from_user.id, utcnow())
         if not last_draft:
-            raise ValueError("没有可载入的上次抽奖配置")
+            raise UserFacingError("没有可载入的上次抽奖配置")
         protected = {key: current[key] for key in ("panel_message_id", "creator_name")}
         await self._dashboard(query, last_draft | protected | {"guided": False})
 
@@ -287,7 +290,7 @@ class CreatorSettings:
     ) -> None:
         value = (message.text or "").strip()
         if not 1 <= len(value) <= limit:
-            raise ValueError(f"{label}长度必须为 1–{limit} 字")
+            raise UserFacingError(f"{label}长度必须为 1–{limit} 字")
         await self._dashboard_from_message(message, data | {key: value})
 
     async def _update(self, query: CallbackQuery, changes: dict[str, Any]) -> None:
@@ -313,7 +316,7 @@ class CreatorSettings:
     async def _required_data(self, user_id: int) -> dict[str, Any]:
         session = await self._sessions.get(user_id)
         if session is None or not session.state.startswith("draft:"):
-            raise ValueError("创建草稿已过期，请发送 /new 重新创建")
+            raise UserFacingError("创建草稿已过期，请发送 /new 重新创建")
         return dict(session.data)
 
     async def _render(
@@ -338,12 +341,18 @@ def _parse_chat_refs(value: str) -> list[int | str]:
         try:
             refs.append(int(item))
         except ValueError as exc:
-            raise ValueError("群/频道需填写公开用户名或数字 ID") from exc
+            raise UserFacingError("群/频道需填写公开用户名或数字 ID") from exc
     return list(dict.fromkeys(refs))
 
 
 def _split_values(value: str) -> list[str]:
     return [item.strip() for item in re.split(r"[,，、\s]+", value) if item.strip()]
+
+
+def custom_draw_prompt(timezone: str, *, now: datetime | None = None) -> str:
+    example = quick_draw_at("draft_draw_tomorrow", timezone, now=now)
+    label = public_timezone_label(timezone)
+    return f"🕒 回复开奖时间 ({label})\n\n例如: {example.strftime(LOCAL_TIME_FORMAT)}"
 
 
 def _message(query: CallbackQuery) -> Message:

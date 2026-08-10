@@ -17,11 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tg_lottery.application.campaign_notifications import add_cancelled_campaign_card
 from tg_lottery.application.records import add_outbox, utcnow
-from tg_lottery.domain.enums import (
-    CampaignState,
-    DeliveryCertainty,
-    OutboxState,
-)
+from tg_lottery.domain.enums import CampaignState, DeliveryCertainty, OutboxState
 from tg_lottery.infrastructure.db import (
     Campaign,
     DeliveryAttempt,
@@ -31,8 +27,14 @@ from tg_lottery.infrastructure.db import (
 )
 from tg_lottery.infrastructure.heartbeat import run_with_heartbeat
 from tg_lottery.telegram.crypto import SecretCipher
-from tg_lottery.telegram.gateway import GatewayResult, TelegramGateway, invite_link_id
-from tg_lottery.telegram.outbox_records import delivery_log_context, sanitized_remote_result
+from tg_lottery.telegram.gateway import GatewayResult, TelegramGateway
+from tg_lottery.telegram.gateway_requests import GatewayCall, build_gateway_call, invite_link_id
+from tg_lottery.telegram.outbox_payloads import InviteNameFactory, normalize_pending_invite_name
+from tg_lottery.telegram.outbox_records import (
+    add_delivery_attempt,
+    delivery_log_context,
+    sanitized_remote_result,
+)
 
 _CLAIM_LEASE_SECONDS = 120
 _LEASE_RENEW_INTERVAL_SECONDS = 30
@@ -55,6 +57,7 @@ class OutboxWorker:
         cipher: SecretCipher,
         lease_seconds: int = _CLAIM_LEASE_SECONDS,
         renew_interval_seconds: float = _LEASE_RENEW_INTERVAL_SECONDS,
+        invite_name_factory: InviteNameFactory | None = None,
     ) -> None:
         if lease_seconds <= 0 or not 0 < renew_interval_seconds < lease_seconds:
             raise ValueError("outbox lease renewal interval must be shorter than the lease")
@@ -64,6 +67,7 @@ class OutboxWorker:
         self._cipher = cipher
         self._lease_seconds = lease_seconds
         self._renew_interval_seconds = renew_interval_seconds
+        self._invite_name_factory = invite_name_factory
         self._logger = logging.getLogger(__name__)
 
     async def run_forever(self, stop: asyncio.Event) -> None:
@@ -86,10 +90,13 @@ class OutboxWorker:
         return True
 
     async def _deliver(self, outbox: TelegramOutbox) -> None:
+        call = await self._prepare_gateway_call(outbox)
+        if call is None:
+            return
         attempt_number = await self._mark_gateway_started(outbox.id)
         log_context = delivery_log_context(outbox, attempt_number)
         try:
-            result = await self._execute_gateway(outbox)
+            result = await self._execute_gateway(outbox.id, call)
         except TelegramRetryAfter as exc:
             await self._retry(outbox.id, attempt_number, exc)
             self._logger.warning(
@@ -132,11 +139,22 @@ class OutboxWorker:
                 extra=log_context | {"certainty": "confirmed"},
             )
 
-    async def _execute_gateway(self, outbox: TelegramOutbox) -> GatewayResult:
-        link = await self._load_link(outbox)
+    async def _prepare_gateway_call(self, outbox: TelegramOutbox) -> GatewayCall | None:
+        try:
+            return await build_gateway_call(self._session_factory, outbox)
+        except ValueError as exc:
+            attempt_number = await self._pre_accept_failed(outbox.id, None, exc)
+            self._logger.warning(
+                "Telegram delivery payload rejected before gateway",
+                extra=delivery_log_context(outbox, attempt_number)
+                | {"certainty": "explicit_rejection", "error_code": type(exc).__name__},
+            )
+            return None
+
+    async def _execute_gateway(self, outbox_id: UUID, call: GatewayCall) -> GatewayResult:
         return await run_with_heartbeat(
-            self._gateway.execute(outbox, link),
-            lambda: self._renew_claim(outbox.id),
+            self._gateway.execute(call.request, call.invite_link),
+            lambda: self._renew_claim(outbox_id),
             self._renew_interval_seconds,
         )
 
@@ -164,6 +182,7 @@ class OutboxWorker:
             )
             if row is None:
                 return None
+            normalize_pending_invite_name(row, self._invite_name_factory)
             row.state = OutboxState.CLAIMED
             row.lease_owner = self._owner_id
             row.lease_until = now + timedelta(seconds=self._lease_seconds)
@@ -198,9 +217,9 @@ class OutboxWorker:
     ) -> None:
         async with self._session_factory() as session, session.begin():
             row = await self._locked_owned_claim(session, outbox_id)
-            self._add_attempt(
+            add_delivery_attempt(
                 session,
-                row=row,
+                row,
                 attempt_number=attempt_number,
                 certainty=DeliveryCertainty.CONFIRMED,
                 remote_result=sanitized_remote_result(result.remote_result),
@@ -221,9 +240,9 @@ class OutboxWorker:
     async def _retry(self, outbox_id: UUID, attempt_number: int, exc: TelegramRetryAfter) -> None:
         async with self._session_factory() as session, session.begin():
             row = await self._locked_owned_claim(session, outbox_id)
-            self._add_attempt(
+            add_delivery_attempt(
                 session,
-                row=row,
+                row,
                 attempt_number=attempt_number,
                 certainty=DeliveryCertainty.EXPLICIT_REJECTION,
                 error_code="retry_after",
@@ -236,13 +255,20 @@ class OutboxWorker:
             row.lease_until = None
 
     async def _pre_accept_failed(
-        self, outbox_id: UUID, attempt_number: int, exc: Exception
-    ) -> None:
+        self, outbox_id: UUID, attempt_number: int | None, exc: Exception
+    ) -> int:
         async with self._session_factory() as session, session.begin():
             row = await self._locked_owned_claim(session, outbox_id)
-            self._add_attempt(
+            if attempt_number is None:
+                count = await session.scalar(
+                    select(func.count(DeliveryAttempt.id)).where(
+                        DeliveryAttempt.outbox_id == outbox_id
+                    )
+                )
+                attempt_number = int(count or 0) + 1
+            add_delivery_attempt(
                 session,
-                row=row,
+                row,
                 attempt_number=attempt_number,
                 certainty=DeliveryCertainty.EXPLICIT_REJECTION,
                 error_code=type(exc).__name__,
@@ -252,13 +278,14 @@ class OutboxWorker:
             row.last_error = str(exc)[:4000]
             row.lease_owner = None
             row.lease_until = None
+            return attempt_number
 
     async def _unknown(self, outbox_id: UUID, attempt_number: int, exc: Exception) -> None:
         async with self._session_factory() as session, session.begin():
             row = await self._locked_owned_claim(session, outbox_id)
-            self._add_attempt(
+            add_delivery_attempt(
                 session,
-                row=row,
+                row,
                 attempt_number=attempt_number,
                 certainty=DeliveryCertainty.UNKNOWN,
                 error_code=type(exc).__name__,
@@ -289,9 +316,9 @@ class OutboxWorker:
                         DeliveryAttempt.outbox_id == row.id
                     )
                 )
-                self._add_attempt(
+                add_delivery_attempt(
                     session,
-                    row=row,
+                    row,
                     attempt_number=int(count or 0) + 1,
                     certainty=DeliveryCertainty.UNKNOWN,
                     error_code="worker_lost_after_gateway_start",
@@ -432,16 +459,6 @@ class OutboxWorker:
             payload={"invite_link_id": str(link.id)},
         )
 
-    async def _load_link(self, outbox: TelegramOutbox) -> InviteLink | None:
-        link_id = invite_link_id(outbox)
-        if link_id is None:
-            return None
-        async with self._session_factory() as session:
-            link = await session.get(InviteLink, link_id)
-            if link:
-                session.expunge(link)
-            return link
-
     async def _required_link(self, session: AsyncSession, outbox: TelegramOutbox) -> InviteLink:
         link_id = invite_link_id(outbox)
         link = await session.get(InviteLink, link_id, with_for_update=True) if link_id else None
@@ -463,30 +480,6 @@ class OutboxWorker:
                 f"current_owner={row.lease_owner} state={row.state}"
             )
         return row
-
-    def _add_attempt(
-        self,
-        session: AsyncSession,
-        *,
-        row: TelegramOutbox,
-        attempt_number: int,
-        certainty: DeliveryCertainty,
-        error_code: str | None = None,
-        error_description: str | None = None,
-        remote_result: dict[str, object] | None = None,
-    ) -> None:
-        session.add(
-            DeliveryAttempt(
-                outbox_id=row.id,
-                attempt_number=attempt_number,
-                telegram_method=row.operation,
-                certainty=certainty,
-                error_code=error_code,
-                error_description=error_description,
-                remote_result=remote_result,
-                finished_at=utcnow(),
-            )
-        )
 
     async def _wait(self, stop: asyncio.Event) -> None:
         try:

@@ -327,3 +327,79 @@
 - V1.7 最终文档字段已与代码统一：地区锁定字段使用 `region_editable_until`/`region_locked_until`；额外参与条件在发布时冻结 Telegram 解析事实；消息提示关闭不抑制关键结果或错误。
 - V1.7 生产发布事实：release run `31265194548` 成功，current 指向 `20260808154605_bf27e9f`，镜像为完整 SHA `bf27e9f256430cd560be430049b7543fb5298759`；独立健康 run `31265354364` 确认 app/worker running+healthy、Alembic `2a4e91b6f703 (head)`。
 - 本次发布/健康日志没有输出容器 RestartCount 精确计数；Telegram 客户端锁屏也阻断了发布后命令和创建链路 E2E，因此二者只标记为未证明，不推断成功。
+
+## 2026-08-09 第二轮差距审计与继续开发边界
+
+- 当前审计基线为 master `b796108`、release `bf27e9f`，工作树在继续开发前干净；两分支相关 `src/` 产品代码一致。
+- P0-1：创建面板生成的 16 个 V1.7 callback action 未进入 `CREATOR_ACTIONS`，`draft_cover` 已动态复现 `ValueError: unknown callback action`；开奖方式两个按钮同样不可达，新抽奖无法完成。
+- P0-2：开奖前资格复核只观察 legacy `required_channel_id`，未复核主群和 `required_chat_ids`；报名后退群的原合格用户可能仍进入开奖快照。
+- P0-3：参考 Bot 与合同默认“人品加成关闭”，当前新草稿/领域默认 `standard`，会静默发活跃票和邀请票并改变权重。
+- 参考 Bot 的“消息提示”实测语义为“延迟删除参与完成提示”，包含同步删除口令、10/20/30 秒、1/5/10/30/60 分钟及不删除；当前合同和代码错误实现为“是否附加扩展说明”。
+- 参考 Bot 的“人品加成”是独立积分体系：有效消息累积人品、每日上限、按不同参与群成本兑换额外抽奖票、票数上限、查询/排行/规则、管理员增减与审计；当前三档票预设只实现了近似能力。
+- `/index` 应是可进入单活动的管理首页；当前分类仅输出文本，管理动作藏在未公开 `/menu`。发布卡“查看活动规则”与“立即报名”共用报名深链，点击规则有报名副作用。
+- 允许保留的唯一核心差异是抽取内核：继续使用票账本、不可变快照、顺位多奖品和 `sha256-weighted-v2`；调度、资格、交互与可见业务能力不属于该豁免。
+- Chronicle 于 2026-08-09T05:21Z 正常运行，但当前录屏 OCR 未命中此前参考 Bot 页面；本轮以刚完成的 Telegram 实机观察和已落盘逐屏事实为依据，不用过期画面补证。
+
+## 2026-08-10 V1.8 修复合同结论
+
+- 当前不能以 V1.7 的 81 项自动化和历史 `[x]` 宣称完整对标；V1.8 的 21 项需求全部从 `unproven` 起步，Telegram 客户端证据与本地/数据库/部署证据分层记录。
+- P0 发布阻断为：动作注册表与旧页面隔离、多群开奖复核、默认关闭人品、可执行加入路径、满人触发与本地中午兜底、发布 saga 幂等、资格聚合不短路。
+- P1/P2 覆盖参与条件累加、发奖人冻结、延迟删除、人品账本/兑换、`/index` 管理、规则零副作用、客户等级与推送、卡片状态、冻结投影、多奖品和创建交互一致性。
+- 参考 Bot 已确认“人品按群消息累积并受日上限约束”，但计分长度、每条分值、日上限、兑换成本及票上限没有直接证据；这些值必须通过配置确认，不能把猜测写进产品规则。
+- 修复 PRD 同时给出数据事实、迁移规则、事务边界、幂等键、失败恢复、安全隐私、验收矩阵和完成定义；后续实现不得用静默降级或健康检查替代业务完成事实。
+- 旧 `off/standard/active` 只属于 legacy 票制；旧非终态活动按冻结规则运行到终态，新活动使用独立的人品规则 revision，不转换历史票、不回填历史积分，也不允许 legacy 活动接收 `human_redeem`。
+- 验收清单的当前权威已统一为 V1.8：A-G 仅是 V1.3 基线历史、H 仅是 V1.7 历史实现证据、I 才是当前发布门禁，历史 `[x]` 不得覆盖 I 节未通过项。
+
+## 2026-08-10 公开消息技术字段修复
+
+- 用户提供的生产历史消息明确显示活动卡直接输出 `2026-08-08T03:20:00+00:00` / `2026-08-08T03:25:00+00:00`，开奖结果直接输出 64 位 `snapshot_hash`；这是公开展示投影问题，不是快照数据本身错误。
+- 当前 CampaignService 已把新活动时间预先格式化为活动时区的分钟字符串，但 TelegramGateway 仍直接拼接载荷，无法清理已排队的旧 ISO 载荷；最终发送边界必须再次规范化。
+- `DrawingService` 将完整快照哈希写入内部 Outbox，`TelegramGateway` 再把它拼入群消息。修复应只停止公开渲染，保留 `DrawSnapshot.snapshot_hash` 和内部 Outbox 载荷，避免破坏开奖可复算性。
+- 现有测试只检查活动卡/开奖结果载荷，没有 TelegramGateway 文案级回归；需要覆盖新载荷、旧 ISO 载荷、活动时区转换和公开结果不含完整哈希。
+- 最终实现按“内部事实不变、公开投影脱敏”分层：CampaignService 只提交 ISO instant 与冻结时区，TelegramGateway 负责本地化；DrawingService 仍提交完整 `snapshot_hash`，TelegramGateway 只输出业务结果和冻结依据说明。
+- 公开结果不再暴露完整快照哈希不影响开奖可复算性；数据库 DrawSnapshot、DrawRun/DrawRound 与内部 Outbox 仍是审计事实源。
+- 历史 ISO Outbox 不一定带 `timezone`；最终兼容路径必须从关联 Campaign 读取冻结时区。按配置默认值或 ISO 自带 UTC 直接展示都会产生静默时区错误，因此已改为精确读取持久化事实，缺失则显式失败。
+- 已发送的 Telegram 历史消息不在本次修复范围内；本地回归无法证明生产已切换到新渲染逻辑，必须保持 `unproven`，不能由 86 项自动化或 DOCX 验收替代。
+
+## 2026-08-10 公开投影统一审计边界
+
+- “类似问题”按数据边界定义为：内部存储正确，但最终 Telegram 文案直接暴露机器格式或工程实现细节，包括 ISO/UTC、哈希、UUID、内部数据库 ID、原始枚举/状态和异常原文。
+- 审计必须覆盖 Bot API 的 `send_message`、`send_photo` caption、`edit_message_text`、`edit_message_caption`、callback answer，以及由 Outbox 间接发送的所有操作；日志和内部审计字段不属于公开泄露。
+- 允许保留用户理解或业务操作必需的 Telegram user/chat ID，但必须有明确中文标签和用途；随机输入、请求哈希、快照哈希、账本主键和内部业务键不得公开。
+- 首轮确认问题 A：`admin_flow.py` 的活动列表、详情和状态变更回执直接展示 `CampaignState.value`，普通用户会看到 `running`、`paused`、`ready_to_draw` 等内部枚举值。
+- 首轮确认问题 B：`personal_flow.py` 的参抽记录和创建记录直接展示 `CampaignState.value`、`QualificationState.value`，并用无时区标签的 `%Y-%m-%d %H:%M` 输出数据库 datetime；既有原始枚举，也存在时区语义不明确。
+- 首轮确认问题 C：`update_handler.py` 把捕获的 `DomainError` / `ValueError` 原文直接拼成 `操作未完成: {exc}`；内部英文校验、callback action、UUID 或模型字段都可能通过这一通道泄露给用户。
+- `member_flow.py` 的群资格观测把 `chat_id:member_status` 保存为内部证据，但当前公开文案只输出中文业务状态，没有直接泄露该内部观测串；这一路暂时安全。
+- 创建流程的大部分文案已是中文业务语义；但 `draft_config.format_local()` 只输出 `YYYY-MM-DD HH:MM`，没有明确活动冻结时区，仍应并入统一公开时间格式。
+- `draft_config.panel_text()` 会直接展示 `required_channel_id`；需确认调用方，再迁移到可读群组名称或删除失效路径，不能把原始 chat ID 当作默认公开文案。
+- `creator_settings.py` 与若干回调流程存在英文内部异常（例如 callback message 不可访问）；当前全局异常处理会把这些原文回显给用户，属于同类技术字段泄露。
+- 统一修复需要集中提供：活动状态中文映射、资格状态中文映射、按冻结时区格式化的公开时间，以及保留完整日志但不回显内部实现细节的公开错误投影。
+- `ParticipatedCampaign` 查询 DTO 当前没有 `timezone`，因此个人参抽列表无法按活动冻结时区正确格式化；查询必须显式携带 `Campaign.timezone`，不能使用机器人默认时区替代。
+- 创建活动列表直接返回 `Campaign`，已具备冻结 `timezone`，可复用同一公开时间格式器；后台活动列表/详情/状态回执也可复用同一状态映射。
+- `campaign_creator._required_chat_record()` 把 Telegram API 异常原文拼进 `ValueError`；完整异常应留在异常链和日志，公开文案只说明哪个参与条件验证失败。
+- `panel_text()` 的生产调用搜索仅命中其定义和测试，当前主创建流程使用 `preview_text()`；应在确认无生产引用后删除这条旧公开路径及其过时测试，避免继续维护会泄露 chat ID 的死代码。
+- 当前 R-P1-09 已约束时间与快照哈希，但尚未明确覆盖公开状态/资格枚举和异常原文；本轮应把四类投影统一写入同一合同：时间、状态、标识、错误。
+- 上一轮 DOCX 模板蒸馏产物仍在 `/private/tmp/tg-choujiang-v18-prd.if7mly/artifact.md`，V1.7 参考渲染与样式证据也完整存在；重建前需再次核对参考 SHA，再复用该模板合同。
+- `AuthorizationDenied` 既承载中文可公开文案，也承载 callback token/管理员缓存等英文内部原因，因此不能按异常基类直接信任 `str(exc)`；需要单独的显式“可公开错误”类型。
+- `InvalidStateTransition`、`SettlementBlocked` 等 DomainError 明确包含状态枚举、blocker key 和内部模型语义；全局边界必须记录完整异常栈，但对用户只输出稳定的业务提示。
+- 地区锁定错误当前在应用层直接格式化数据库 datetime，既无活动/业务时区也无时区标签；应让异常携带锁定 instant，由 Telegram 公开投影使用机器人业务时区格式化。
+- Gateway 已有可用的中文时间逻辑，但它是私有函数并与活动卡耦合；应提取为共享公开投影模块，供 Gateway、个人列表、创建预览和错误提示一致复用。
+- 创建设置页面只显示参与条件数量，不回显用户输入的原始数字 ID；发布时冻结后的 `required_chats` 才进入正式卡，整体边界安全。
+- 但 `_required_chat_record()` 在 Telegram 没有可读标题时回退为 `str(chat.id)`，该值随后可能进入正式卡；回退文案应改为“未命名群组/频道”，ID 仅保留在内部冻结事实。
+- `/myid` 是用户主动查询自身 Telegram ID 的明确业务功能，可保留；callback_data、深链 payload 和内部 Outbox 标识不是消息正文，不按公开文案泄露处理。
+- 现有测试没有覆盖 `PersonalFlow` 的参抽/创建列表文案，也没有覆盖 `AdminFlow` 的状态按钮、状态回执与详情文本；这正是原始枚举长期未被发现的直接测试缺口。
+- `test_update_handler.py` 只验证路由，不验证异常公开投影与内部日志分离；需新增安全错误、内部 ValueError、授权失败和地区锁定时间四类边界回归。
+- `test_draft_config.py` 仍为无生产调用的 `panel_text()` 保留断言；删除死路径时应同步删除该过时展示测试，保留真正使用的 `preview_text()` 回归。
+- 独立复核确认 5 个追加问题：公开报名深链/验证按钮携带 Campaign UUID；Telegram 邀请链接名称截取 Participant UUID；未映射时区回显 IANA/UTC 技术标识；创建器展示 Python `strftime` 格式串；管理员开奖确认使用“数据库/独立送达”等实现术语。
+- Campaign UUID 深链属于已发布协议，修复必须新增不可反推主键的公开引用，同时继续只读兼容已发送的 `join_<UUID>` 链接；新消息和新验证按钮不得再生成 UUID 协议。
+- 邀请链接名称需要独立随机公开标签并持久化/冻结，不能仅在每次重试时重新随机，也不能改用另一张表的内部 UUID。
+- Campaign 只需新增一个不可变唯一公开引用，Participant 无需新增公开字段；入箱时把公开引用解析回内部 Campaign ID，可保持 `TelegramUpdate.routing_campaign_id` 与结算排空语义不变。
+- 新卡片的 Outbox 继续保留内部 `campaign_id` 用于投影，同时由 Gateway 请求构造器从 Campaign 权威记录注入公开引用；因此已排队的旧卡片也不会继续生成暴露 UUID 的新按钮。
+- 发布前复审确认 3 个阻断点：Campaign 卡片新增的本地数据库投影发生在 `gateway_started_at` 之后，失败会伪造远端不确定；`public_ref` downgrade 会丢失已发布引用映射；自定义时间示例固定为 2026-08-10，过期后成为必然失败的输入。
+- 修复边界必须保持远端事实语义：请求构造及本地校验在 Gateway 开始标记之前完成，仅 Bot API 调用进入“不确定结果”区间；迁移遇到任意 Campaign 时拒绝 downgrade；时间示例由活动冻结时区和可注入时钟计算。
+- 邀请链接随机名称在创建 durable Outbox 意图时生成并冻结于 payload，重试复用同一值，成功投影再原样保存到 `InviteLink.telegram_name`；无需提前创建带占位秘密的 InviteLink。
+- 合法但未配置中文标签的时区不能回显 `Europe/London` 或 `UTC`；应显示不含技术标识的“活动当地时间”，而权威 IANA 时区仍只保存在内部事实。
+- 最终交叉审计确认 legacy `create_invite_link` Outbox 是结构性遗漏：新报名已使用随机名称，但升级前的 `PENDING`/`RETRY_SCHEDULED`/未开始 Gateway 的过期领取仍可能保存 `lot_<Participant UUID 前缀>`。修复必须在领取锁内一次生成并持久化中性名称、同步重算 `request_hash`，让后续重试复用同一事实。
+- 已开始 Gateway 或进入 `UNKNOWN_HOLD` 的邀请意图不能净化名称，因为远端可能已经按旧名称创建成功；本地单边改名会制造事实分叉。当前实现明确保持原值并进入未知态，既有远端链接名称也不由迁移伪装成已修改。
+- 同一交叉审计确认主群注册仍使用 `event.chat.title or str(event.chat.id)`，该 Group.title 会进入创建者选择和预览；无标题时必须统一保存“未命名群组/频道”，chat ID 仅留作内部 Telegram 路由键。
+- Polling 需要分别回归 `member:verify:<public_ref>` 与 legacy `member:verify:<Campaign UUID>`，两者必须在持久化 Update 时解析为同一 `routing_campaign_id`，否则结算排空会漏掉截止前验证更新。

@@ -1,5 +1,4 @@
 import logging
-from uuid import UUID
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
@@ -15,6 +14,7 @@ from tg_lottery.domain.errors import DomainError
 from tg_lottery.telegram.admin_flow import AdminFlow
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.personal_flow import PersonalFlow
+from tg_lottery.telegram.public_projection import public_error_text
 
 
 class LotteryUpdateHandler:
@@ -88,7 +88,7 @@ class LotteryUpdateHandler:
             if text.startswith("/start"):
                 payload = text.partition(" ")[2]
                 if payload.startswith("join_"):
-                    await self._member_flow.register(message, UUID(payload.removeprefix("join_")))
+                    await self._member_flow.register(message, payload.removeprefix("join_"))
                 else:
                     await self._personal_flow.show_guide(message)
                 return
@@ -103,7 +103,7 @@ class LotteryUpdateHandler:
             if not await self._admin_flow.handle_text(message):
                 await self._admin_flow.show_main(message)
         except (DomainError, ValueError) as exc:
-            await message.answer(f"操作未完成: {exc}")
+            await self._send_operation_error(message, exc)
 
     async def _callback(self, query: CallbackQuery) -> None:
         await self._answer_callback(query)
@@ -112,7 +112,16 @@ class LotteryUpdateHandler:
         try:
             await self._dispatch_callback(query, query.data or "")
         except (DomainError, ValueError) as exc:
-            await query.message.answer(f"操作未完成: {exc}")
+            await self._send_operation_error(query.message, exc)
+
+    async def _send_operation_error(self, message: Message, exc: Exception) -> None:
+        self._logger.warning(
+            "Telegram operation rejected",
+            extra={"error_type": type(exc).__name__},
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+        text = public_error_text(exc, self._default_timezone)
+        await message.answer(f"操作未完成: {text}")
 
     async def _dispatch_callback(self, query: CallbackQuery, data: str) -> None:
         message = query.message
@@ -135,7 +144,7 @@ class LotteryUpdateHandler:
         if data.startswith("member:verify:"):
             await self._member_flow.register(
                 message,
-                UUID(data.removeprefix("member:verify:")),
+                data.removeprefix("member:verify:"),
                 user=query.from_user,
                 observed_at=utcnow(),
             )
@@ -222,7 +231,7 @@ class LotteryUpdateHandler:
         permissions = event.new_chat_member.model_dump(mode="json", exclude_none=True)
         await self._groups.sync_group(
             chat_id=event.chat.id,
-            title=event.chat.title or str(event.chat.id),
+            title=_public_chat_title(event.chat.title),
             timezone=self._default_timezone,
             permissions=permissions,
             admins=records,
@@ -235,6 +244,11 @@ def _is_member(member: object) -> bool:
     if status in {"member", "administrator", "creator"}:
         return True
     return status == "restricted" and bool(getattr(member, "is_member", False))
+
+
+def _public_chat_title(title: object) -> str:
+    value = str(title).strip() if title is not None else ""
+    return value or "未命名群组/频道"
 
 
 def _is_admin(member: object) -> bool:

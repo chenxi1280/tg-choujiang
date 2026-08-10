@@ -11,7 +11,7 @@ from tg_lottery.application.queries import QueryService
 from tg_lottery.domain.errors import AuthorizationDenied
 from tg_lottery.infrastructure.db import Group
 from tg_lottery.infrastructure.db.uow import UnitOfWork
-from tg_lottery.telegram.admin_flow import AdminFlow
+from tg_lottery.telegram.admin_flow import DRAW_CONFIRMATION_TEXT, AdminFlow
 
 
 class FakeAdminBot:
@@ -94,3 +94,9 @@ async def test_registered_group_migration_updates_chat_id(session_factory) -> No
         group = await session.scalar(select(Group))
         assert group.chat_id == -1005002
         assert group.migrated_from_chat_id == -5002
+
+
+def test_draw_confirmation_uses_business_language_only() -> None:
+    assert DRAW_CONFIRMATION_TEXT == "开奖结果已生成, 群公告和中奖通知正在发送。"
+    assert "数据库" not in DRAW_CONFIRMATION_TEXT
+    assert "独立送达" not in DRAW_CONFIRMATION_TEXT

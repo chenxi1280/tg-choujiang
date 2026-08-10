@@ -2,11 +2,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.draft_config import (
     campaign_input,
     missing_fields,
     new_draft,
-    panel_text,
     parse_draw_at,
 )
 
@@ -30,9 +30,6 @@ def test_new_draft_only_requires_three_simple_fields() -> None:
     data = new_draft(chat_id=-1001, group_title="测试群", timezone="Asia/Shanghai")
 
     assert missing_fields(data) == ("抽奖标题", "至少一个奖品", "开奖时间")
-    assert "只需设置标题、开奖时间和奖品" in panel_text(data)
-    assert "开奖前 5 分钟" in panel_text(data)
-    assert "系统自动" in panel_text(data)
 
 
 def test_single_local_draw_time_builds_internal_timeline_and_rules() -> None:
@@ -61,7 +58,7 @@ def test_publish_rejects_draw_without_settlement_window() -> None:
     data["draw_at"] = "2026-08-09T18:04:00+08:00"
     now = datetime(2026, 8, 9, 10, 0, tzinfo=UTC)
 
-    with pytest.raises(ValueError, match="至少需要晚于当前时间 5 分钟"):
+    with pytest.raises(UserFacingError, match="至少需要晚于当前时间 5 分钟"):
         campaign_input(data, now=now)
 
 

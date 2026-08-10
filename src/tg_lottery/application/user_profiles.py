@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from tg_lottery.application.ports import UnitOfWorkFactory
+from tg_lottery.domain.errors import RegionLockedError
 from tg_lottery.infrastructure.db import UserProfile, UserRegionChange
 
 REGION_EDIT_WINDOW = timedelta(minutes=5)
@@ -98,7 +99,9 @@ def _set_region(profile: UserProfile, region: str, now: datetime) -> None:
         profile.region_editable_until = now + REGION_EDIT_WINDOW
         profile.region_locked_until = now + REGION_LOCK_PERIOD
     elif not _within_edit_window(profile, now):
-        raise ValueError(f"地区已锁定, 请于 {profile.region_locked_until:%Y-%m-%d %H:%M} 后修改")
+        if profile.region_locked_until is None:
+            raise RuntimeError("locked region profile is missing region_locked_until")
+        raise RegionLockedError(profile.region_locked_until)
     profile.region = region
     profile.region_selected_at = now
 

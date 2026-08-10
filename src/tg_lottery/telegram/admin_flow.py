@@ -17,6 +17,9 @@ from tg_lottery.domain.enums import CampaignState, PrizeClaimState
 from tg_lottery.telegram.admin_authorization import verify_chat_admin
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_actions import CREATOR_ACTIONS
+from tg_lottery.telegram.public_projection import campaign_state_text
+
+DRAW_CONFIRMATION_TEXT = "开奖结果已生成, 群公告和中奖通知正在发送。"
 
 
 class AdminFlow:
@@ -73,7 +76,7 @@ class AdminFlow:
         buttons = [
             [
                 InlineKeyboardButton(
-                    text=f"{campaign.name} · {campaign.state.value}",
+                    text=f"{campaign.name} · {campaign_state_text(campaign.state)}",
                     callback_data=f"secure:{token}",
                 )
             ]
@@ -141,7 +144,7 @@ class AdminFlow:
             target=target,
             reason=reason,
         )
-        await _message(query).answer(f"活动状态已更新为 {target.value}。")
+        await _message(query).answer(f"活动状态已更新为{campaign_state_text(target)}。")
 
     async def _early_cutoff(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         campaign_id = _campaign_id(grant)
@@ -158,7 +161,7 @@ class AdminFlow:
         campaign_id = _campaign_id(grant)
         await self._verify_admin(campaign_id, query.from_user.id)
         await self._drawing.run(campaign_id, query.from_user.id)
-        await _message(query).answer("数据库中奖结果已生成；群公告和私聊通知正在独立送达。")
+        await _message(query).answer(DRAW_CONFIRMATION_TEXT)
 
     async def _mark_claimed(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         await self._verify_admin(_campaign_id(grant), query.from_user.id)
@@ -191,7 +194,7 @@ class AdminFlow:
         if campaign.state is CampaignState.DRAWN:
             buttons.extend(await self._claim_buttons(message, campaign_id, user_id))
         text = (
-            f"{campaign.name}\n状态: {campaign.state.value}\n"
+            f"{campaign.name}\n状态: {campaign_state_text(campaign.state)}\n"
             f"报名: {stats.participants}\n有效邀请: {stats.valid_invitations}\n"
             f"待验证邀请: {stats.pending_invitations}\n总票数: {stats.tickets}\n"
             f"送达: 已确认 {deliveries.confirmed} / 待处理 {deliveries.pending} / "

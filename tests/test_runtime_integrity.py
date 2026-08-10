@@ -3,13 +3,13 @@ import base64
 import os
 from datetime import UTC, datetime, timedelta
 from functools import partial
-from uuid import uuid4
 
 import pytest
 from aiogram.enums import UpdateType
 from aiogram.types import Update
 from sqlalchemy import func, select
 
+from tests.helpers import seed_campaign
 from tg_lottery.application.callback_tokens import CallbackRequest, CallbackTokenService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.request_context import bind_update_context
@@ -57,12 +57,20 @@ def _update(update_id: int, text: str = "/start") -> Update:
     )
 
 
-def test_private_registration_update_routes_to_campaign() -> None:
-    campaign_id = uuid4()
-    update = _update(9, f"/start join_{campaign_id}")
+async def test_private_registration_update_routes_public_and_legacy_refs_to_campaign(
+    session_factory,
+) -> None:
+    async with session_factory() as session, session.begin():
+        _, campaign, _ = await seed_campaign(session)
+        campaign_id = campaign.id
+        public_ref = campaign.public_ref
+    public_update = _update(9, f"/start join_{public_ref}")
+    legacy_update = _update(10, f"/start join_{campaign_id}")
 
-    assert _routing_chat_id(update) == 201
-    assert _routing_campaign_id(update) == str(campaign_id)
+    async with session_factory() as session:
+        assert _routing_chat_id(public_update) == 201
+        assert await _routing_campaign_id(session, public_update) == str(campaign_id)
+        assert await _routing_campaign_id(session, legacy_update) == str(campaign_id)
 
 
 class FakePollingBot:

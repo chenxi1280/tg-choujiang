@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.campaign_references import resolve_campaign_reference
 from tg_lottery.domain.enums import (
     CampaignState,
     InvitationState,
@@ -68,6 +69,7 @@ class ParticipatedCampaign:
     qualification: QualificationState
     tickets: int
     draw_at: datetime
+    timezone: str
 
 
 @dataclass(frozen=True)
@@ -142,6 +144,7 @@ class QueryService:
                         Participant.qualification_state,
                         func.coalesce(func.sum(TicketLedger.delta), 0),
                         Campaign.draw_at,
+                        Campaign.timezone,
                     )
                     .join(Participant, Participant.campaign_id == Campaign.id)
                     .outerjoin(TicketLedger, TicketLedger.participant_id == Participant.id)
@@ -152,8 +155,8 @@ class QueryService:
                 )
             ).all()
         return [
-            ParticipatedCampaign(name, state, qualification, int(tickets), draw_at)
-            for name, state, qualification, tickets, draw_at in rows
+            ParticipatedCampaign(name, state, qualification, int(tickets), draw_at, timezone)
+            for name, state, qualification, tickets, draw_at, timezone in rows
         ]
 
     async def created_campaigns(self, user_id: int, category: str) -> list[Campaign]:
@@ -172,6 +175,13 @@ class QueryService:
     async def campaign(self, campaign_id: UUID) -> Campaign | None:
         async with self._session_factory() as session:
             row = await session.get(Campaign, campaign_id)
+            if row:
+                session.expunge(row)
+            return row
+
+    async def campaign_by_reference(self, reference: str | UUID) -> Campaign | None:
+        async with self._session_factory() as session:
+            row = await resolve_campaign_reference(session, reference)
             if row:
                 session.expunge(row)
             return row

@@ -1,9 +1,11 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
 
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.campaign_creator import CampaignCreator
-from tg_lottery.telegram.creator_settings import _parse_chat_refs
+from tg_lottery.telegram.creator_settings import _parse_chat_refs, custom_draw_prompt
 from tg_lottery.telegram.personal_flow import _index_keyboard
 
 
@@ -33,7 +35,7 @@ def test_participation_refs_accept_public_username_and_numeric_id() -> None:
         "@public_group",
         -1003,
     ]
-    with pytest.raises(ValueError, match="公开用户名或数字 ID"):
+    with pytest.raises(UserFacingError, match="公开用户名或数字 ID"):
         _parse_chat_refs("invalid-name")
 
 
@@ -54,7 +56,7 @@ async def test_required_chats_are_resolved_deduplicated_and_frozen() -> None:
 async def test_required_chat_rejects_bot_without_admin_access() -> None:
     creator = _creator(RequiredChatBot(status="member"))
 
-    with pytest.raises(ValueError, match="必须是参与条件"):
+    with pytest.raises(UserFacingError, match="必须是每个参与条件"):
         await creator._required_chat_record("@public_group")
 
 
@@ -65,6 +67,15 @@ def test_index_keyboard_contains_real_group_and_channel_links() -> None:
 
     assert urls["添加到群组"] == "https://t.me/lottery_test_bot?startgroup=lottery"
     assert urls["添加到频道"] == "https://t.me/lottery_test_bot?startchannel=lottery"
+
+
+def test_custom_draw_prompt_uses_an_example_instead_of_a_python_format_string() -> None:
+    now = datetime(2026, 8, 10, 13, tzinfo=UTC)
+
+    prompt = custom_draw_prompt("Asia/Shanghai", now=now)
+
+    assert prompt == "🕒 回复开奖时间 (北京时间)\n\n例如: 2026-08-11 20:00"
+    assert "%Y" not in prompt
 
 
 def _creator(bot: RequiredChatBot) -> CampaignCreator:

@@ -12,6 +12,7 @@ from tg_lottery.application.participants import (
 )
 from tg_lottery.application.request_context import bind_update_context
 from tg_lottery.domain.enums import CampaignState, QualificationState, TicketSource
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import (
     Campaign,
@@ -31,7 +32,10 @@ async def test_registration_persists_pending_before_external_result(session_fact
             session, rules=CampaignRules(required_channel_id=-100999)
         )
         campaign_id = campaign.id
-    service = ParticipantService(partial(UnitOfWork, session_factory))
+    service = ParticipantService(
+        partial(UnitOfWork, session_factory),
+        invite_name_factory=lambda: "lottery_fixed_public",
+    )
     attempt = await service.begin_registration(_request(campaign_id, now))
     async with session_factory() as session:
         participant = await session.get(Participant, attempt.participant_id)
@@ -47,6 +51,9 @@ async def test_registration_persists_pending_before_external_result(session_fact
     async with session_factory() as session:
         participant = await session.get(Participant, attempt.participant_id)
         outbox_count = await session.scalar(select(func.count(TelegramOutbox.id)))
+        invite_outbox = await session.scalar(
+            select(TelegramOutbox).where(TelegramOutbox.operation == "create_invite_link")
+        )
         registration_tickets = await session.scalar(
             select(func.count(TicketLedger.id)).where(
                 TicketLedger.participant_id == attempt.participant_id,
@@ -57,6 +64,8 @@ async def test_registration_persists_pending_before_external_result(session_fact
         assert participant.ticket_total_cache == 1
         assert registration_tickets == 1
         assert outbox_count == 1
+        assert invite_outbox.payload["name"] == "lottery_fixed_public"
+        assert participant.id.hex[:20] not in invite_outbox.payload["name"]
 
 
 async def test_registration_after_cutoff_is_rejected(session_factory) -> None:
@@ -65,7 +74,7 @@ async def test_registration_after_cutoff_is_rejected(session_factory) -> None:
         _, campaign, _ = await seed_campaign(session, cutoff_at=cutoff)
         campaign_id = campaign.id
     service = ParticipantService(partial(UnitOfWork, session_factory))
-    with pytest.raises(ValueError, match="not accepting"):
+    with pytest.raises(UserFacingError, match="活动当前不接受报名"):
         await service.begin_registration(_request(campaign_id, datetime.now(UTC)))
 
 
@@ -145,9 +154,9 @@ async def test_registration_enforces_username_region_and_all_required_chats(
         display_name="成员二",
         observed_at=now,
     )
-    with pytest.raises(ValueError, match="Telegram 用户名"):
+    with pytest.raises(UserFacingError, match="Telegram 用户名"):
         await service.begin_registration(no_username)
-    with pytest.raises(ValueError, match="请先使用 /region"):
+    with pytest.raises(UserFacingError, match="请先使用 /region"):
         await service.begin_registration(_request(campaign_id, now))
     async with session_factory() as session, session.begin():
         session.add(UserProfile(user_id=202, region="河南", last_draft={}))
