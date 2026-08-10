@@ -216,3 +216,9 @@
 - 完整 111 项测试在 60 秒硬上限内通过；全仓 Ruff 格式/规则、代码度量、compileall、Compose、`git diff --check` 全部通过。
 - 已在明确核验为 `lottery_test` 的本机测试库执行 `head -> base -> head`，空库 downgrade/upgrade 成功，最终 Alembic 为 `d4c8a1f2b903 (head)` 且无模型漂移；带 Campaign 的 downgrade 拒绝由自动化回归覆盖。
 - 首次暂存后 `git diff --cached --check` 检出 V1.8 Markdown 文件头 5 行尾随空格；提交尚未发生，已删除空格并将重新执行暂存检查。
+- 完整交付提交为 `6337f575928f68d648fc658dea94a88af07c9256`；已推送 `master`，精确 SHA 的 Python Checks `31355321579` 中 checks 与 build-image 均成功。
+- Python Checks 的 `gh run watch` 在结束前遇到一次 GitHub API `unexpected EOF`；未重复依赖流式会话，改用 `gh run view 31355321579` 直接确认精确 SHA 和所有 job 的最终 success。
+- `release` 已从 `bf27e9f` 快进到 `6337f57` 并推送；Deploy Production `31356099253` 的 checks、镜像构建和部署全部成功，生产迁移执行 `2a4e91b6f703 -> d4c8a1f2b903`。
+- 生产 release `20260810044013_6337f57` 已切换为 current；app/worker 均运行镜像 `6337f575928f68d648fc658dea94a88af07c9256` 并为 healthy。
+- 独立 Production Health `31356333179` 成功：app/worker 为 `running healthy`，Alembic 为 `d4c8a1f2b903 (head)`，`STATUS=HEALTHY`，即未决不确定投递、未投影确认、失败 Job 和失败 Update 均为 0。
+- Actions 仅出现 Node 20 弃用提示，run conclusion 不受影响；修复后的 Telegram 真实客户端新建活动/开奖 E2E 仍未执行，不能由部署健康替代。历史群消息不会被回写。

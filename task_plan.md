@@ -69,7 +69,7 @@
 - [complete] 61. 保护 Campaign 公开引用迁移，拒绝不可逆 downgrade
 - [complete] 62. 将自定义开奖时间提示改为按活动时区动态生成的未来示例
 - [complete] 63. 补齐故障、迁移和时间过期回归并执行完整质量门禁
-- [in_progress] 64. 提交 master、同步 release，并核验精确 SHA 的 GitHub Actions 发布结果
+- [complete] 64. 提交 master、同步 release，并核验精确 SHA 的 GitHub Actions 发布结果
 
 ## 关键约束
 
