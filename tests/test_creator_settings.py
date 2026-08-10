@@ -2,10 +2,16 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
+from aiogram.types import User
 
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.campaign_creator import CampaignCreator
-from tg_lottery.telegram.creator_settings import _parse_chat_refs, custom_draw_prompt
+from tg_lottery.telegram.creator_settings import (
+    CreatorSettings,
+    _parse_chat_refs,
+    custom_draw_prompt,
+)
+from tg_lottery.telegram.issuer import creator_issuer, resolve_issuer
 from tg_lottery.telegram.personal_flow import _index_keyboard
 
 
@@ -28,6 +34,34 @@ class RequiredChatBot:
 
     async def get_chat_member(self, chat_id: int, user_id: int):
         return SimpleNamespace(status=self._status)
+
+
+class RecordingSessions:
+    def __init__(self) -> None:
+        self.state = ""
+        self.data = {}
+
+    async def set(self, user_id, state, data) -> None:
+        self.state = state
+        self.data = data
+
+
+class RecordingRenderer:
+    async def edit(self, target, *, text, rows) -> None:
+        self.text = text
+        self.rows = rows
+
+
+class IssuerBot:
+    async def get_chat(self, ref):
+        assert ref == 302
+        return SimpleNamespace(
+            id=302,
+            type="private",
+            username="prize_owner",
+            full_name="Prize Owner",
+            title=None,
+        )
 
 
 def test_participation_refs_accept_public_username_and_numeric_id() -> None:
@@ -60,6 +94,41 @@ async def test_required_chat_rejects_bot_without_admin_access() -> None:
         await creator._required_chat_record("@public_group")
 
 
+async def test_participation_conditions_accumulate_by_resolved_chat_id() -> None:
+    sessions = RecordingSessions()
+    settings = CreatorSettings(
+        sessions=sessions,
+        renderer=RecordingRenderer(),
+        profiles=object(),
+        queries=object(),
+        bot=RequiredChatBot(),
+    )
+    data = {"chat_id": -1001, "panel_message_id": 9, "required_chats": []}
+
+    await settings._receive_participation(_message("@public_group"), data)
+    await settings._receive_participation(_message("-1003"), sessions.data)
+
+    assert [item["id"] for item in sessions.data["required_chats"]] == [-1002, -1003]
+    with pytest.raises(UserFacingError, match="已经在参与条件"):
+        await settings._receive_participation(_message("@public_group"), sessions.data)
+
+
+async def test_issuer_is_resolved_and_frozen_before_publication() -> None:
+    creator = User(id=201, is_bot=False, first_name="Creator", username="creator")
+
+    custom = await resolve_issuer(IssuerBot(), "@prize_owner", creator, candidate_user_ids=(302,))
+
+    assert custom == {
+        "issuer": "@prize_owner",
+        "issuer_user_id": 302,
+        "issuer_username_at_publish": "prize_owner",
+        "issuer_display_name_at_publish": "Prize Owner",
+        "issuer_name": "Prize Owner",
+        "issuer_source": "custom",
+    }
+    assert creator_issuer(creator)["issuer_source"] == "creator"
+
+
 def test_index_keyboard_contains_real_group_and_channel_links() -> None:
     keyboard = _index_keyboard("lottery_test_bot")
     buttons = [button for row in keyboard.inline_keyboard for button in row]
@@ -88,4 +157,12 @@ def _creator(bot: RequiredChatBot) -> CampaignCreator:
         renderer=None,
         settings=None,
         profiles=None,
+    )
+
+
+def _message(text: str):
+    return SimpleNamespace(
+        text=text,
+        from_user=SimpleNamespace(id=201),
+        chat=SimpleNamespace(id=201),
     )

@@ -32,6 +32,13 @@ def test_new_draft_only_requires_three_simple_fields() -> None:
     assert missing_fields(data) == ("抽奖标题", "至少一个奖品", "开奖时间")
 
 
+def test_new_draft_does_not_delete_completion_messages_by_default() -> None:
+    data = new_draft()
+
+    assert data["delete_trigger_message"] is False
+    assert data["completion_delete_after_seconds"] is None
+
+
 def test_single_local_draw_time_builds_internal_timeline_and_rules() -> None:
     data = _complete_draft()
     now = datetime(2026, 8, 9, 10, 0, tzinfo=UTC)
@@ -83,10 +90,27 @@ def test_full_draw_freezes_fallback_rules_and_presentation() -> None:
 
     draft, _ = campaign_input(data, now=now)
 
-    assert draft.draw_at == now + timedelta(days=30)
+    assert draft.draw_at.isoformat() == "2026-09-08T12:00:00+08:00"
     assert draft.rules.participant_target == 88
     assert draft.rules.allowed_regions == ("河南", "北京")
     assert draft.rules.required_chat_ids == (-1002, -1003)
     assert draft.rules.luck_mode == "off"
     assert draft.presentation["cover_file_id"] == "telegram-file-id"
     assert draft.presentation["message_tips"] is False
+
+
+def test_full_draw_fallback_uses_local_noon_across_dst_change() -> None:
+    data = _complete_draft()
+    data.update(
+        {
+            "timezone": "America/New_York",
+            "draw_at": "",
+            "draw_mode": "full",
+            "participant_target": 8,
+        }
+    )
+
+    draft, _ = campaign_input(data, now=datetime(2026, 10, 20, 16, tzinfo=UTC))
+
+    assert draft.draw_at.isoformat() == "2026-11-19T12:00:00-05:00"
+    assert draft.cutoff_at == draft.draw_at - timedelta(minutes=5)

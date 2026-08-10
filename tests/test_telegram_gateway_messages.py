@@ -3,11 +3,14 @@ import pytest
 from tests.helpers import seed_campaign
 from tg_lottery.infrastructure.db import TelegramOutbox
 from tg_lottery.telegram.gateway import (
+    TelegramGateway,
     _campaign_card_text,
     _campaign_deep_link,
+    _campaign_keyboard,
+    _campaign_state_card_text,
     _draw_result_text,
 )
-from tg_lottery.telegram.gateway_requests import build_gateway_request
+from tg_lottery.telegram.gateway_requests import GatewayRequest, build_gateway_request
 
 SNAPSHOT_HASH = "fc99b18147ccfaf6b7c3ab660c4ed6e688fc091ccaa97e4bdf0db477182702a7"
 
@@ -73,10 +76,31 @@ def test_campaign_deep_link_only_uses_the_public_reference() -> None:
         "campaign_ref": "AbCdEfGhIjKlMnOpQrSt-_",
     }
 
-    link = _campaign_deep_link(payload)
+    link = _campaign_deep_link(payload, "join")
 
     assert link.endswith("?start=join_AbCdEfGhIjKlMnOpQrSt-_")
     assert internal_id not in link
+
+
+def test_campaign_card_separates_rules_registration_and_join_links() -> None:
+    payload = _campaign_payload() | {
+        "bot_username": "lottery_test_bot",
+        "campaign_ref": "AbCdEfGhIjKlMnOpQrSt-_",
+        "presentation": {
+            "required_chats": [
+                {"title": "公开群", "join_url": "https://t.me/public_group"},
+                {"title": "私有群", "private": True},
+            ]
+        },
+    }
+
+    keyboard = _campaign_keyboard(payload)
+    urls = [row[0].url for row in keyboard.inline_keyboard]
+
+    assert urls[0].endswith("?start=join_AbCdEfGhIjKlMnOpQrSt-_")
+    assert urls[1].endswith("?start=rules_AbCdEfGhIjKlMnOpQrSt-_")
+    assert urls[2] == "https://t.me/public_group"
+    assert urls[3].endswith("?start=condition_AbCdEfGhIjKlMnOpQrSt-__2")
 
 
 def test_draw_result_keeps_internal_hash_out_of_public_message() -> None:
@@ -95,6 +119,30 @@ def test_draw_result_keeps_internal_hash_out_of_public_message() -> None:
     assert "冻结的报名资格和抽奖票" in text
     assert "快照:" not in text
     assert SNAPSHOT_HASH not in text
+
+
+async def test_delete_message_operation_calls_telegram_with_frozen_target() -> None:
+    class DeleteBot:
+        async def delete_message(self, chat_id, message_id):
+            self.target = (chat_id, message_id)
+            return True
+
+    bot = DeleteBot()
+    gateway = TelegramGateway(bot, object())
+
+    result = await gateway.execute(GatewayRequest("delete_message", 202, {"message_id": 77}))
+
+    assert bot.target == (202, 77)
+    assert result.remote_result == {"ok": True}
+
+
+def test_campaign_state_card_has_business_text_only() -> None:
+    settling = _campaign_state_card_text({"campaign_name": "周末抽奖", "card_state": "settling"})
+    drawn = _campaign_state_card_text({"campaign_name": "周末抽奖", "card_state": "drawn"})
+
+    assert "报名已截止" in settling
+    assert "已经开奖" in drawn
+    assert "SETTLING" not in settling
 
 
 def _campaign_payload() -> dict[str, object]:

@@ -53,10 +53,13 @@ async def test_multiple_prizes_draw_unique_winners_and_report_unfilled_slots(
         {"prize_position": 2, "prize_name": "二等奖", "count": 1}
     ]
     notices = [row.payload for row in outboxes if row.operation == "send_winner_notice"]
+    card = next(row.payload for row in outboxes if row.operation == "edit_campaign_card_state")
     assert group_payload["extended_tips"] is True
     assert all(notice["extended_tips"] is True for notice in notices)
     assert all(item["claim_instructions"] for item in notices)
     assert {item["prize_slot_no"] for item in notices} <= {1, 2}
+    assert card["card_state"] == "drawn"
+    assert card["message_id"] == 321
 
 
 async def test_settlement_blocks_when_published_prize_plan_changes(session_factory) -> None:
@@ -80,6 +83,7 @@ async def _seed_multi_prize_case(session_factory, now: datetime):
         _, campaign, first = await seed_campaign(
             session, state=CampaignState.SETTLING, cutoff_at=cutoff
         )
+        campaign.published_message_id = 321
         prizes = (await session.scalars(select(Prize))).all()
         prizes[0].winner_count = 2
         prizes[0].claim_instructions = "私聊管理员领取一等奖"

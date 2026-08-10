@@ -2,13 +2,17 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from tg_lottery.application.authorization import require_group_admin
-from tg_lottery.application.campaign_notifications import add_cancelled_campaign_card
+from tg_lottery.application.campaign_notifications import (
+    add_campaign_card_state,
+    add_cancelled_campaign_card,
+)
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
-from tg_lottery.application.records import add_audit, add_job, add_outbox, utcnow
+from tg_lottery.application.publication import add_publication_outboxes
+from tg_lottery.application.records import add_audit, add_job, utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignDraft, CampaignRules, canonical_hash
 from tg_lottery.domain.transitions import require_campaign_transition
@@ -25,6 +29,42 @@ class PrizeSpec:
     claim_instructions: str
 
 
+@dataclass(frozen=True)
+class DraftSource:
+    draft_id: str
+    revision: int
+
+
+def request_early_cutoff(
+    session: object,
+    *,
+    campaign: Campaign,
+    cutoff_at: datetime,
+    reason: str,
+    actor_user_id: int | None,
+) -> bool:
+    if campaign.state is CampaignState.SETTLING:
+        return False
+    require_campaign_transition(campaign.state, CampaignState.SETTLING)
+    rules = CampaignRules.model_validate(campaign.rules)
+    campaign.cutoff_at = cutoff_at
+    campaign.draw_at = cutoff_at + timedelta(
+        seconds=rules.settlement_drain_seconds + _EARLY_DRAW_DELAY_SECONDS
+    )
+    campaign.state = CampaignState.SETTLING
+    _schedule_early_cutoff_jobs(session, campaign=campaign, cutoff_at=cutoff_at, rules=rules)
+    add_audit(
+        session,
+        actor_user_id=actor_user_id,
+        action="campaign.early_cutoff",
+        aggregate_type="campaign",
+        aggregate_id=str(campaign.id),
+        reason=reason,
+        details={"cutoff_at": cutoff_at.isoformat()},
+    )
+    return True
+
+
 class CampaignService:
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
@@ -34,12 +74,20 @@ class CampaignService:
         draft: CampaignDraft,
         prizes: tuple[PrizeSpec, ...],
         actor_user_id: int,
+        *,
+        source: DraftSource | None = None,
     ) -> Campaign:
         prizes = self._validated_prizes(prizes)
         async with self._uow_factory() as uow:
             group = await self._group(uow.session, draft.group_id)
             await require_group_admin(uow.session, group_id=group.id, user_id=actor_user_id)
-            campaign = self._new_campaign(draft, group, actor_user_id)
+            existing = await self._campaign_for_source(uow.session, source)
+            if existing is not None:
+                self._validate_source_retry(
+                    existing, group=group, actor=actor_user_id, source=source
+                )
+                return existing
+            campaign = self._new_campaign(draft, group, actor_user_id, source=source)
             uow.session.add(campaign)
             await uow.session.flush()
             self._add_rules_and_prizes(
@@ -69,19 +117,17 @@ class CampaignService:
             self._validate_publish_timeline(campaign, utcnow())
             require_campaign_transition(campaign.state, CampaignState.PUBLISHING)
             campaign.state = CampaignState.PUBLISHING
-            revision = await self._freeze_revision(uow.session, campaign)
+            await self._freeze_revision(uow.session, campaign)
             group = await self._group_by_id(uow.session, campaign.group_id)
             prizes = await self._prizes(uow.session, campaign.id)
             campaign.prize_plan_hash = prize_plan_hash(prizes)
             self._schedule_lifecycle(uow.session, campaign)
-            add_outbox(
+            add_publication_outboxes(
                 uow.session,
-                operation="send_campaign_card",
-                aggregate_type="campaign",
-                aggregate_id=str(campaign.id),
+                campaign=campaign,
                 recipient_chat_id=group.chat_id,
-                business_key=f"publish:{campaign.id}:{revision.revision}",
-                payload=self._campaign_card(campaign, bot_username, prizes),
+                bot_username=bot_username,
+                prizes=prizes,
             )
             add_audit(
                 uow.session,
@@ -136,30 +182,17 @@ class CampaignService:
             await require_group_admin(
                 uow.session, group_id=campaign.group_id, user_id=actor_user_id
             )
-            if campaign.state is CampaignState.SETTLING:
-                return
-            require_campaign_transition(campaign.state, CampaignState.SETTLING)
-            rules = CampaignRules.model_validate(campaign.rules)
-            campaign.cutoff_at = cutoff_at
-            campaign.draw_at = cutoff_at + timedelta(
-                seconds=rules.settlement_drain_seconds + _EARLY_DRAW_DELAY_SECONDS
-            )
-            campaign.state = CampaignState.SETTLING
-            self._schedule_early_cutoff_jobs(
+            changed = request_early_cutoff(
                 uow.session,
                 campaign=campaign,
                 cutoff_at=cutoff_at,
-                rules=rules,
-            )
-            add_audit(
-                uow.session,
                 actor_user_id=actor_user_id,
-                action="campaign.early_cutoff",
-                aggregate_type="campaign",
-                aggregate_id=str(campaign.id),
                 reason=reason,
-                details={"cutoff_at": cutoff_at.isoformat()},
             )
+            if not changed:
+                return
+            group = await self._group_by_id(uow.session, campaign.group_id)
+            add_campaign_card_state(uow.session, campaign, group.chat_id, state="settling")
 
     def _validated_prizes(self, prizes: tuple[PrizeSpec, ...]) -> tuple[PrizeSpec, ...]:
         if not prizes:
@@ -194,7 +227,14 @@ class CampaignService:
             raise ValueError("campaign group does not exist")
         return group
 
-    def _new_campaign(self, draft: CampaignDraft, group: Group, actor: int) -> Campaign:
+    def _new_campaign(
+        self,
+        draft: CampaignDraft,
+        group: Group,
+        actor: int,
+        *,
+        source: DraftSource | None,
+    ) -> Campaign:
         return Campaign(
             group_id=group.id,
             name=draft.name,
@@ -206,7 +246,38 @@ class CampaignService:
             rules=draft.rules.model_dump(mode="json"),
             presentation=draft.presentation,
             created_by=actor,
+            source_draft_id=source.draft_id if source else None,
+            source_draft_revision=source.revision if source else None,
         )
+
+    async def _campaign_for_source(
+        self, session: object, source: DraftSource | None
+    ) -> Campaign | None:
+        if source is None:
+            return None
+        await session.execute(
+            select(func.pg_advisory_xact_lock(func.hashtextextended(source.draft_id, 0)))
+        )
+        return await session.scalar(
+            select(Campaign).where(Campaign.source_draft_id == source.draft_id).with_for_update()
+        )
+
+    def _validate_source_retry(
+        self,
+        campaign: Campaign,
+        *,
+        group: Group,
+        actor: int,
+        source: DraftSource | None,
+    ) -> None:
+        if source is None:
+            raise ValueError("draft publication source is missing")
+        if (
+            campaign.group_id != group.id
+            or campaign.created_by != actor
+            or campaign.source_draft_revision != source.revision
+        ):
+            raise ValueError("draft publication source conflicts with an existing campaign")
 
     def _add_rules_and_prizes(
         self,
@@ -268,9 +339,12 @@ class CampaignService:
     async def _publication_already_requested(self, session: object, campaign: Campaign) -> bool:
         if campaign.state is CampaignState.DRAFT:
             return False
-        business_key = f"publish:{campaign.id}:{campaign.config_revision}"
         outbox_id = await session.scalar(
-            select(TelegramOutbox.id).where(TelegramOutbox.business_key == business_key)
+            select(TelegramOutbox.id).where(
+                TelegramOutbox.aggregate_type == "campaign",
+                TelegramOutbox.aggregate_id == str(campaign.id),
+                TelegramOutbox.operation.in_(("send_campaign_card", "create_required_chat_invite")),
+            )
         )
         if outbox_id is None:
             raise ValueError("campaign left draft without a publication outbox")
@@ -339,59 +413,35 @@ class CampaignService:
             run_at=utcnow(),
         )
 
-    def _schedule_early_cutoff_jobs(
-        self,
-        session: object,
-        *,
-        campaign: Campaign,
-        cutoff_at: datetime,
-        rules: CampaignRules,
-    ) -> None:
-        suffix = int(cutoff_at.timestamp())
-        for job_type in ("qualification_review", "revoke_invite_links"):
-            add_job(
-                session,
-                job_type=job_type,
-                aggregate_id=str(campaign.id),
-                business_key=f"{job_type}_early:{campaign.id}:{suffix}",
-                run_at=cutoff_at,
-            )
-        add_job(
-            session,
-            job_type="campaign_settle",
-            aggregate_id=str(campaign.id),
-            business_key=f"campaign_settle_early:{campaign.id}:{suffix}",
-            run_at=cutoff_at + timedelta(seconds=rules.settlement_drain_seconds),
-        )
-        add_job(
-            session,
-            job_type="campaign_draw",
-            aggregate_id=str(campaign.id),
-            business_key=f"campaign_draw_early:{campaign.id}:{suffix}",
-            run_at=cutoff_at
-            + timedelta(seconds=rules.settlement_drain_seconds + _EARLY_DRAW_DELAY_SECONDS),
-        )
 
-    def _campaign_card(
-        self, campaign: Campaign, bot_username: str, prizes: tuple[Prize, ...]
-    ) -> dict[str, object]:
-        return {
-            "campaign_id": str(campaign.id),
-            "campaign_ref": campaign.public_ref,
-            "name": campaign.name,
-            "cutoff_at": campaign.cutoff_at.isoformat(),
-            "draw_at": campaign.draw_at.isoformat(),
-            "timezone": campaign.timezone,
-            "bot_username": bot_username,
-            "presentation": campaign.presentation,
-            "rules": campaign.rules,
-            "prizes": [
-                {
-                    "position": prize.position,
-                    "name": prize.name,
-                    "winner_count": prize.winner_count,
-                }
-                for prize in prizes
-            ],
-            "total_winners": sum(prize.winner_count for prize in prizes),
-        }
+def _schedule_early_cutoff_jobs(
+    session: object,
+    *,
+    campaign: Campaign,
+    cutoff_at: datetime,
+    rules: CampaignRules,
+) -> None:
+    suffix = f"{campaign.id}:{campaign.config_revision}"
+    for job_type in ("qualification_review", "revoke_invite_links"):
+        add_job(
+            session,
+            job_type=job_type,
+            aggregate_id=str(campaign.id),
+            business_key=f"{job_type}_early:{suffix}",
+            run_at=cutoff_at,
+        )
+    add_job(
+        session,
+        job_type="campaign_settle",
+        aggregate_id=str(campaign.id),
+        business_key=f"campaign_settle_early:{suffix}",
+        run_at=cutoff_at + timedelta(seconds=rules.settlement_drain_seconds),
+    )
+    add_job(
+        session,
+        job_type="campaign_draw",
+        aggregate_id=str(campaign.id),
+        business_key=f"campaign_draw_early:{suffix}",
+        run_at=cutoff_at
+        + timedelta(seconds=rules.settlement_drain_seconds + _EARLY_DRAW_DELAY_SECONDS),
+    )

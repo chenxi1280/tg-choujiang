@@ -5,10 +5,12 @@ from aiogram.exceptions import TelegramAPIError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.campaign_notifications import add_campaign_card_state
 from tg_lottery.application.drawing import DrawingService
 from tg_lottery.application.invitations import InvitationService
 from tg_lottery.application.participants import ParticipantService
 from tg_lottery.application.records import add_outbox, utcnow
+from tg_lottery.application.required_chat_links import add_required_chat_revoke_outboxes
 from tg_lottery.application.settlement import SettlementService
 from tg_lottery.domain.enums import (
     CampaignState,
@@ -28,14 +30,19 @@ from tg_lottery.infrastructure.db import (
 )
 from tg_lottery.jobs.errors import JobRetry
 from tg_lottery.jobs.maintenance import (
+    FULL_DRAW_RECONCILE_JOB_TYPE,
     TICKET_RECONCILE_JOB_TYPE,
     UPDATE_RETENTION_JOB_TYPE,
+    next_full_draw_reconcile_at,
     next_maintenance_at,
     prune_processed_update_payloads,
+    reconcile_full_draws,
     reconcile_ticket_caches,
+    schedule_full_draw_reconcile,
     schedule_ticket_reconcile,
     schedule_update_retention,
 )
+from tg_lottery.telegram.qualification import observe_memberships
 
 _START_NOOP_STATES = frozenset(
     {
@@ -79,6 +86,8 @@ class JobHandlers:
             "campaign_draw": self._campaign_draw,
             UPDATE_RETENTION_JOB_TYPE: self._telegram_update_retention,
             TICKET_RECONCILE_JOB_TYPE: self._ticket_cache_reconcile,
+            FULL_DRAW_RECONCILE_JOB_TYPE: self._full_draw_reconcile,
+            "delete_telegram_message": self._delete_telegram_message,
         }
         handler = handlers.get(job.job_type)
         if handler is None:
@@ -118,10 +127,14 @@ class JobHandlers:
                 raise JobRetry(f"campaign cannot settle from {campaign.state}")
             require_campaign_transition(campaign.state, CampaignState.SETTLING)
             campaign.state = CampaignState.SETTLING
+            group = await session.get(Group, campaign.group_id)
+            if group is None:
+                raise ValueError("campaign group not found")
+            add_campaign_card_state(session, campaign, group.chat_id, state="settling")
 
     async def _qualification_review(self, job: ScheduledJob) -> None:
         campaign_id = UUID(job.aggregate_id)
-        campaign, participants = await self._campaign_and_participants(campaign_id)
+        campaign, group_chat_id, participants = await self._campaign_and_participants(campaign_id)
         if campaign.state in _TERMINAL_STATES:
             return
         rules = CampaignRules.model_validate(campaign.rules)
@@ -129,17 +142,22 @@ class JobHandlers:
         for participant in participants:
             if await self._has_final_draw_check(participant.id):
                 continue
-            state, status, error = await self._observe_channel(
-                rules.required_channel_id, participant.user_id
+            observed_at = utcnow()
+            result = await observe_memberships(
+                self._bot,
+                chat_ids=_required_chat_ids(group_chat_id, rules),
+                user_id=participant.user_id,
+                observed_at=observed_at,
             )
             await self._participants.record_draw_qualification(
                 participant_id=participant.id,
-                state=state,
-                observed_at=utcnow(),
-                observed_status=status,
-                error_code=error,
+                state=result.state,
+                observed_at=observed_at,
+                observed_status=result.observed_status,
+                error_code=result.error_code,
+                observations=result.observations,
             )
-            unresolved = unresolved or state is QualificationState.UNKNOWN
+            unresolved = unresolved or result.state is QualificationState.UNKNOWN
         if unresolved:
             raise JobRetry("one or more channel qualifications remain unknown")
 
@@ -203,6 +221,7 @@ class JobHandlers:
                     business_key=business_key,
                     payload={"invite_link_id": str(link.id)},
                 )
+            await add_required_chat_revoke_outboxes(session, campaign)
 
     async def _campaign_settle(self, job: ScheduledJob) -> None:
         if await self._campaign_state(UUID(job.aggregate_id)) in _TERMINAL_STATES:
@@ -237,32 +256,52 @@ class JobHandlers:
             await reconcile_ticket_caches(session)
             await schedule_ticket_reconcile(session, next_maintenance_at(now))
 
+    async def _full_draw_reconcile(self, job: ScheduledJob) -> None:
+        if job.aggregate_id != "system":
+            raise ValueError("full draw reconcile job requires system aggregate")
+        now = utcnow()
+        async with self._session_factory() as session, session.begin():
+            await reconcile_full_draws(session, now)
+            await schedule_full_draw_reconcile(session, next_full_draw_reconcile_at(now))
+
+    async def _delete_telegram_message(self, job: ScheduledJob) -> None:
+        chat_id = int(job.payload["chat_id"])
+        message_id = int(job.payload["message_id"])
+        business_key = f"delete_message:{chat_id}:{message_id}"
+        async with self._session_factory() as session, session.begin():
+            existing = await session.scalar(
+                select(TelegramOutbox.id).where(TelegramOutbox.business_key == business_key)
+            )
+            if existing:
+                return
+            add_outbox(
+                session,
+                operation="delete_message",
+                aggregate_type="campaign",
+                aggregate_id=job.aggregate_id,
+                recipient_chat_id=chat_id,
+                business_key=business_key,
+                payload={"message_id": message_id},
+            )
+
     async def _campaign_and_participants(
         self, campaign_id: UUID
-    ) -> tuple[Campaign, list[Participant]]:
+    ) -> tuple[Campaign, int, list[Participant]]:
         async with self._session_factory() as session:
             campaign = await session.get(Campaign, campaign_id)
             if campaign is None:
                 raise ValueError("campaign not found")
+            group_chat_id = await session.scalar(
+                select(Group.chat_id).where(Group.id == campaign.group_id)
+            )
+            if group_chat_id is None:
+                raise ValueError("campaign group not found")
             participants = (
                 await session.scalars(
                     select(Participant).where(Participant.campaign_id == campaign_id)
                 )
             ).all()
-            return campaign, list(participants)
-
-    async def _observe_channel(
-        self, channel_id: int | None, user_id: int
-    ) -> tuple[QualificationState, str, str | None]:
-        if channel_id is None:
-            return QualificationState.ELIGIBLE, "not_required", None
-        try:
-            member = await self._bot.get_chat_member(channel_id, user_id)
-        except TelegramAPIError as exc:
-            return QualificationState.UNKNOWN, "unavailable", type(exc).__name__
-        status = str(member.status)
-        state = QualificationState.ELIGIBLE if _is_member(member) else QualificationState.INELIGIBLE
-        return state, status, None
+            return campaign, group_chat_id, list(participants)
 
     async def _has_final_draw_check(self, participant_id: UUID) -> bool:
         async with self._session_factory() as session:
@@ -296,3 +335,11 @@ def _is_member(member: object) -> bool:
     if status in {"member", "administrator", "creator"}:
         return True
     return status == "restricted" and bool(getattr(member, "is_member", False))
+
+
+def _required_chat_ids(main_chat_id: int, rules: CampaignRules) -> tuple[int, ...]:
+    values = [main_chat_id]
+    if rules.required_channel_id is not None:
+        values.append(rules.required_channel_id)
+    values.extend(rules.required_chat_ids)
+    return tuple(dict.fromkeys(values))

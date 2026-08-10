@@ -123,6 +123,7 @@ class Campaign(Base, UuidPkMixin, TimestampMixin):
     __tablename__ = "campaigns"
     __table_args__ = (
         UniqueConstraint("public_ref", name="uq_campaigns_public_ref"),
+        UniqueConstraint("source_draft_id", name="uq_campaigns_source_draft_id"),
         Index(
             "uq_campaigns_group_nonterminal",
             "group_id",
@@ -152,6 +153,8 @@ class Campaign(Base, UuidPkMixin, TimestampMixin):
     presentation: Mapped[dict[str, Any]] = mapped_column(default=dict, nullable=False)
     prize_plan_hash: Mapped[str | None] = mapped_column(String(64))
     created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    source_draft_id: Mapped[str | None] = mapped_column(String(64))
+    source_draft_revision: Mapped[int | None] = mapped_column(Integer)
     published_message_id: Mapped[int | None] = mapped_column(BigInteger)
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -221,6 +224,7 @@ class QualificationCheck(Base, UuidPkMixin, CreatedAtMixin):
     channel_id: Mapped[int | None] = mapped_column(BigInteger)
     observed_status: Mapped[str | None] = mapped_column(String(40))
     error_code: Mapped[str | None] = mapped_column(String(80))
+    observations: Mapped[dict[str, Any]] = mapped_column(default=dict, nullable=False)
     request_hash: Mapped[str | None] = mapped_column(String(64))
     source_update_id: Mapped[int | None] = mapped_column(BigInteger)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

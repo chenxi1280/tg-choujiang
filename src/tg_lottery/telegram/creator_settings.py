@@ -1,17 +1,35 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any
 
+from aiogram import Bot
 from aiogram.types import CallbackQuery, Message
 
 from tg_lottery.application.admin_sessions import AdminSessionService
 from tg_lottery.application.callback_tokens import CallbackGrant
+from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram.creator_messages import (
+    MESSAGE_DELAYS,
+    message_settings_rows,
+    message_settings_text,
+)
+from tg_lottery.telegram.creator_participation import (
+    parse_chat_refs as _parse_chat_refs,
+)
+from tg_lottery.telegram.creator_participation import (
+    participation_rows as _participation_rows,
+)
+from tg_lottery.telegram.creator_participation import (
+    participation_text as _participation_text,
+)
+from tg_lottery.telegram.creator_participation import (
+    split_values as _split_values,
+)
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
 from tg_lottery.telegram.creator_schedule import positive_int, quick_draw_at, validate_draw_time
 from tg_lottery.telegram.creator_views import (
@@ -25,8 +43,10 @@ from tg_lottery.telegram.draft_config import (
     LOCAL_TIME_FORMAT,
     parse_draw_at,
 )
+from tg_lottery.telegram.issuer import resolve_issuer
 from tg_lottery.telegram.personal_flow import REGIONS
 from tg_lottery.telegram.public_projection import public_timezone_label
+from tg_lottery.telegram.required_chats import resolve_required_chat
 
 Handler = Callable[[CallbackQuery, CallbackGrant], Awaitable[None]]
 TextHandler = Callable[[Message, dict[str, Any]], Awaitable[None]]
@@ -40,10 +60,14 @@ class CreatorSettings:
         sessions: AdminSessionService,
         renderer: CreatorRenderer,
         profiles: UserProfileService,
+        queries: QueryService,
+        bot: Bot,
     ) -> None:
         self._sessions = sessions
         self._renderer = renderer
         self._profiles = profiles
+        self._queries = queries
+        self._bot = bot
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> bool:
         handler = self._grant_handlers().get(grant.action)
@@ -51,6 +75,9 @@ class CreatorSettings:
             return False
         await handler(query, grant)
         return True
+
+    def handles_action(self, action: str) -> bool:
+        return action in self._grant_handlers()
 
     async def handle_message(self, message: Message, state: str, data: dict[str, Any]) -> bool:
         handler = self._text_handlers().get(state)
@@ -60,7 +87,7 @@ class CreatorSettings:
         return True
 
     def _grant_handlers(self) -> dict[str, Handler]:
-        return {
+        handlers = {
             "draft_draw": self._show_draw_modes,
             "draft_draw_fixed": self._show_fixed_draw,
             "draft_draw_full": self._edit_full_draw,
@@ -81,6 +108,9 @@ class CreatorSettings:
             "draft_username_off": self._set_username,
             "draft_regions": self._edit_regions,
             "draft_participation": self._edit_participation,
+            "draft_participation_add": self._edit_participation,
+            "draft_participation_delete": self._delete_participation,
+            "draft_participation_clear": self._clear_participation,
             "draft_description": self._edit_description,
             "draft_issuer": self._edit_issuer,
             "draft_messages": self._show_messages,
@@ -88,6 +118,16 @@ class CreatorSettings:
             "draft_messages_off": self._set_messages,
             "draft_load_last": self._load_last,
         }
+        handlers.update(
+            {
+                "draft_messages_trigger_on": self._set_message_trigger,
+                "draft_messages_trigger_off": self._set_message_trigger,
+            }
+        )
+        handlers.update(
+            {f"draft_messages_delay_{key}": self._set_message_delay for key in MESSAGE_DELAYS}
+        )
+        return handlers
 
     def _text_handlers(self) -> dict[str, TextHandler]:
         return {
@@ -227,18 +267,66 @@ class CreatorSettings:
 
     async def _edit_participation(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:participation")
-        text = (
-            "📮 回复额外必加群/频道公开用户名或数字 ID，用逗号分隔；回复 无 清除。\n"
-            "主活动群始终是参与条件。"
+        await self._render(
+            query,
+            data=data,
+            text=_participation_text(data),
+            rows=_participation_rows(data),
         )
-        await self._render(query, data=data, text=text, rows=_back_rows())
 
     async def _receive_participation(self, message: Message, data: dict[str, Any]) -> None:
         text = (message.text or "").strip()
-        values = [] if text == "无" else _parse_chat_refs(text)
-        if len(values) > MAX_REQUIRED_CHATS:
+        values = _parse_chat_refs(text)
+        if len(values) != 1:
+            raise UserFacingError("每次只能添加一个群或频道")
+        chats = list(data.get("required_chats") or [])
+        if len(chats) >= MAX_REQUIRED_CHATS:
             raise UserFacingError(f"额外参与条件最多 {MAX_REQUIRED_CHATS} 个")
-        await self._dashboard_from_message(message, data | {"required_chat_refs": values})
+        chat = await resolve_required_chat(self._bot, values[0])
+        existing_ids = {int(item["id"]) for item in chats}
+        if int(chat["id"]) in existing_ids or int(chat["id"]) == int(data["chat_id"]):
+            raise UserFacingError("该群或频道已经在参与条件中")
+        updated = data | {
+            "required_chats": [*chats, chat],
+            "required_chat_refs": [*data.get("required_chat_refs", []), int(chat["id"])],
+        }
+        await self._sessions.set(_user_id(message), "draft:participation", updated)
+        await self._renderer.edit(
+            _target(message, updated),
+            text=_participation_text(updated),
+            rows=_participation_rows(updated),
+        )
+
+    async def _delete_participation(self, query: CallbackQuery, _: CallbackGrant) -> None:
+        data = await self._required_data(query.from_user.id)
+        chats = list(data.get("required_chats") or [])
+        if not chats:
+            raise UserFacingError("当前没有可删除的额外参与条件")
+        updated = data | {
+            "required_chats": chats[:-1],
+            "required_chat_refs": [int(item["id"]) for item in chats[:-1]],
+        }
+        await self._sessions.set(query.from_user.id, "draft:participation", updated)
+        await self._render(
+            query,
+            data=updated,
+            text=_participation_text(updated),
+            rows=_participation_rows(updated),
+        )
+
+    async def _clear_participation(self, query: CallbackQuery, _: CallbackGrant) -> None:
+        data = await self._required_data(query.from_user.id)
+        updated = data | {
+            "required_chats": [],
+            "required_chat_refs": [],
+        }
+        await self._sessions.set(query.from_user.id, "draft:participation", updated)
+        await self._render(
+            query,
+            data=updated,
+            text=_participation_text(updated),
+            rows=_participation_rows(updated),
+        )
 
     async def _edit_description(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:description")
@@ -252,31 +340,57 @@ class CreatorSettings:
     async def _edit_issuer(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:issuer")
         await self._render(
-            query, data=data, text="🎅 回复发奖人员用户名或用户 ID：", rows=_back_rows()
+            query,
+            data=data,
+            text="🎅 回复已参与用户的 @username，或 Telegram 用户 ID：",
+            rows=_back_rows(),
         )
 
     async def _receive_issuer(self, message: Message, data: dict[str, Any]) -> None:
         value = (message.text or "").strip()
         if not 1 <= len(value) <= 64:
             raise UserFacingError("发奖人员长度必须为 1–64 字")
-        await self._dashboard_from_message(message, data | {"issuer": value, "issuer_name": value})
+        candidates = (
+            await self._queries.user_ids_by_username(value) if value.startswith("@") else ()
+        )
+        issuer = await resolve_issuer(
+            self._bot, value, _required_user(message), candidate_user_ids=candidates
+        )
+        await self._dashboard_from_message(message, data | issuer)
 
     async def _show_messages(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:idle")
-        rows = [[("开启", "draft_messages_on"), ("关闭", "draft_messages_off")], *_back_rows()]
         await self._render(
-            query, data=data, text="🔔 是否在必要状态与结果后附加详细说明？", rows=rows
+            query,
+            data=data,
+            text=message_settings_text(data),
+            rows=message_settings_rows(),
         )
 
     async def _set_messages(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         await self._update(query, {"message_tips": grant.action.endswith("on")})
+
+    async def _set_message_trigger(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        await self._update(query, {"delete_trigger_message": grant.action.endswith("on")})
+
+    async def _set_message_delay(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        key = grant.action.removeprefix("draft_messages_delay_")
+        await self._update(query, {"completion_delete_after_seconds": MESSAGE_DELAYS[key]})
 
     async def _load_last(self, query: CallbackQuery, _: CallbackGrant) -> None:
         current = await self._required_data(query.from_user.id)
         last_draft = await self._profiles.recent_last_draft(query.from_user.id, utcnow())
         if not last_draft:
             raise UserFacingError("没有可载入的上次抽奖配置")
-        protected = {key: current[key] for key in ("panel_message_id", "creator_name")}
+        protected = {
+            key: current[key]
+            for key in (
+                "draft_id",
+                "draft_revision",
+                "panel_message_id",
+                "creator_name",
+            )
+        }
         await self._dashboard(query, last_draft | protected | {"guided": False})
 
     async def _receive_text(
@@ -332,23 +446,6 @@ class CreatorSettings:
         )
 
 
-def _parse_chat_refs(value: str) -> list[int | str]:
-    refs: list[int | str] = []
-    for item in _split_values(value):
-        if re.fullmatch(r"@[A-Za-z0-9_]{5,32}", item):
-            refs.append(item)
-            continue
-        try:
-            refs.append(int(item))
-        except ValueError as exc:
-            raise UserFacingError("群/频道需填写公开用户名或数字 ID") from exc
-    return list(dict.fromkeys(refs))
-
-
-def _split_values(value: str) -> list[str]:
-    return [item.strip() for item in re.split(r"[,，、\s]+", value) if item.strip()]
-
-
 def custom_draw_prompt(timezone: str, *, now: datetime | None = None) -> str:
     example = quick_draw_at("draft_draw_tomorrow", timezone, now=now)
     label = public_timezone_label(timezone)
@@ -362,9 +459,13 @@ def _message(query: CallbackQuery) -> Message:
 
 
 def _user_id(message: Message) -> int:
+    return _required_user(message).id
+
+
+def _required_user(message: Message):
     if message.from_user is None:
         raise ValueError("无法识别当前用户")
-    return message.from_user.id
+    return message.from_user
 
 
 def _target(message: Message, data: dict[str, Any]) -> PanelTarget:

@@ -103,6 +103,17 @@ class QueryService:
             ).all()
             return list(rows)
 
+    async def user_ids_by_username(self, username: str) -> tuple[int, ...]:
+        normalized = username.removeprefix("@").lower()
+        async with self._session_factory() as session:
+            rows = await session.scalars(
+                select(Participant.user_id)
+                .where(func.lower(Participant.username) == normalized)
+                .order_by(Participant.updated_at.desc())
+                .limit(10)
+            )
+            return tuple(dict.fromkeys(int(user_id) for user_id in rows))
+
     async def admin_campaigns(self, user_id: int) -> list[Campaign]:
         async with self._session_factory() as session:
             rows = (

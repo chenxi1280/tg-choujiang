@@ -1,3 +1,4 @@
+import base64
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -31,11 +32,15 @@ class TelegramGateway:
         handlers = {
             "send_campaign_card": self._send_campaign_card,
             "edit_campaign_card_cancelled": self._edit_campaign_card_cancelled,
+            "edit_campaign_card_state": self._edit_campaign_card_state,
             "create_invite_link": self._create_invite_link,
+            "create_required_chat_invite": self._create_required_chat_invite,
             "send_invite_link": self._send_invite_link,
             "revoke_invite_link": self._revoke_invite_link,
+            "revoke_required_chat_invite": self._revoke_required_chat_invite,
             "send_draw_result": self._send_draw_result,
             "send_winner_notice": self._send_winner_notice,
+            "delete_message": self._delete_message,
         }
         handler = handlers.get(outbox.operation)
         if handler is None:
@@ -46,13 +51,7 @@ class TelegramGateway:
         self, outbox: GatewayRequest, _: InviteLink | None
     ) -> GatewayResult:
         payload = outbox.payload
-        deep_link = _campaign_deep_link(payload)
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="立即报名", url=deep_link)],
-                [InlineKeyboardButton(text="查看活动规则", url=deep_link)],
-            ]
-        )
+        keyboard = _campaign_keyboard(payload)
         text = _campaign_card_text(payload)
         cover = payload.get("presentation", {}).get("cover_file_id")
         if cover:
@@ -89,6 +88,23 @@ class TelegramGateway:
         )
         return GatewayResult(remote_result=remote_result, remote_message_id=message_id)
 
+    async def _edit_campaign_card_state(
+        self, outbox: GatewayRequest, _: InviteLink | None
+    ) -> GatewayResult:
+        payload = outbox.payload
+        message_id = int(payload["message_id"])
+        text = _campaign_state_card_text(payload)
+        if payload.get("has_cover"):
+            result = await self._bot.edit_message_caption(
+                caption=text, chat_id=outbox.recipient_chat_id, message_id=message_id
+            )
+        else:
+            result = await self._bot.edit_message_text(
+                text, chat_id=outbox.recipient_chat_id, message_id=message_id
+            )
+        remote = result.model_dump(mode="json") if hasattr(result, "model_dump") else {"ok": True}
+        return GatewayResult(remote_result=remote, remote_message_id=message_id)
+
     async def _create_invite_link(
         self, outbox: GatewayRequest, _: InviteLink | None
     ) -> GatewayResult:
@@ -105,6 +121,20 @@ class TelegramGateway:
             remote_result=remote_result,
             invite_link=link.invite_link,
         )
+
+    async def _create_required_chat_invite(
+        self, outbox: GatewayRequest, _: InviteLink | None
+    ) -> GatewayResult:
+        payload = outbox.payload
+        link = await self._bot.create_chat_invite_link(
+            chat_id=outbox.recipient_chat_id,
+            name=str(payload["name"]),
+            expire_date=datetime.fromisoformat(str(payload["expire_at"])),
+            creates_join_request=False,
+        )
+        remote_result = link.model_dump(mode="json", exclude_none=True)
+        remote_result.pop("invite_link", None)
+        return GatewayResult(remote_result=remote_result, invite_link=link.invite_link)
 
     async def _send_invite_link(
         self, outbox: GatewayRequest, invite_link: InviteLink | None
@@ -133,6 +163,18 @@ class TelegramGateway:
         link = self._cipher.decrypt(
             invite_link.encrypted_url,
             context=f"invite-link:{invite_link.id}",
+        )
+        result = await self._bot.revoke_chat_invite_link(outbox.recipient_chat_id, link)
+        return GatewayResult(remote_result=result.model_dump(mode="json", exclude_none=True))
+
+    async def _revoke_required_chat_invite(
+        self, outbox: GatewayRequest, _: InviteLink | None
+    ) -> GatewayResult:
+        payload = outbox.payload
+        encrypted = base64.urlsafe_b64decode(str(payload["join_url_encrypted"]).encode())
+        link = self._cipher.decrypt(
+            encrypted,
+            context=(f"required-chat:{payload['campaign_id']}:{int(payload['chat_id'])}"),
         )
         result = await self._bot.revoke_chat_invite_link(outbox.recipient_chat_id, link)
         return GatewayResult(remote_result=result.model_dump(mode="json", exclude_none=True))
@@ -167,9 +209,41 @@ class TelegramGateway:
             remote_message_id=message.message_id,
         )
 
+    async def _delete_message(self, outbox: GatewayRequest, _: InviteLink | None) -> GatewayResult:
+        result = await self._bot.delete_message(
+            outbox.recipient_chat_id, int(outbox.payload["message_id"])
+        )
+        return GatewayResult(remote_result={"ok": bool(result)})
 
-def _campaign_deep_link(payload: dict[str, Any]) -> str:
-    return f"https://t.me/{payload['bot_username']}?start=join_{payload['campaign_ref']}"
+
+def _campaign_deep_link(payload: dict[str, Any], action: str) -> str:
+    return f"https://t.me/{payload['bot_username']}?start={action}_{payload['campaign_ref']}"
+
+
+def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text="立即报名", url=_campaign_deep_link(payload, "join"))],
+        [InlineKeyboardButton(text="查看活动规则", url=_campaign_deep_link(payload, "rules"))],
+    ]
+    for position, chat in enumerate(_campaign_conditions(payload), start=1):
+        url = chat.get("join_url") or _condition_deep_link(payload, position)
+        rows.append([InlineKeyboardButton(text=f"加入: {chat['title']}", url=str(url))])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _campaign_conditions(payload: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    presentation = payload.get("presentation", {})
+    main = presentation.get("main_chat")
+    extras = presentation.get("required_chats") or []
+    values = ([main] if isinstance(main, dict) else []) + list(extras)
+    return tuple(item for item in values if isinstance(item, dict))
+
+
+def _condition_deep_link(payload: dict[str, Any], position: int) -> str:
+    return (
+        f"https://t.me/{payload['bot_username']}?start="
+        f"condition_{payload['campaign_ref']}_{position}"
+    )
 
 
 def _campaign_card_text(payload: dict[str, Any]) -> str:
@@ -185,6 +259,7 @@ def _campaign_card_text(payload: dict[str, Any]) -> str:
         f"开奖时间: {draw}\n\n"
         f"{_campaign_draw_mode(payload)}\n"
         f"发奖人员: {_campaign_issuer(payload)}\n"
+        f"参与提示: {_campaign_message_policy(payload)}\n"
         f"{_campaign_requirements(payload)}\n"
         f"{_campaign_description(payload)}"
     )
@@ -255,3 +330,22 @@ def _campaign_draw_mode(payload: dict[str, Any]) -> str:
 def _campaign_issuer(payload: dict[str, Any]) -> str:
     presentation = payload.get("presentation", {})
     return str(presentation.get("issuer_name") or "活动创建者")
+
+
+def _campaign_message_policy(payload: dict[str, Any]) -> str:
+    presentation = payload.get("presentation", {})
+    trigger = "删除报名命令" if presentation.get("delete_trigger_message") else "保留报名命令"
+    seconds = presentation.get("completion_delete_after_seconds")
+    completion = "不自动删除" if seconds is None else f"{int(seconds)} 秒后删除"
+    return f"{trigger}; 完成提示 {completion}"
+
+
+def _campaign_state_card_text(payload: dict[str, Any]) -> str:
+    state = str(payload["card_state"])
+    status = {
+        "settling": "报名已截止，正在复核资格并结算抽奖票。",
+        "drawn": "本期已经开奖，报名入口已关闭，请查看最新开奖结果。",
+    }.get(state)
+    if status is None:
+        raise ValueError("unsupported campaign card state")
+    return f"🎁 {payload['campaign_name']}\n\n{status}"

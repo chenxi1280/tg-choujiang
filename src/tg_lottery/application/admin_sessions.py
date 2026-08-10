@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import timedelta
 
 from sqlalchemy import delete
@@ -7,6 +8,20 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.infrastructure.db import AdminSession
 
 _SESSION_TTL_HOURS = 24
+
+
+@dataclass(frozen=True)
+class DraftPanelContext:
+    draft_id: str
+    revision: int
+    message_id: int
+
+    def callback_payload(self) -> dict[str, object]:
+        return {
+            "draft_id": self.draft_id,
+            "draft_revision": self.revision,
+            "panel_message_id": self.message_id,
+        }
 
 
 class AdminSessionService:
@@ -43,3 +58,20 @@ class AdminSessionService:
         if current is None:
             raise ValueError("admin session expired")
         await self.set(user_id, state, {**current.data, **changes})
+
+    async def issue_panel_context(self, user_id: int, message_id: int) -> DraftPanelContext:
+        async with self._uow_factory() as uow:
+            row = await uow.session.get(AdminSession, user_id, with_for_update=True)
+            if row is None or row.expires_at <= utcnow() or not row.state.startswith("draft:"):
+                raise ValueError("admin draft session expired")
+            draft_id = str(row.data.get("draft_id", ""))
+            if not draft_id:
+                raise ValueError("admin draft identity is missing")
+            revision = int(row.data.get("draft_revision", 0)) + 1
+            row.data = {
+                **row.data,
+                "draft_revision": revision,
+                "panel_message_id": message_id,
+            }
+            row.expires_at = utcnow() + timedelta(hours=_SESSION_TTL_HOURS)
+            return DraftPanelContext(draft_id, revision, message_id)

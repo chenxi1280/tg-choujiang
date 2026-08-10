@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from tg_lottery.application.campaign_notifications import add_campaign_card_state
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.application.records import add_outbox, utcnow
@@ -279,6 +280,7 @@ class DrawingService:
         group = await session.get(Group, campaign.group_id)
         if group is None:
             raise ValueError("campaign group is missing")
+        add_campaign_card_state(session, campaign, group.chat_id, state="drawn")
         presentation = campaign.presentation or {}
         extended_tips = bool(presentation.get("message_tips", True))
         await self._queue_group_result(

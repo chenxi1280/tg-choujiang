@@ -12,9 +12,11 @@ class RecordingMessage:
     def __init__(self) -> None:
         self.from_user = SimpleNamespace(id=202)
         self.answers: list[str] = []
+        self.reply_markups: list[object] = []
 
-    async def answer(self, text: str, **_: object) -> None:
+    async def answer(self, text: str, **values: object) -> None:
         self.answers.append(text)
+        self.reply_markups.append(values.get("reply_markup"))
 
 
 class PersonalQueries:
@@ -37,6 +39,7 @@ class PersonalQueries:
                 state=CampaignState.RUNNING,
                 draw_at=datetime(2026, 8, 8, 3, 25, tzinfo=UTC),
                 timezone="Asia/Shanghai",
+                public_ref="AbCdEfGhIjKlMnOpQrSt-_",
             )
         ]
 
@@ -55,6 +58,8 @@ async def test_personal_lists_render_business_states_and_local_time() -> None:
     assert "running" not in rendered
     assert "eligible" not in rendered
     assert "+00:00" not in rendered
+    button = message.reply_markups[-1].inline_keyboard[0][0]
+    assert button.callback_data == "nav:campaign:AbCdEfGhIjKlMnOpQrSt-_"
 
 
 async def test_participated_query_carries_frozen_campaign_timezone(session_factory) -> None:

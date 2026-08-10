@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
+from secrets import token_urlsafe
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -30,6 +31,8 @@ def new_draft(
     timezone: str = "Asia/Shanghai",
 ) -> dict[str, Any]:
     return {
+        "draft_id": token_urlsafe(18),
+        "draft_revision": 0,
         "chat_id": chat_id,
         "group_title": group_title,
         "timezone": timezone,
@@ -44,15 +47,24 @@ def new_draft(
         "required_channel_id": None,
         "required_chat_ids": [],
         "required_chat_refs": [],
+        "required_chats": [],
         "cover_file_id": None,
         "description": "",
         "username_required": False,
         "allowed_regions": [],
         "issuer": "",
         "issuer_name": "",
-        "luck_mode": "standard",
+        "luck_mode": "off",
         "message_tips": True,
+        "delete_trigger_message": False,
+        "completion_delete_after_seconds": None,
     }
+
+
+def ensure_draft_identity(data: dict[str, Any]) -> dict[str, Any]:
+    if data.get("draft_id"):
+        return data
+    return data | {"draft_id": token_urlsafe(18), "draft_revision": 0}
 
 
 def parse_draw_at(value: str, timezone: str) -> datetime:
@@ -102,7 +114,7 @@ def rules_from_data(data: dict[str, Any]) -> CampaignRules:
         allowed_regions=tuple(str(value) for value in data.get("allowed_regions", [])),
         draw_mode=str(data.get("draw_mode", "fixed")),
         participant_target=data.get("participant_target"),
-        luck_mode=str(data.get("luck_mode", "standard")),
+        luck_mode=str(data.get("luck_mode", "off")),
         settlement_drain_seconds=SETTLEMENT_DRAIN_SECONDS,
     )
 
@@ -130,10 +142,17 @@ def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
         "allowed_regions",
         "required_chat_ids",
         "required_chats",
+        "main_chat",
         "issuer",
         "issuer_name",
+        "issuer_user_id",
+        "issuer_username_at_publish",
+        "issuer_display_name_at_publish",
+        "issuer_source",
         "luck_mode",
         "message_tips",
+        "delete_trigger_message",
+        "completion_delete_after_seconds",
         "draw_mode",
         "participant_target",
     )
@@ -142,5 +161,7 @@ def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
 
 def _draw_at(data: dict[str, Any], now: datetime) -> datetime:
     if data.get("draw_mode") == "full":
-        return now + timedelta(days=FULL_DRAW_FALLBACK_DAYS)
+        timezone = ZoneInfo(str(data["timezone"]))
+        fallback_date = now.astimezone(timezone).date() + timedelta(days=FULL_DRAW_FALLBACK_DAYS)
+        return datetime.combine(fallback_date, time(hour=12), tzinfo=timezone)
     return datetime.fromisoformat(str(data["draw_at"]))

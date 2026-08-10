@@ -113,6 +113,7 @@ class PersonalFlow:
         summary = await self._queries.admin_campaign_summary(user.id)
         await message.answer(
             "🎁 抽奖管理\n\n"
+            "客户等级：尚未配置等级规则\n"
             f"累计创建：{summary.total}\n"
             f"进行中：{summary.active}\n"
             f"已开奖：{summary.drawn}\n"
@@ -154,12 +155,19 @@ class PersonalFlow:
                 f"{title}：暂无记录", reply_markup=_index_keyboard(self._bot_username)
             )
             return
-        lines = [
-            f"• {item.name}｜{campaign_state_text(item.state)}｜"
-            f"{format_public_time(item.draw_at, item.timezone)}"
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    text=f"{item.name}｜{campaign_state_text(item.state)}",
+                    callback_data=f"nav:campaign:{item.public_ref}",
+                )
+            ]
             for item in campaigns
         ]
-        await message.answer(f"🎁 {title}\n\n" + "\n".join(lines))
+        await message.answer(
+            f"🎁 {title}\n\n点击活动查看详情与当前可用操作。",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+        )
 
     async def _set_region(self, query: CallbackQuery, region: str) -> None:
         if region not in REGIONS:

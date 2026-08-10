@@ -16,7 +16,6 @@ from tg_lottery.application.winners import WinnerService
 from tg_lottery.domain.enums import CampaignState, PrizeClaimState
 from tg_lottery.telegram.admin_authorization import verify_chat_admin
 from tg_lottery.telegram.campaign_creator import CampaignCreator
-from tg_lottery.telegram.creator_actions import CREATOR_ACTIONS
 from tg_lottery.telegram.public_projection import campaign_state_text
 
 DRAW_CONFIRMATION_TEXT = "开奖结果已生成, 群公告和中奖通知正在发送。"
@@ -87,11 +86,18 @@ class AdminFlow:
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
         )
 
+    async def show_campaign_reference(self, query: CallbackQuery, reference: str) -> None:
+        campaign = await self._queries.campaign_by_reference(reference)
+        if campaign is None:
+            raise ValueError("活动不存在")
+        await self._verify_admin(campaign.id, query.from_user.id)
+        await self._show_campaign(_message(query), campaign.id, query.from_user.id)
+
     async def handle_text(self, message: Message) -> bool:
         return await self._creator.handle_message(message)
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> None:
-        if grant.action in CREATOR_ACTIONS:
+        if self._creator.handles_action(grant.action):
             await self._creator.handle_grant(query, grant)
             return
         handlers = {

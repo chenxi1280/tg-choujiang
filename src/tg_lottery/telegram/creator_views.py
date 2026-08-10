@@ -4,6 +4,7 @@ from typing import Any
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from tg_lottery.telegram.creator_messages import message_policy_summary
 from tg_lottery.telegram.draft_config import (
     ACTIVITY_PRESETS,
     INVITE_PRESETS,
@@ -41,6 +42,7 @@ def preview_text(data: dict[str, Any]) -> str:
         f"🔋 人品加成：{_luck_text(data)}\n\n"
         f"🌀 开奖方式：{_draw_text(data)}\n\n"
         f"🎅 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}\n\n"
+        f"🔔 参与提示：{message_policy_summary(data)}\n\n"
         f"当前状态：{status}\n"
         "（本页面为预览文案，不是正式效果）"
     )

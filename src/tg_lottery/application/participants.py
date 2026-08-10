@@ -1,12 +1,15 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
+from tg_lottery.application.campaign_notifications import add_campaign_card_state
+from tg_lottery.application.campaigns import request_early_cutoff
 from tg_lottery.application.ports import UnitOfWorkFactory
-from tg_lottery.application.records import add_outbox
+from tg_lottery.application.records import add_job, add_outbox
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import CampaignState, QualificationState, TicketSource
 from tg_lottery.domain.errors import UserFacingError
@@ -18,6 +21,7 @@ from tg_lottery.infrastructure.db import (
     InviteLink,
     Participant,
     QualificationCheck,
+    ScheduledJob,
     TelegramOutbox,
     TicketLedger,
     UserProfile,
@@ -53,6 +57,7 @@ class QualificationResult:
     observed_at: datetime
     observed_status: str | None = None
     error_code: str | None = None
+    observations: tuple[dict[str, Any], ...] = ()
 
 
 class ParticipantService:
@@ -118,7 +123,64 @@ class ParticipantService:
                         observed_at=result.observed_at,
                     )
                     await self._ensure_invite_link(uow.session, campaign, participant)
+                    await self._trigger_full_draw_if_ready(
+                        uow.session,
+                        campaign=campaign,
+                        observed_at=result.observed_at,
+                    )
             return participant
+
+    async def schedule_message_deletion(
+        self,
+        *,
+        campaign_id: UUID,
+        chat_id: int,
+        message_id: int,
+        run_at: datetime,
+    ) -> None:
+        business_key = f"delete_message:{campaign_id}:{chat_id}:{message_id}"
+        async with self._uow_factory() as uow:
+            existing = await uow.session.scalar(
+                select(ScheduledJob.id).where(ScheduledJob.business_key == business_key)
+            )
+            if existing:
+                return
+            add_job(
+                uow.session,
+                job_type="delete_telegram_message",
+                aggregate_id=str(campaign_id),
+                business_key=business_key,
+                run_at=run_at,
+                payload={"chat_id": chat_id, "message_id": message_id},
+            )
+
+    async def _trigger_full_draw_if_ready(
+        self, session: object, *, campaign: Campaign, observed_at: datetime
+    ) -> None:
+        rules = CampaignRules.model_validate(campaign.rules)
+        if rules.draw_mode != "full" or rules.participant_target is None:
+            return
+        await session.flush()
+        count = await session.scalar(
+            select(func.count(Participant.id)).where(
+                Participant.campaign_id == campaign.id,
+                Participant.qualification_state == QualificationState.ELIGIBLE,
+            )
+        )
+        if int(count or 0) < rules.participant_target:
+            return
+        changed = request_early_cutoff(
+            session,
+            campaign=campaign,
+            cutoff_at=observed_at,
+            reason=f"满人开奖达到 {count}/{rules.participant_target}",
+            actor_user_id=None,
+        )
+        if changed:
+            group = await session.get(Group, campaign.group_id)
+            if group is None:
+                raise ValueError("full draw campaign group is missing")
+            add_campaign_card_state(session, campaign, group.chat_id, state="settling")
 
     async def _registration_campaign_id(self, session: object, result: QualificationResult) -> UUID:
         row = (
@@ -140,6 +202,7 @@ class ParticipantService:
         observed_at: datetime,
         observed_status: str | None,
         error_code: str | None,
+        observations: tuple[dict[str, Any], ...] = (),
     ) -> QualificationCheck:
         async with self._uow_factory() as uow:
             participant = await uow.session.scalar(
@@ -153,6 +216,7 @@ class ParticipantService:
                 state=state,
                 observed_status=observed_status,
                 error_code=error_code,
+                observations={"chats": list(observations)},
                 observed_at=observed_at,
                 request_hash=canonical_hash(
                     {"participant_id": str(participant.id), "phase": "draw"}
@@ -304,6 +368,7 @@ class ParticipantService:
         check.state = result.state
         check.observed_status = result.observed_status
         check.error_code = result.error_code
+        check.observations = {"chats": list(result.observations)}
         check.observed_at = result.observed_at
 
     def _can_apply_registration_result(

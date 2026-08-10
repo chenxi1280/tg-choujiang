@@ -87,9 +87,7 @@ class LotteryUpdateHandler:
         try:
             if text.startswith("/start"):
                 payload = text.partition(" ")[2]
-                if payload.startswith("join_"):
-                    await self._member_flow.register(message, payload.removeprefix("join_"))
-                else:
+                if not await self._start_payload(message, payload):
                     await self._personal_flow.show_guide(message)
                 return
             if text == "/menu":
@@ -104,6 +102,21 @@ class LotteryUpdateHandler:
                 await self._admin_flow.show_main(message)
         except (DomainError, ValueError) as exc:
             await self._send_operation_error(message, exc)
+
+    async def _start_payload(self, message: Message, payload: str) -> bool:
+        if payload.startswith("join_"):
+            await self._member_flow.register(message, payload.removeprefix("join_"))
+            return True
+        if payload.startswith("rules_"):
+            await self._member_flow.show_rules(message, payload.removeprefix("rules_"))
+            return True
+        if not payload.startswith("condition_"):
+            return False
+        reference, separator, position = payload.removeprefix("condition_").rpartition("_")
+        if not separator or not position.isdecimal():
+            raise ValueError("invalid participation condition payload")
+        await self._member_flow.show_condition(message, reference, int(position))
+        return True
 
     async def _callback(self, query: CallbackQuery) -> None:
         await self._answer_callback(query)
@@ -134,6 +147,11 @@ class LotteryUpdateHandler:
             return
         if data == "nav:campaigns":
             await self._admin_flow.show_campaigns(query)
+            return
+        if data.startswith("nav:campaign:"):
+            await self._admin_flow.show_campaign_reference(
+                query, data.removeprefix("nav:campaign:")
+            )
             return
         if data == "member:tickets":
             await self._member_flow.show_tickets(message, query.from_user.id)

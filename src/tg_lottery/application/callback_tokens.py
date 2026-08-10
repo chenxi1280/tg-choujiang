@@ -1,6 +1,6 @@
 import secrets
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from hashlib import sha256
 from uuid import UUID
 
@@ -10,7 +10,7 @@ from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.errors import AuthorizationDenied
-from tg_lottery.infrastructure.db import CallbackToken
+from tg_lottery.infrastructure.db import AdminSession, CallbackToken
 
 _TOKEN_TTL_MINUTES = 10
 
@@ -82,11 +82,35 @@ class CallbackTokenService:
                 if update_id is not None and row.consumed_by_update_id == update_id:
                     return CallbackGrant(row.action, row.campaign_id, row.payload)
                 raise AuthorizationDenied("callback token is expired or already used")
-            if row.expires_at <= utcnow():
+            now = utcnow()
+            await self._validate_draft_context(uow.session, row, now=now)
+            if row.expires_at <= now:
                 raise AuthorizationDenied("callback token is expired or already used")
-            row.consumed_at = utcnow()
+            row.consumed_at = now
             row.consumed_by_update_id = update_id
             return CallbackGrant(row.action, row.campaign_id, row.payload)
+
+    async def _validate_draft_context(
+        self, session: object, row: CallbackToken, *, now: datetime
+    ) -> None:
+        if not row.action.startswith("draft_"):
+            return
+        admin_session = await session.get(AdminSession, row.owner_user_id, with_for_update=True)
+        payload = row.payload
+        if admin_session is None or admin_session.expires_at <= now:
+            raise AuthorizationDenied("draft callback session is expired")
+        expected = (
+            str(admin_session.data.get("draft_id", "")),
+            int(admin_session.data.get("draft_revision", 0)),
+            int(admin_session.data.get("panel_message_id", 0)),
+        )
+        actual = (
+            str(payload.get("draft_id", "")),
+            int(payload.get("draft_revision", 0)),
+            int(payload.get("panel_message_id", 0)),
+        )
+        if actual != expected:
+            raise AuthorizationDenied("draft callback belongs to an old panel")
 
 
 def _hash(token: str) -> bytes:

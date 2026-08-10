@@ -6,6 +6,7 @@ from datetime import timedelta
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
+from tg_lottery.application.admin_sessions import AdminSessionService, DraftPanelContext
 from tg_lottery.application.callback_tokens import CallbackRequest, CallbackTokenService
 from tg_lottery.application.queries import QueryService
 
@@ -27,10 +28,12 @@ class CreatorRenderer:
         bot: Bot,
         tokens: CallbackTokenService,
         queries: QueryService,
+        sessions: AdminSessionService,
     ) -> None:
         self._bot = bot
         self._tokens = tokens
         self._queries = queries
+        self._sessions = sessions
 
     async def render(
         self,
@@ -64,16 +67,17 @@ class CreatorRenderer:
 
     async def edit_groups(self, target: PanelTarget) -> None:
         groups = await self._queries.admin_groups(target.user_id)
+        context = await self._sessions.issue_panel_context(target.user_id, target.message_id)
         requests = tuple(
             CallbackRequest("draft_select_group", payload={"chat_id": group.chat_id})
             for group in groups
         )
-        tokens = await self._create_tokens(target, requests)
+        tokens = await self._create_tokens(target, requests, context=context)
         rows = [
             [InlineKeyboardButton(text=group.title, callback_data=f"secure:{token}")]
             for group, token in zip(groups, tokens, strict=True)
         ]
-        back = await self._keyboard(target, [[("↩ 返回上一层", "draft_back")]])
+        back = await self._keyboard(target, [[("↩ 返回上一层", "draft_back")]], context=context)
         rows.extend(back.inline_keyboard)
         await self._bot.edit_message_text(
             "👥 创建抽奖·选择活动群（必填项）\n\n请选择发布抽奖的群：",
@@ -82,9 +86,18 @@ class CreatorRenderer:
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
         )
 
-    async def _keyboard(self, target: PanelTarget, rows: ButtonRows) -> InlineKeyboardMarkup:
+    async def _keyboard(
+        self,
+        target: PanelTarget,
+        rows: ButtonRows,
+        *,
+        context: DraftPanelContext | None = None,
+    ) -> InlineKeyboardMarkup:
+        context = context or await self._sessions.issue_panel_context(
+            target.user_id, target.message_id
+        )
         requests = tuple(CallbackRequest(action) for row in rows for _, action in row)
-        tokens = iter(await self._create_tokens(target, requests))
+        tokens = iter(await self._create_tokens(target, requests, context=context))
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -96,11 +109,27 @@ class CreatorRenderer:
         )
 
     async def _create_tokens(
-        self, target: PanelTarget, requests: tuple[CallbackRequest, ...]
+        self,
+        target: PanelTarget,
+        requests: tuple[CallbackRequest, ...],
+        *,
+        context: DraftPanelContext | None = None,
     ) -> tuple[str, ...]:
+        context = context or await self._sessions.issue_panel_context(
+            target.user_id, target.message_id
+        )
+        payload = context.callback_payload()
+        scoped_requests = tuple(
+            CallbackRequest(
+                request.action,
+                campaign_id=request.campaign_id,
+                payload={**(request.payload or {}), **payload},
+            )
+            for request in requests
+        )
         return await self._tokens.create_many(
             owner_user_id=target.user_id,
             chat_id=target.chat_id,
-            requests=requests,
+            requests=scoped_requests,
             expires_in=TOKEN_LIFETIME,
         )

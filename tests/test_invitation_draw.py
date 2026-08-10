@@ -38,7 +38,11 @@ from tg_lottery.infrastructure.db.uow import UnitOfWork
 async def test_invitation_first_attribution_and_reward_are_idempotent(session_factory) -> None:
     now = datetime.now(UTC)
     async with session_factory() as session, session.begin():
-        _, campaign, participant = await seed_campaign(session, cutoff_at=now + timedelta(days=2))
+        _, campaign, participant = await seed_campaign(
+            session,
+            rules=CampaignRules(luck_mode="standard"),
+            cutoff_at=now + timedelta(days=2),
+        )
         link = InviteLink(
             campaign_id=campaign.id,
             participant_id=participant.id,

@@ -32,7 +32,7 @@ class CampaignRules(BaseModel, frozen=True):
     allowed_regions: tuple[str, ...] = Field(default=(), max_length=3)
     draw_mode: Literal["fixed", "full"] = "fixed"
     participant_target: int | None = Field(default=None, ge=1)
-    luck_mode: Literal["off", "standard", "active"] = "standard"
+    luck_mode: Literal["off", "standard", "active"] = "off"
     unique_winner: bool = True
     settlement_drain_seconds: int = Field(default=300, ge=0)
 

@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, User
 
 from tg_lottery.application.admin_sessions import AdminSessionService
 from tg_lottery.application.callback_tokens import (
     CallbackGrant,
 )
-from tg_lottery.application.campaigns import CampaignService
+from tg_lottery.application.campaigns import CampaignService, DraftSource
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
@@ -29,7 +29,14 @@ from tg_lottery.telegram.creator_views import (
     prizes_text,
     title_prompt_text,
 )
-from tg_lottery.telegram.draft_config import campaign_input, new_draft, presentation_from_data
+from tg_lottery.telegram.draft_config import (
+    campaign_input,
+    ensure_draft_identity,
+    new_draft,
+    presentation_from_data,
+)
+from tg_lottery.telegram.issuer import creator_issuer, resolve_issuer
+from tg_lottery.telegram.required_chats import resolve_required_chat
 
 
 class CampaignCreator:
@@ -55,43 +62,45 @@ class CampaignCreator:
         self._profiles = profiles
 
     async def start(self, query: CallbackQuery) -> None:
-        await self._open(query.from_user.id, query.from_user.full_name, _message(query))
+        await self._open(query.from_user, _message(query))
 
     async def start_message(self, message: Message) -> None:
         user = _user(message)
         panel = await message.answer("正在准备抽奖草稿…")
-        await self._open(user.id, user.full_name, panel)
+        await self._open(user, panel)
 
-    async def _open(self, user_id: int, creator_name: str, message: Message) -> None:
-        existing = await self._sessions.get(user_id)
+    async def _open(self, user: User, message: Message) -> None:
+        existing = await self._sessions.get(user.id)
         if existing is not None and existing.state.startswith("draft:"):
-            data = dict(existing.data) | {
+            data = ensure_draft_identity(dict(existing.data)) | {
                 "panel_message_id": message.message_id,
-                "creator_name": creator_name,
+                "creator_name": user.full_name,
             }
-            await self._sessions.set(user_id, "draft:idle", data)
-            await self._render_dashboard(user_id, message, data)
+            await self._sessions.set(user.id, "draft:idle", data)
+            await self._render_dashboard(user.id, message, data)
             return
-        data = await self._new_draft(user_id, creator_name, message.message_id)
-        await self._sessions.set(user_id, "draft:prize_name", data)
+        data = await self._new_draft(user, message.message_id)
+        await self._sessions.set(user.id, "draft:prize_name", data)
         await self._render_text(
-            user_id, message, data=data, text=prize_prompt_text(data), rows=_back_rows()
+            user.id, message, data=data, text=prize_prompt_text(data), rows=_back_rows()
         )
 
-    async def _new_draft(
-        self, user_id: int, creator_name: str, panel_message_id: int
-    ) -> dict[str, Any]:
-        groups = await self._queries.admin_groups(user_id)
+    async def _new_draft(self, user: User, panel_message_id: int) -> dict[str, Any]:
+        groups = await self._queries.admin_groups(user.id)
         if not groups:
             raise UserFacingError("没有可管理的群，请先将机器人设为群管理员")
         data = new_draft()
         if len(groups) == 1:
             data = _bind_group(data, groups[0])
-        return data | {
-            "panel_message_id": panel_message_id,
-            "creator_name": creator_name,
-            "guided": True,
-        }
+        return (
+            data
+            | {
+                "panel_message_id": panel_message_id,
+                "creator_name": user.full_name,
+                "guided": True,
+            }
+            | creator_issuer(user)
+        )
 
     async def handle_message(self, message: Message) -> bool:
         session = await self._sessions.get(_user(message).id)
@@ -117,7 +126,18 @@ class CampaignCreator:
         return True
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> None:
-        handlers = {
+        handler = self._grant_handlers().get(grant.action)
+        if handler is not None:
+            await handler(query, grant)
+            return
+        if not await self._settings.handle_grant(query, grant):
+            raise UserFacingError("创建操作不存在或已经失效")
+
+    def handles_action(self, action: str) -> bool:
+        return action in self._grant_handlers() or self._settings.handles_action(action)
+
+    def _grant_handlers(self):
+        return {
             "draft_group": self._show_groups,
             "draft_select_group": self._select_group,
             "draft_title": self._edit_title,
@@ -131,12 +151,6 @@ class CampaignCreator:
             "draft_home": self._home,
             "draft_publish": self._publish,
         }
-        handler = handlers.get(grant.action)
-        if handler is not None:
-            await handler(query, grant)
-            return
-        if not await self._settings.handle_grant(query, grant):
-            raise UserFacingError("创建操作不存在或已经失效")
 
     async def _show_groups(self, query: CallbackQuery, _: CallbackGrant) -> None:
         await self._set_state(query, "draft:idle", guided=False)
@@ -245,9 +259,7 @@ class CampaignCreator:
         )
 
     async def _clear(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._new_draft(
-            query.from_user.id, query.from_user.full_name, _message(query).message_id
-        )
+        data = await self._new_draft(query.from_user, _message(query).message_id)
         await self._sessions.set(query.from_user.id, "draft:prize_name", data)
         await self._render_text(
             query.from_user.id,
@@ -264,24 +276,62 @@ class CampaignCreator:
 
     async def _publish(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._required_session(query.from_user.id)
+        if data.get("published_campaign_id"):
+            await self._finish_publication(query, data, UUID(str(data["published_campaign_id"])))
+            return
         now = utcnow()
         campaign_input(data, now=now)
         await verify_chat_admin(
             self._bot, int(data["chat_id"]), query.from_user.id, require_invites=True
         )
-        required_chats = await self._resolve_required_chats(data)
-        resolved = data | {
-            "required_chat_ids": [item["id"] for item in required_chats],
-            "required_chats": required_chats,
-        }
+        resolved = await self._resolve_publication_data(data, query.from_user)
         draft, prizes = campaign_input(resolved, now=now)
-        campaign = await self._campaigns.create_draft(draft, prizes, query.from_user.id)
-        await self._campaigns.publish(campaign.id, query.from_user.id, self._bot_username)
+        source = DraftSource(str(resolved["draft_id"]), int(resolved["draft_revision"]))
+        campaign = await self._campaigns.create_draft(
+            draft, prizes, query.from_user.id, source=source
+        )
+        progress = resolved | {
+            "published_campaign_id": str(campaign.id),
+            "publish_stage": "campaign_created",
+        }
+        await self._sessions.set(query.from_user.id, "draft:publishing", progress)
+        await self._finish_publication(query, progress, campaign.id)
+
+    async def _finish_publication(
+        self, query: CallbackQuery, data: dict[str, Any], campaign_id: UUID
+    ) -> None:
+        await self._campaigns.publish(campaign_id, query.from_user.id, self._bot_username)
+        accepted = data | {"publish_stage": "publication_accepted"}
+        await self._sessions.set(query.from_user.id, "draft:publishing", accepted)
         await self._profiles.save_last_draft(
-            query.from_user.id, resolved | presentation_from_data(resolved), utcnow()
+            query.from_user.id, accepted | presentation_from_data(accepted), utcnow()
         )
         await self._sessions.clear(query.from_user.id)
         await _message(query).edit_text("🎉 发布请求已提交，群活动卡片确认送达后正式开始。")
+
+    async def _resolve_publication_data(
+        self, data: dict[str, Any], creator: User
+    ) -> dict[str, Any]:
+        if data.get("published_campaign_id"):
+            return data
+        required_chats = await self._resolve_required_chats(data)
+        main_chat = await self._required_chat_record(int(data["chat_id"]))
+        issuer_ref = str(data.get("issuer") or "")
+        candidates = (
+            await self._queries.user_ids_by_username(issuer_ref)
+            if issuer_ref.startswith("@")
+            else ()
+        )
+        issuer = await resolve_issuer(self._bot, issuer_ref, creator, candidate_user_ids=candidates)
+        return (
+            data
+            | {
+                "required_chat_ids": [item["id"] for item in required_chats],
+                "required_chats": required_chats,
+                "main_chat": main_chat,
+            }
+            | issuer
+        )
 
     async def _resolve_required_chats(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         refs = data.get("required_chat_refs") or data.get("required_chat_ids", [])
@@ -293,23 +343,11 @@ class CampaignCreator:
             if chat_id in seen:
                 continue
             seen.add(chat_id)
-            records.append(record)
+            records.append(record | {"position": len(records) + 1})
         return records
 
     async def _required_chat_record(self, ref: int | str) -> dict[str, Any]:
-        try:
-            chat = await self._bot.get_chat(ref)
-            member = await self._bot.get_chat_member(chat.id, self._bot.id)
-        except TelegramAPIError as exc:
-            raise UserFacingError("无法验证其中一个参与条件，请确认机器人权限后重试") from exc
-        if str(member.status) not in {"administrator", "creator"}:
-            raise UserFacingError("机器人必须是每个参与条件群/频道的管理员")
-        return {
-            "id": chat.id,
-            "title": chat.title or chat.full_name or "未命名群组/频道",
-            "type": str(chat.type),
-            "username": chat.username,
-        }
+        return await resolve_required_chat(self._bot, ref)
 
     async def _prompt_title(self, user_id: int, message: Message, data: dict[str, Any]) -> None:
         await self._sessions.set(user_id, "draft:title", data)

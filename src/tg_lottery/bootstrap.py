@@ -23,6 +23,7 @@ from tg_lottery.telegram.admin_flow import AdminFlow
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_renderer import CreatorRenderer
 from tg_lottery.telegram.creator_settings import CreatorSettings
+from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.personal_flow import PersonalFlow
 from tg_lottery.telegram.update_handler import LotteryUpdateHandler
@@ -96,7 +97,7 @@ def build_update_handler(container: Container, bot_username: str) -> LotteryUpda
         bot=container.bot,
         participants=services.participants,
         queries=services.queries,
-        campaigns=services.campaigns,
+        cipher=SecretCipher(container.settings.app_encryption_key),
     )
     personal_flow = PersonalFlow(
         profiles=services.profiles,
@@ -123,11 +124,14 @@ def _build_creator(container: Container, bot_username: str) -> CampaignCreator:
         bot=container.bot,
         tokens=services.tokens,
         queries=services.queries,
+        sessions=services.sessions,
     )
     creator_settings = CreatorSettings(
         sessions=services.sessions,
         renderer=renderer,
         profiles=services.profiles,
+        queries=services.queries,
+        bot=container.bot,
     )
     return CampaignCreator(
         bot=container.bot,

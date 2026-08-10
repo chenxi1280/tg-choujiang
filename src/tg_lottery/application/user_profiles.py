@@ -31,8 +31,14 @@ _DRAFT_KEYS = frozenset(
         "allowed_regions",
         "issuer",
         "issuer_name",
+        "issuer_user_id",
+        "issuer_username_at_publish",
+        "issuer_display_name_at_publish",
+        "issuer_source",
         "luck_mode",
         "message_tips",
+        "delete_trigger_message",
+        "completion_delete_after_seconds",
     }
 )
 

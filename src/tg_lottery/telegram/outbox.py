@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tg_lottery.application.campaign_notifications import add_cancelled_campaign_card
 from tg_lottery.application.records import add_outbox, utcnow
+from tg_lottery.application.required_chat_links import project_required_chat_operation
 from tg_lottery.domain.enums import CampaignState, DeliveryCertainty, OutboxState
 from tg_lottery.infrastructure.db import (
     Campaign,
@@ -42,7 +43,13 @@ _IDLE_WAIT_SECONDS = 0.5
 _EXPLICIT_ERRORS = (TelegramBadRequest, TelegramForbiddenError, TelegramUnauthorizedError)
 _UNKNOWN_ERRORS = (TelegramNetworkError, TelegramServerError, TimeoutError, ConnectionError)
 _PROJECTED_OPERATIONS = frozenset(
-    {"send_campaign_card", "create_invite_link", "revoke_invite_link"}
+    {
+        "send_campaign_card",
+        "create_invite_link",
+        "revoke_invite_link",
+        "create_required_chat_invite",
+        "revoke_required_chat_invite",
+    }
 )
 _PROJECTION_RETRY_SECONDS = 30
 
@@ -393,11 +400,15 @@ class OutboxWorker:
     async def _project_success(
         self, session: AsyncSession, row: TelegramOutbox, result: GatewayResult
     ) -> None:
+        if await project_required_chat_operation(session, row, result, cipher=self._cipher):
+            return
         if row.operation == "send_campaign_card":
             await self._project_campaign_card(session, row)
-        elif row.operation == "create_invite_link":
+            return
+        if row.operation == "create_invite_link":
             await self._project_invite_link(session, row, result)
-        elif row.operation == "revoke_invite_link":
+            return
+        if row.operation == "revoke_invite_link":
             link = await self._required_link(session, row)
             link.revoked_at = utcnow()
 

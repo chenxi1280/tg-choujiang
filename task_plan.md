@@ -53,11 +53,11 @@
 - [blocked] 45. 在 Telegram 真实客户端验收命令、创建、管理与参与链路，发布动作使用“不发布”测试草稿（客户端锁屏，发布后 Telegram E2E 未证明）
 - [complete] 46. 第二轮只读核对参考 Bot、V1.7 合同、当前代码和测试覆盖，确认 3 个 P0 与后续差距
 - [complete] 47. 修订 V1.8 对齐合同与验收清单，纠正消息提示、人品加成、默认值和管理入口语义
-- [pending] 48. 修复创建器安全回调、逐步创建、参与条件累加、身份解析和发布卡交互
-- [pending] 49. 修复开奖前多群资格复核、满人触发持久化与 30 天中午兜底
-- [pending] 50. 实现参考 Bot 的人品积分、兑换票、排行/规则/管理审计与延迟删除提示
-- [pending] 51. 补齐抽奖管理、客户等级与导航/精选推送门槛能力，并完成迁移与自动化回归
-- [pending] 52. 执行静态检查、60 秒全量测试、迁移往返/漂移与真实 Telegram 不发布 E2E 验收
+- [complete] 48. 修复创建器安全回调、逐步创建、参与条件累加、身份解析和发布卡交互
+- [complete] 49. 修复开奖前多群资格复核、满人触发持久化与 30 天中午兜底
+- [blocked] 50. 已完成延迟删除提示；人品积分/兑换/排行/管理审计等待合同中 `TBD` 的计分、日上限、兑换成本和票上限配置
+- [blocked] 51. 已完成 `/index` 权威活动管理；客户等级与导航/精选推送等待合同中 `TBD` 的等级和门槛配置
+- [blocked] 52. 静态检查、141 项 60 秒全量测试、迁移往返/漂移已完成；真实 Telegram 不发布 E2E 未执行，保持 `unproven`
 - [complete] 53. 从用户提供的 Telegram 旧消息取证公开卡片的 UTC ISO 时间与完整快照哈希泄露
 - [complete] 54. 先修订公开投影合同，再统一活动卡/开奖结果的最终展示边界并保留内部快照审计事实
 - [complete] 55. 增加新旧载荷兼容回归，执行 Ruff、代码度量与 60 秒全量测试
@@ -70,6 +70,7 @@
 - [complete] 62. 将自定义开奖时间提示改为按活动时区动态生成的未来示例
 - [complete] 63. 补齐故障、迁移和时间过期回归并执行完整质量门禁
 - [complete] 64. 提交 master、同步 release，并核验精确 SHA 的 GitHub Actions 发布结果
+- [in_progress] 65. 提交本轮确定性 V1.8 修复、推送 master/release，并核验精确 SHA 的 GitHub Actions 与生产健康
 
 ## 关键约束
 
@@ -105,6 +106,9 @@
 | 首次多文件模型补丁因 Campaign 字段顺序不匹配而未应用 | 1 | 读取模型精确上下文后拆成小补丁，确认无部分写入再继续 |
 | macOS 不提供 GNU `timeout`，首次 60 秒测试命令无法执行 | 1 | 改用受控测试执行并确认全套测试在 8 秒内结束；未放宽后端 60 秒上限 |
 | `uv run` 重建环境时未安装 dev extra，pytest 入口误用系统环境 | 1 | 执行 `uv sync --extra dev` 后固定使用项目 `.venv/bin/python -m pytest` |
+| 新增资格逐群观察列后直接运行数据库测试，测试库尚未升级导致 `observations does not exist` | 1 | 明确核验测试库 URL 后执行 Alembic `d4c8a1f2b903 -> e7a9c2d4f601`，再重跑同一测试分区 |
+| 逐群资格摘要直接拼接全部状态，超过 `observed_status VARCHAR(40)` | 1 | 将数据库摘要固定为短聚合状态，完整逐群事实只存 JSONB `observations`；不截断或丢弃审计事实 |
+| 默认人气加成改为关闭后，3 个旧活动测试仍依赖隐式 `standard` | 1 | 在验证旧加成行为的测试中显式声明 `luck_mode="standard"`，保留新活动默认关闭合同 |
 | V1.4 前两次隔离渲染把 QA 字体放到错误层级，中文未加载 | 2 | 定位 LibreOffice 实际 `fonts/truetype` 目录，临时注入后完成 33 页视觉验收并立即移除字体副本 |
 | 复审读取命令的工作目录误写为 `/Users/xida/PychProjects/...` | 1 | 未执行任何代码或文件操作；改用已确认的仓库绝对路径后继续 |
 | zsh 对不存在的 `scripts/*.sh` glob 直接报 `no matches found` | 1 | Alembic 往返、漂移与 Compose 已先完成；Shell 校验改用 `rg --files -g '*.sh'` 枚举实际文件，不依赖空 glob |

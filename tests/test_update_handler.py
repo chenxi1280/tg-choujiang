@@ -12,19 +12,34 @@ class RecordingMemberFlow:
         self.user_id: int | None = None
         self.observed_at: datetime | None = None
         self.campaign_reference: str | None = None
+        self.action: str | None = None
+        self.position: int | None = None
 
     async def register(self, message, campaign_reference, *, user=None, observed_at=None) -> None:
         self.campaign_reference = campaign_reference
         self.user_id = user.id
         self.observed_at = observed_at
 
+    async def show_rules(self, message, campaign_reference) -> None:
+        self.action = "rules"
+        self.campaign_reference = campaign_reference
+
+    async def show_condition(self, message, campaign_reference, position) -> None:
+        self.action = "condition"
+        self.campaign_reference = campaign_reference
+        self.position = position
+
 
 class RecordingAdminFlow:
     def __init__(self) -> None:
         self.started = False
+        self.campaign_reference = None
 
     async def start_create_message(self, message) -> None:
         self.started = True
+
+    async def show_campaign_reference(self, query, reference) -> None:
+        self.campaign_reference = reference
 
 
 class PassthroughPersonalFlow:
@@ -74,6 +89,20 @@ async def test_legacy_verify_callback_remains_accepted() -> None:
     assert flow.user_id == 201
 
 
+async def test_rules_and_condition_start_payloads_are_distinct_from_registration() -> None:
+    flow = RecordingMemberFlow()
+    handler = _handler(member_flow=flow)
+    public_ref = "AbCdEfGhIjKlMnOpQrSt-_"
+
+    assert await handler._start_payload(object(), f"rules_{public_ref}") is True
+    assert flow.action == "rules"
+    assert flow.user_id is None
+    assert await handler._start_payload(object(), f"condition_{public_ref}_2") is True
+    assert flow.action == "condition"
+    assert flow.position == 2
+    assert flow.user_id is None
+
+
 def test_missing_chat_title_never_falls_back_to_raw_chat_id() -> None:
     assert _public_chat_title(None) == "未命名群组/频道"
     assert _public_chat_title("  ") == "未命名群组/频道"
@@ -99,6 +128,16 @@ async def test_new_command_enters_creation_directly() -> None:
     await handler._private_message(message)
 
     assert admin_flow.started is True
+
+
+async def test_campaign_list_item_opens_authorized_campaign_detail() -> None:
+    admin_flow = RecordingAdminFlow()
+    handler = _handler_with_admin(admin_flow)
+    query = _callback("nav:campaign:AbCdEfGhIjKlMnOpQrSt-_")
+
+    await handler._dispatch_callback(query, query.data)
+
+    assert admin_flow.campaign_reference == "AbCdEfGhIjKlMnOpQrSt-_"
 
 
 async def test_internal_error_is_logged_but_not_exposed(caplog) -> None:
@@ -135,6 +174,12 @@ def _handler(*, member_flow=None) -> LotteryUpdateHandler:
         invitations=object(),
         queries=object(),
     )
+
+
+def _handler_with_admin(admin_flow) -> LotteryUpdateHandler:
+    handler = _handler()
+    handler._admin_flow = admin_flow
+    return handler
 
 
 def _callback(data: str) -> CallbackQuery:

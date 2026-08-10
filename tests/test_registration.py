@@ -15,9 +15,11 @@ from tg_lottery.domain.enums import CampaignState, QualificationState, TicketSou
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import (
+    AuditLog,
     Campaign,
     Participant,
     QualificationCheck,
+    ScheduledJob,
     TelegramOutbox,
     TicketLedger,
     UserProfile,
@@ -164,6 +166,65 @@ async def test_registration_enforces_username_region_and_all_required_chats(
     attempt = await service.begin_registration(_request(campaign_id, now))
 
     assert attempt.required_chat_ids == (-1002, -1003)
+
+
+async def test_full_draw_threshold_creates_one_system_trigger_in_registration_transaction(
+    session_factory,
+) -> None:
+    now = datetime.now(UTC)
+    rules = CampaignRules(draw_mode="full", participant_target=2)
+    async with session_factory() as session, session.begin():
+        _, campaign, _ = await seed_campaign(session, rules=rules)
+        campaign_id = campaign.id
+    service = ParticipantService(partial(UnitOfWork, session_factory))
+    attempt = await service.begin_registration(_request(campaign_id, now))
+
+    await service.complete_registration(_result(attempt, now, QualificationState.ELIGIBLE))
+    await service.complete_registration(_result(attempt, now, QualificationState.ELIGIBLE))
+
+    async with session_factory() as session:
+        campaign = await session.get(Campaign, campaign_id)
+        jobs = (
+            await session.scalars(
+                select(ScheduledJob).where(ScheduledJob.aggregate_id == str(campaign_id))
+            )
+        ).all()
+        audit = await session.scalar(
+            select(AuditLog).where(AuditLog.action == "campaign.early_cutoff")
+        )
+        assert campaign.state is CampaignState.SETTLING
+        assert campaign.cutoff_at == now
+        assert {job.job_type for job in jobs} == {
+            "qualification_review",
+            "revoke_invite_links",
+            "campaign_settle",
+            "campaign_draw",
+        }
+        assert audit.actor_user_id is None
+
+
+async def test_completion_message_deletion_job_is_durable_and_idempotent(
+    session_factory,
+) -> None:
+    now = datetime.now(UTC)
+    async with session_factory() as session, session.begin():
+        _, campaign, _ = await seed_campaign(session)
+        campaign_id = campaign.id
+    service = ParticipantService(partial(UnitOfWork, session_factory))
+
+    for _ in range(2):
+        await service.schedule_message_deletion(
+            campaign_id=campaign_id,
+            chat_id=202,
+            message_id=77,
+            run_at=now,
+        )
+
+    async with session_factory() as session:
+        jobs = tuple(await session.scalars(select(ScheduledJob)))
+        assert len(jobs) == 1
+        assert jobs[0].job_type == "delete_telegram_message"
+        assert jobs[0].payload == {"chat_id": 202, "message_id": 77}
 
 
 def _request(campaign_id, observed_at: datetime) -> RegistrationRequest:

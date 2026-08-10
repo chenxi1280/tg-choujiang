@@ -84,8 +84,9 @@ async def test_create_and_publish_freezes_rules_and_schedules_full_lifecycle(
 async def test_activity_awards_one_daily_ticket_and_rejects_duplicates(
     session_factory,
 ) -> None:
+    rules = CampaignRules(luck_mode="standard")
     async with session_factory() as session, session.begin():
-        group, campaign, participant = await seed_campaign(session)
+        group, campaign, participant = await seed_campaign(session, rules=rules)
         campaign_id = campaign.id
         participant_id = participant.id
         chat_id = group.chat_id
@@ -173,6 +174,7 @@ async def test_activity_uses_campaign_timezone_and_inclusive_cutoff(session_fact
     after_midnight = next_midnight + timedelta(minutes=1)
     rules = CampaignRules(
         timezone=zone.key,
+        luck_mode="standard",
         activity=ActivityRule(message_threshold=1, daily_ticket_cap=1),
     )
     async with session_factory() as session, session.begin():
@@ -233,7 +235,10 @@ async def test_activity_before_preheat_is_not_replayed_into_running_campaign(
 
 
 async def test_pre_cutoff_message_is_counted_while_inbox_drains(session_factory) -> None:
-    rules = CampaignRules(activity=ActivityRule(message_threshold=1, daily_ticket_cap=1))
+    rules = CampaignRules(
+        luck_mode="standard",
+        activity=ActivityRule(message_threshold=1, daily_ticket_cap=1),
+    )
     now = datetime.now(UTC)
     async with session_factory() as session, session.begin():
         group, _, _ = await seed_campaign(
@@ -307,3 +312,26 @@ async def test_cancelling_published_campaign_queues_card_compensation(
             "has_cover": False,
             "message_id": 321,
         }
+
+
+async def test_repeated_early_cutoff_does_not_duplicate_card_update(session_factory) -> None:
+    async with session_factory() as session, session.begin():
+        _, campaign, _ = await seed_campaign(session)
+        campaign.published_message_id = 654
+        campaign_id = campaign.id
+    service = CampaignService(partial(UnitOfWork, session_factory))
+    cutoff_at = datetime.now(UTC)
+    for _ in range(2):
+        await service.early_cutoff(
+            campaign_id,
+            actor_user_id=101,
+            cutoff_at=cutoff_at,
+            reason="测试提前截止",
+        )
+    async with session_factory() as session:
+        outbox_count = await session.scalar(
+            select(func.count(TelegramOutbox.id)).where(
+                TelegramOutbox.operation == "edit_campaign_card_state"
+            )
+        )
+        assert outbox_count == 1
