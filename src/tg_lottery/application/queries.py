@@ -14,6 +14,7 @@ from tg_lottery.domain.enums import (
     QualificationState,
     TicketSource,
 )
+from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import (
     Campaign,
     DrawRun,
@@ -264,7 +265,8 @@ class QueryService:
                 total=sum(totals.values()),
                 registration=totals.get(TicketSource.REGISTRATION, 0),
                 popularity=totals.get(TicketSource.POPULARITY, 0),
-                invitation=totals.get(TicketSource.INVITATION, 0),
+                invitation=totals.get(TicketSource.INVITATION, 0)
+                + totals.get(TicketSource.REVERSAL, 0),
             )
 
     async def invitation_summary(self, user_id: int) -> InvitationSummary | None:
@@ -306,19 +308,39 @@ class QueryService:
                 session.expunge(link)
             return link
 
-    async def invitation_for_chat_user(self, chat_id: int, user_id: int) -> Invitation | None:
+    async def invitations_for_chat_user(self, chat_id: int, user_id: int) -> tuple[Invitation, ...]:
         async with self._session_factory() as session:
-            invitation = await session.scalar(
-                select(Invitation)
-                .join(Campaign, Campaign.id == Invitation.campaign_id)
-                .join(Group, Group.id == Campaign.group_id)
-                .where(Group.chat_id == chat_id, Invitation.invitee_user_id == user_id)
-                .order_by(Invitation.created_at.desc())
-                .limit(1)
-            )
-            if invitation:
-                session.expunge(invitation)
-            return invitation
+            rows = (
+                await session.execute(
+                    select(Invitation, Campaign, Group)
+                    .join(Campaign, Campaign.id == Invitation.campaign_id)
+                    .join(Group, Group.id == Campaign.group_id)
+                    .where(
+                        Invitation.invitee_user_id == user_id,
+                        Campaign.state.in_(
+                            [
+                                CampaignState.SCHEDULED,
+                                CampaignState.RUNNING,
+                                CampaignState.PAUSED,
+                                CampaignState.SETTLING,
+                            ]
+                        ),
+                    )
+                    .order_by(Invitation.created_at.desc())
+                )
+            ).all()
+            invitations = []
+            for invitation, campaign, group in rows:
+                rules = CampaignRules.model_validate(campaign.rules)
+                required = _required_chat_ids(group.chat_id, rules)
+                if chat_id in required:
+                    session.expunge(invitation)
+                    invitations.append(invitation)
+            return tuple(invitations)
+
+    async def invitation_for_chat_user(self, chat_id: int, user_id: int) -> Invitation | None:
+        invitations = await self.invitations_for_chat_user(chat_id, user_id)
+        return invitations[0] if invitations else None
 
     async def campaign_stats(self, campaign_id: UUID) -> CampaignStats:
         async with self._session_factory() as session:
@@ -329,6 +351,7 @@ class QueryService:
                 select(func.count(Invitation.id)).where(
                     Invitation.campaign_id == campaign_id,
                     Invitation.state == InvitationState.VALID,
+                    Invitation.left_at.is_(None),
                 )
             )
             pending = await session.scalar(
@@ -451,3 +474,8 @@ def _campaign_category_states(category: str) -> tuple[CampaignState, ...]:
         raise ValueError("抽奖分类无效")
     terminal = {CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED}
     return tuple(state for state in CampaignState if state not in terminal)
+
+
+def _required_chat_ids(main_chat_id: int, rules: CampaignRules) -> tuple[int, ...]:
+    values = (main_chat_id, rules.required_channel_id, *rules.required_chat_ids)
+    return tuple(dict.fromkeys(int(value) for value in values if value is not None))

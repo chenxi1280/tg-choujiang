@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import (
@@ -86,6 +87,7 @@ class Invitation(Base, UuidPkMixin, TimestampMixin):
     left_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     validation_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     validation_error: Mapped[str | None] = mapped_column(String(120))
+    validation_observations: Mapped[dict[str, Any]] = mapped_column(default=dict, nullable=False)
     source_update_id: Mapped[int | None] = mapped_column(BigInteger)
 
 

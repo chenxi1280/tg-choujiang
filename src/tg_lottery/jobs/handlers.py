@@ -1,7 +1,6 @@
 from uuid import UUID
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -167,26 +166,26 @@ class JobHandlers:
             attempt = await self._invitations.begin_validation(invitation_id, observed_at=utcnow())
         except InvitationValidationDeferred as exc:
             raise JobRetry(str(exc)) from exc
-        if not attempt.requires_observation or attempt.chat_id is None:
+        if not attempt.requires_observation or not attempt.chat_ids:
             return
-        try:
-            member = await self._bot.get_chat_member(attempt.chat_id, attempt.invitee_user_id)
-            is_member = _is_member(member)
-        except TelegramAPIError as exc:
-            await self._invitations.complete_validation(
-                invitation_id,
-                observed_at=utcnow(),
-                is_current_member=None,
-            )
-            raise JobRetry(f"membership observation failed: {exc}") from exc
+        observed_at = utcnow()
+        result = await observe_memberships(
+            self._bot,
+            chat_ids=attempt.chat_ids,
+            user_id=attempt.invitee_user_id,
+            observed_at=observed_at,
+        )
         try:
             await self._invitations.complete_validation(
                 invitation_id,
-                observed_at=utcnow(),
-                is_current_member=is_member,
+                observed_at=observed_at,
+                is_current_member=_membership_value(result.state),
+                observations=result.observations,
             )
         except InvitationValidationDeferred as exc:
             raise JobRetry(str(exc)) from exc
+        if result.state is QualificationState.UNKNOWN:
+            raise JobRetry("one or more invitation conditions remain unknown")
 
     async def _revoke_invite_links(self, job: ScheduledJob) -> None:
         campaign_id = UUID(job.aggregate_id)
@@ -330,11 +329,12 @@ class JobHandlers:
         return campaign
 
 
-def _is_member(member: object) -> bool:
-    status = str(getattr(member, "status", ""))
-    if status in {"member", "administrator", "creator"}:
+def _membership_value(state: QualificationState) -> bool | None:
+    if state is QualificationState.ELIGIBLE:
         return True
-    return status == "restricted" and bool(getattr(member, "is_member", False))
+    if state is QualificationState.INELIGIBLE:
+        return False
+    return None
 
 
 def _required_chat_ids(main_chat_id: int, rules: CampaignRules) -> tuple[int, ...]:

@@ -99,8 +99,9 @@ def test_campaign_card_separates_rules_registration_and_join_links() -> None:
 
     assert urls[0].endswith("?start=join_AbCdEfGhIjKlMnOpQrSt-_")
     assert urls[1].endswith("?start=rules_AbCdEfGhIjKlMnOpQrSt-_")
-    assert urls[2] == "https://t.me/public_group"
-    assert urls[3].endswith("?start=condition_AbCdEfGhIjKlMnOpQrSt-__2")
+    assert urls[2].endswith("?start=condition_AbCdEfGhIjKlMnOpQrSt-__1")
+    assert len(urls) == 3
+    assert keyboard.inline_keyboard[2][0].text == "查看参与条件\uff082项\uff09"
 
 
 def test_draw_result_keeps_internal_hash_out_of_public_message() -> None:
@@ -116,7 +117,7 @@ def test_draw_result_keeps_internal_hash_out_of_public_message() -> None:
 
     assert "本期没有符合条件的中奖候选人。" in text
     assert "未分配名额:" in text
-    assert "冻结的报名资格和抽奖票" in text
+    assert "冻结的报名资格和抽奖次数权重" in text
     assert "快照:" not in text
     assert SNAPSHOT_HASH not in text
 

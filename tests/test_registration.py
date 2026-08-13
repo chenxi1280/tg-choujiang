@@ -31,7 +31,11 @@ async def test_registration_persists_pending_before_external_result(session_fact
     now = datetime.now(UTC)
     async with session_factory() as session, session.begin():
         _, campaign, _ = await seed_campaign(
-            session, rules=CampaignRules(required_channel_id=-100999)
+            session,
+            rules=CampaignRules(
+                required_channel_id=-100999,
+                bonus_types=("invite",),
+            ),
         )
         campaign_id = campaign.id
     service = ParticipantService(
@@ -68,6 +72,27 @@ async def test_registration_persists_pending_before_external_result(session_fact
         assert outbox_count == 1
         assert invite_outbox.payload["name"] == "lottery_fixed_public"
         assert participant.id.hex[:20] not in invite_outbox.payload["name"]
+
+
+async def test_registration_does_not_create_invite_link_when_invite_bonus_is_off(
+    session_factory,
+) -> None:
+    now = datetime.now(UTC)
+    async with session_factory() as session, session.begin():
+        _, campaign, _ = await seed_campaign(session, rules=CampaignRules())
+        campaign_id = campaign.id
+    service = ParticipantService(partial(UnitOfWork, session_factory))
+    attempt = await service.begin_registration(_request(campaign_id, now))
+
+    await service.complete_registration(_result(attempt, now, QualificationState.ELIGIBLE))
+
+    async with session_factory() as session:
+        invite_outbox_count = await session.scalar(
+            select(func.count(TelegramOutbox.id)).where(
+                TelegramOutbox.operation == "create_invite_link"
+            )
+        )
+    assert invite_outbox_count == 0
 
 
 async def test_registration_after_cutoff_is_rejected(session_factory) -> None:

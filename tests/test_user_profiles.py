@@ -39,11 +39,20 @@ async def test_last_draft_only_persists_supported_business_fields(session_factor
 
     await service.save_last_draft(
         202,
-        {"title": "周末福利", "draw_mode": "full", "panel_message_id": 99},
+        {
+            "title": "周末福利",
+            "draw_mode": "full",
+            "required_chats": [{"id": -1002, "title": "公告频道"}],
+            "panel_message_id": 99,
+        },
         now,
     )
 
     profile = await service.get(202)
-    assert profile.last_draft == {"title": "周末福利", "draw_mode": "full"}
+    assert profile.last_draft == {
+        "title": "周末福利",
+        "draw_mode": "full",
+        "required_chats": [{"id": -1002, "title": "公告频道"}],
+    }
     assert await service.recent_last_draft(202, now + timedelta(hours=23)) == profile.last_draft
     assert await service.recent_last_draft(202, now + timedelta(hours=25)) == {}

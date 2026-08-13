@@ -153,12 +153,21 @@ class LotteryUpdateHandler:
                 query, data.removeprefix("nav:campaign:")
             )
             return
+        if await self._dispatch_member_callback(query, data):
+            return
+        if data.startswith("secure:"):
+            await self._dispatch_secure_callback(query, data)
+
+    async def _dispatch_member_callback(self, query: CallbackQuery, data: str) -> bool:
+        message = query.message
+        if not isinstance(message, Message):
+            return False
         if data == "member:tickets":
             await self._member_flow.show_tickets(message, query.from_user.id)
-            return
+            return True
         if data == "member:invites":
             await self._member_flow.show_invitations(message, query.from_user.id)
-            return
+            return True
         if data.startswith("member:verify:"):
             await self._member_flow.register(
                 message,
@@ -166,9 +175,15 @@ class LotteryUpdateHandler:
                 user=query.from_user,
                 observed_at=utcnow(),
             )
-            return
-        if data.startswith("secure:"):
-            await self._dispatch_secure_callback(query, data)
+            return True
+        if data.startswith("member:condition:"):
+            payload = data.removeprefix("member:condition:")
+            reference, separator, position = payload.rpartition(":")
+            if not separator or not position.isdecimal():
+                raise ValueError("invalid participation condition callback")
+            await self._member_flow.show_condition(message, reference, int(position))
+            return True
+        return False
 
     async def _dispatch_secure_callback(self, query: CallbackQuery, data: str) -> None:
         message = query.message
@@ -203,20 +218,31 @@ class LotteryUpdateHandler:
         )
 
     async def _chat_member(self, event: ChatMemberUpdated) -> None:
-        user = event.new_chat_member.user
         was_member = _is_member(event.old_chat_member)
         is_member = _is_member(event.new_chat_member)
-        if not was_member and is_member and event.invite_link:
+        if not was_member and is_member:
+            await self._record_member_join(event)
+        if was_member and not is_member:
+            await self._record_member_leave(event)
+        await self._sync_admin_change(event)
+
+    async def _record_member_join(self, event: ChatMemberUpdated) -> None:
+        user = event.new_chat_member.user
+        if event.invite_link:
             link = await self._queries.invite_link_by_url(event.invite_link.invite_link)
             if link:
                 await self._invitations.record_joined(
                     JoinObservation(link.id, user.id, event.date, is_bot=user.is_bot)
                 )
-        elif was_member and not is_member:
-            invitation = await self._queries.invitation_for_chat_user(event.chat.id, user.id)
-            if invitation:
-                await self._invitations.record_left(invitation.campaign_id, user.id, event.date)
-        await self._sync_admin_change(event)
+        invitations = await self._queries.invitations_for_chat_user(event.chat.id, user.id)
+        for invitation in invitations:
+            await self._invitations.record_rejoined(invitation.campaign_id, user.id, event.date)
+
+    async def _record_member_leave(self, event: ChatMemberUpdated) -> None:
+        user = event.new_chat_member.user
+        invitations = await self._queries.invitations_for_chat_user(event.chat.id, user.id)
+        for invitation in invitations:
+            await self._invitations.record_left(invitation.campaign_id, user.id, event.date)
 
     async def _sync_admin_change(self, event: ChatMemberUpdated) -> None:
         old_admin = _is_admin(event.old_chat_member)

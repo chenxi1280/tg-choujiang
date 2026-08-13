@@ -1,8 +1,11 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from aiogram.types import User
+
 from tg_lottery.application.admin_sessions import DraftPanelContext
 from tg_lottery.application.callback_tokens import CallbackRequest
+from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_renderer import (
     TOKEN_LIFETIME,
     CreatorRenderer,
@@ -40,3 +43,29 @@ async def test_creator_buttons_match_the_draft_lifetime() -> None:
         ),
         expires_in=TOKEN_LIFETIME,
     )
+
+
+async def test_new_campaign_opens_preview_dashboard_directly() -> None:
+    sessions = SimpleNamespace(get=AsyncMock(return_value=None), set=AsyncMock())
+    group = SimpleNamespace(chat_id=-1001, title="活动群", timezone="Asia/Shanghai")
+    queries = SimpleNamespace(admin_groups=AsyncMock(return_value=[group]))
+    renderer = SimpleNamespace(render=AsyncMock())
+    creator = CampaignCreator(
+        bot=object(),
+        bot_username="lottery_test_bot",
+        sessions=sessions,
+        campaigns=object(),
+        queries=queries,
+        renderer=renderer,
+        settings=object(),
+        profiles=object(),
+    )
+    user = User(id=201, is_bot=False, first_name="Creator")
+    message = SimpleNamespace(message_id=77)
+
+    await creator._open(user, message)
+
+    assert sessions.set.await_args.args[1] == "draft:idle"
+    data = sessions.set.await_args.args[2]
+    assert data["chat_id"] == -1001 and data["prizes"] == []
+    assert renderer.render.await_args.kwargs["text"].startswith("🎰 抽奖预览")

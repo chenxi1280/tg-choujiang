@@ -113,22 +113,35 @@ class ParticipantService:
             if check.state is not QualificationState.PENDING:
                 return participant
             self._apply_check_result(check, result)
-            if self._can_apply_registration_result(campaign, result):
-                participant.qualification_state = result.state
-                if result.state is QualificationState.ELIGIBLE:
-                    await self._ensure_registration_ticket(
-                        uow.session,
-                        campaign=campaign,
-                        participant=participant,
-                        observed_at=result.observed_at,
-                    )
-                    await self._ensure_invite_link(uow.session, campaign, participant)
-                    await self._trigger_full_draw_if_ready(
-                        uow.session,
-                        campaign=campaign,
-                        observed_at=result.observed_at,
-                    )
+            if not self._can_apply_registration_result(campaign, result):
+                return participant
+            participant.qualification_state = result.state
+            if result.state is QualificationState.ELIGIBLE:
+                await self._complete_eligible_registration(
+                    uow.session, campaign=campaign, participant=participant, result=result
+                )
             return participant
+
+    async def _complete_eligible_registration(
+        self,
+        session: object,
+        *,
+        campaign: Campaign,
+        participant: Participant,
+        result: QualificationResult,
+    ) -> None:
+        rules = CampaignRules.model_validate(campaign.rules)
+        await self._ensure_registration_ticket(
+            session,
+            campaign=campaign,
+            participant=participant,
+            observed_at=result.observed_at,
+        )
+        if rules.invite_bonus_enabled:
+            await self._ensure_invite_link(session, campaign, participant)
+        await self._trigger_full_draw_if_ready(
+            session, campaign=campaign, observed_at=result.observed_at
+        )
 
     async def schedule_message_deletion(
         self,

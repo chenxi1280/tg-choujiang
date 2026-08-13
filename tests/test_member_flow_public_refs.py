@@ -7,7 +7,7 @@ from aiogram.types import User
 from tg_lottery.application.participants import RegistrationAttempt
 from tg_lottery.domain.enums import CampaignState, QualificationState
 from tg_lottery.domain.rules import CampaignRules
-from tg_lottery.telegram.member_flow import MemberFlow
+from tg_lottery.telegram.member_flow import MemberFlow, _human_rule, _registration_success_text
 
 PUBLIC_REF = "AbCdEfGhIjKlMnOpQrSt-_"
 
@@ -22,6 +22,7 @@ class ReferenceQueries:
             id=uuid4(),
             public_ref=PUBLIC_REF,
             presentation={},
+            rules=CampaignRules().model_dump(mode="json"),
         )
 
 
@@ -99,6 +100,7 @@ async def test_success_deletion_policy_schedules_command_and_completion() -> Non
         return SimpleNamespace(
             id=campaign_id,
             public_ref=PUBLIC_REF,
+            rules=CampaignRules().model_dump(mode="json"),
             presentation={
                 "delete_trigger_message": True,
                 "completion_delete_after_seconds": 20,
@@ -120,6 +122,22 @@ async def test_success_deletion_policy_schedules_command_and_completion() -> Non
 
     assert [item["message_id"] for item in participants.deletions] == [77, 88]
     assert participants.deletions[0]["run_at"] < participants.deletions[1]["run_at"]
+    assert message.texts[0] == "报名成功。"
+
+
+def test_success_message_only_promises_an_invite_link_when_enabled() -> None:
+    assert _registration_success_text(CampaignRules()) == "报名成功。"
+    enabled = CampaignRules(bonus_types=("invite",))
+    assert "专属邀请链接" in _registration_success_text(enabled)
+
+
+def test_legacy_bonus_rules_have_a_complete_human_readable_description() -> None:
+    legacy = CampaignRules.model_validate({"luck_mode": "standard"})
+
+    text = _human_rule(legacy)
+
+    assert "每个有效邀请+1次" in text
+    assert "None" not in text
 
 
 async def test_rules_remain_visible_after_private_condition_link_is_revoked() -> None:
@@ -155,7 +173,41 @@ async def test_rules_remain_visible_after_private_condition_link_is_revoked() ->
     await flow.show_rules(message, PUBLIC_REF)
 
     assert "私有参与群 (加入入口已关闭)" in message.texts[-1]
-    assert message.reply_markup is None
+    button = message.reply_markup.inline_keyboard[0][0]
+    assert button.callback_data == f"member:condition:{PUBLIC_REF}:1"
+
+
+async def test_condition_page_distinguishes_channel_and_supports_navigation() -> None:
+    campaign = SimpleNamespace(
+        id=uuid4(),
+        public_ref=PUBLIC_REF,
+        presentation={
+            "required_chats": [
+                {
+                    "id": -100123,
+                    "title": "公告频道",
+                    "type": "channel",
+                    "join_url": "https://t.me/notices",
+                },
+                {
+                    "id": -100124,
+                    "title": "讨论群",
+                    "type": "supergroup",
+                    "join_url": "https://t.me/discussion",
+                },
+            ]
+        },
+    )
+    queries = SimpleNamespace(campaign_by_reference=_async_result(campaign))
+    message = RecordingMessage()
+    flow = MemberFlow(bot=object(), participants=object(), queries=queries, cipher=object())
+
+    await flow.show_condition(message, PUBLIC_REF, 1)
+
+    rows = message.reply_markup.inline_keyboard
+    assert rows[0][0].text == "关注频道"
+    assert rows[1][0].callback_data == f"member:condition:{PUBLIC_REF}:2"
+    assert "参与条件 1/2" in message.texts[-1]
 
 
 def _async_result(value):

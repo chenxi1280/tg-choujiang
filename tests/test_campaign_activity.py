@@ -164,6 +164,58 @@ async def test_luck_off_records_activity_without_awarding_tickets(session_factor
     assert stored.ticket_total_cache == 0
 
 
+async def test_activity_bonus_is_settled_once_for_each_local_day(session_factory) -> None:
+    rules = CampaignRules(
+        bonus_types=("activity",),
+        activity=ActivityRule(
+            message_threshold=2,
+            reward_tickets=3,
+            daily_ticket_cap=3,
+            settle_once_per_day=True,
+        ),
+    )
+    base = _daily_activity_base()
+    async with session_factory() as session, session.begin():
+        group, campaign, _ = await seed_campaign(
+            session, rules=rules, cutoff_at=base + timedelta(days=3)
+        )
+        campaign_id = campaign.id
+        chat_id = group.chat_id
+    service = ActivityService(partial(UnitOfWork, session_factory))
+
+    for index, event_at in enumerate(
+        (
+            base,
+            base + timedelta(minutes=1),
+            base + timedelta(minutes=2),
+            base + timedelta(days=1),
+            base + timedelta(days=1, minutes=1),
+        ),
+        start=1,
+    ):
+        await service.record_message(
+            MessageObservation(
+                chat_id=chat_id,
+                message_id=700 + index,
+                user_id=201,
+                event_at=event_at,
+                text=f"每日独立结算消息 {index}",
+            )
+        )
+
+    async with session_factory() as session:
+        ticket_total = await session.scalar(
+            select(func.sum(TicketLedger.delta)).where(TicketLedger.campaign_id == campaign_id)
+        )
+        ledger_count = await session.scalar(
+            select(func.count(TicketLedger.id)).where(TicketLedger.campaign_id == campaign_id)
+        )
+        progress = (await session.scalars(select(DailyProgress))).all()
+    assert ticket_total == 6
+    assert ledger_count == 2
+    assert [item.tickets_awarded for item in progress] == [3, 3]
+
+
 async def test_activity_uses_campaign_timezone_and_inclusive_cutoff(session_factory) -> None:
     zone = ZoneInfo("Asia/Kuala_Lumpur")
     local_now = datetime.now(zone)

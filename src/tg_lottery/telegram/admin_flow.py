@@ -46,7 +46,7 @@ class AdminFlow:
             inline_keyboard=[
                 [InlineKeyboardButton(text="创建/继续抽奖", callback_data="nav:create")],
                 [InlineKeyboardButton(text="我的活动", callback_data="nav:campaigns")],
-                [InlineKeyboardButton(text="我的票数", callback_data="member:tickets")],
+                [InlineKeyboardButton(text="我的抽奖次数", callback_data="member:tickets")],
                 [InlineKeyboardButton(text="邀请记录", callback_data="member:invites")],
             ]
         )
@@ -202,7 +202,7 @@ class AdminFlow:
         text = (
             f"{campaign.name}\n状态: {campaign_state_text(campaign.state)}\n"
             f"报名: {stats.participants}\n有效邀请: {stats.valid_invitations}\n"
-            f"待验证邀请: {stats.pending_invitations}\n总票数: {stats.tickets}\n"
+            f"待验证邀请: {stats.pending_invitations}\n总抽奖次数: {stats.tickets}\n"
             f"送达: 已确认 {deliveries.confirmed} / 待处理 {deliveries.pending} / "
             f"失败 {deliveries.failed} / 未知 {deliveries.unknown}"
         )

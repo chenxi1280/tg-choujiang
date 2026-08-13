@@ -19,7 +19,7 @@ from tg_lottery.domain.enums import (
     UpdateState,
 )
 from tg_lottery.domain.errors import InvitationValidationDeferred, SettlementBlocked
-from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.domain.rules import CampaignRules, InviteRewardTier, InviteRule
 from tg_lottery.infrastructure.db import (
     DrawEntry,
     DrawSnapshot,
@@ -38,9 +38,9 @@ from tg_lottery.infrastructure.db.uow import UnitOfWork
 async def test_invitation_first_attribution_and_reward_are_idempotent(session_factory) -> None:
     now = datetime.now(UTC)
     async with session_factory() as session, session.begin():
-        _, campaign, participant = await seed_campaign(
+        group, campaign, participant = await seed_campaign(
             session,
-            rules=CampaignRules(luck_mode="standard"),
+            rules=CampaignRules(luck_mode="standard", required_chat_ids=(-1002, -1003)),
             cutoff_at=now + timedelta(days=2),
         )
         link = InviteLink(
@@ -63,13 +63,12 @@ async def test_invitation_first_attribution_and_reward_are_idempotent(session_fa
         observed_at=now + timedelta(hours=24),
     )
     assert attempt.requires_observation is True
-    async with session_factory() as session:
-        checking = await session.get(type(invitation), invitation.id)
-        assert checking.state is InvitationState.CHECKING
+    assert attempt.chat_ids == (group.chat_id, -1002, -1003)
     validated = await service.complete_validation(
         invitation.id,
         observed_at=now + timedelta(hours=24),
         is_current_member=True,
+        observations=({"chat_id": group.chat_id},),
     )
     await service.validate(
         invitation.id,
@@ -84,6 +83,7 @@ async def test_invitation_first_attribution_and_reward_are_idempotent(session_fa
             )
         )
         assert validated.state is InvitationState.VALID
+        assert validated.validation_observations["chats"][0]["chat_id"] == group.chat_id
         assert ledger_count == 1
 
 
@@ -125,6 +125,120 @@ async def test_luck_off_validates_invitation_without_awarding_ticket(session_fac
         )
     assert validated.state is InvitationState.VALID
     assert ticket_count == 0
+
+
+async def test_invitation_bonus_uses_cumulative_tiers_and_awards_only_the_difference(
+    session_factory,
+) -> None:
+    now = datetime.now(UTC)
+    rules = CampaignRules(
+        bonus_types=("invite",),
+        invite=InviteRule(
+            retention_hours=1,
+            reward_tiers=(
+                InviteRewardTier(invite_count=1, total_bonus=1),
+                InviteRewardTier(invite_count=2, total_bonus=3),
+            ),
+            max_bonus_tickets=3,
+        ),
+    )
+    link_id, campaign_id = await _seed_tiered_invite_link(session_factory, rules, now)
+    service = InvitationService(partial(UnitOfWork, session_factory))
+
+    for offset, user_id in enumerate((401, 402, 403)):
+        joined_at = now + timedelta(minutes=offset)
+        invitation = await service.record_joined(JoinObservation(link_id, user_id, joined_at))
+        assert invitation is not None
+        await service.validate(
+            invitation.id,
+            observed_at=joined_at + timedelta(hours=1),
+            is_current_member=True,
+        )
+
+    async with session_factory() as session:
+        rewards = (
+            await session.scalars(
+                select(TicketLedger.delta)
+                .where(
+                    TicketLedger.campaign_id == campaign_id,
+                    TicketLedger.source_type == TicketSource.INVITATION,
+                )
+                .order_by(TicketLedger.occurred_at)
+            )
+        ).all()
+    assert rewards == [1, 2]
+    assert sum(rewards) == 3
+
+
+async def test_valid_invite_leave_is_reversed_and_rejoin_restarts_retention(
+    session_factory,
+) -> None:
+    now = datetime.now(UTC)
+    rules = CampaignRules(
+        bonus_types=("invite",),
+        invite=InviteRule(
+            retention_hours=1,
+            reward_tiers=(
+                InviteRewardTier(invite_count=1, total_bonus=1),
+                InviteRewardTier(invite_count=2, total_bonus=3),
+            ),
+            max_bonus_tickets=3,
+        ),
+    )
+    link_id, campaign_id = await _seed_tiered_invite_link(session_factory, rules, now)
+    service = InvitationService(partial(UnitOfWork, session_factory))
+    invitations = []
+    for offset, user_id in enumerate((501, 502)):
+        joined_at = now + timedelta(minutes=offset)
+        invitation = await service.record_joined(JoinObservation(link_id, user_id, joined_at))
+        assert invitation is not None
+        invitations.append(invitation)
+        await service.validate(
+            invitation.id,
+            observed_at=joined_at + timedelta(hours=1),
+            is_current_member=True,
+        )
+
+    left_at = now + timedelta(hours=2)
+    await service.record_left(campaign_id, 502, left_at)
+    rejoined = await service.record_rejoined(campaign_id, 502, left_at + timedelta(minutes=5))
+    assert rejoined is not None
+    assert rejoined.state is InvitationState.JOINED_PENDING
+    assert rejoined.due_at == left_at + timedelta(hours=1, minutes=5)
+    await service.validate(
+        invitations[1].id,
+        observed_at=left_at + timedelta(hours=1, minutes=5),
+        is_current_member=True,
+    )
+
+    async with session_factory() as session:
+        rewards = (
+            await session.scalars(
+                select(TicketLedger.delta)
+                .where(TicketLedger.campaign_id == campaign_id)
+                .order_by(TicketLedger.occurred_at)
+            )
+        ).all()
+    assert rewards == [1, 2, -2, 2]
+
+
+async def _seed_tiered_invite_link(session_factory, rules, now) -> tuple[UUID, UUID]:
+    async with session_factory() as session, session.begin():
+        _, campaign, participant = await seed_campaign(
+            session, rules=rules, cutoff_at=now + timedelta(days=1)
+        )
+        link = InviteLink(
+            campaign_id=campaign.id,
+            participant_id=participant.id,
+            link_hash=sha256(b"tiered-link").hexdigest(),
+            telegram_name="lot_tiered",
+            expire_at=campaign.cutoff_at,
+        )
+        session.add(link)
+        await session.flush()
+        link_id = link.id
+        campaign_id = campaign.id
+    return link_id, campaign_id
 
 
 async def test_invitation_reward_is_deferred_while_campaign_paused(session_factory) -> None:

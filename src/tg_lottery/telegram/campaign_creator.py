@@ -80,10 +80,7 @@ class CampaignCreator:
             await self._render_dashboard(user.id, message, data)
             return
         data = await self._new_draft(user, message.message_id)
-        await self._sessions.set(user.id, "draft:prize_name", data)
-        await self._render_text(
-            user.id, message, data=data, text=prize_prompt_text(data), rows=_back_rows()
-        )
+        await self._render_dashboard(user.id, message, data)
 
     async def _new_draft(self, user: User, panel_message_id: int) -> dict[str, Any]:
         groups = await self._queries.admin_groups(user.id)
@@ -97,7 +94,7 @@ class CampaignCreator:
             | {
                 "panel_message_id": panel_message_id,
                 "creator_name": user.full_name,
-                "guided": True,
+                "guided": False,
             }
             | creator_issuer(user)
         )
@@ -260,14 +257,7 @@ class CampaignCreator:
 
     async def _clear(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._new_draft(query.from_user, _message(query).message_id)
-        await self._sessions.set(query.from_user.id, "draft:prize_name", data)
-        await self._render_text(
-            query.from_user.id,
-            _message(query),
-            data=data,
-            text=prize_prompt_text(data),
-            rows=_back_rows(),
-        )
+        await self._render_dashboard(query.from_user.id, _message(query), data)
 
     async def _home(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:idle", guided=False)
@@ -316,6 +306,7 @@ class CampaignCreator:
             return data
         required_chats = await self._resolve_required_chats(data)
         main_chat = await self._required_chat_record(int(data["chat_id"]))
+        _validate_activity_chat(data, main_chat)
         issuer_ref = str(data.get("issuer") or "")
         candidates = (
             await self._queries.user_ids_by_username(issuer_ref)
@@ -451,6 +442,13 @@ class CampaignCreator:
         rows: ButtonRows,
     ) -> None:
         await self._renderer.edit(_target(message, data), text=text, rows=rows)
+
+
+def _validate_activity_chat(data: dict[str, Any], main_chat: dict[str, Any]) -> None:
+    if "activity" not in data.get("bonus_types", []):
+        return
+    if main_chat.get("type") == "channel":
+        raise UserFacingError("频道无法统计成员发言，请关闭发言抽奖加成或选择群聊作为活动群")
 
 
 def _message(query: CallbackQuery) -> Message:

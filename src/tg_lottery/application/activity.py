@@ -192,14 +192,18 @@ class ActivityService:
         if progress is None:
             raise RuntimeError("daily progress upsert failed")
         progress.valid_message_count += 1
-        if rules.luck_mode == "off":
+        if not rules.activity_bonus_enabled:
             return
-        target = min(
-            rules.activity.daily_ticket_cap,
-            progress.valid_message_count
-            // rules.activity.message_threshold
-            * rules.activity.reward_tickets,
-        )
+        if rules.activity.settle_once_per_day:
+            reached = progress.valid_message_count >= rules.activity.message_threshold
+            target = rules.activity.reward_tickets if reached else 0
+        else:
+            target = min(
+                rules.activity.daily_ticket_cap,
+                progress.valid_message_count
+                // rules.activity.message_threshold
+                * rules.activity.reward_tickets,
+            )
         await self._award_new_tickets(
             session,
             campaign=campaign,
@@ -219,23 +223,25 @@ class ActivityService:
         target: int,
         event_at: datetime,
     ) -> None:
-        for ordinal in range(progress.tickets_awarded + 1, target + 1):
-            session.add(
-                TicketLedger(
-                    campaign_id=campaign.id,
-                    participant_id=participant.id,
-                    delta=1,
-                    source_type=TicketSource.POPULARITY,
-                    source_ref=str(progress.id),
-                    business_key=(
-                        f"popularity:{campaign.id}:{participant.user_id}:"
-                        f"{progress.local_date.isoformat()}:{ordinal}"
-                    ),
-                    occurred_at=event_at,
-                    source_update_id=current_update_id(),
-                )
+        delta = target - progress.tickets_awarded
+        if delta <= 0:
+            return
+        session.add(
+            TicketLedger(
+                campaign_id=campaign.id,
+                participant_id=participant.id,
+                delta=delta,
+                source_type=TicketSource.POPULARITY,
+                source_ref=str(progress.id),
+                business_key=(
+                    f"popularity:{campaign.id}:{participant.user_id}:"
+                    f"{progress.local_date.isoformat()}:{target}"
+                ),
+                occurred_at=event_at,
+                source_update_id=current_update_id(),
             )
-            participant.ticket_total_cache += 1
+        )
+        participant.ticket_total_cache += delta
         progress.tickets_awarded = target
 
     async def _active_campaign(self, session: object, chat_id: int) -> Campaign | None:

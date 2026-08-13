@@ -58,8 +58,9 @@ class MemberFlow:
                 attempt, user_id=user.id, main_chat_id=group.chat_id
             )
         if state is QualificationState.ELIGIBLE:
+            rules = CampaignRules.model_validate(campaign.rules)
             sent = await message.answer(
-                "报名成功。专属邀请链接创建并确认后会发送到这里。",
+                _registration_success_text(rules),
                 reply_markup=member_keyboard(),
             )
             await self._schedule_success_deletions(campaign, message, sent)
@@ -151,12 +152,31 @@ class MemberFlow:
         if position < 1 or position > len(conditions):
             raise UserFacingError("参与条件不存在或已经失效")
         chat = conditions[position - 1]
-        url = self._condition_url(campaign, chat)
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text=f"加入: {chat['title']}", url=url)]]
+        rows = []
+        if not chat.get("invite_revoked_at") or chat.get("join_url"):
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text=_condition_action(chat), url=self._condition_url(campaign, chat)
+                    )
+                ]
+            )
+        navigation = _condition_navigation(campaign.public_ref, position, len(conditions))
+        if navigation:
+            rows.append(navigation)
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="验证资格", callback_data=f"member:verify:{campaign.public_ref}"
+                )
+            ]
         )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
+        instruction = _condition_instruction(chat)
+        if chat.get("invite_revoked_at") and not chat.get("join_url"):
+            instruction = f"「{chat['title']}」的加入入口已关闭。"
         await message.answer(
-            f"请先加入「{chat['title']}」，然后返回活动重新验证。", reply_markup=keyboard
+            f"参与条件 {position}/{len(conditions)}：{instruction}", reply_markup=keyboard
         )
 
     def _qualification_keyboard(
@@ -165,9 +185,17 @@ class MemberFlow:
         state: QualificationState,
         observations: tuple[dict[str, object], ...],
     ) -> InlineKeyboardMarkup:
-        target_state = state.value
-        failed = {int(item["chat_id"]) for item in observations if item["state"] == target_state}
-        rows = self._condition_rows(campaign, only_chat_ids=failed)
+        failed = _failed_condition_positions(campaign, state, observations)
+        rows = []
+        if failed:
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"查看未满足条件（{len(failed)}项）",
+                        callback_data=f"member:condition:{campaign.public_ref}:{failed[0]}",
+                    )
+                ]
+            )
         rows.append(
             [
                 InlineKeyboardButton(
@@ -179,27 +207,18 @@ class MemberFlow:
         return InlineKeyboardMarkup(inline_keyboard=rows)
 
     def _condition_keyboard(self, campaign: object) -> InlineKeyboardMarkup | None:
-        rows = self._condition_rows(campaign)
-        return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
-
-    def _condition_rows(
-        self, campaign: object, *, only_chat_ids: set[int] | None = None
-    ) -> list[list[InlineKeyboardButton]]:
-        rows: list[list[InlineKeyboardButton]] = []
-        for chat in _conditions(campaign):
-            if only_chat_ids and int(chat["id"]) not in only_chat_ids:
-                continue
-            if chat.get("invite_revoked_at") and not chat.get("join_url"):
-                continue
-            rows.append(
-                [
-                    InlineKeyboardButton(
-                        text=f"加入: {chat['title']}",
-                        url=self._condition_url(campaign, chat),
-                    )
-                ]
-            )
-        return rows
+        conditions = _conditions(campaign)
+        if not conditions:
+            return None
+        rows = [
+            [
+                InlineKeyboardButton(
+                    text=f"查看参与条件（{len(conditions)}项）",
+                    callback_data=f"member:condition:{campaign.public_ref}:1",
+                )
+            ]
+        ]
+        return InlineKeyboardMarkup(inline_keyboard=rows)
 
     def _condition_url(self, campaign: object, chat: dict[str, object]) -> str:
         if chat.get("join_url"):
@@ -214,9 +233,9 @@ class MemberFlow:
             await message.answer("当前没有参与中的活动。")
             return
         await message.answer(
-            f"{summary.campaign_name}\n总票数: {summary.total}\n"
+            f"{summary.campaign_name}\n总抽奖次数: {summary.total}\n"
             f"基础票: {summary.registration}\n"
-            f"人气票: {summary.popularity}\n邀请票: {summary.invitation}"
+            f"发言加成: {summary.popularity}\n邀请加成: {summary.invitation}"
         )
 
     async def show_invitations(self, message: Message, user_id: int) -> None:
@@ -232,7 +251,7 @@ class MemberFlow:
 def member_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="我的票数", callback_data="member:tickets")],
+            [InlineKeyboardButton(text="我的抽奖次数", callback_data="member:tickets")],
             [InlineKeyboardButton(text="邀请记录", callback_data="member:invites")],
         ]
     )
@@ -276,9 +295,31 @@ def _draw_rule(rules: CampaignRules) -> str:
 
 
 def _human_rule(rules: CampaignRules) -> str:
-    if rules.luck_mode == "off":
-        return "人品加成: 关闭，仅发放基础报名票"
-    return "人品加成: 已开启，按本活动冻结规则计算"
+    if not rules.bonus_types:
+        return "抽奖加成: 关闭，仅计算基础抽奖次数"
+    parts = []
+    if rules.invite_bonus_enabled:
+        parts.append(_invite_rule_text(rules))
+    if rules.activity_bonus_enabled:
+        parts.append(
+            f"每天发言 {rules.activity.message_threshold} 条+{rules.activity.reward_tickets} 次"
+        )
+    return "抽奖加成: " + "；".join(parts)
+
+
+def _invite_rule_text(rules: CampaignRules) -> str:
+    if not rules.invite.reward_tiers:
+        return f"每个有效邀请+{rules.invite.reward_tickets}次"
+    tiers = ", ".join(
+        f"{tier.invite_count}人+{tier.total_bonus}次" for tier in rules.invite.reward_tiers
+    )
+    return f"邀请 {tiers}，上限 {rules.invite.max_bonus_tickets} 次"
+
+
+def _registration_success_text(rules: CampaignRules) -> str:
+    if rules.invite_bonus_enabled:
+        return "报名成功。专属邀请链接创建并确认后会发送到这里。"
+    return "报名成功。"
 
 
 def _issuer_name(campaign: object) -> str:
@@ -300,4 +341,46 @@ def _condition_summary(campaign: object) -> str:
     for chat in _conditions(campaign):
         suffix = " (加入入口已关闭)" if chat.get("invite_revoked_at") else ""
         labels.append(f"{chat['title']}{suffix}")
+    if len(labels) > 3:
+        return f"参与条件: 共 {len(labels)} 项（请点击逐项查看）"
     return "参与条件: " + ("、".join(labels) if labels else "无额外条件")
+
+
+def _condition_action(chat: dict[str, object]) -> str:
+    return "关注频道" if chat.get("type") == "channel" else "加入群聊"
+
+
+def _condition_instruction(chat: dict[str, object]) -> str:
+    return f"请{_condition_action(chat)}「{chat['title']}」，完成后点击验证资格。"
+
+
+def _condition_navigation(
+    campaign_ref: str, position: int, count: int
+) -> list[InlineKeyboardButton]:
+    buttons = []
+    if position > 1:
+        buttons.append(
+            InlineKeyboardButton(
+                text="← 上一项", callback_data=f"member:condition:{campaign_ref}:{position - 1}"
+            )
+        )
+    if position < count:
+        buttons.append(
+            InlineKeyboardButton(
+                text="下一项 →", callback_data=f"member:condition:{campaign_ref}:{position + 1}"
+            )
+        )
+    return buttons
+
+
+def _failed_condition_positions(
+    campaign: object,
+    state: QualificationState,
+    observations: tuple[dict[str, object], ...],
+) -> tuple[int, ...]:
+    failed_ids = {int(item["chat_id"]) for item in observations if item["state"] == state.value}
+    return tuple(
+        position
+        for position, chat in enumerate(_conditions(campaign), start=1)
+        if int(chat["id"]) in failed_ids
+    )

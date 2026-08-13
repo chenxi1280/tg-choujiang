@@ -97,6 +97,19 @@ async def test_rules_and_condition_start_payloads_are_distinct_from_registration
     assert await handler._start_payload(object(), f"rules_{public_ref}") is True
     assert flow.action == "rules"
     assert flow.user_id is None
+
+
+async def test_condition_callback_opens_the_selected_position() -> None:
+    flow = RecordingMemberFlow()
+    handler = _handler(member_flow=flow)
+    public_ref = "AbCdEfGhIjKlMnOpQrSt-_"
+    query = _callback(f"member:condition:{public_ref}:3")
+
+    await handler._dispatch_callback(query, query.data)
+
+    assert flow.action == "condition"
+    assert flow.campaign_reference == public_ref
+    assert flow.position == 3
     assert await handler._start_payload(object(), f"condition_{public_ref}_2") is True
     assert flow.action == "condition"
     assert flow.position == 2

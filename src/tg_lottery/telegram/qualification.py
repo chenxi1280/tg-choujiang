@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -8,6 +9,8 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 
 from tg_lottery.domain.enums import QualificationState
+
+MEMBERSHIP_OBSERVATION_BATCH_SIZE = 10
 
 
 @dataclass(frozen=True)
@@ -25,13 +28,8 @@ async def observe_memberships(
     user_id: int,
     observed_at: datetime,
 ) -> QualificationObservationResult:
-    observations = tuple(
-        [
-            await _observe_membership(
-                bot, chat_id=chat_id, user_id=user_id, observed_at=observed_at
-            )
-            for chat_id in chat_ids
-        ]
+    observations = await _observe_all_memberships(
+        bot, chat_ids=chat_ids, user_id=user_id, observed_at=observed_at
     )
     state = _aggregate_state(observations)
     errors = sorted({str(item["error_code"]) for item in observations if item.get("error_code")})
@@ -43,6 +41,29 @@ async def observe_memberships(
         error_code=",".join(errors) or None,
         observations=observations,
     )
+
+
+async def _observe_all_memberships(
+    bot: Bot,
+    *,
+    chat_ids: tuple[int, ...],
+    user_id: int,
+    observed_at: datetime,
+) -> tuple[dict[str, Any], ...]:
+    observations = []
+    for start in range(0, len(chat_ids), MEMBERSHIP_OBSERVATION_BATCH_SIZE):
+        batch = chat_ids[start : start + MEMBERSHIP_OBSERVATION_BATCH_SIZE]
+        observations.extend(
+            await asyncio.gather(
+                *(
+                    _observe_membership(
+                        bot, chat_id=chat_id, user_id=user_id, observed_at=observed_at
+                    )
+                    for chat_id in batch
+                )
+            )
+        )
+    return tuple(observations)
 
 
 async def _observe_membership(

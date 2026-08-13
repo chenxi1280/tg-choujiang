@@ -5,7 +5,12 @@ import pytest
 from aiogram.types import User
 
 from tg_lottery.domain.errors import UserFacingError
-from tg_lottery.telegram.campaign_creator import CampaignCreator
+from tg_lottery.telegram.campaign_creator import CampaignCreator, _validate_activity_chat
+from tg_lottery.telegram.creator_participation import (
+    parse_positions,
+    participation_rows,
+    participation_text,
+)
 from tg_lottery.telegram.creator_settings import (
     CreatorSettings,
     _parse_chat_refs,
@@ -73,6 +78,33 @@ def test_participation_refs_accept_public_username_and_numeric_id() -> None:
         _parse_chat_refs("invalid-name")
 
 
+def test_participation_delete_accepts_specific_positions() -> None:
+    assert parse_positions("3\uff0c1 3", 3) == (3, 1)
+    with pytest.raises(UserFacingError, match="删除编号必须"):
+        parse_positions("4", 3)
+
+
+def test_participation_conditions_are_paginated_without_a_product_cap() -> None:
+    chats = [
+        {"id": -1000 - index, "title": f"条件 {index}", "private": True} for index in range(1, 13)
+    ]
+    data = {"required_chats": chats, "participation_page": 1}
+
+    text = participation_text(data)
+    rows = participation_rows(data)
+
+    assert "共 12 项 · 第 2/2 页" in text
+    assert "11. 加入群聊 条件 11" in text
+    assert "\n1. 加入群聊 条件 1" not in text
+    assert rows[1] == [("← 上一页", "draft_participation_prev")]
+
+
+def test_activity_bonus_rejects_a_channel_as_the_main_chat() -> None:
+    with pytest.raises(UserFacingError, match="频道无法统计成员发言"):
+        _validate_activity_chat({"bonus_types": ["activity"]}, {"type": "channel"})
+    _validate_activity_chat({"bonus_types": ["invite"]}, {"type": "channel"})
+
+
 async def test_required_chats_are_resolved_deduplicated_and_frozen() -> None:
     creator = _creator(RequiredChatBot())
 
@@ -105,12 +137,54 @@ async def test_participation_conditions_accumulate_by_resolved_chat_id() -> None
     )
     data = {"chat_id": -1001, "panel_message_id": 9, "required_chats": []}
 
-    await settings._receive_participation(_message("@public_group"), data)
-    await settings._receive_participation(_message("-1003"), sessions.data)
+    await settings._receive_participation(_message("@public_group,-1003"), data)
 
     assert [item["id"] for item in sessions.data["required_chats"]] == [-1002, -1003]
+    assert sessions.data["required_chat_ids"] == [-1002, -1003]
     with pytest.raises(UserFacingError, match="已经在参与条件"):
         await settings._receive_participation(_message("@public_group"), sessions.data)
+
+
+async def test_participation_conditions_delete_selected_positions() -> None:
+    sessions = RecordingSessions()
+    renderer = RecordingRenderer()
+    settings = CreatorSettings(
+        sessions=sessions,
+        renderer=renderer,
+        profiles=object(),
+        queries=object(),
+        bot=RequiredChatBot(),
+    )
+    chats = [
+        {"id": -1002, "title": "条件 1", "type": "supergroup", "private": True},
+        {"id": -1003, "title": "条件 2", "type": "channel", "private": True},
+        {"id": -1004, "title": "条件 3", "type": "supergroup", "private": True},
+    ]
+    data = {"chat_id": -1001, "panel_message_id": 9, "required_chats": chats}
+
+    await settings._receive_participation_delete(_message("1,3"), data)
+
+    assert [item["id"] for item in sessions.data["required_chats"]] == [-1003]
+    assert sessions.data["required_chat_refs"] == [-1003]
+    assert sessions.data["required_chat_ids"] == [-1003]
+
+
+async def test_legacy_last_draft_required_chat_ids_are_restored_for_the_ui() -> None:
+    settings = CreatorSettings(
+        sessions=RecordingSessions(),
+        renderer=RecordingRenderer(),
+        profiles=object(),
+        queries=object(),
+        bot=RequiredChatBot(),
+    )
+
+    restored = await settings._restore_required_chats(
+        {"required_chat_ids": [-1003], "required_chat_refs": [], "required_chats": []}
+    )
+
+    assert [item["id"] for item in restored["required_chats"]] == [-1003]
+    assert restored["required_chat_refs"] == [-1003]
+    assert restored["required_chat_ids"] == [-1003]
 
 
 async def test_issuer_is_resolved_and_frozen_before_publication() -> None:

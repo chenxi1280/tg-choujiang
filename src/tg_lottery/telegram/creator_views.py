@@ -4,12 +4,9 @@ from typing import Any
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from tg_lottery.telegram.creator_bonus import bonus_summary
 from tg_lottery.telegram.creator_messages import message_policy_summary
-from tg_lottery.telegram.draft_config import (
-    ACTIVITY_PRESETS,
-    INVITE_PRESETS,
-    missing_fields,
-)
+from tg_lottery.telegram.draft_config import missing_fields
 from tg_lottery.telegram.public_projection import format_public_time
 
 ButtonRows = list[list[tuple[str, str]]]
@@ -39,7 +36,7 @@ def preview_text(data: dict[str, Any]) -> str:
         f"📮 参与条件：{_participation(data)}\n\n"
         f"🎁 奖品内容：\n{_prize_lines(data.get('prizes', []))}\n"
         f"⚠️ 抽奖说明：{data.get('description') or '【等待设置】'}\n\n"
-        f"🔋 人品加成：{_luck_text(data)}\n\n"
+        f"🔋 抽奖加成：{bonus_summary(data)}\n\n"
         f"🌀 开奖方式：{_draw_text(data)}\n\n"
         f"🎅 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}\n\n"
         f"🔔 参与提示：{message_policy_summary(data)}\n\n"
@@ -50,6 +47,7 @@ def preview_text(data: dict[str, Any]) -> str:
 
 def dashboard_rows() -> ButtonRows:
     return [
+        [("活动群", "draft_group")],
         [
             ("活动标题", "draft_title"),
             ("上传封面", "draft_cover"),
@@ -60,7 +58,7 @@ def dashboard_rows() -> ButtonRows:
             ("奖品内容", "draft_prizes"),
             ("抽奖说明", "draft_description"),
         ],
-        [("人品加成", "draft_rules"), ("开奖方式", "draft_draw"), ("发奖人员", "draft_issuer")],
+        [("抽奖加成", "draft_rules"), ("开奖方式", "draft_draw"), ("发奖人员", "draft_issuer")],
         [("消息提示", "draft_messages"), ("🎉 发布抽奖", "draft_publish")],
         [("🗑 清空配置", "draft_clear"), ("载入上次抽奖", "draft_load_last")],
         [("↩ 返回首页", "draft_home")],
@@ -103,20 +101,6 @@ def draw_prompt_text(data: dict[str, Any]) -> str:
     )
 
 
-def rules_text(data: dict[str, Any]) -> str:
-    activity = ACTIVITY_PRESETS[str(data["activity_preset"])]
-    invite = INVITE_PRESETS[str(data["invite_preset"])]
-    return (
-        "⚖️ 中奖规则\n\n"
-        "成员通过群活跃和有效邀请获得抽奖票，每张票的中奖概率相同。\n\n"
-        f"群活跃：每天发送 {activity.message_threshold} 条消息得 "
-        f"{activity.reward_tickets} 票，每日最多 {activity.daily_ticket_cap} 票\n"
-        f"有效邀请：每人奖励 {invite.reward_tickets} 票，需留存 "
-        f"{invite.retention_hours} 小时\n\n"
-        "开奖仍使用本项目可复算的加权随机算法。"
-    )
-
-
 def _draw_text(data: dict[str, Any]) -> str:
     if data.get("draw_mode") == "full":
         target = data.get("participant_target") or "【等待设置】"
@@ -124,14 +108,6 @@ def _draw_text(data: dict[str, Any]) -> str:
     timezone = str(data.get("timezone") or "Asia/Shanghai")
     value = str(data.get("draw_at") or "")
     return format_public_time(value, timezone) if value else "【等待设置】"
-
-
-def _rule_summary(data: dict[str, Any]) -> str:
-    activity = ACTIVITY_PRESETS[str(data["activity_preset"])]
-    invite = INVITE_PRESETS[str(data["invite_preset"])]
-    return (
-        f"活跃 {activity.message_threshold} 条得票；有效邀请留存 {invite.retention_hours} 小时得票"
-    )
 
 
 def _user_limits(data: dict[str, Any]) -> str:
@@ -147,12 +123,6 @@ def _participation(data: dict[str, Any]) -> str:
     group = data.get("group_title") or "【等待设置】"
     count = len(data.get("required_chat_refs") or data.get("required_chat_ids", []))
     return f"加入 {group}" + (f" 等 {count + 1} 个群/频道" if count else "")
-
-
-def _luck_text(data: dict[str, Any]) -> str:
-    return {"off": "关闭", "standard": "标准", "active": "高活跃"}.get(
-        str(data.get("luck_mode", "standard")), "标准"
-    )
 
 
 def _prize_lines(prizes: list[dict[str, Any]]) -> str:

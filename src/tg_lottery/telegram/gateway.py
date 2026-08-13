@@ -225,9 +225,16 @@ def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="立即报名", url=_campaign_deep_link(payload, "join"))],
         [InlineKeyboardButton(text="查看活动规则", url=_campaign_deep_link(payload, "rules"))],
     ]
-    for position, chat in enumerate(_campaign_conditions(payload), start=1):
-        url = chat.get("join_url") or _condition_deep_link(payload, position)
-        rows.append([InlineKeyboardButton(text=f"加入: {chat['title']}", url=str(url))])
+    conditions = _campaign_conditions(payload)
+    if conditions:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"查看参与条件（{len(conditions)}项）",
+                    url=_condition_deep_link(payload, 1),
+                )
+            ]
+        )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -270,7 +277,7 @@ def _draw_result_text(payload: dict[str, Any]) -> str:
     _append_winners(lines, payload.get("winners", []))
     _append_undistributed(lines, payload.get("undistributed", []))
     if payload.get("extended_tips"):
-        lines.append("本次结果按开奖时冻结的报名资格和抽奖票计算。")
+        lines.append("本次结果按开奖时冻结的报名资格和抽奖次数权重计算。")
     return "\n".join(lines)
 
 
@@ -307,7 +314,10 @@ def _campaign_requirements(payload: dict[str, Any]) -> str:
     regions = rules.get("allowed_regions") or []
     region_text = "、".join(regions) if regions else "全国"
     chats = payload.get("presentation", {}).get("required_chats") or []
-    chat_text = "、".join(str(item["title"]) for item in chats) if chats else "无额外要求"
+    if len(chats) > 3:
+        chat_text = f"共 {len(chats)} 项（请点击查看参与条件）"
+    else:
+        chat_text = "、".join(str(item["title"]) for item in chats) or "无额外要求"
     return f"参与条件: {username}; 地区 {region_text}; 额外群/频道 {chat_text}"
 
 
@@ -315,9 +325,14 @@ def _campaign_description(payload: dict[str, Any]) -> str:
     description = payload.get("presentation", {}).get("description")
     if description:
         return f"抽奖说明: {description}"
-    if payload.get("rules", {}).get("luck_mode") == "off":
-        return "每位合格报名者获得 1 张基础票。"
-    return "报名后可通过群活跃和有效邀请增加抽奖票。"
+    rules = payload.get("rules", {})
+    bonus_types = rules.get("bonus_types")
+    if bonus_types is None:
+        enabled = rules.get("luck_mode") != "off"
+        bonus_types = ["invite", "activity"] if enabled else []
+    if not bonus_types:
+        return "每位合格报名者获得 1 次基础抽奖机会。"
+    return "报名后可通过已配置的邀请或每日发言增加抽奖次数。"
 
 
 def _campaign_draw_mode(payload: dict[str, Any]) -> str:
@@ -343,7 +358,7 @@ def _campaign_message_policy(payload: dict[str, Any]) -> str:
 def _campaign_state_card_text(payload: dict[str, Any]) -> str:
     state = str(payload["card_state"])
     status = {
-        "settling": "报名已截止，正在复核资格并结算抽奖票。",
+        "settling": "报名已截止，正在复核资格并结算抽奖次数。",
         "drawn": "本期已经开奖，报名入口已关闭，请查看最新开奖结果。",
     }.get(state)
     if status is None:
