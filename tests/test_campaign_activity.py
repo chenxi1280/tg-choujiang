@@ -359,11 +359,15 @@ async def test_cancelling_published_campaign_queues_card_compensation(
         outbox = await session.scalar(
             select(TelegramOutbox).where(TelegramOutbox.operation == "edit_campaign_card_cancelled")
         )
+        revoke_job = await session.scalar(
+            select(ScheduledJob).where(ScheduledJob.business_key.startswith("revoke_links_cancel:"))
+        )
         assert outbox.payload == {
             "campaign_name": "测试活动",
             "has_cover": False,
             "message_id": 321,
         }
+        assert revoke_job.payload == {"revoke_personal": True}
 
 
 async def test_repeated_early_cutoff_does_not_duplicate_card_update(session_factory) -> None:

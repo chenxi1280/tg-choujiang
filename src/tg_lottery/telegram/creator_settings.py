@@ -12,8 +12,8 @@ from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram import creator_bonus as bonus
 from tg_lottery.telegram import creator_participation as participation
-from tg_lottery.telegram.creator_bonus import bonus_prompt_text, parse_bonus_config
 from tg_lottery.telegram.creator_messages import (
     MESSAGE_DELAYS,
     message_settings_rows,
@@ -121,6 +121,7 @@ class CreatorSettings:
         handlers.update(
             {f"draft_messages_delay_{key}": self._set_message_delay for key in MESSAGE_DELAYS}
         )
+        handlers.update({action: self._change_bonus for action in bonus.BONUS_ACTIONS})
         return handlers
 
     def _text_handlers(self) -> dict[str, TextHandler]:
@@ -134,7 +135,6 @@ class CreatorSettings:
             "draft:participation_delete": self._receive_participation_delete,
             "draft:description": self._receive_description,
             "draft:issuer": self._receive_issuer,
-            "draft:bonus": self._receive_bonus,
         }
 
     async def _show_draw_modes(self, query: CallbackQuery, _: CallbackGrant) -> None:
@@ -200,12 +200,15 @@ class CreatorSettings:
         await self._update(query, {"claim_instructions": DEFAULT_CLAIM_INSTRUCTIONS})
 
     async def _edit_bonus(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:bonus")
-        await self._render(query, data=data, text=bonus_prompt_text(data), rows=_back_rows())
+        data = await self._set_state(query, "draft:idle")
+        text, rows = bonus.bonus_view(data, "")
+        await self._render(query, data=data, text=text, rows=rows)
 
-    async def _receive_bonus(self, message: Message, data: dict[str, Any]) -> None:
-        changes = parse_bonus_config(message.text or "")
-        await self._dashboard_from_message(message, data | changes)
+    async def _change_bonus(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        data = bonus.apply_bonus_action(await self._required_data(query.from_user.id), grant.action)
+        await self._sessions.set(query.from_user.id, "draft:idle", data)
+        text, rows = bonus.bonus_view(data, grant.action)
+        await self._render(query, data=data, text=text, rows=rows)
 
     async def _edit_cover(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:cover")

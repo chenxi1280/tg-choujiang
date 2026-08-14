@@ -427,6 +427,7 @@ class ParticipantService:
                 "campaign_id": str(campaign.id),
                 "participant_id": str(participant.id),
                 "expire_at": campaign.cutoff_at.isoformat(),
+                "persistent": True,
                 "name": invite_name,
             },
         )

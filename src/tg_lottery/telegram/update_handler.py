@@ -168,6 +168,13 @@ class LotteryUpdateHandler:
         if data == "member:invites":
             await self._member_flow.show_invitations(message, query.from_user.id)
             return True
+        if data.startswith("member:invite:"):
+            await self._member_flow.show_invite_link(
+                message,
+                data.removeprefix("member:invite:"),
+                user_id=query.from_user.id,
+            )
+            return True
         if data.startswith("member:verify:"):
             await self._member_flow.register(
                 message,

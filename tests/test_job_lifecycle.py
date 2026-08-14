@@ -7,7 +7,7 @@ from tg_lottery.application.invitations import InvitationService
 from tg_lottery.application.participants import ParticipantService
 from tg_lottery.application.settlement import SettlementService
 from tg_lottery.domain.enums import CampaignState, JobState
-from tg_lottery.infrastructure.db import ScheduledJob, TelegramOutbox
+from tg_lottery.infrastructure.db import InviteLink, ScheduledJob, TelegramOutbox
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.jobs.handlers import JobHandlers
 
@@ -74,6 +74,41 @@ async def test_cutoff_updates_published_campaign_card(session_factory) -> None:
         )
         assert row.payload["card_state"] == "settling"
         assert row.payload["message_id"] == 321
+
+
+async def test_only_campaign_cancellation_revokes_personal_invite_links(session_factory) -> None:
+    from tests.helpers import seed_campaign
+
+    async with session_factory() as session, session.begin():
+        _, campaign, participant = await seed_campaign(session)
+        campaign_id = campaign.id
+        session.add(
+            InviteLink(
+                campaign_id=campaign.id,
+                participant_id=participant.id,
+                link_hash="a" * 64,
+                encrypted_url=b"ciphertext",
+                telegram_name="lot_personal",
+                expire_at=campaign.cutoff_at,
+            )
+        )
+    handlers = _handlers(session_factory)
+
+    await handlers.handle(_job("revoke_invite_links", str(campaign_id)))
+    async with session_factory() as session:
+        count = await session.scalar(
+            select(TelegramOutbox).where(TelegramOutbox.operation == "revoke_invite_link")
+        )
+        assert count is None
+
+    cancellation = _job("revoke_invite_links", str(campaign_id))
+    cancellation.payload = {"revoke_personal": True}
+    await handlers.handle(cancellation)
+    async with session_factory() as session:
+        row = await session.scalar(
+            select(TelegramOutbox).where(TelegramOutbox.operation == "revoke_invite_link")
+        )
+        assert row is not None
 
 
 def _handlers(session_factory) -> JobHandlers:

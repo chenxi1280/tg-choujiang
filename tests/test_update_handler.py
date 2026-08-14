@@ -29,6 +29,11 @@ class RecordingMemberFlow:
         self.campaign_reference = campaign_reference
         self.position = position
 
+    async def show_invite_link(self, message, campaign_reference, *, user_id) -> None:
+        self.action = "invite_link"
+        self.campaign_reference = campaign_reference
+        self.user_id = user_id
+
 
 class RecordingAdminFlow:
     def __init__(self) -> None:
@@ -114,6 +119,19 @@ async def test_condition_callback_opens_the_selected_position() -> None:
     assert flow.action == "condition"
     assert flow.position == 2
     assert flow.user_id is None
+
+
+async def test_campaign_invite_callback_is_scoped_to_campaign_and_clicking_user() -> None:
+    flow = RecordingMemberFlow()
+    handler = _handler(member_flow=flow)
+    public_ref = "AbCdEfGhIjKlMnOpQrSt-_"
+    query = _callback(f"member:invite:{public_ref}")
+
+    await handler._dispatch_callback(query, query.data)
+
+    assert flow.action == "invite_link"
+    assert flow.campaign_reference == public_ref
+    assert flow.user_id == 201
 
 
 def test_missing_chat_title_never_falls_back_to_raw_chat_id() -> None:

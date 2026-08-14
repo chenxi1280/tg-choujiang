@@ -71,6 +71,7 @@ async def test_registration_persists_pending_before_external_result(session_fact
         assert registration_tickets == 1
         assert outbox_count == 1
         assert invite_outbox.payload["name"] == "lottery_fixed_public"
+        assert invite_outbox.payload["persistent"] is True
         assert participant.id.hex[:20] not in invite_outbox.payload["name"]
 
 

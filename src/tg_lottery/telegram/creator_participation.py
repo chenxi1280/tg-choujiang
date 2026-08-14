@@ -5,19 +5,29 @@ from tg_lottery.domain.errors import UserFacingError
 
 ButtonRows = list[list[tuple[str, str]]]
 PARTICIPATION_PAGE_SIZE = 10
+_PUBLIC_LINK = re.compile(r"(?:https?://)?t\.me/(?:s/)?([A-Za-z0-9_]{5,32})(?:/\d+)?/?(?:\?.*)?")
+_PRIVATE_MESSAGE_LINK = re.compile(r"(?:https?://)?t\.me/c/(\d+)(?:/\d+)?/?(?:\?.*)?")
 
 
 def parse_chat_refs(value: str) -> list[int | str]:
-    refs: list[int | str] = []
-    for item in split_values(value):
-        if re.fullmatch(r"@[A-Za-z0-9_]{5,32}", item):
-            refs.append(item)
-            continue
-        try:
-            refs.append(int(item))
-        except ValueError as exc:
-            raise UserFacingError("群/频道需填写公开用户名或数字 ID") from exc
+    refs = [_parse_chat_ref(item) for item in split_values(value)]
     return list(dict.fromkeys(refs))
+
+
+def _parse_chat_ref(value: str) -> int | str:
+    if re.fullmatch(r"@[A-Za-z0-9_]{5,32}", value):
+        return value
+    private = _PRIVATE_MESSAGE_LINK.fullmatch(value)
+    if private:
+        return int(f"-100{private.group(1)}")
+    public = _PUBLIC_LINK.fullmatch(value)
+    if public:
+        return f"@{public.group(1)}"
+    if re.fullmatch(r"-?\d+", value):
+        return int(value)
+    if "t.me/+" in value or "t.me/joinchat/" in value:
+        raise UserFacingError("私有邀请链接无法识别群信息，请发送该群/频道内的消息链接")
+    raise UserFacingError("请发送群聊/频道链接；数字 chat ID 仅用于高级操作")
 
 
 def split_values(value: str) -> list[str]:
@@ -49,8 +59,9 @@ def participation_rows(data: dict[str, Any]) -> ButtonRows:
 def participation_add_text() -> str:
     return (
         "📮 添加参与条件\n\n"
-        "请回复要添加的群聊/频道的公开用户名或数字 ID。\n"
-        "一次可填写一个或多个，用逗号、空格或换行分隔。"
+        "请直接发送群聊或频道链接，例如：https://t.me/example_group\n"
+        "一次可发送一个或多个，用逗号、空格或换行分隔。\n"
+        "私有群/频道请发送其中一条消息的 t.me/c/... 链接；数字 chat ID 仅用于高级操作。"
     )
 
 
@@ -59,7 +70,7 @@ def participation_text(data: dict[str, Any]) -> str:
     lines = [
         "📮 参与条件",
         "主活动群始终是参与条件。",
-        "可一次回复一个或多个群聊/频道的公开用户名或数字 ID。",
+        "可一次发送一个或多个群聊/频道链接。",
     ]
     if not chats:
         lines.append("\n当前没有额外条件。")

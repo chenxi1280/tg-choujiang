@@ -112,7 +112,11 @@ class TelegramGateway:
         link = await self._bot.create_chat_invite_link(
             chat_id=outbox.recipient_chat_id,
             name=str(payload["name"]),
-            expire_date=datetime.fromisoformat(str(payload["expire_at"])),
+            expire_date=(
+                None
+                if payload.get("persistent")
+                else datetime.fromisoformat(str(payload["expire_at"]))
+            ),
             creates_join_request=False,
         )
         remote_result = link.model_dump(mode="json", exclude_none=True)

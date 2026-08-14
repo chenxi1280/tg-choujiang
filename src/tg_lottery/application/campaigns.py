@@ -411,6 +411,7 @@ class CampaignService:
             aggregate_id=str(campaign.id),
             business_key=f"revoke_links_cancel:{campaign.id}:{campaign.config_revision}",
             run_at=utcnow(),
+            payload={"revoke_personal": True},
         )
 
 

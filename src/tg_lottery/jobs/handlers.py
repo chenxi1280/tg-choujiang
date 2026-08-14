@@ -196,31 +196,39 @@ class JobHandlers:
             group = await session.get(Group, campaign.group_id)
             if group is None:
                 raise ValueError("campaign group not found")
-            links = (
-                await session.scalars(
-                    select(InviteLink).where(
-                        InviteLink.campaign_id == campaign_id,
-                        InviteLink.revoked_at.is_(None),
-                    )
-                )
-            ).all()
-            for link in links:
-                business_key = f"revoke_invite_link:{link.id}"
-                exists = await session.scalar(
-                    select(TelegramOutbox.id).where(TelegramOutbox.business_key == business_key)
-                )
-                if exists:
-                    continue
-                add_outbox(
-                    session,
-                    operation="revoke_invite_link",
-                    aggregate_type="invite_link",
-                    aggregate_id=str(link.id),
-                    recipient_chat_id=group.chat_id,
-                    business_key=business_key,
-                    payload={"invite_link_id": str(link.id)},
+            if job.payload.get("revoke_personal"):
+                await self._queue_personal_link_revocations(
+                    session, campaign_id=campaign_id, chat_id=group.chat_id
                 )
             await add_required_chat_revoke_outboxes(session, campaign)
+
+    async def _queue_personal_link_revocations(
+        self, session: object, *, campaign_id: UUID, chat_id: int
+    ) -> None:
+        links = (
+            await session.scalars(
+                select(InviteLink).where(
+                    InviteLink.campaign_id == campaign_id,
+                    InviteLink.revoked_at.is_(None),
+                )
+            )
+        ).all()
+        for link in links:
+            business_key = f"revoke_invite_link:{link.id}"
+            exists = await session.scalar(
+                select(TelegramOutbox.id).where(TelegramOutbox.business_key == business_key)
+            )
+            if exists:
+                continue
+            add_outbox(
+                session,
+                operation="revoke_invite_link",
+                aggregate_type="invite_link",
+                aggregate_id=str(link.id),
+                recipient_chat_id=chat_id,
+                business_key=business_key,
+                payload={"invite_link_id": str(link.id)},
+            )
 
     async def _campaign_settle(self, job: ScheduledJob) -> None:
         if await self._campaign_state(UUID(job.aggregate_id)) in _TERMINAL_STATES:

@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta
+from urllib.parse import quote
 from uuid import UUID
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, User
 
+from tg_lottery.application.invitation_models import accepts_attribution
 from tg_lottery.application.participants import (
     ParticipantService,
     QualificationResult,
@@ -61,7 +63,7 @@ class MemberFlow:
             rules = CampaignRules.model_validate(campaign.rules)
             sent = await message.answer(
                 _registration_success_text(rules),
-                reply_markup=member_keyboard(),
+                reply_markup=member_keyboard(campaign.public_ref, rules.invite_bonus_enabled),
             )
             await self._schedule_success_deletions(campaign, message, sent)
             return
@@ -247,12 +249,61 @@ class MemberFlow:
             f"待验证: {summary.pending}\n已生效: {summary.valid}\n已失效: {summary.invalid}"
         )
 
+    async def show_invite_link(
+        self, message: Message, campaign_reference: str | UUID, *, user_id: int
+    ) -> None:
+        campaign = await self._queries.campaign_by_reference(campaign_reference)
+        if campaign is None:
+            raise UserFacingError("活动不存在或已经失效")
+        rules = CampaignRules.model_validate(campaign.rules)
+        if not rules.invite_bonus_enabled:
+            raise UserFacingError("本期抽奖没有开启邀请加成")
+        stored = await self._queries.invite_link_for_participant(campaign.id, user_id)
+        if stored is None or stored.encrypted_url is None:
+            raise UserFacingError("本期专属链接正在创建，或你尚未完成报名，请稍后再点")
+        link = self._cipher.decrypt(stored.encrypted_url, context=f"invite-link:{stored.id}")
+        active = accepts_attribution(
+            campaign.state,
+            preheat_at=campaign.preheat_at,
+            cutoff_at=campaign.cutoff_at,
+            event_at=utcnow(),
+        )
+        text = _invite_link_text(campaign.name, link, active=active)
+        await message.answer(text, reply_markup=_invite_link_keyboard(link, campaign.name))
 
-def member_keyboard() -> InlineKeyboardMarkup:
+
+def member_keyboard(
+    campaign_reference: str | None = None, invite_bonus_enabled: bool = False
+) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="我的抽奖次数", callback_data="member:tickets")]]
+    if invite_bonus_enabled and campaign_reference:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="获取本期邀请链接",
+                    callback_data=f"member:invite:{campaign_reference}",
+                )
+            ]
+        )
+    rows.append([InlineKeyboardButton(text="邀请记录", callback_data="member:invites")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _invite_link_text(campaign_name: str, link: str, *, active: bool) -> str:
+    if active:
+        note = "仅在本期报名截止前通过该链接加入，才会计算本期邀请加成。"
+    else:
+        note = "本期已截止；此链接仍可入群，但不再计算本期或以后任何抽奖加成。"
+    return f"🔗 {campaign_name} 专属邀请链接\n\n{link}\n\n{note}"
+
+
+def _invite_link_keyboard(link: str, campaign_name: str) -> InlineKeyboardMarkup:
+    share = "https://t.me/share/url?url=" + quote(link, safe="")
+    share += "&text=" + quote(f"邀请你参加「{campaign_name}」抽奖", safe="")
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="我的抽奖次数", callback_data="member:tickets")],
-            [InlineKeyboardButton(text="邀请记录", callback_data="member:invites")],
+            [InlineKeyboardButton(text="打开群聊", url=link)],
+            [InlineKeyboardButton(text="转发给好友", url=share)],
         ]
     )
 

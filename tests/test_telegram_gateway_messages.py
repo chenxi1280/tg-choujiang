@@ -137,6 +137,32 @@ async def test_delete_message_operation_calls_telegram_with_frozen_target() -> N
     assert result.remote_result == {"ok": True}
 
 
+async def test_personal_invite_link_remains_joinable_after_campaign_cutoff() -> None:
+    class InviteBot:
+        async def create_chat_invite_link(self, **values):
+            self.values = values
+            return type(
+                "Link",
+                (),
+                {
+                    "invite_link": "https://t.me/+personal",
+                    "model_dump": lambda self, **_: {"invite_link": self.invite_link},
+                },
+            )()
+
+    bot = InviteBot()
+    gateway = TelegramGateway(bot, object())
+    payload = {
+        "name": "lottery_personal",
+        "expire_at": "2026-08-08T03:20:00+00:00",
+        "persistent": True,
+    }
+
+    await gateway.execute(GatewayRequest("create_invite_link", -1001, payload))
+
+    assert bot.values["expire_date"] is None
+
+
 def test_campaign_state_card_has_business_text_only() -> None:
     settling = _campaign_state_card_text({"campaign_name": "周末抽奖", "card_state": "settling"})
     drawn = _campaign_state_card_text({"campaign_name": "周末抽奖", "card_state": "drawn"})

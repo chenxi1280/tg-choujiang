@@ -70,13 +70,16 @@ class IssuerBot:
         )
 
 
-def test_participation_refs_accept_public_username_and_numeric_id() -> None:
-    assert parse_chat_refs("@public_group\uff0c-1003 @public_group") == [
+def test_participation_refs_accept_links_username_and_advanced_chat_id() -> None:
+    assert parse_chat_refs("https://t.me/public_group,t.me/c/123456/77 -1003 @public_group") == [
         "@public_group",
+        -100123456,
         -1003,
     ]
-    with pytest.raises(UserFacingError, match="公开用户名或数字 ID"):
+    with pytest.raises(UserFacingError, match="请发送群聊/频道链接"):
         parse_chat_refs("invalid-name")
+    with pytest.raises(UserFacingError, match="私有邀请链接无法识别"):
+        parse_chat_refs("https://t.me/+not_resolvable")
 
 
 def test_participation_delete_accepts_specific_positions() -> None:
@@ -111,7 +114,8 @@ def test_participation_add_button_opens_a_distinct_input_prompt() -> None:
     )
 
     assert rows[0] == [("添加参与条件", "draft_participation_add")]
-    assert "请回复要添加的群聊/频道" in participation_add_text()
+    assert "请直接发送群聊或频道链接" in participation_add_text()
+    assert "数字 chat ID 仅用于高级操作" in participation_add_text()
     assert (
         settings._grant_handlers()["draft_participation_add"].__name__ == "_edit_participation_add"
     )

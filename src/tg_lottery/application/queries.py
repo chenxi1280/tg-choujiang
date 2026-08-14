@@ -308,6 +308,23 @@ class QueryService:
                 session.expunge(link)
             return link
 
+    async def invite_link_for_participant(
+        self, campaign_id: UUID, user_id: int
+    ) -> InviteLink | None:
+        async with self._session_factory() as session:
+            link = await session.scalar(
+                select(InviteLink)
+                .join(Participant, Participant.id == InviteLink.participant_id)
+                .where(
+                    InviteLink.campaign_id == campaign_id,
+                    Participant.campaign_id == campaign_id,
+                    Participant.user_id == user_id,
+                )
+            )
+            if link:
+                session.expunge(link)
+            return link
+
     async def invitations_for_chat_user(self, chat_id: int, user_id: int) -> tuple[Invitation, ...]:
         async with self._session_factory() as session:
             rows = (
