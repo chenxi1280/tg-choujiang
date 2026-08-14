@@ -14,6 +14,34 @@ def parse_chat_refs(value: str) -> list[int | str]:
     return list(dict.fromkeys(refs))
 
 
+def message_chat_refs(message: Any) -> list[int | str]:
+    forwarded_chat_id = _forwarded_chat_id(message)
+    if forwarded_chat_id is not None:
+        return [forwarded_chat_id]
+    if getattr(message, "forward_origin", None) is not None:
+        raise UserFacingError("该转发消息没有携带群聊或频道来源，请改发群内消息链接")
+    text = (getattr(message, "text", None) or getattr(message, "caption", None) or "").strip()
+    if text:
+        return parse_chat_refs(text)
+    raise UserFacingError("请发送群聊/频道链接或转发来源可见的群聊/频道消息")
+
+
+def _forwarded_chat_id(message: Any) -> int | None:
+    origin = getattr(message, "forward_origin", None)
+    for attribute in ("chat", "sender_chat"):
+        chat_id = _negative_chat_id(getattr(origin, attribute, None))
+        if chat_id is not None:
+            return chat_id
+    return _negative_chat_id(getattr(message, "forward_from_chat", None))
+
+
+def _negative_chat_id(chat: Any) -> int | None:
+    chat_id = getattr(chat, "id", None)
+    if isinstance(chat_id, int) and chat_id < 0:
+        return chat_id
+    return None
+
+
 def _parse_chat_ref(value: str) -> int | str:
     if re.fullmatch(r"@[A-Za-z0-9_]{5,32}", value):
         return value
@@ -26,7 +54,10 @@ def _parse_chat_ref(value: str) -> int | str:
     if re.fullmatch(r"-?\d+", value):
         return int(value)
     if "t.me/+" in value or "t.me/joinchat/" in value:
-        raise UserFacingError("私有邀请链接无法识别群信息，请发送该群/频道内的消息链接")
+        raise UserFacingError(
+            "私有邀请链接无法识别群信息；若这是主活动群无需添加，"
+            "否则请发送 t.me/c/... 消息链接或转发来源可见的频道消息"
+        )
     raise UserFacingError("请发送群聊/频道链接；数字 chat ID 仅用于高级操作")
 
 
@@ -59,9 +90,11 @@ def participation_rows(data: dict[str, Any]) -> ButtonRows:
 def participation_add_text() -> str:
     return (
         "📮 添加参与条件\n\n"
+        "主活动群已自动包含，无需重复添加。\n"
         "请直接发送群聊或频道链接，例如：https://t.me/example_group\n"
         "一次可发送一个或多个，用逗号、空格或换行分隔。\n"
-        "私有群/频道请发送其中一条消息的 t.me/c/... 链接；数字 chat ID 仅用于高级操作。"
+        "私有群/频道请发送其中一条消息的 t.me/c/... 链接，"
+        "也可转发来源可见的频道消息；数字 chat ID 仅用于高级操作。"
     )
 
 

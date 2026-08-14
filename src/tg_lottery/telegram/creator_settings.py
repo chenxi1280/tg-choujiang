@@ -276,7 +276,7 @@ class CreatorSettings:
     async def _receive_participation(self, message: Message, data: dict[str, Any]) -> None:
         if data.get("chat_id") is None:
             raise UserFacingError("请先在抽奖预览中选择活动群")
-        values = participation.parse_chat_refs((message.text or "").strip())
+        values = participation.message_chat_refs(message)
         if not values:
             raise UserFacingError("请至少填写一个群或频道")
         chats = list(data.get("required_chats") or [])
@@ -285,9 +285,12 @@ class CreatorSettings:
         added = []
         for value in values:
             chat = await resolve_required_chat(self._bot, value)
-            if int(chat["id"]) in existing_ids:
+            chat_id = int(chat["id"])
+            if chat_id == int(data["chat_id"]):
+                raise UserFacingError("主活动群已自动作为参与条件，无需重复添加")
+            if chat_id in existing_ids:
                 raise UserFacingError("该群或频道已经在参与条件中")
-            existing_ids.add(int(chat["id"]))
+            existing_ids.add(chat_id)
             added.append(chat)
         updated_chats = [*chats, *added]
         updated = _with_required_chats(data, updated_chats) | {

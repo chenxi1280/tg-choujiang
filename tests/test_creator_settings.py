@@ -115,6 +115,7 @@ def test_participation_add_button_opens_a_distinct_input_prompt() -> None:
 
     assert rows[0] == [("添加参与条件", "draft_participation_add")]
     assert "请直接发送群聊或频道链接" in participation_add_text()
+    assert "主活动群已自动包含" in participation_add_text()
     assert "数字 chat ID 仅用于高级操作" in participation_add_text()
     assert (
         settings._grant_handlers()["draft_participation_add"].__name__ == "_edit_participation_add"
@@ -144,7 +145,7 @@ async def test_required_chats_are_resolved_deduplicated_and_frozen() -> None:
 async def test_required_chat_rejects_bot_without_admin_access() -> None:
     creator = _creator(RequiredChatBot(status="member"))
 
-    with pytest.raises(UserFacingError, match="必须是每个参与条件"):
+    with pytest.raises(UserFacingError, match=r"群组 -1002.*设为管理员"):
         await creator._required_chat_record("@public_group")
 
 
@@ -165,6 +166,9 @@ async def test_participation_conditions_accumulate_by_resolved_chat_id() -> None
     assert sessions.data["required_chat_ids"] == [-1002, -1003]
     with pytest.raises(UserFacingError, match="已经在参与条件"):
         await settings._receive_participation(_message("@public_group"), sessions.data)
+
+    with pytest.raises(UserFacingError, match="主活动群已自动作为参与条件"):
+        await settings._receive_participation(_message("-1001"), sessions.data)
 
 
 async def test_participation_conditions_delete_selected_positions() -> None:

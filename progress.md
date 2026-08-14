@@ -309,3 +309,26 @@
 - 已补齐实现与回归初稿：参与条件解析公开/私有消息链接，加成改为按钮状态机，个人链接改为持久 Telegram 链接并增加活动级取回入口；正常截止不再撤销个人链接，取消活动仍显式撤销。
 - 定向 67 项和全量 173 项测试均通过；Ruff 格式/规则、代码度量、compileall、Alembic `b91e4d7a6c20 (head)`/无漂移、Compose、Shell 语法与 `git diff --check` 全部通过。
 - V1.9 PRD 与验收 J-19 至 J-22 已同步；旧 D 节“截止过期/撤销个人链接”冲突合同已改为“截止只停归因、取消才撤销”。阶段 84 进入发布与线上点击验收。
+- 首次业务点击复核发现 `/new` 无响应；独立 Production Health `31768362656` 随即确认 app unhealthy、轮询心跳停在 `2026-08-14 03:44:05 UTC`，没有把 worker 健康误报为业务通过。
+- 为保留故障现场，先在 Production Health 增加失败后只读采集 app 日志；`31768517749` 定位首个破损边界为 `Update.model_dump(mode="json")` 无法序列化 aiogram 链接预览中的 `Default` 占位值，导致同一 Telegram Update 每 5 秒重试并阻塞后续更新。
+- 轮询持久化已改用 aiogram 官方 Telegram 对象序列化器，并新增带 `link_preview_options` 的稳定回归；本地完整 174/174 测试、Ruff、代码度量、compileall 与 `git diff --check` 全部通过。
+- 首次修复 CI `31768789381` 因新增测试使 `test_runtime_integrity.py` 达到 506 行而被 500 行硬门禁拒绝；已把序列化回归拆到独立职责文件，未放宽门禁。最终 Python Checks `31768896395` 的 checks 与镜像构建均成功。
+- `release` 已严格快进到 `1f1fa28296cc3b5bfda7bb83724b80c78ad93fbf`；Deploy Production `31769058821` 成功，生产 release 为 `20260814041241_1f1fa28`，app/worker 均运行同一 SHA 且 healthy。
+- 独立 Production Health `31769286134` 成功：app/worker 为 `running healthy`，Alembic 为 `b91e4d7a6c20 (head)`，`STATUS=HEALTHY`。最终 Telegram 点击复核暂被新的 macOS 锁屏阻断，保持独立 `unproven`，等待用户手动解锁后继续。
+
+# 2026-08-14 参与条件权限与私有群交互修复
+
+- 用户授权修复真实客户端发现的参与条件问题；阶段 85 进行中，先补失败回归再修改实现。
+- 当前冻结修复范围：公开目标错误定位到具体群/频道与权限原因；支持来源可见的私有群/频道转发消息；主活动群重复输入给出明确提示；纯 `t.me/+...` 继续显式说明 Bot API 限制。
+- 已确认工作树原有未提交内容仅为上一轮发布证据的 `task_plan.md` 与 `progress.md`，本轮继续保留并增量更新。
+- 已新增转发频道来源、兼容转发来源、隐藏来源错误、`getChat` 失败定位、成员权限检查失败定位、主群重复输入和提示文案回归；首次定向测试因 `message_chat_refs` 尚不存在而按预期失败。
+- 第一轮实现已落盘；定向回归 17/18 通过，唯一失败是旧测试仍要求笼统“必须是每个参与条件”文案，需更新为新具体群名提示并补权限边界。
+- 文案断言与公私条件邀请权限边界补齐后，20/20 项参与条件定向回归通过。
+- V1.9 权威 PRD 和验收清单已同步转发来源、邀请哈希限制、主群去重、逐目标权限错误与公私条件权限差异；新增 J-23。阶段 87 开始执行全量质量门禁。
+- 首轮全仓门禁：代码度量与 compileall 通过；Ruff format 发现 1 个机械换行，Ruff lint 发现 4 个测试正则需显式 raw string；全量测试在数据库 fixture 统一因 55432 密码不匹配失败，尚未进入业务断言。
+- 使用项目隔离的临时 PostgreSQL 16（55433）从空库迁移至 `b91e4d7a6c20 (head)`，`alembic check` 无模型漂移；未修改原 55432 测试容器的数据或认证配置。
+- 修正机械格式和测试正则后，全量 181/181 在 60 秒硬上限内通过；Ruff format/check、代码度量与 compileall 全部通过。
+- Compose 配置与 `git diff --check` 通过；Shell 首轮误用 POSIX `sh -n` 检查 Bash 进程替换而报错，将按脚本声明改用 `bash -n` 重跑。
+- 自审补齐现代 `sender_chat`、带正文的隐藏转发和媒体 caption 链接回归；22/22 项定向测试及对应 Ruff 检查通过。
+- 最终本地门禁通过：183/183 全量测试在 60 秒硬上限内完成；全仓 Ruff format/check、代码度量、compileall、Compose、Bash 语法与 `git diff --check` 全部通过；Alembic 保持 `b91e4d7a6c20 (head)` 且无漂移。
+- 阶段 88 进入发布：提交前将复核完整差异和分支状态，再按 `master -> release -> GitHub Actions` 发布；部署健康与 Telegram 客户端结果继续分别取证。
