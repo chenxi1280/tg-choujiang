@@ -284,7 +284,7 @@ class CreatorSettings:
         existing_ids.add(int(data["chat_id"]))
         added = []
         for value in values:
-            chat = await resolve_required_chat(self._bot, value)
+            chat = await resolve_required_chat(self._bot, value, admin_user_id=_user_id(message))
             chat_id = int(chat["id"])
             if chat_id == int(data["chat_id"]):
                 raise UserFacingError("主活动群已自动作为参与条件，无需重复添加")
@@ -415,14 +415,20 @@ class CreatorSettings:
                 "creator_name",
             )
         }
-        restored = await self._restore_required_chats(ensure_draft_identity(last_draft | protected))
+        restored = await self._restore_required_chats(
+            ensure_draft_identity(last_draft | protected), user_id=query.from_user.id
+        )
         await self._dashboard(query, restored | {"guided": False})
 
-    async def _restore_required_chats(self, data: dict[str, Any]) -> dict[str, Any]:
+    async def _restore_required_chats(
+        self, data: dict[str, Any], *, user_id: int
+    ) -> dict[str, Any]:
         records = list(data.get("required_chats") or [])
-        if not records:
-            refs = data.get("required_chat_refs") or data.get("required_chat_ids") or []
-            records = [await resolve_required_chat(self._bot, ref) for ref in refs]
+        refs = [record["id"] for record in records]
+        refs = refs or data.get("required_chat_refs") or data.get("required_chat_ids") or []
+        records = [
+            await resolve_required_chat(self._bot, ref, admin_user_id=user_id) for ref in refs
+        ]
         return _with_required_chats(data, records)
 
     async def _receive_text(

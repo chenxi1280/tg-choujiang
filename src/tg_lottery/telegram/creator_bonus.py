@@ -46,7 +46,8 @@ def bonus_summary(data: dict[str, Any]) -> str:
         summaries.append(f"邀请({values}，上限{data['invite_bonus_cap']}次)")
     if "activity" in types:
         summaries.append(
-            f"发言(每天{data['activity_message_threshold']}条+{data['activity_reward_tickets']}次)"
+            f"发言(每个条件群每天{data['activity_message_threshold']}条，"
+            f"全部达标+{data['activity_reward_tickets']}次)"
         )
     return "；".join(summaries)
 
@@ -93,8 +94,9 @@ def invite_bonus_rows(data: dict[str, Any]) -> ButtonRows:
 def activity_bonus_text(data: dict[str, Any]) -> str:
     return (
         "💬 发言抽奖加成\n\n"
-        f"每天发送达到 {data['activity_message_threshold']} 条有效消息，"
-        f"当天增加 {data['activity_reward_tickets']} 次。\n"
+        f"在每个条件群每天分别发送达到 {data['activity_message_threshold']} 条有效消息，"
+        f"全部达标后当天增加 {data['activity_reward_tickets']} 次。\n"
+        "频道只要求关注，不要求发言。\n"
         "每天单独结算，不要求连续签到。"
     )
 

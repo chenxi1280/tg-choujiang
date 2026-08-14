@@ -30,7 +30,9 @@ def test_bonus_configuration_is_discoverable_through_keyboard_buttons() -> None:
     assert any("邀请人数" in label for label, _ in invite_bonus_rows(data)[0])
     assert any("消息数" in label for label, _ in activity_bonus_rows(data)[0])
     assert "1人+1次" in bonus_summary(data)
-    assert "每天10条+1次" in bonus_summary(data)
+    summary = bonus_summary(data)
+    assert "每个条件群每天10条" in summary
+    assert "全部达标+1次" in summary
 
 
 def test_invite_keyboard_edits_last_tier_and_keeps_cap_reachable() -> None:

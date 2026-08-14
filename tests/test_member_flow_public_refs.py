@@ -178,9 +178,11 @@ async def test_rules_remain_visible_after_private_condition_link_is_revoked() ->
 
 
 async def test_condition_page_distinguishes_channel_and_supports_navigation() -> None:
+    rules = CampaignRules(bonus_types=("activity",))
     campaign = SimpleNamespace(
         id=uuid4(),
         public_ref=PUBLIC_REF,
+        rules=rules.model_dump(mode="json"),
         presentation={
             "required_chats": [
                 {
@@ -208,6 +210,10 @@ async def test_condition_page_distinguishes_channel_and_supports_navigation() ->
     assert rows[0][0].text == "关注频道"
     assert rows[1][0].callback_data == f"member:condition:{PUBLIC_REF}:2"
     assert "参与条件 1/2" in message.texts[-1]
+
+    await flow.show_condition(message, PUBLIC_REF, 2)
+
+    assert "本群每天需发送 10 条有效消息" in message.texts[-1]
 
 
 def _async_result(value):

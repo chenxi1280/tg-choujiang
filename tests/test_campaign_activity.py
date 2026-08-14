@@ -216,6 +216,64 @@ async def test_activity_bonus_is_settled_once_for_each_local_day(session_factory
     assert [item.tickets_awarded for item in progress] == [3, 3]
 
 
+async def test_activity_bonus_requires_each_required_group_to_reach_threshold(
+    session_factory,
+) -> None:
+    extra_chat_id = -100456
+    rules = CampaignRules(
+        required_chat_ids=(extra_chat_id,),
+        bonus_types=("activity",),
+        activity=ActivityRule(
+            message_threshold=2,
+            reward_tickets=3,
+            daily_ticket_cap=3,
+            settle_once_per_day=True,
+        ),
+    )
+    async with session_factory() as session, session.begin():
+        group, campaign, _ = await seed_campaign(session, rules=rules)
+        campaign.presentation = {
+            "main_chat": {"id": group.chat_id, "type": "supergroup", "title": "主群"},
+            "required_chats": [{"id": extra_chat_id, "type": "supergroup", "title": "协作群"}],
+        }
+        campaign_id = campaign.id
+        main_chat_id = group.chat_id
+    service = ActivityService(partial(UnitOfWork, session_factory))
+    base = _daily_activity_base()
+
+    await _record_group_messages(service, main_chat_id, base, start_id=800)
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count(TicketLedger.id))) == 0
+    await _record_group_messages(service, extra_chat_id, base, start_id=900)
+
+    async with session_factory() as session:
+        progress = await session.scalar(select(DailyProgress))
+        total = await session.scalar(
+            select(func.sum(TicketLedger.delta)).where(TicketLedger.campaign_id == campaign_id)
+        )
+    assert progress.valid_message_counts == {str(main_chat_id): 2, str(extra_chat_id): 2}
+    assert total == 3
+
+
+async def _record_group_messages(
+    service: ActivityService,
+    chat_id: int,
+    base: datetime,
+    *,
+    start_id: int,
+) -> None:
+    for offset in range(2):
+        await service.record_message(
+            MessageObservation(
+                chat_id=chat_id,
+                message_id=start_id + offset,
+                user_id=201,
+                event_at=base + timedelta(minutes=offset),
+                text=f"群 {chat_id} 的有效消息 {offset}",
+            )
+        )
+
+
 async def test_activity_uses_campaign_timezone_and_inclusive_cutoff(session_factory) -> None:
     zone = ZoneInfo("Asia/Kuala_Lumpur")
     local_now = datetime.now(zone)

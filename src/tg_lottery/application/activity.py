@@ -5,9 +5,10 @@ from hashlib import sha256
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 
+from tg_lottery.application.activity_rules import activity_chat_ids, activity_ticket_target
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import (
@@ -51,30 +52,48 @@ class ActivityService:
         self, observation: MessageObservation
     ) -> ActivityEvent | InviteeActivityEvent | None:
         async with self._uow_factory() as uow:
-            campaign = await self._active_campaign(uow.session, observation.chat_id)
-            if campaign is None or not (
-                campaign.preheat_at <= observation.event_at <= campaign.cutoff_at
-            ):
-                return None
-            participant = await self._eligible_participant(
-                uow.session, campaign.id, observation.user_id
-            )
-            if participant is None:
-                return await self._record_invitee_activity(uow.session, campaign, observation)
-            existing = await uow.session.scalar(
-                select(ActivityEvent).where(
-                    ActivityEvent.chat_id == observation.chat_id,
-                    ActivityEvent.message_id == observation.message_id,
+            campaigns = await self._active_campaigns(uow.session, observation.chat_id)
+            recorded = []
+            for campaign, main_chat_id in campaigns:
+                event = await self._record_for_campaign(
+                    uow.session,
+                    campaign=campaign,
+                    main_chat_id=main_chat_id,
+                    observation=observation,
                 )
+                if event is not None:
+                    recorded.append(event)
+            return recorded[0] if recorded else None
+
+    async def _record_for_campaign(
+        self,
+        session: object,
+        *,
+        campaign: Campaign,
+        main_chat_id: int,
+        observation: MessageObservation,
+    ) -> ActivityEvent | InviteeActivityEvent | None:
+        if not campaign.preheat_at <= observation.event_at <= campaign.cutoff_at:
+            return None
+        participant = await self._eligible_participant(session, campaign.id, observation.user_id)
+        if participant is None:
+            return await self._record_invitee_activity(session, campaign, observation)
+        existing = await session.scalar(
+            select(ActivityEvent).where(
+                ActivityEvent.campaign_id == campaign.id,
+                ActivityEvent.chat_id == observation.chat_id,
+                ActivityEvent.message_id == observation.message_id,
             )
-            if existing:
-                return existing
-            return await self._record(
-                uow.session,
-                campaign=campaign,
-                participant=participant,
-                observation=observation,
-            )
+        )
+        if existing:
+            return existing
+        return await self._record(
+            session,
+            campaign=campaign,
+            participant=participant,
+            observation=observation,
+            activity_chat_ids=activity_chat_ids(campaign, main_chat_id),
+        )
 
     async def _record_invitee_activity(
         self,
@@ -94,12 +113,22 @@ class ActivityService:
         )
         if invitation is None:
             return None
+        existing = await session.scalar(
+            select(InviteeActivityEvent).where(
+                InviteeActivityEvent.invitation_id == invitation.id,
+                InviteeActivityEvent.chat_id == observation.chat_id,
+                InviteeActivityEvent.message_id == observation.message_id,
+            )
+        )
+        if existing:
+            return existing
         normalized = _normalize(observation.text)
         reason = _rejection_reason(observation, normalized, rules.activity.min_text_length)
         content_hash = sha256(normalized.encode()).hexdigest()
         duplicate = await self._invitee_duplicate(
             session,
             invitation_id=invitation.id,
+            chat_id=observation.chat_id,
             content_hash=content_hash,
             event_at=observation.event_at,
             rules=rules,
@@ -123,6 +152,7 @@ class ActivityService:
         campaign: Campaign,
         participant: Participant,
         observation: MessageObservation,
+        activity_chat_ids: tuple[int, ...],
     ) -> ActivityEvent:
         rules = CampaignRules.model_validate(campaign.rules)
         normalized = _normalize(observation.text)
@@ -133,6 +163,7 @@ class ActivityService:
             reason = await self._duplicate_reason(
                 session,
                 participant_id=participant.id,
+                chat_id=observation.chat_id,
                 content_hash=content_hash,
                 event_at=observation.event_at,
                 rules=rules,
@@ -159,6 +190,8 @@ class ActivityService:
                 local_date=local_date,
                 event_at=observation.event_at,
                 rules=rules,
+                chat_id=observation.chat_id,
+                activity_chat_ids=activity_chat_ids,
             )
         return event
 
@@ -171,12 +204,15 @@ class ActivityService:
         local_date: date,
         event_at: datetime,
         rules: CampaignRules,
+        chat_id: int,
+        activity_chat_ids: tuple[int, ...],
     ) -> None:
         statement = insert(DailyProgress).values(
             campaign_id=campaign.id,
             participant_id=participant.id,
             local_date=local_date,
             valid_message_count=0,
+            valid_message_counts={},
             tickets_awarded=0,
         )
         await session.execute(statement.on_conflict_do_nothing())
@@ -191,19 +227,11 @@ class ActivityService:
         )
         if progress is None:
             raise RuntimeError("daily progress upsert failed")
-        progress.valid_message_count += 1
-        if not rules.activity_bonus_enabled:
-            return
-        if rules.activity.settle_once_per_day:
-            reached = progress.valid_message_count >= rules.activity.message_threshold
-            target = rules.activity.reward_tickets if reached else 0
-        else:
-            target = min(
-                rules.activity.daily_ticket_cap,
-                progress.valid_message_count
-                // rules.activity.message_threshold
-                * rules.activity.reward_tickets,
-            )
+        counts = dict(progress.valid_message_counts or {})
+        counts[str(chat_id)] = int(counts.get(str(chat_id), 0)) + 1
+        progress.valid_message_counts = counts
+        progress.valid_message_count = sum(int(value) for value in counts.values())
+        target = activity_ticket_target(counts, activity_chat_ids, rules)
         await self._award_new_tickets(
             session,
             campaign=campaign,
@@ -244,15 +272,26 @@ class ActivityService:
         participant.ticket_total_cache += delta
         progress.tickets_awarded = target
 
-    async def _active_campaign(self, session: object, chat_id: int) -> Campaign | None:
-        return await session.scalar(
-            select(Campaign)
+    async def _active_campaigns(
+        self, session: object, chat_id: int
+    ) -> tuple[tuple[Campaign, int], ...]:
+        rows = await session.execute(
+            select(Campaign, Group.chat_id)
             .join(Group, Group.id == Campaign.group_id)
             .where(
-                Group.chat_id == chat_id,
                 Campaign.state.in_([CampaignState.RUNNING, CampaignState.SETTLING]),
+                or_(
+                    Group.chat_id == chat_id,
+                    Campaign.rules.op("@>")({"required_chat_ids": [chat_id]}),
+                ),
             )
-            .with_for_update()
+            .order_by(Campaign.id)
+            .with_for_update(of=Campaign)
+        )
+        return tuple(
+            (campaign, main_chat_id)
+            for campaign, main_chat_id in rows.all()
+            if chat_id in activity_chat_ids(campaign, main_chat_id)
         )
 
     async def _eligible_participant(
@@ -271,6 +310,7 @@ class ActivityService:
         session: object,
         *,
         participant_id: UUID,
+        chat_id: int,
         content_hash: str,
         event_at: datetime,
         rules: CampaignRules,
@@ -279,6 +319,7 @@ class ActivityService:
         duplicate = await session.scalar(
             select(ActivityEvent.id).where(
                 ActivityEvent.participant_id == participant_id,
+                ActivityEvent.chat_id == chat_id,
                 ActivityEvent.content_hash == content_hash,
                 ActivityEvent.accepted.is_(True),
                 ActivityEvent.event_at >= lower_bound,
@@ -292,6 +333,7 @@ class ActivityService:
         session: object,
         *,
         invitation_id: UUID,
+        chat_id: int,
         content_hash: str,
         event_at: datetime,
         rules: CampaignRules,
@@ -300,6 +342,7 @@ class ActivityService:
         duplicate = await session.scalar(
             select(InviteeActivityEvent.id).where(
                 InviteeActivityEvent.invitation_id == invitation_id,
+                InviteeActivityEvent.chat_id == chat_id,
                 InviteeActivityEvent.content_hash == content_hash,
                 InviteeActivityEvent.accepted.is_(True),
                 InviteeActivityEvent.event_at >= lower_bound,

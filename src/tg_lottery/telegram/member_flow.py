@@ -154,6 +154,7 @@ class MemberFlow:
         if position < 1 or position > len(conditions):
             raise UserFacingError("参与条件不存在或已经失效")
         chat = conditions[position - 1]
+        rules = CampaignRules.model_validate(campaign.rules)
         rows = []
         if not chat.get("invite_revoked_at") or chat.get("join_url"):
             rows.append(
@@ -174,7 +175,7 @@ class MemberFlow:
             ]
         )
         keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
-        instruction = _condition_instruction(chat)
+        instruction = _condition_instruction(chat, rules)
         if chat.get("invite_revoked_at") and not chat.get("join_url"):
             instruction = f"「{chat['title']}」的加入入口已关闭。"
         await message.answer(
@@ -353,7 +354,8 @@ def _human_rule(rules: CampaignRules) -> str:
         parts.append(_invite_rule_text(rules))
     if rules.activity_bonus_enabled:
         parts.append(
-            f"每天发言 {rules.activity.message_threshold} 条+{rules.activity.reward_tickets} 次"
+            f"每个条件群每天有效发言 {rules.activity.message_threshold} 条，"
+            f"全部达标+{rules.activity.reward_tickets} 次"
         )
     return "抽奖加成: " + "；".join(parts)
 
@@ -401,8 +403,11 @@ def _condition_action(chat: dict[str, object]) -> str:
     return "关注频道" if chat.get("type") == "channel" else "加入群聊"
 
 
-def _condition_instruction(chat: dict[str, object]) -> str:
-    return f"请{_condition_action(chat)}「{chat['title']}」，完成后点击验证资格。"
+def _condition_instruction(chat: dict[str, object], rules: CampaignRules) -> str:
+    instruction = f"请{_condition_action(chat)}「{chat['title']}」"
+    if rules.activity_bonus_enabled and chat.get("type") != "channel":
+        instruction += f"；本群每天需发送 {rules.activity.message_threshold} 条有效消息"
+    return instruction + "，完成加入后点击验证资格。"
 
 
 def _condition_navigation(

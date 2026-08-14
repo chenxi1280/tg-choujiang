@@ -24,8 +24,14 @@ from tg_lottery.telegram.personal_flow import _index_keyboard
 class RequiredChatBot:
     id = 9001
 
-    def __init__(self, status: str = "administrator") -> None:
+    def __init__(
+        self,
+        status: str = "administrator",
+        *,
+        creator_status: str = "administrator",
+    ) -> None:
         self._status = status
+        self._creator_status = creator_status
 
     async def get_chat(self, ref: int | str):
         mapping = {"@public_group": -1002, -1003: -1003, -1001: -1001}
@@ -39,7 +45,8 @@ class RequiredChatBot:
         )
 
     async def get_chat_member(self, chat_id: int, user_id: int):
-        return SimpleNamespace(status=self._status)
+        status = self._status if user_id == self.id else self._creator_status
+        return SimpleNamespace(status=status)
 
 
 class RecordingSessions:
@@ -116,6 +123,7 @@ def test_participation_add_button_opens_a_distinct_input_prompt() -> None:
     assert rows[0] == [("添加参与条件", "draft_participation_add")]
     assert "请直接发送群聊或频道链接" in participation_add_text()
     assert "主活动群已自动包含" in participation_add_text()
+    assert "创建者和机器人都必须" in participation_add_text()
     assert "数字 chat ID 仅用于高级操作" in participation_add_text()
     assert (
         settings._grant_handlers()["draft_participation_add"].__name__ == "_edit_participation_add"
@@ -135,7 +143,8 @@ async def test_required_chats_are_resolved_deduplicated_and_frozen() -> None:
         {
             "chat_id": -1001,
             "required_chat_refs": ["@public_group", -1003, -1001],
-        }
+        },
+        creator_user_id=201,
     )
 
     assert [item["id"] for item in records] == [-1002, -1003]
@@ -147,6 +156,16 @@ async def test_required_chat_rejects_bot_without_admin_access() -> None:
 
     with pytest.raises(UserFacingError, match=r"群组 -1002.*设为管理员"):
         await creator._required_chat_record("@public_group")
+
+
+async def test_required_chat_rejects_creator_without_admin_access() -> None:
+    creator = _creator(RequiredChatBot(creator_status="member"))
+
+    with pytest.raises(UserFacingError, match=r"群组 -1002.*创建者.*管理员"):
+        await creator._resolve_required_chats(
+            {"chat_id": -1001, "required_chat_refs": ["@public_group"]},
+            creator_user_id=201,
+        )
 
 
 async def test_participation_conditions_accumulate_by_resolved_chat_id() -> None:
@@ -205,7 +224,8 @@ async def test_legacy_last_draft_required_chat_ids_are_restored_for_the_ui() -> 
     )
 
     restored = await settings._restore_required_chats(
-        {"required_chat_ids": [-1003], "required_chat_refs": [], "required_chats": []}
+        {"required_chat_ids": [-1003], "required_chat_refs": [], "required_chats": []},
+        user_id=201,
     )
 
     assert [item["id"] for item in restored["required_chats"]] == [-1003]

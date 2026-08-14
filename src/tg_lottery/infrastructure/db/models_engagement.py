@@ -24,7 +24,7 @@ from tg_lottery.infrastructure.db.model_types import enum_type
 
 class ActivityEvent(Base, UuidPkMixin, CreatedAtMixin):
     __tablename__ = "activity_events"
-    __table_args__ = (UniqueConstraint("chat_id", "message_id"),)
+    __table_args__ = (UniqueConstraint("campaign_id", "chat_id", "message_id"),)
 
     campaign_id: Mapped[UUID] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"))
     participant_id: Mapped[UUID] = mapped_column(
@@ -49,6 +49,7 @@ class DailyProgress(Base, UuidPkMixin, TimestampMixin):
     participant_id: Mapped[UUID] = mapped_column(ForeignKey("participants.id", ondelete="CASCADE"))
     local_date: Mapped[date] = mapped_column(Date, nullable=False)
     valid_message_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    valid_message_counts: Mapped[dict[str, Any]] = mapped_column(default=dict, nullable=False)
     tickets_awarded: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_content_hash: Mapped[str | None] = mapped_column(String(64))
     last_content_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -93,7 +94,7 @@ class Invitation(Base, UuidPkMixin, TimestampMixin):
 
 class InviteeActivityEvent(Base, UuidPkMixin, CreatedAtMixin):
     __tablename__ = "invitee_activity_events"
-    __table_args__ = (UniqueConstraint("chat_id", "message_id"),)
+    __table_args__ = (UniqueConstraint("invitation_id", "chat_id", "message_id"),)
 
     invitation_id: Mapped[UUID] = mapped_column(
         ForeignKey("invitations.id", ondelete="CASCADE"), index=True

@@ -130,6 +130,7 @@ class Campaign(Base, UuidPkMixin, TimestampMixin):
             unique=True,
             postgresql_where=text("state NOT IN ('drawn', 'archived', 'cancelled')"),
         ),
+        Index("ix_campaigns_rules_gin", "rules", postgresql_using="gin"),
     )
 
     group_id: Mapped[UUID] = mapped_column(ForeignKey("groups.id", ondelete="RESTRICT"))

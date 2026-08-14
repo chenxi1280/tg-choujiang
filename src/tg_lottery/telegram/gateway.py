@@ -317,12 +317,49 @@ def _campaign_requirements(payload: dict[str, Any]) -> str:
     username = "用户名必填" if rules.get("username_required") else "用户名可为空"
     regions = rules.get("allowed_regions") or []
     region_text = "、".join(regions) if regions else "全国"
-    chats = payload.get("presentation", {}).get("required_chats") or []
-    if len(chats) > 3:
-        chat_text = f"共 {len(chats)} 项（请点击查看参与条件）"
+    conditions = _campaign_conditions(payload)
+    lines = [f"参与条件: {username}; 地区 {region_text}"]
+    if len(conditions) > 3:
+        lines.append(f"群/频道: 共 {len(conditions)} 项（请点击逐项查看）")
     else:
-        chat_text = "、".join(str(item["title"]) for item in chats) or "无额外要求"
-    return f"参与条件: {username}; 地区 {region_text}; 额外群/频道 {chat_text}"
+        lines.extend(_condition_requirement_lines(conditions, rules))
+    activity = _activity_requirement(rules)
+    if activity:
+        lines.append(activity)
+    return "\n".join(lines)
+
+
+def _condition_requirement_lines(
+    conditions: tuple[dict[str, Any], ...], rules: dict[str, Any]
+) -> list[str]:
+    if not conditions:
+        return ["群/频道: 无额外要求"]
+    threshold = int((rules.get("activity") or {}).get("message_threshold", 10))
+    activity_enabled = _activity_enabled(rules)
+    lines = []
+    for chat in conditions:
+        if chat.get("type") == "channel":
+            lines.append(f"• 关注频道 {chat['title']}")
+        elif activity_enabled:
+            lines.append(f"• 加入群聊 {chat['title']}, 每天有效发言 {threshold} 条")
+        else:
+            lines.append(f"• 加入群聊 {chat['title']}")
+    return lines
+
+
+def _activity_requirement(rules: dict[str, Any]) -> str | None:
+    if not _activity_enabled(rules):
+        return None
+    activity = rules.get("activity") or {}
+    reward = int(activity.get("reward_tickets", 1))
+    return f"发言加成: 全部条件群达标后, 当日增加 {reward} 次"
+
+
+def _activity_enabled(rules: dict[str, Any]) -> bool:
+    bonus_types = rules.get("bonus_types")
+    if bonus_types is None:
+        return rules.get("luck_mode") != "off"
+    return "activity" in bonus_types
 
 
 def _campaign_description(payload: dict[str, Any]) -> str:

@@ -304,8 +304,8 @@ class CampaignCreator:
     ) -> dict[str, Any]:
         if data.get("published_campaign_id"):
             return data
-        required_chats = await self._resolve_required_chats(data)
-        main_chat = await self._required_chat_record(int(data["chat_id"]))
+        required_chats = await self._resolve_required_chats(data, creator_user_id=creator.id)
+        main_chat = await self._required_chat_record(int(data["chat_id"]), admin_user_id=creator.id)
         _validate_activity_chat(data, main_chat)
         issuer_ref = str(data.get("issuer") or "")
         candidates = (
@@ -324,12 +324,14 @@ class CampaignCreator:
             | issuer
         )
 
-    async def _resolve_required_chats(self, data: dict[str, Any]) -> list[dict[str, Any]]:
+    async def _resolve_required_chats(
+        self, data: dict[str, Any], *, creator_user_id: int
+    ) -> list[dict[str, Any]]:
         refs = data.get("required_chat_refs") or data.get("required_chat_ids", [])
         records: list[dict[str, Any]] = []
         seen: set[int] = {int(data["chat_id"])}
         for ref in refs:
-            record = await self._required_chat_record(ref)
+            record = await resolve_required_chat(self._bot, ref, admin_user_id=creator_user_id)
             chat_id = int(record["id"])
             if chat_id in seen:
                 continue
@@ -337,8 +339,10 @@ class CampaignCreator:
             records.append(record | {"position": len(records) + 1})
         return records
 
-    async def _required_chat_record(self, ref: int | str) -> dict[str, Any]:
-        return await resolve_required_chat(self._bot, ref)
+    async def _required_chat_record(
+        self, ref: int | str, *, admin_user_id: int | None = None
+    ) -> dict[str, Any]:
+        return await resolve_required_chat(self._bot, ref, admin_user_id=admin_user_id)
 
     async def _prompt_title(self, user_id: int, message: Message, data: dict[str, Any]) -> None:
         await self._sessions.set(user_id, "draft:title", data)

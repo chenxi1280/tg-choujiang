@@ -6,10 +6,18 @@ from aiogram.exceptions import TelegramAPIError
 from tg_lottery.domain.errors import UserFacingError
 
 
-async def resolve_required_chat(bot: Bot, ref: int | str) -> dict[str, Any]:
+async def resolve_required_chat(
+    bot: Bot,
+    ref: int | str,
+    *,
+    admin_user_id: int | None = None,
+) -> dict[str, Any]:
     chat = await _get_chat(bot, ref)
     member = await _get_bot_member(bot, chat)
     _validate_bot_membership(chat, member)
+    if admin_user_id is not None:
+        creator_member = await _get_creator_member(bot, chat, admin_user_id)
+        _validate_creator_membership(chat, creator_member)
     username = chat.username
     return {
         "id": chat.id,
@@ -19,6 +27,8 @@ async def resolve_required_chat(bot: Bot, ref: int | str) -> dict[str, Any]:
         "private": not bool(username),
         "join_url": f"https://t.me/{username}" if username else None,
         "validated": True,
+        "bot_admin_validated": True,
+        "creator_admin_validated": admin_user_id is not None,
     }
 
 
@@ -41,6 +51,15 @@ async def _get_bot_member(bot: Bot, chat: Any) -> Any:
         ) from exc
 
 
+async def _get_creator_member(bot: Bot, chat: Any, user_id: int) -> Any:
+    try:
+        return await bot.get_chat_member(chat.id, user_id)
+    except TelegramAPIError as exc:
+        raise UserFacingError(
+            f"无法检查参与条件「{_chat_title(chat)}」的创建者权限；请确认创建者仍是管理员后重试"
+        ) from exc
+
+
 def _validate_bot_membership(chat: Any, member: Any) -> None:
     status = str(member.status)
     if status not in {"administrator", "creator"}:
@@ -48,6 +67,11 @@ def _validate_bot_membership(chat: Any, member: Any) -> None:
     if not chat.username and status != "creator":
         if getattr(member, "can_invite_users", True) is False:
             raise UserFacingError(f"参与条件「{_chat_title(chat)}」：请为机器人开启邀请用户权限")
+
+
+def _validate_creator_membership(chat: Any, member: Any) -> None:
+    if str(member.status) not in {"administrator", "creator"}:
+        raise UserFacingError(f"参与条件「{_chat_title(chat)}」：创建者必须是管理员")
 
 
 def _chat_title(chat: Any) -> str:

@@ -473,3 +473,15 @@
 - 本轮实现不涉及 schema；独立 PostgreSQL 16 从空库升级到 `b91e4d7a6c20 (head)`，`alembic check` 无新操作，证明转发来源与错误投影只改变 Telegram 输入边界和草稿交互。
 - 全量 181 项测试在 60 秒硬上限内通过；Ruff format/check、代码度量和 compileall 同步通过。原 55432 容器密码状态与测试夹具不一致，已使用 55433 的一次性项目隔离数据库验证，未把环境认证失败算作业务失败。
 - 自审发现隐藏来源的真实转发通常仍带正文；输入边界已调整为只要存在转发来源但没有权威 chat，就优先返回隐藏来源提示，不再让任意正文落入普通链接格式错误。现代 `origin.chat`、`origin.sender_chat`、legacy `forward_from_chat` 与媒体 caption 链接均有独立回归。
+
+## 2026-08-14 多群管理员与逐群发言条件
+
+- `my_chat_member` 在 Bot 成为管理员时调用 `get_chat_administrators` 并用 `_replace_admins` 同步全部非 Bot 管理员；`admin_groups(user_id)` 按活动管理员记录展示可创建群，选择和发布时又通过 `get_chat_member` 实时复核。因此“群内所有管理员可创建主群抽奖”的主链路已具备，需补回归防止退化，而不是另建 owner 白名单。
+- 额外参与条件当前只调用 `resolve_required_chat` 验证 Bot 管理员身份；添加、恢复上次草稿和发布重验均未验证当前创建者是否也是该目标管理员，这是多群双管理员合同的首个破损业务边界。
+- V1.9 现合同明确规定发言只统计主活动群；用户本轮要求覆盖每个条件群，属于产品合同变更。频道没有普通成员发言语义，因此频道继续只要求关注，所有群聊统一使用现有 `activity.message_threshold`，不新增每群不同阈值配置。
+- 现有 `ActivityService._active_campaign` 仅通过 `Campaign.group_id -> Group.chat_id` 匹配主群；额外群消息不会归属活动。`DailyProgress` 也只有单个 `valid_message_count`，无法证明每个群分别达标。
+- 每日发言奖励仍应每天只发一次：参与者在主群及全部额外群聊分别达到同一阈值后，才一次性增加 `reward_tickets`；频道不进入消息计数集合。不能把每个群达标解释为每群各发一次奖励，否则会改变现有“当日增加次数”合同。
+- 同一额外群可能被多个活动复用；Telegram 的一条消息必须能够分别归属这些活动。现有 `ActivityEvent(chat_id, message_id)` 和 `InviteeActivityEvent(chat_id, message_id)` 全局唯一约束会阻止多活动记账，需要把幂等范围收紧到对应 campaign/participant 邀请事实。
+- 新 `valid_message_counts` JSONB 保留逐群进度，旧 `valid_message_count` 保留为总数兼容投影；迁移将历史总数回填为主群计数，并在已有多群数据时明确拒绝有损 downgrade。
+- 消息归属查询对 `campaigns.rules` 的 `@>` 条件使用 GIN 索引，多活动行锁按 Campaign ID 固定顺序获取，避免高频群消息导致全表扫描或交叉活动锁顺序不稳定。
+- 迁移回归已证明现有主群发言总数升级后完整保留到主群 JSON 键；空库 `base -> head -> base -> head` 、模型漂移与索引创建均通过。

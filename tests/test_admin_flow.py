@@ -74,6 +74,24 @@ async def test_admin_promotion_and_bot_removal_update_cached_access(session_fact
     assert await queries.admin_groups(202) == []
 
 
+async def test_every_synced_group_admin_can_create_for_the_group(session_factory) -> None:
+    service = GroupService(partial(UnitOfWork, session_factory))
+    await service.sync_group(
+        chat_id=-100700,
+        title="双管理员群",
+        timezone="Asia/Shanghai",
+        permissions={},
+        admins=(
+            TelegramAdmin(user_id=101, source="owner"),
+            TelegramAdmin(user_id=202, source="telegram_admin"),
+        ),
+    )
+    queries = QueryService(session_factory)
+
+    assert [group.chat_id for group in await queries.admin_groups(101)] == [-100700]
+    assert [group.chat_id for group in await queries.admin_groups(202)] == [-100700]
+
+
 async def test_unregistered_group_migration_is_ignored(session_factory) -> None:
     service = GroupService(partial(UnitOfWork, session_factory))
 

@@ -104,6 +104,30 @@ def test_campaign_card_separates_rules_registration_and_join_links() -> None:
     assert keyboard.inline_keyboard[2][0].text == "查看参与条件\uff082项\uff09"
 
 
+def test_campaign_card_explains_per_group_messages_and_channel_following() -> None:
+    payload = _campaign_payload() | {
+        "rules": {
+            "draw_mode": "fixed",
+            "bonus_types": ["activity"],
+            "activity": {"message_threshold": 10, "reward_tickets": 2},
+        },
+        "presentation": {
+            "main_chat": {"id": -1001, "title": "主活动群", "type": "supergroup"},
+            "required_chats": [
+                {"id": -1002, "title": "协作群", "type": "supergroup"},
+                {"id": -1003, "title": "公告频道", "type": "channel"},
+            ],
+        },
+    }
+
+    text = _campaign_card_text(payload)
+
+    assert "加入群聊 主活动群, 每天有效发言 10 条" in text
+    assert "加入群聊 协作群, 每天有效发言 10 条" in text
+    assert "关注频道 公告频道" in text
+    assert "全部条件群达标后, 当日增加 2 次" in text
+
+
 def test_draw_result_keeps_internal_hash_out_of_public_message() -> None:
     text = _draw_result_text(
         {
