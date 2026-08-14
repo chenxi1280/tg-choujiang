@@ -85,7 +85,7 @@
 - [complete] 77. 提交 master、快进 release 并通过 GitHub Actions 部署生产
 - [complete] 78. 核验线上 SHA、迁移、健康状态和真实 Telegram 按钮点击
 - [complete] 79. 对线上点击发现的问题补回归、修复并通过全量质量门禁
-- [in_progress] 80. 重新发布修复并复核精确 SHA、迁移、队列和 Telegram 客户端路径
+- [complete] 80. 重新发布修复并复核精确 SHA、迁移、队列和 Telegram 客户端路径
 
 ## 关键约束
 

@@ -294,3 +294,9 @@
 - 修复同步写入 V1.9 PRD 和验收清单，并更正重复的 `J-14` 编号；`creator_settings.py` 通过模块级参与条件依赖保持 481 行，未放宽 500 行门禁。
 - 最终完整回归 166/166 在 Python 子进程 60 秒硬上限内通过；Ruff 格式/规则、代码度量、compileall、Compose、Shell、Alembic `b91e4d7a6c20 (head)`、模型漂移和 `git diff --check` 全部通过。
 - 阶段 80 进行中：提交修复、严格快进 release、等待生产部署和独立健康检查后，再用 Telegram 真实客户端重走参与条件入口。
+- 修复提交 `72a778938872f5425875a1e692753a5a71f9296a` 已推送 master；Python Checks `31763967850` 的 166 项测试、静态门禁、迁移、Compose 和镜像构建全部成功。
+- release 严格快进到同一 SHA；Deploy Production `31764097956` 成功，镜像摘要为 `sha256:e2c9a360545394b0ec5899ea4733c1ec57a234b90596ac7ae135e5122a23fd21`，生产 release 为 `20260814023526_72a7789`。
+- 部署后 Production Health `31764316621` 成功：app/worker healthy、Alembic `b91e4d7a6c20 (head)`、`STATUS=HEALTHY`。
+- 原生 Telegram 在生产 Bot `@TGCCJBOT` 重新发送 `/new`：新预览保持创建即预览和“抽奖加成”规则；参与条件页显示“添加参与条件”，点击进入独立输入提示，“返回条件列表”成功恢复列表页。
+- 客户端点击后再次执行 Production Health `31764470685`：app/worker healthy、Alembic `b91e4d7a6c20 (head)`、`STATUS=HEALTHY`。未发布测试抽奖，也未添加不受控条件。
+- 阶段 80 完成；代码、CI、部署、运行健康和本轮目标点击链路均为 `pass`。完整混合条件、邀请留存/冲正与跨自然日发言 E2E 仍按 J-10 保持 `unproven`。
