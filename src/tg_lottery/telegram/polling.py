@@ -9,6 +9,7 @@ from typing import Any
 from aiogram import Bot
 from aiogram.enums import UpdateType
 from aiogram.types import Update
+from aiogram.utils.serialization import deserialize_telegram_object_to_python
 from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -92,7 +93,7 @@ class TelegramPollingAdapter:
         now = utcnow()
         async with self._session_factory() as session, session.begin():
             for update in updates:
-                payload = update.model_dump(mode="json", exclude_none=True)
+                payload = _serialize_update(update)
                 statement = insert(TelegramUpdate).values(
                     bot_id=self._bot_id,
                     update_id=update.update_id,
@@ -204,6 +205,16 @@ def _payload_hash(payload: dict[str, Any]) -> str:
 
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return sha256(encoded).hexdigest()
+
+
+def _serialize_update(update: Update) -> dict[str, Any]:
+    payload = deserialize_telegram_object_to_python(
+        update,
+        include_api_method_name=False,
+    )
+    if not isinstance(payload, dict):
+        raise TypeError("serialized Telegram update must be an object")
+    return payload
 
 
 def _update_type(update: Update) -> str:
