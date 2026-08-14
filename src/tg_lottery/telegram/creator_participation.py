@@ -25,7 +25,7 @@ def split_values(value: str) -> list[str]:
 
 
 def participation_rows(data: dict[str, Any]) -> ButtonRows:
-    rows = [[("继续添加", "draft_participation_add")]]
+    rows = [[("添加参与条件", "draft_participation_add")]]
     chats = data.get("required_chats") or []
     page = participation_page(data)
     if len(chats) > PARTICIPATION_PAGE_SIZE:
@@ -44,6 +44,14 @@ def participation_rows(data: dict[str, Any]) -> ButtonRows:
         )
     rows.append([("↩ 返回上一层", "draft_back")])
     return rows
+
+
+def participation_add_text() -> str:
+    return (
+        "📮 添加参与条件\n\n"
+        "请回复要添加的群聊/频道的公开用户名或数字 ID。\n"
+        "一次可填写一个或多个，用逗号、空格或换行分隔。"
+    )
 
 
 def participation_text(data: dict[str, Any]) -> str:

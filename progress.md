@@ -280,3 +280,17 @@
 - 阶段 77 进行中：发布前复核完整差异，并只读确认生产历史冻结规则兼容新数值范围。
 - 本机到生产 SSH 在 banner 阶段超时；未把访问路径故障记为生产失败。改由 GitHub Actions `31735260161` 复核发布前基线：app/worker healthy，Alembic `f8b0d3e5a712 (head)`，`STATUS=HEALTHY`。
 - 数值范围只在新 `CampaignDraft` 冻结边界强制执行，历史缺少 `bonus_types` 的冻结规则仍可解析，避免因无法读取线上统计而引入历史活动兼容风险。
+- V1.9 修复提交为 `7264e9b766afa1c6b482c84bbf3a7a99986b450f`；Python Checks `31735537261`、Deploy Production `31735723989` 和独立 Production Health `31736069404` 均成功。
+- 生产 release 为 `20260813192729_7264e9b`，app/worker healthy，Alembic 为 `b91e4d7a6c20 (head)`；部署与运行层已通过，真实 Telegram 客户端点击仍需单独验收。
+- 用户再次要求检查上线问题、修复并完成线上检查；阶段 78 重新进入进行中，先做当前生产只读复核并重试已授权 Telegram 客户端。
+- 重新派发 Production Health `31736421816` 并成功：精确 SHA `7264e9b`、app/worker healthy、迁移 `b91e4d7a6c20 (head)`、四类未决/失败事实为 0。
+- 原生 Telegram 仍被 macOS 锁屏阻断；尝试复用浏览器授权会话时，in-app Browser 与 Chrome 的 Telegram Web 均只显示二维码登录页，未绕过登录或伪造点击。
+- 创建即预览、面板按钮、参与条件、抽奖加成和草稿 callback 隔离的 27 项定向回归再次全部通过（3.78 秒，60 秒硬上限）。
+- 再次读取原生 Telegram 状态仍返回 macOS 锁屏；当前不能把服务健康与 27 项回归写成真实客户端点击已完成。
+- 用户要求继续后重试原生 Telegram：绝对路径读取由“锁屏”变为可访问性读取超时；应用枚举确认正式客户端 `com.tdesktop.Telegram` 正在运行，后续改用唯一 bundle identifier 读取，不复用旧坐标。
+- 原生 Telegram 已解锁并完成第一轮生产点击：`/new` 在 `@TGCCJBOT` 直接生成预览；“抽奖加成”打开新配置页；`发言 0:0` 返回 `每日消息数必须在 1–10000 之间`；合法 `邀请 1:1,2:3 上限3；发言 10:1` 成功写回预览。
+- 参与条件列表页可见，但“继续添加”点击后页面无任何变化；代码确认它重复调用同一列表渲染，形成真实 UX 缺陷。阶段 79 进入进行中，先补失败回归并拆出明确添加提示页。
+- 阶段 79 完成：参与条件按钮改为“添加参与条件”，点击进入独立输入提示并可返回列表；新增回归锁定按钮、提示文案和独立 handler 映射。
+- 修复同步写入 V1.9 PRD 和验收清单，并更正重复的 `J-14` 编号；`creator_settings.py` 通过模块级参与条件依赖保持 481 行，未放宽 500 行门禁。
+- 最终完整回归 166/166 在 Python 子进程 60 秒硬上限内通过；Ruff 格式/规则、代码度量、compileall、Compose、Shell、Alembic `b91e4d7a6c20 (head)`、模型漂移和 `git diff --check` 全部通过。
+- 阶段 80 进行中：提交修复、严格快进 release、等待生产部署和独立健康检查后，再用 Telegram 真实客户端重走参与条件入口。

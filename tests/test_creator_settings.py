@@ -7,13 +7,14 @@ from aiogram.types import User
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.campaign_creator import CampaignCreator, _validate_activity_chat
 from tg_lottery.telegram.creator_participation import (
+    parse_chat_refs,
     parse_positions,
+    participation_add_text,
     participation_rows,
     participation_text,
 )
 from tg_lottery.telegram.creator_settings import (
     CreatorSettings,
-    _parse_chat_refs,
     custom_draw_prompt,
 )
 from tg_lottery.telegram.issuer import creator_issuer, resolve_issuer
@@ -70,12 +71,12 @@ class IssuerBot:
 
 
 def test_participation_refs_accept_public_username_and_numeric_id() -> None:
-    assert _parse_chat_refs("@public_group\uff0c-1003 @public_group") == [
+    assert parse_chat_refs("@public_group\uff0c-1003 @public_group") == [
         "@public_group",
         -1003,
     ]
     with pytest.raises(UserFacingError, match="公开用户名或数字 ID"):
-        _parse_chat_refs("invalid-name")
+        parse_chat_refs("invalid-name")
 
 
 def test_participation_delete_accepts_specific_positions() -> None:
@@ -97,6 +98,23 @@ def test_participation_conditions_are_paginated_without_a_product_cap() -> None:
     assert "11. 加入群聊 条件 11" in text
     assert "\n1. 加入群聊 条件 1" not in text
     assert rows[1] == [("← 上一页", "draft_participation_prev")]
+
+
+def test_participation_add_button_opens_a_distinct_input_prompt() -> None:
+    rows = participation_rows({"required_chats": []})
+    settings = CreatorSettings(
+        sessions=RecordingSessions(),
+        renderer=RecordingRenderer(),
+        profiles=object(),
+        queries=object(),
+        bot=RequiredChatBot(),
+    )
+
+    assert rows[0] == [("添加参与条件", "draft_participation_add")]
+    assert "请回复要添加的群聊/频道" in participation_add_text()
+    assert (
+        settings._grant_handlers()["draft_participation_add"].__name__ == "_edit_participation_add"
+    )
 
 
 def test_activity_bonus_rejects_a_channel_as_the_main_chat() -> None:

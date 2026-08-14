@@ -12,35 +12,12 @@ from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram import creator_participation as participation
 from tg_lottery.telegram.creator_bonus import bonus_prompt_text, parse_bonus_config
 from tg_lottery.telegram.creator_messages import (
     MESSAGE_DELAYS,
     message_settings_rows,
     message_settings_text,
-)
-from tg_lottery.telegram.creator_participation import (
-    PARTICIPATION_PAGE_SIZE,
-)
-from tg_lottery.telegram.creator_participation import (
-    parse_chat_refs as _parse_chat_refs,
-)
-from tg_lottery.telegram.creator_participation import (
-    parse_positions as _parse_positions,
-)
-from tg_lottery.telegram.creator_participation import (
-    participation_delete_text as _participation_delete_text,
-)
-from tg_lottery.telegram.creator_participation import (
-    participation_page as _participation_page,
-)
-from tg_lottery.telegram.creator_participation import (
-    participation_rows as _participation_rows,
-)
-from tg_lottery.telegram.creator_participation import (
-    participation_text as _participation_text,
-)
-from tg_lottery.telegram.creator_participation import (
-    split_values as _split_values,
 )
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer
 from tg_lottery.telegram.creator_schedule import positive_int, quick_draw_at, validate_draw_time
@@ -123,7 +100,7 @@ class CreatorSettings:
             "draft_username_off": self._set_username,
             "draft_regions": self._edit_regions,
             "draft_participation": self._edit_participation,
-            "draft_participation_add": self._edit_participation,
+            "draft_participation_add": self._edit_participation_add,
             "draft_participation_prev": self._page_participation,
             "draft_participation_next": self._page_participation,
             "draft_participation_delete": self._edit_participation_delete,
@@ -270,7 +247,7 @@ class CreatorSettings:
 
     async def _receive_regions(self, message: Message, data: dict[str, Any]) -> None:
         text = (message.text or "").strip()
-        regions = [] if text == "全国" else _split_values(text)
+        regions = [] if text == "全国" else participation.split_values(text)
         if len(regions) > 3 or any(region not in REGIONS for region in regions):
             raise UserFacingError("地区必须是省级选项且最多 3 个")
         await self._dashboard_from_message(message, data | {"allowed_regions": regions})
@@ -280,14 +257,23 @@ class CreatorSettings:
         await self._render(
             query,
             data=data,
-            text=_participation_text(data),
-            rows=_participation_rows(data),
+            text=participation.participation_text(data),
+            rows=participation.participation_rows(data),
+        )
+
+    async def _edit_participation_add(self, query: CallbackQuery, _: CallbackGrant) -> None:
+        data = await self._set_state(query, "draft:participation")
+        await self._render(
+            query,
+            data=data,
+            text=participation.participation_add_text(),
+            rows=[[("↩ 返回条件列表", "draft_participation")]],
         )
 
     async def _receive_participation(self, message: Message, data: dict[str, Any]) -> None:
         if data.get("chat_id") is None:
             raise UserFacingError("请先在抽奖预览中选择活动群")
-        values = _parse_chat_refs((message.text or "").strip())
+        values = participation.parse_chat_refs((message.text or "").strip())
         if not values:
             raise UserFacingError("请至少填写一个群或频道")
         chats = list(data.get("required_chats") or [])
@@ -302,25 +288,25 @@ class CreatorSettings:
             added.append(chat)
         updated_chats = [*chats, *added]
         updated = _with_required_chats(data, updated_chats) | {
-            "participation_page": (len(updated_chats) - 1) // PARTICIPATION_PAGE_SIZE,
+            "participation_page": (len(updated_chats) - 1) // participation.PARTICIPATION_PAGE_SIZE,
         }
         await self._sessions.set(_user_id(message), "draft:participation", updated)
         await self._renderer.edit(
             _target(message, updated),
-            text=_participation_text(updated),
-            rows=_participation_rows(updated),
+            text=participation.participation_text(updated),
+            rows=participation.participation_rows(updated),
         )
 
     async def _page_participation(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         data = await self._required_data(query.from_user.id)
         delta = -1 if grant.action.endswith("prev") else 1
-        updated = data | {"participation_page": _participation_page(data) + delta}
+        updated = data | {"participation_page": participation.participation_page(data) + delta}
         await self._sessions.set(query.from_user.id, "draft:participation", updated)
         await self._render(
             query,
             data=updated,
-            text=_participation_text(updated),
-            rows=_participation_rows(updated),
+            text=participation.participation_text(updated),
+            rows=participation.participation_rows(updated),
         )
 
     async def _edit_participation_delete(self, query: CallbackQuery, _: CallbackGrant) -> None:
@@ -329,21 +315,24 @@ class CreatorSettings:
         if not chats:
             raise UserFacingError("当前没有可删除的额外参与条件")
         await self._render(
-            query, data=data, text=_participation_delete_text(data), rows=_back_rows()
+            query,
+            data=data,
+            text=participation.participation_delete_text(data),
+            rows=_back_rows(),
         )
 
     async def _receive_participation_delete(self, message: Message, data: dict[str, Any]) -> None:
         chats = list(data.get("required_chats") or [])
-        positions = set(_parse_positions(message.text or "", len(chats)))
+        positions = set(participation.parse_positions(message.text or "", len(chats)))
         kept = [chat for index, chat in enumerate(chats, start=1) if index not in positions]
         updated = _with_required_chats(data, kept) | {
-            "participation_page": _participation_page(data | {"required_chats": kept}),
+            "participation_page": participation.participation_page(data | {"required_chats": kept}),
         }
         await self._sessions.set(_user_id(message), "draft:participation", updated)
         await self._renderer.edit(
             _target(message, updated),
-            text=_participation_text(updated),
-            rows=_participation_rows(updated),
+            text=participation.participation_text(updated),
+            rows=participation.participation_rows(updated),
         )
 
     async def _clear_participation(self, query: CallbackQuery, _: CallbackGrant) -> None:
@@ -353,8 +342,8 @@ class CreatorSettings:
         await self._render(
             query,
             data=updated,
-            text=_participation_text(updated),
-            rows=_participation_rows(updated),
+            text=participation.participation_text(updated),
+            rows=participation.participation_rows(updated),
         )
 
     async def _edit_description(self, query: CallbackQuery, _: CallbackGrant) -> None:
