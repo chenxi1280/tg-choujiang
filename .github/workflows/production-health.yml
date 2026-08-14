@@ -48,3 +48,16 @@ jobs:
           BASE_DIR="${PRODUCTION_BASE_DIR:-/data/tg-lottery}"
           ssh production-server \
             "BASE_DIR='${BASE_DIR}' bash '${BASE_DIR}/current/deploy/check-services.sh'"
+      - name: Capture unhealthy app logs
+        if: failure()
+        env:
+          PRODUCTION_BASE_DIR: ${{ vars.PRODUCTION_BASE_DIR }}
+        run: |
+          set -euo pipefail
+          BASE_DIR="${PRODUCTION_BASE_DIR:-/data/tg-lottery}"
+          ssh production-server "BASE_DIR='${BASE_DIR}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          source "${BASE_DIR}/current/deploy/docker-env.sh"
+          resolve_docker_command
+          docker_cmd logs --timestamps --tail 250 tg-lottery-app 2>&1
+          REMOTE
