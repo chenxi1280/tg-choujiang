@@ -114,21 +114,23 @@ jobs:
             AND event_at <= :'end_at'::timestamptz
           ORDER BY update_id;
 
-          SELECT operation,
-                 state,
-                 created_at,
-                 updated_at,
-                 gateway_started_at,
-                 projected_at,
-                 (remote_message_id IS NOT NULL) AS has_remote_message,
+          SELECT outbox.operation,
+                 COALESCE(recipient.title, '(untracked chat)') AS recipient_title,
+                 outbox.state,
+                 outbox.created_at,
+                 outbox.updated_at,
+                 outbox.gateway_started_at,
+                 outbox.projected_at,
+                 (outbox.remote_message_id IS NOT NULL) AS has_remote_message,
                  CASE
-                   WHEN last_error IS NULL THEN '-'
-                   ELSE split_part(last_error, ':', 1)
+                   WHEN outbox.last_error IS NULL THEN '-'
+                   ELSE split_part(outbox.last_error, ':', 1)
                  END AS error_type
-          FROM telegram_outbox
-          WHERE created_at >= :'start_at'::timestamptz
-            AND created_at <= :'end_at'::timestamptz
-          ORDER BY created_at;
+          FROM telegram_outbox AS outbox
+          LEFT JOIN groups AS recipient ON recipient.chat_id = outbox.recipient_chat_id
+          WHERE outbox.created_at >= :'start_at'::timestamptz
+            AND outbox.created_at <= :'end_at'::timestamptz
+          ORDER BY outbox.created_at;
 
           SELECT outbox.operation,
                  attempt.attempt_number,
@@ -142,14 +144,40 @@ jobs:
             AND outbox.created_at <= :'end_at'::timestamptz
           ORDER BY attempt.created_at;
 
-          SELECT state,
-                 created_at,
-                 updated_at,
-                 draw_at,
-                 (published_message_id IS NOT NULL) AS has_published_message
-          FROM campaigns
-          WHERE created_at >= :'start_at'::timestamptz
-            AND created_at <= :'end_at'::timestamptz
-          ORDER BY created_at;
+          SELECT campaign.name AS campaign_name,
+                 activity_group.title AS activity_group,
+                 campaign.state,
+                 campaign.created_at,
+                 campaign.updated_at,
+                 campaign.draw_at,
+                 (campaign.published_message_id IS NOT NULL) AS has_published_message,
+                 COALESCE(
+                   (
+                     SELECT string_agg(required_chat ->> 'title', ', ' ORDER BY ordinal)
+                     FROM jsonb_array_elements(
+                       COALESCE(campaign.presentation -> 'required_chats', '[]'::jsonb)
+                     ) WITH ORDINALITY AS item(required_chat, ordinal)
+                   ),
+                   '-'
+                 ) AS required_chat_titles
+          FROM campaigns AS campaign
+          JOIN groups AS activity_group ON activity_group.id = campaign.group_id
+          WHERE campaign.created_at >= :'start_at'::timestamptz
+            AND campaign.created_at <= :'end_at'::timestamptz
+          ORDER BY campaign.created_at;
+
+          SELECT job.job_type,
+                 job.state,
+                 job.run_at,
+                 job.attempts,
+                 CASE
+                   WHEN job.last_error IS NULL THEN '-'
+                   ELSE split_part(job.last_error, ':', 1)
+                 END AS error_type
+          FROM scheduled_jobs AS job
+          JOIN campaigns AS campaign ON job.aggregate_id = campaign.id::text
+          WHERE campaign.created_at >= :'start_at'::timestamptz
+            AND campaign.created_at <= :'end_at'::timestamptz
+          ORDER BY job.run_at, job.job_type;
           SQL
           REMOTE
