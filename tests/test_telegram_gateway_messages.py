@@ -1,4 +1,8 @@
+from typing import Any
+from zoneinfo import ZoneInfoNotFoundError
+
 import pytest
+from aiogram.exceptions import TelegramBadRequest
 
 from tests.helpers import seed_campaign
 from tg_lottery.infrastructure.db import TelegramOutbox
@@ -18,8 +22,9 @@ SNAPSHOT_HASH = "fc99b18147ccfaf6b7c3ab660c4ed6e688fc091ccaa97e4bdf0db477182702a
 def test_campaign_card_localizes_internal_iso_times() -> None:
     text = _campaign_card_text(_campaign_payload())
 
-    assert "报名截止: 2026年08月08日 11:20 (北京时间)" in text
-    assert "开奖时间: 2026年08月08日 11:25 (北京时间)" in text
+    assert "📅 <b>开奖日期" in text
+    assert "北京时间" in text
+    assert "2026年08月08日 11时25分00秒" in text
     assert "T03:20:00" not in text
     assert "+00:00" not in text
 
@@ -32,14 +37,14 @@ def test_campaign_card_accepts_legacy_minute_payload() -> None:
 
     text = _campaign_card_text(payload)
 
-    assert "报名截止: 2026年08月08日 11:20 (北京时间)" in text
-    assert "开奖时间: 2026年08月08日 11:25 (北京时间)" in text
+    assert "2026年08月08日 11时25分00秒" in text
+    assert "T03:25:00" not in text
 
 
 def test_campaign_card_rejects_unknown_timezone() -> None:
     payload = _campaign_payload() | {"timezone": "Mars/Olympus"}
 
-    with pytest.raises(ValueError, match="unsupported public timezone"):
+    with pytest.raises(ZoneInfoNotFoundError):
         _campaign_card_text(payload)
 
 
@@ -64,7 +69,7 @@ async def test_legacy_iso_payload_loads_persisted_campaign_timezone(session_fact
     assert request.payload["timezone"] == "Asia/Shanghai"
     assert request.payload["campaign_ref"] == campaign.public_ref
     assert "timezone" not in outbox.payload
-    assert "报名截止: 2026年08月08日 11:20 (北京时间)" in text
+    assert "2026年08月08日 11时25分00秒" in text
     assert "UTC" not in text
 
 
@@ -88,20 +93,19 @@ def test_campaign_card_separates_rules_registration_and_join_links() -> None:
         "campaign_ref": "AbCdEfGhIjKlMnOpQrSt-_",
         "presentation": {
             "required_chats": [
-                {"title": "公开群", "join_url": "https://t.me/public_group"},
-                {"title": "私有群", "private": True},
+                {"id": -1001, "title": "公开群", "join_url": "https://t.me/public_group"},
+                {"id": -1002, "title": "私有群", "private": True},
             ]
         },
     }
 
     keyboard = _campaign_keyboard(payload)
-    urls = [row[0].url for row in keyboard.inline_keyboard]
+    datas = [b.callback_data for row in keyboard.inline_keyboard for b in row]
+    urls = [b.url for row in keyboard.inline_keyboard for b in row if b.url]
 
-    assert urls[0].endswith("?start=join_AbCdEfGhIjKlMnOpQrSt-_")
-    assert urls[1].endswith("?start=rules_AbCdEfGhIjKlMnOpQrSt-_")
-    assert urls[2].endswith("?start=condition_AbCdEfGhIjKlMnOpQrSt-__1")
-    assert len(urls) == 3
-    assert keyboard.inline_keyboard[2][0].text == "查看参与条件\uff082项\uff09"
+    assert "member:join:AbCdEfGhIjKlMnOpQrSt-_" in datas
+    assert "member:rules:AbCdEfGhIjKlMnOpQrSt-_" in datas
+    assert urls == ["https://t.me/lottery_test_bot?start=condition_AbCdEfGhIjKlMnOpQrSt-__1"]
 
 
 def test_campaign_card_explains_per_group_messages_and_channel_following() -> None:
@@ -109,6 +113,7 @@ def test_campaign_card_explains_per_group_messages_and_channel_following() -> No
         "rules": {
             "draw_mode": "fixed",
             "bonus_types": ["activity"],
+            "message_thresholds": {"-1001": 10, "-1002": 10, "-1003": 10},
             "activity": {"message_threshold": 10, "reward_tickets": 2},
         },
         "presentation": {
@@ -122,10 +127,13 @@ def test_campaign_card_explains_per_group_messages_and_channel_following() -> No
 
     text = _campaign_card_text(payload)
 
-    assert "加入群聊 主活动群, 每天有效发言 10 条" in text
-    assert "加入群聊 协作群, 每天有效发言 10 条" in text
-    assert "关注频道 公告频道" in text
-    assert "全部条件群达标后, 当日增加 2 次" in text
+    assert "加入-主活动群" in text
+    assert "加入-协作群" in text
+    assert "关注-公告频道" in text
+    assert text.count("入口见下方按钮") == 3
+    assert text.count("发言数大于 <b>10</b> 条") == 2
+    assert "🔋 <b>抽奖加成" in text
+    assert "每日发言满10条+2次" in text
 
 
 def test_draw_result_keeps_internal_hash_out_of_public_message() -> None:
@@ -191,9 +199,137 @@ def test_campaign_state_card_has_business_text_only() -> None:
     settling = _campaign_state_card_text({"campaign_name": "周末抽奖", "card_state": "settling"})
     drawn = _campaign_state_card_text({"campaign_name": "周末抽奖", "card_state": "drawn"})
 
+    assert settling.startswith("🎰 <b>周末抽奖</b>")
     assert "报名已截止" in settling
     assert "已经开奖" in drawn
     assert "SETTLING" not in settling
+
+
+class _FakeSentMessage:
+    message_id = 909
+
+    def model_dump(self, **_: object) -> dict[str, object]:
+        return {"message_id": self.message_id}
+
+
+class FakeCardBot:
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, tuple[object, ...], dict[str, Any]]] = []
+        self.pinned: list[tuple[object, object, dict[str, Any]]] = []
+
+    async def send_message(
+        self, chat_id: object, text: object, **kwargs: object
+    ) -> _FakeSentMessage:
+        self.sent.append(("send_message", (chat_id, text), kwargs))
+        return _FakeSentMessage()
+
+    async def send_photo(
+        self, chat_id: object, photo: object, **kwargs: object
+    ) -> _FakeSentMessage:
+        self.sent.append(("send_photo", (chat_id, photo), kwargs))
+        return _FakeSentMessage()
+
+    async def pin_chat_message(
+        self, chat_id: object, message_id: object, **kwargs: object
+    ) -> bool:
+        self.pinned.append((chat_id, message_id, kwargs))
+        return True
+
+
+class PinForbiddenCardBot(FakeCardBot):
+    async def pin_chat_message(
+        self, chat_id: object, message_id: object, **kwargs: object
+    ) -> bool:
+        raise TelegramBadRequest(method="pinChatMessage", message="not enough rights")
+
+
+def _lotterybest_card_payload() -> dict[str, object]:
+    return {
+        "name": "周末抽奖 <福利场>",
+        "total_winners": 2,
+        "prizes": [{"position": 1, "name": "一等奖", "winner_count": 2}],
+        "cutoff_at": "2026-08-08T03:20:00+00:00",
+        "draw_at": "2026-08-08T03:25:00+00:00",
+        "timezone": "Asia/Shanghai",
+        "bot_username": "lottery_test_bot",
+        "campaign_ref": "AbCdEfGhIjKlMnOpQrSt-_",
+        "presentation": {
+            "required_chats": [
+                {
+                    "id": -100123,
+                    "title": "福利群",
+                    "type": "supergroup",
+                    "join_url": "https://t.me/welfare_group",
+                },
+            ],
+        },
+        "rules": {
+            "draw_mode": "fixed",
+            "bonus_types": ["invite", "activity"],
+            "allowed_regions": ["广东"],
+            "username_required": True,
+            "message_thresholds": {"-100123": 10},
+            "activity": {"message_threshold": 10, "reward_tickets": 2},
+        },
+    }
+
+
+async def test_campaign_card_matches_lotterybest_format() -> None:
+    bot = FakeCardBot()
+    gateway = TelegramGateway(bot, object())
+
+    await gateway.execute(GatewayRequest("send_campaign_card", -1001, _lotterybest_card_payload()))
+
+    operation, _, kwargs = bot.sent[0]
+    text = bot.sent[0][1][1]
+    assert operation == "send_message"
+    assert "🎰 <b>周末抽奖 &lt;福利场&gt;</b>" in text
+    assert "📮 <b>参与条件" in text
+    assert "🌏️ 归属地" in text
+    assert "广东" in text
+    assert "🪪 必须设置用户名" in text
+    assert '🎫 加入-<a href="https://t.me/welfare_group">福利群</a>' in text
+    assert "发言数大于 <b>10</b> 条" in text
+    assert "🎁 <b>奖品内容" in text
+    assert "💰️ 一等奖" in text
+    assert "<b>2</b>" in text
+    assert "🔋 <b>抽奖加成" in text
+    assert "每日发言满10条+2次" in text
+    assert "📅 <b>开奖日期" in text
+    assert "2026年08月08日 11时25分00秒" in text
+    assert kwargs["parse_mode"] == "HTML"
+    assert bot.pinned[0][:2] == (-1001, _FakeSentMessage.message_id)
+    assert bot.pinned[0][2]["disable_notification"] is True
+
+
+async def test_campaign_keyboard_uses_callback_buttons() -> None:
+    bot = FakeCardBot()
+    gateway = TelegramGateway(bot, object())
+
+    await gateway.execute(GatewayRequest("send_campaign_card", -1001, _lotterybest_card_payload()))
+
+    keyboard = bot.sent[0][2]["reply_markup"]
+    datas = [b.callback_data for row in keyboard.inline_keyboard for b in row]
+    urls = [b.url for row in keyboard.inline_keyboard for b in row if b.url]
+
+    assert any(d.startswith("member:join:") for d in datas)
+    assert any(d.startswith("member:bonus:") for d in datas)
+    assert any(d.startswith("member:rules:") for d in datas)
+    assert not any(d is None for d in datas)
+    assert urls == []
+
+
+async def test_pin_failure_does_not_fail_delivery() -> None:
+    bot = PinForbiddenCardBot()
+    gateway = TelegramGateway(bot, object())
+
+    result = await gateway.execute(
+        GatewayRequest("send_campaign_card", -1001, _lotterybest_card_payload())
+    )
+
+    assert len(bot.sent) == 1
+    assert result.remote_message_id == _FakeSentMessage.message_id
+    assert result.remote_result == {"message_id": _FakeSentMessage.message_id}
 
 
 def _campaign_payload() -> dict[str, object]:
