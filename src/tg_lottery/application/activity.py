@@ -1,4 +1,3 @@
-import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from hashlib import sha256
@@ -9,6 +8,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 
 from tg_lottery.application.activity_rules import activity_chat_ids, activity_ticket_target
+from tg_lottery.application.message_rules import normalize_text, rejection_reason
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import (
@@ -28,8 +28,6 @@ from tg_lottery.infrastructure.db import (
     Participant,
     TicketLedger,
 )
-
-_SPACE_RE = re.compile(r"\s+")
 
 
 @dataclass(frozen=True)
@@ -122,8 +120,8 @@ class ActivityService:
         )
         if existing:
             return existing
-        normalized = _normalize(observation.text)
-        reason = _rejection_reason(observation, normalized, rules.activity.min_text_length)
+        normalized = normalize_text(observation.text)
+        reason = rejection_reason(observation, normalized, rules.activity.min_text_length)
         content_hash = sha256(normalized.encode()).hexdigest()
         duplicate = await self._invitee_duplicate(
             session,
@@ -155,10 +153,10 @@ class ActivityService:
         activity_chat_ids: tuple[int, ...],
     ) -> ActivityEvent:
         rules = CampaignRules.model_validate(campaign.rules)
-        normalized = _normalize(observation.text)
+        normalized = normalize_text(observation.text)
         content_hash = sha256(normalized.encode()).hexdigest()
         local_date = observation.event_at.astimezone(ZoneInfo(campaign.timezone)).date()
-        reason = _rejection_reason(observation, normalized, rules.activity.min_text_length)
+        reason = rejection_reason(observation, normalized, rules.activity.min_text_length)
         if reason is None:
             reason = await self._duplicate_reason(
                 session,
@@ -350,23 +348,3 @@ class ActivityService:
             )
         )
         return duplicate is not None
-
-
-def _normalize(text: str | None) -> str:
-    return _SPACE_RE.sub(" ", (text or "").strip().casefold())
-
-
-def _rejection_reason(
-    observation: MessageObservation, normalized: str, minimum_length: int
-) -> str | None:
-    if observation.is_bot:
-        return "bot"
-    if observation.is_service:
-        return "service"
-    if observation.is_forwarded:
-        return "forwarded"
-    if len(normalized) < minimum_length:
-        return "too_short"
-    if not any(character.isalnum() for character in normalized):
-        return "emoji_or_symbols_only"
-    return None
