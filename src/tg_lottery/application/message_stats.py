@@ -1,4 +1,5 @@
 """逐群累计有效发言: 与活动无关, 供参与门槛校验。"""
+
 from hashlib import sha256
 
 from sqlalchemy import select

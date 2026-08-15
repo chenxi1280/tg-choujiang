@@ -18,8 +18,11 @@ async def uow_factory(
 
 def _obs(text, *, chat_id=-100123, user_id=42, message_id=1):
     return MessageObservation(
-        chat_id=chat_id, message_id=message_id, user_id=user_id,
-        event_at=datetime(2026, 8, 15, tzinfo=UTC), text=text,
+        chat_id=chat_id,
+        message_id=message_id,
+        user_id=user_id,
+        event_at=datetime(2026, 8, 15, tzinfo=UTC),
+        text=text,
     )
 
 

@@ -229,17 +229,13 @@ class FakeCardBot:
         self.sent.append(("send_photo", (chat_id, photo), kwargs))
         return _FakeSentMessage()
 
-    async def pin_chat_message(
-        self, chat_id: object, message_id: object, **kwargs: object
-    ) -> bool:
+    async def pin_chat_message(self, chat_id: object, message_id: object, **kwargs: object) -> bool:
         self.pinned.append((chat_id, message_id, kwargs))
         return True
 
 
 class PinForbiddenCardBot(FakeCardBot):
-    async def pin_chat_message(
-        self, chat_id: object, message_id: object, **kwargs: object
-    ) -> bool:
+    async def pin_chat_message(self, chat_id: object, message_id: object, **kwargs: object) -> bool:
         raise TelegramBadRequest(method="pinChatMessage", message="not enough rights")
 
 

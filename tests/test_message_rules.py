@@ -8,8 +8,14 @@ from tg_lottery.application.message_rules import (
 
 def _obs(text, **kw):
     base = dict(
-        chat_id=1, message_id=1, user_id=1, event_at=None, text=text,
-        is_bot=False, is_service=False, is_forwarded=False,
+        chat_id=1,
+        message_id=1,
+        user_id=1,
+        event_at=None,
+        text=text,
+        is_bot=False,
+        is_service=False,
+        is_forwarded=False,
     )
     return MessageObservation(**(base | kw))
 

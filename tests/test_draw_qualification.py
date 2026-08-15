@@ -198,9 +198,7 @@ async def test_draw_review_keeps_eligible_when_message_threshold_met(
             )
         )
         assert check.state is QualificationState.ELIGIBLE
-        assert [
-            item for item in check.observations["chats"] if item.get("error_code")
-        ] == []
+        assert [item for item in check.observations["chats"] if item.get("error_code")] == []
     assert stats.calls == [(participant_user_id, (main_chat_id,))]
 
 

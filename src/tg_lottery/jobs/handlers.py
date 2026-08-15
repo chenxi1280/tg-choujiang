@@ -183,8 +183,7 @@ class JobHandlers:
         observed_at: datetime,
     ) -> tuple[QualificationState, tuple[dict[str, Any], ...]]:
         thresholds = {
-            int(key): int(value)
-            for key, value in (rules.message_thresholds or {}).items()
+            int(key): int(value) for key, value in (rules.message_thresholds or {}).items()
         }
         state = result.state
         observations = tuple(result.observations)

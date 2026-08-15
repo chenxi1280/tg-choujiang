@@ -1,4 +1,5 @@
 """有效发言判定规则: 门槛统计与每日加成共用同一口径。"""
+
 import re
 from typing import Any
 

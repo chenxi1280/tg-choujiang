@@ -117,9 +117,7 @@ def apply_threshold(data: dict[str, Any], action: str) -> dict[str, Any]:
     return data | {"chat_message_thresholds": thresholds}
 
 
-def apply_threshold_action(
-    thresholds: dict[str, int], chat_id: str, op: str
-) -> dict[str, int]:
+def apply_threshold_action(thresholds: dict[str, int], chat_id: str, op: str) -> dict[str, int]:
     current = int(thresholds.get(chat_id, 0))
     if op == "inc":
         if current >= MAX_CHAT_MESSAGE_THRESHOLD:

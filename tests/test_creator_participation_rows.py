@@ -39,9 +39,7 @@ def test_channel_conditions_have_no_threshold_rows_or_hints() -> None:
     rows = participation_rows(data)
     text = participation_text(data)
 
-    assert not any(
-        button[1].startswith("draft_chat_threshold:") for row in rows for button in row
-    )
+    assert not any(button[1].startswith("draft_chat_threshold:") for row in rows for button in row)
     assert "发言 ≥" not in text
     assert "关注频道 条件 -100789" in text
 
@@ -75,17 +73,17 @@ def test_threshold_rows_follow_participation_pagination() -> None:
 def test_apply_threshold_implements_inc_dec_and_noop() -> None:
     data = {"chat_message_thresholds": {"-100123": 2}}
 
-    assert apply_threshold(data, "draft_chat_threshold:-100123:inc")[
-        "chat_message_thresholds"
-    ] == {"-100123": 3}
+    assert apply_threshold(data, "draft_chat_threshold:-100123:inc")["chat_message_thresholds"] == {
+        "-100123": 3
+    }
     assert apply_threshold(data, "draft_chat_threshold:-100123:noop")[
         "chat_message_thresholds"
     ] == {"-100123": 2}
-    assert apply_threshold(data, "draft_chat_threshold:-100123:dec")[
-        "chat_message_thresholds"
-    ] == {"-100123": 1}
+    assert apply_threshold(data, "draft_chat_threshold:-100123:dec")["chat_message_thresholds"] == {
+        "-100123": 1
+    }
     at_one = apply_threshold(data, "draft_chat_threshold:-100123:dec")
-    assert apply_threshold(at_one, "draft_chat_threshold:-100123:dec")[
-        "chat_message_thresholds"
-    ] == {}
+    assert (
+        apply_threshold(at_one, "draft_chat_threshold:-100123:dec")["chat_message_thresholds"] == {}
+    )
     assert data["chat_message_thresholds"] == {"-100123": 2}
