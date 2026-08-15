@@ -153,6 +153,11 @@ class LotteryUpdateHandler:
         if payload.startswith("rules_"):
             await self._member_flow.show_rules(message, payload.removeprefix("rules_"))
             return True
+        if payload.startswith("invite_"):
+            await self._member_flow.show_invite_link(
+                message, payload.removeprefix("invite_"), user_id=message.from_user.id
+            )
+            return True
         if not payload.startswith("condition_"):
             return False
         reference, separator, position = payload.removeprefix("condition_").rpartition("_")
@@ -162,11 +167,13 @@ class LotteryUpdateHandler:
         return True
 
     async def _callback(self, query: CallbackQuery) -> None:
-        await self._answer_callback(query)
+        data = query.data or ""
+        if not data.startswith(("member:join:", "member:bonus:", "member:rules:")):
+            await self._answer_callback(query)
         if not isinstance(query.message, Message):
             return
         try:
-            await self._dispatch_callback(query, query.data or "")
+            await self._dispatch_callback(query, data)
         except (DomainError, ValueError) as exc:
             await self._send_operation_error(query.message, exc)
 
@@ -205,6 +212,8 @@ class LotteryUpdateHandler:
         message = query.message
         if not isinstance(message, Message):
             return False
+        if await self._dispatch_card_callback(query, data):
+            return True
         if data == "member:tickets":
             await self._member_flow.show_tickets(message, query.from_user.id)
             return True
@@ -232,6 +241,18 @@ class LotteryUpdateHandler:
             if not separator or not position.isdecimal():
                 raise ValueError("invalid participation condition callback")
             await self._member_flow.show_condition(message, reference, int(position))
+            return True
+        return False
+
+    async def _dispatch_card_callback(self, query: CallbackQuery, data: str) -> bool:
+        if data.startswith("member:join:"):
+            await self._member_flow.register_callback(query, data.removeprefix("member:join:"))
+            return True
+        if data.startswith("member:bonus:"):
+            await self._member_flow.bonus_callback(query, data.removeprefix("member:bonus:"))
+            return True
+        if data.startswith("member:rules:"):
+            await self._member_flow.rules_callback(query, data.removeprefix("member:rules:"))
             return True
         return False
 

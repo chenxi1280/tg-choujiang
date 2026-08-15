@@ -13,6 +13,26 @@ from tg_lottery.domain.enums import QualificationState
 MEMBERSHIP_OBSERVATION_BATCH_SIZE = 10
 
 
+def message_threshold_shortfalls(
+    *,
+    member_ok: set[int],
+    thresholds: dict[int, int],
+    totals: dict[int, int],
+    observed_at: datetime,
+) -> tuple[dict[str, Any], ...]:
+    return tuple(
+        {
+            "chat_id": chat_id,
+            "state": "ineligible",
+            "observed_status": f"messages {totals.get(chat_id, 0)}/{need}",
+            "error_code": "message_threshold",
+            "observed_at": observed_at.isoformat(),
+        }
+        for chat_id, need in thresholds.items()
+        if chat_id in member_ok and totals.get(chat_id, 0) < need
+    )
+
+
 @dataclass(frozen=True)
 class QualificationObservationResult:
     state: QualificationState

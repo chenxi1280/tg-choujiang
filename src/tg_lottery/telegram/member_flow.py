@@ -3,7 +3,6 @@ from urllib.parse import quote
 from uuid import UUID
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -26,10 +25,11 @@ from tg_lottery.application.required_chat_links import decrypt_required_chat_url
 from tg_lottery.domain.enums import QualificationState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.telegram import member_callbacks
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.member_popups import failure_reply_text, popup_failure
 from tg_lottery.telegram.public_projection import campaign_state_text, format_public_time
-from tg_lottery.telegram.qualification import observe_memberships
+from tg_lottery.telegram.qualification import message_threshold_shortfalls, observe_memberships
 
 
 class MemberFlow:
@@ -41,12 +41,14 @@ class MemberFlow:
         queries: QueryService,
         cipher: SecretCipher,
         stats: MessageStatsService | None = None,
+        bot_username: str = "",
     ) -> None:
         self._bot = bot
         self._participants = participants
         self._queries = queries
         self._cipher = cipher
         self._stats = stats
+        self._bot_username = bot_username
 
     async def register(
         self,
@@ -79,12 +81,25 @@ class MemberFlow:
             )
             await self._schedule_success_deletions(campaign, message, sent)
             if callback is not None:
-                await _safe_answer(callback, "✅ 参与成功！当前 1 次基础抽奖机会", alert=False)
+                await member_callbacks.safe_answer(
+                    callback, "✅ 参与成功！当前 1 次基础抽奖机会", alert=False
+                )
             return
         verify = self._qualification_keyboard(campaign, state, observations)
         await message.answer(failure_reply_text(campaign, state), reply_markup=verify)
         if state is QualificationState.INELIGIBLE and callback is not None:
-            await _safe_answer(callback, popup_failure(campaign, observations), alert=True)
+            await member_callbacks.safe_answer(
+                callback, popup_failure(campaign, observations), alert=True
+            )
+
+    async def register_callback(self, query: CallbackQuery, campaign_reference: str | UUID) -> None:
+        await member_callbacks.register_callback(self, query, campaign_reference)
+
+    async def bonus_callback(self, query: CallbackQuery, campaign_reference: str | UUID) -> None:
+        await member_callbacks.bonus_callback(self, query, campaign_reference)
+
+    async def rules_callback(self, query: CallbackQuery, campaign_reference: str | UUID) -> None:
+        await member_callbacks.rules_callback(self, query, campaign_reference)
 
     async def _schedule_success_deletions(
         self, campaign: object, trigger: Message, completion: Message
@@ -109,7 +124,12 @@ class MemberFlow:
         )
 
     async def _complete_observation(
-        self, attempt: RegistrationAttempt, *, user_id: int, main_chat_id: int, campaign: object,
+        self,
+        attempt: RegistrationAttempt,
+        *,
+        user_id: int,
+        main_chat_id: int,
+        campaign: object,
     ) -> tuple[QualificationState, tuple[dict[str, object], ...]]:
         chat_ids = tuple(dict.fromkeys((main_chat_id, *attempt.required_chat_ids)))
         observed_at = utcnow()
@@ -130,16 +150,11 @@ class MemberFlow:
                 if item["state"] == QualificationState.ELIGIBLE.value
             }
             totals = await self._stats.totals(user_id, tuple(thresholds))
-            shortfalls = tuple(
-                {
-                    "chat_id": chat_id,
-                    "state": "ineligible",
-                    "observed_status": f"messages {totals.get(chat_id, 0)}/{need}",
-                    "error_code": "message_threshold",
-                    "observed_at": observed_at.isoformat(),
-                }
-                for chat_id, need in thresholds.items()
-                if chat_id in member_ok and totals.get(chat_id, 0) < need
+            shortfalls = message_threshold_shortfalls(
+                member_ok=member_ok,
+                thresholds=thresholds,
+                totals=totals,
+                observed_at=observed_at,
             )
             if shortfalls:
                 observations = observations + shortfalls
@@ -291,6 +306,12 @@ class MemberFlow:
         rules = CampaignRules.model_validate(campaign.rules)
         if not rules.invite_bonus_enabled:
             raise UserFacingError("本期抽奖没有开启邀请加成")
+        text, markup = await self._invite_link_payload(campaign, user_id)
+        await message.answer(text, reply_markup=markup)
+
+    async def _invite_link_payload(
+        self, campaign: object, user_id: int
+    ) -> tuple[str, InlineKeyboardMarkup]:
         stored = await self._queries.invite_link_for_participant(campaign.id, user_id)
         if stored is None or stored.encrypted_url is None:
             raise UserFacingError("本期专属链接正在创建，或你尚未完成报名，请稍后再点")
@@ -301,8 +322,14 @@ class MemberFlow:
             cutoff_at=campaign.cutoff_at,
             event_at=utcnow(),
         )
-        text = _invite_link_text(campaign.name, link, active=active)
-        await message.answer(text, reply_markup=_invite_link_keyboard(link, campaign.name))
+        return (
+            _invite_link_text(campaign.name, link, active=active),
+            _invite_link_keyboard(link, campaign.name),
+        )
+
+    async def _send_invite_link_to(self, user_id: int, campaign: object) -> None:
+        text, markup = await self._invite_link_payload(campaign, user_id)
+        await self._bot.send_message(user_id, text, reply_markup=markup)
 
 
 def member_keyboard(
@@ -467,10 +494,3 @@ def _failed_condition_positions(
         for position, chat in enumerate(_conditions(campaign), start=1)
         if int(chat["id"]) in failed_ids
     )
-
-
-async def _safe_answer(query: CallbackQuery, text: str, *, alert: bool) -> None:
-    try:
-        await query.answer(text[:200], show_alert=alert)
-    except TelegramBadRequest:
-        pass

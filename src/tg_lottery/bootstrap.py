@@ -102,6 +102,7 @@ def build_update_handler(container: Container, bot_username: str) -> LotteryUpda
         queries=services.queries,
         cipher=SecretCipher(container.settings.app_encryption_key),
         stats=services.message_stats,
+        bot_username=bot_username,
     )
     personal_flow = PersonalFlow(
         profiles=services.profiles,
