@@ -19,6 +19,7 @@ from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import DomainError
+from tg_lottery.telegram import member_callbacks
 from tg_lottery.telegram.admin_flow import AdminFlow
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.personal_flow import PersonalFlow
@@ -108,7 +109,9 @@ class LotteryUpdateHandler:
         if mention and mention != self._bot_username:
             return
         if name == "/getid":
-            await message.answer(f"本群 ID：{message.chat.id}")
+            await message.answer(
+                f"本群 ID：{message.chat.id}（以 -100 开头为超级群/频道 ID，可直接复制使用）"
+            )
             return
         if name in self._PRIVATE_COMMANDS:
             await message.answer(
@@ -175,6 +178,7 @@ class LotteryUpdateHandler:
         try:
             await self._dispatch_callback(query, data)
         except (DomainError, ValueError) as exc:
+            await member_callbacks.safe_answer(query, str(exc)[:200], alert=False)
             await self._send_operation_error(query.message, exc)
 
     async def _send_operation_error(self, message: Message, exc: Exception) -> None:

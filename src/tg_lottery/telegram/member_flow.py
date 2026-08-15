@@ -27,7 +27,7 @@ from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram import member_callbacks
 from tg_lottery.telegram.crypto import SecretCipher
-from tg_lottery.telegram.member_popups import failure_reply_text, popup_failure
+from tg_lottery.telegram.member_popups import failure_reply_text, popup_success
 from tg_lottery.telegram.public_projection import campaign_state_text, format_public_time
 from tg_lottery.telegram.qualification import message_threshold_shortfalls, observe_memberships
 
@@ -63,34 +63,41 @@ class MemberFlow:
         if campaign is None:
             raise UserFacingError("活动不存在或已经失效")
         user = user or _required_user(message)
+        existing = await self._participants.eligible_participant(campaign.id, user.id)
+        if existing is not None:
+            await member_callbacks.already_reply(callback, message, existing.ticket_total_cache)
+            return
         attempt = await self._participants.begin_registration(
             _registration_request(campaign.id, user, observed_at or message.date)
         )
-        state = attempt.state
-        observations: tuple[dict[str, object], ...] = ()
+        state, observations, total = attempt.state, (), 0
         if attempt.requires_observation:
             group = await self._queries.campaign_group(campaign.id)
-            state, observations = await self._complete_observation(
+            state, observations, total = await self._complete_observation(
                 attempt, user_id=user.id, main_chat_id=group.chat_id, campaign=campaign
             )
         if state is QualificationState.ELIGIBLE:
-            rules = CampaignRules.model_validate(campaign.rules)
-            sent = await message.answer(
-                _registration_success_text(rules),
-                reply_markup=member_keyboard(campaign.public_ref, rules.invite_bonus_enabled),
-            )
-            await self._schedule_success_deletions(campaign, message, sent)
-            if callback is not None:
-                await member_callbacks.safe_answer(
-                    callback, "✅ 参与成功！当前 1 次基础抽奖机会", alert=False
-                )
+            if total == 0:
+                replay = await self._participants.eligible_participant(campaign.id, user.id)
+                total = replay.ticket_total_cache if replay is not None else 1
+            await self._registration_success_reply(message, campaign, total, callback=callback)
             return
         verify = self._qualification_keyboard(campaign, state, observations)
         await message.answer(failure_reply_text(campaign, state), reply_markup=verify)
-        if state is QualificationState.INELIGIBLE and callback is not None:
-            await member_callbacks.safe_answer(
-                callback, popup_failure(campaign, observations), alert=True
+        if callback is not None:
+            await member_callbacks.alert_failure(
+                callback, campaign, state, observations=observations
             )
+
+    async def _registration_success_reply(
+        self, message: Message, campaign: object, total: int, *, callback: CallbackQuery | None
+    ) -> None:
+        rules = CampaignRules.model_validate(campaign.rules)
+        keyboard = member_keyboard(campaign.public_ref, rules.invite_bonus_enabled)
+        sent = await message.answer(popup_success(total), reply_markup=keyboard)
+        await self._schedule_success_deletions(campaign, message, sent)
+        if callback is not None:
+            await member_callbacks.safe_answer(callback, popup_success(total), alert=False)
 
     async def register_callback(self, query: CallbackQuery, campaign_reference: str | UUID) -> None:
         await member_callbacks.register_callback(self, query, campaign_reference)
@@ -130,7 +137,7 @@ class MemberFlow:
         user_id: int,
         main_chat_id: int,
         campaign: object,
-    ) -> tuple[QualificationState, tuple[dict[str, object], ...]]:
+    ) -> tuple[QualificationState, tuple[dict[str, object], ...], int]:
         chat_ids = tuple(dict.fromkeys((main_chat_id, *attempt.required_chat_ids)))
         observed_at = utcnow()
         result = await observe_memberships(
@@ -141,9 +148,11 @@ class MemberFlow:
         )
         rules = CampaignRules.model_validate(campaign.rules)
         thresholds = {int(key): int(value) for key, value in rules.message_thresholds.items()}
+        if thresholds and self._stats is None:
+            raise RuntimeError("message stats service is required for thresholds")
         observations = tuple(result.observations)
         state = result.state
-        if thresholds and self._stats is not None:
+        if thresholds:
             member_ok = {
                 int(item["chat_id"])
                 for item in observations
@@ -170,7 +179,7 @@ class MemberFlow:
                 observations=observations,
             )
         )
-        return participant.qualification_state, observations
+        return participant.qualification_state, observations, participant.ticket_total_cache
 
     async def show_rules(self, message: Message, campaign_reference: str | UUID) -> None:
         campaign = await self._queries.campaign_by_reference(campaign_reference)
@@ -421,12 +430,6 @@ def _invite_rule_text(rules: CampaignRules) -> str:
         f"{tier.invite_count}人+{tier.total_bonus}次" for tier in rules.invite.reward_tiers
     )
     return f"邀请 {tiers}，上限 {rules.invite.max_bonus_tickets} 次"
-
-
-def _registration_success_text(rules: CampaignRules) -> str:
-    if rules.invite_bonus_enabled:
-        return "报名成功。专属邀请链接创建并确认后会发送到这里。"
-    return "报名成功。"
 
 
 def _issuer_name(campaign: object) -> str:

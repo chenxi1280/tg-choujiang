@@ -4,11 +4,13 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from tg_lottery.application.records import utcnow
+from tg_lottery.domain.enums import QualificationState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.telegram.member_popups import popup_already_participated, popup_failure
 
 if TYPE_CHECKING:
     from tg_lottery.telegram.member_flow import MemberFlow
@@ -27,6 +29,24 @@ async def register_callback(
         )
     except UserFacingError as exc:
         await safe_answer(query, str(exc), alert=True)
+
+
+async def alert_failure(
+    callback: CallbackQuery,
+    campaign: object,
+    state: QualificationState,
+    *,
+    observations: tuple[dict[str, object], ...],
+) -> None:
+    await safe_answer(callback, popup_failure(campaign, state, observations), alert=True)
+
+
+async def already_reply(callback: CallbackQuery | None, message: Message, total: int) -> None:
+    text = popup_already_participated(total)
+    if callback is not None:
+        await safe_answer(callback, text, alert=False)
+    else:
+        await message.answer(text)
 
 
 async def bonus_callback(

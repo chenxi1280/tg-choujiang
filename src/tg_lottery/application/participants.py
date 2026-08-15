@@ -88,6 +88,19 @@ class ParticipantService:
             await uow.session.flush()
             return self._registration_attempt(check, campaign)
 
+    async def eligible_participant(self, campaign_id: UUID, user_id: int) -> Participant | None:
+        async with self._uow_factory() as uow:
+            participant = await uow.session.scalar(
+                select(Participant).where(
+                    Participant.campaign_id == campaign_id,
+                    Participant.user_id == user_id,
+                    Participant.qualification_state == QualificationState.ELIGIBLE,
+                )
+            )
+            if participant is not None:
+                uow.session.expunge(participant)
+            return participant
+
     async def complete_registration(self, result: QualificationResult) -> Participant:
         async with self._uow_factory() as uow:
             campaign_id = await self._registration_campaign_id(uow.session, result)

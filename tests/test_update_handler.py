@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, Message
 
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.update_handler import LotteryUpdateHandler, _public_chat_title
@@ -204,6 +204,52 @@ async def test_internal_error_is_logged_but_not_exposed(caplog) -> None:
     assert secret in caplog.text
 
 
+class _RecordingCallbackQuery:
+    def __init__(self, data: str, message: Message) -> None:
+        self.data = data
+        self.message = message
+        self.answers: list[tuple[str | None, bool]] = []
+
+    async def answer(self, text: str | None = None, show_alert: bool = False) -> None:
+        self.answers.append((text, show_alert))
+
+
+class RaisingMemberFlow:
+    async def register_callback(self, query, reference) -> None:
+        raise UserFacingError("活动不存在或已经失效")
+
+
+def _group_card_message() -> Message:
+    return Message.model_validate(
+        {
+            "message_id": 10,
+            "date": int(datetime.now(UTC).timestamp()),
+            "chat": {"id": -100888, "type": "supergroup"},
+            "from": {"id": 123, "is_bot": True, "first_name": "Bot"},
+            "text": "campaign card",
+        }
+    )
+
+
+async def test_callback_error_answers_callback_then_sends_group_message() -> None:
+    handler = _handler(member_flow=RaisingMemberFlow())
+    message = _group_card_message()
+    query = _RecordingCallbackQuery("member:join:AbCdEfGhIjKlMnOpQrSt-_", message)
+    reported: list[tuple[Message, Exception]] = []
+
+    async def record_error(msg: Message, exc: Exception) -> None:
+        reported.append((msg, exc))
+
+    handler._send_operation_error = record_error
+
+    await handler._callback(query)
+
+    assert query.answers == [("活动不存在或已经失效", False)]
+    assert len(reported) == 1
+    assert reported[0][0] is message
+    assert isinstance(reported[0][1], UserFacingError)
+
+
 async def test_reviewed_validation_message_remains_actionable() -> None:
     handler = _handler()
     message = RecordingMessage()
@@ -311,6 +357,7 @@ async def test_group_command_skips_stats_and_answers_getid(fake_bot, make_handle
     assert stats.recorded == []
     message.answer.assert_awaited_once()
     assert "-100123" in message.answer.await_args.args[0]
+    assert "以 -100 开头" in message.answer.await_args.args[0]
 
 
 async def test_group_private_command_guides_to_dm(fake_bot, make_handler):

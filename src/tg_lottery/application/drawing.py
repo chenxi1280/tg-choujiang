@@ -280,7 +280,13 @@ class DrawingService:
         group = await session.get(Group, campaign.group_id)
         if group is None:
             raise ValueError("campaign group is missing")
-        add_campaign_card_state(session, campaign, group.chat_id, state="drawn")
+        add_campaign_card_state(
+            session,
+            campaign,
+            group.chat_id,
+            state="drawn",
+            winners=[self._winner_payload(item) for item in outcome.awards],
+        )
         presentation = campaign.presentation or {}
         extended_tips = bool(presentation.get("message_tips", True))
         await self._queue_group_result(

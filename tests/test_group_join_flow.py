@@ -33,8 +33,13 @@ class FakeStats:
 class ObservingParticipants:
     def __init__(self):
         self.result = None
+        self.begun = 0
+
+    async def eligible_participant(self, campaign_id, user_id):
+        return None
 
     async def begin_registration(self, request):
+        self.begun += 1
         return RegistrationAttempt(
             participant_id=uuid4(),
             qualification_check_id=uuid4(),
@@ -46,7 +51,7 @@ class ObservingParticipants:
 
     async def complete_registration(self, result):
         self.result = result
-        return SimpleNamespace(qualification_state=result.state)
+        return SimpleNamespace(qualification_state=result.state, ticket_total_cache=3)
 
 
 class CampaignQueries:
@@ -151,7 +156,8 @@ async def test_callback_success_popup_answers_participation_success():
 
     assert len(callback.answers) == 1
     text, show_alert = callback.answers[0]
-    assert "参与成功" in text
+    assert text.startswith("✅ 参与成功")
+    assert "当前共 3 次抽奖机会" in text
     assert show_alert is False
 
 

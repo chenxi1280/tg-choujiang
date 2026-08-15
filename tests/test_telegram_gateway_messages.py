@@ -203,6 +203,65 @@ def test_campaign_state_card_has_business_text_only() -> None:
     assert "报名已截止" in settling
     assert "已经开奖" in drawn
     assert "SETTLING" not in settling
+    assert "中奖者" not in drawn
+
+
+def test_campaign_card_escapes_ampersand_in_join_url() -> None:
+    payload = _lotterybest_card_payload()
+    payload["presentation"]["required_chats"][0]["join_url"] = "https://t.me/welfare?x=1&y=2"
+
+    text = _campaign_card_text(payload)
+
+    assert 'href="https://t.me/welfare?x=1&amp;y=2"' in text
+    assert 'href="https://t.me/welfare?x=1&y=2"' not in text
+
+
+def test_drawn_state_card_lists_winner_names() -> None:
+    text = _campaign_state_card_text(
+        {
+            "campaign_name": "周末抽奖",
+            "card_state": "drawn",
+            "winners": [
+                {"display_name": "张三", "prize_name": "一等奖"},
+                {"display_name": "李四", "prize_name": "二等奖"},
+            ],
+        }
+    )
+
+    assert "🏆 中奖者" in text
+    assert "张三" in text
+    assert "李四" in text
+    assert "等共" not in text
+
+
+def test_drawn_state_card_caps_winner_list_at_eight_rows() -> None:
+    names = [f"成员{index}" for index in range(1, 11)]
+    text = _campaign_state_card_text(
+        {
+            "campaign_name": "周末抽奖",
+            "card_state": "drawn",
+            "winners": [{"display_name": name} for name in names],
+        }
+    )
+
+    assert "成员8" in text
+    assert "成员9" not in text
+    assert "成员10" not in text
+    assert "等共 10 人" in text
+    assert "完整名单见群内结果公告" in text
+
+
+def test_drawn_state_card_escapes_winner_names() -> None:
+    text = _campaign_state_card_text(
+        {
+            "campaign_name": "周末抽奖",
+            "card_state": "drawn",
+            "winners": [{"display_name": "<b>伪造者</b>"}],
+        }
+    )
+
+    assert "&lt;b&gt;伪造者&lt;/b&gt;" in text
+    assert "<b>伪造者</b>" not in text
 
 
 class _FakeSentMessage:

@@ -229,6 +229,26 @@ async def test_full_draw_threshold_creates_one_system_trigger_in_registration_tr
         assert audit.actor_user_id is None
 
 
+async def test_eligible_participant_lookup_returns_cached_ticket_total(
+    session_factory,
+) -> None:
+    now = datetime.now(UTC)
+    async with session_factory() as session, session.begin():
+        _, campaign, _ = await seed_campaign(session)
+        campaign_id = campaign.id
+    service = ParticipantService(partial(UnitOfWork, session_factory))
+
+    assert await service.eligible_participant(campaign_id, 202) is None
+
+    attempt = await service.begin_registration(_request(campaign_id, now))
+    await service.complete_registration(_result(attempt, now, QualificationState.ELIGIBLE))
+
+    participant = await service.eligible_participant(campaign_id, 202)
+    assert participant is not None
+    assert participant.qualification_state is QualificationState.ELIGIBLE
+    assert participant.ticket_total_cache == 1
+
+
 async def test_completion_message_deletion_job_is_durable_and_idempotent(
     session_factory,
 ) -> None:

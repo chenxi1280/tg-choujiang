@@ -62,6 +62,27 @@ async def test_multiple_prizes_draw_unique_winners_and_report_unfilled_slots(
     assert card["message_id"] == 321
 
 
+async def test_drawn_card_state_carries_winner_names(session_factory) -> None:
+    now = datetime.now(UTC)
+    campaign_id = await _seed_multi_prize_case(session_factory, now)
+    uow_factory = partial(UnitOfWork, session_factory)
+    await SettlementService(uow_factory).settle(campaign_id, now)
+    await DrawingService(uow_factory).run(campaign_id, actor_user_id=101)
+
+    async with session_factory() as session:
+        card = (
+            await session.scalars(
+                select(TelegramOutbox).where(TelegramOutbox.operation == "edit_campaign_card_state")
+            )
+        ).one()
+
+    assert card.payload["card_state"] == "drawn"
+    winners = card.payload["winners"]
+    assert len(winners) == 3
+    assert {item["display_name"] for item in winners} == {"成员一", "成员2", "成员3"}
+    assert all(item["prize_name"] in {"一等奖", "二等奖"} for item in winners)
+
+
 async def test_settlement_blocks_when_published_prize_plan_changes(session_factory) -> None:
     now = datetime.now(UTC)
     campaign_id = await _seed_multi_prize_case(session_factory, now)

@@ -333,7 +333,8 @@ def _chat_requirement_lines(chat: dict[str, Any], thresholds: dict[int, int]) ->
     url = chat.get("join_url")
     verb = "关注" if chat.get("type") == "channel" else "加入"
     if url:
-        lines = [f'🎫 {verb}-<a href="{url}">{label}</a>']
+        safe_url = html.escape(str(url), quote=True)
+        lines = [f'🎫 {verb}-<a href="{safe_url}">{label}</a>']
     else:
         lines = [f"🎫 {verb}-{label}（入口见下方按钮）"]
     need = thresholds.get(int(chat["id"]))
@@ -435,4 +436,11 @@ def _campaign_state_card_text(payload: dict[str, Any]) -> str:
     if status is None:
         raise ValueError("unsupported campaign card state")
     name = html.escape(str(payload["campaign_name"]))
-    return f"🎰 <b>{name}</b>\n\n{status}"
+    text = f"🎰 <b>{name}</b>\n\n{status}"
+    winners = [html.escape(str(item["display_name"])) for item in payload.get("winners") or []]
+    if winners:
+        rows = [f"• {winner}" for winner in winners[:8]]
+        if len(winners) > 8:
+            rows.append(f"等共 {len(winners)} 人（完整名单见群内结果公告）")
+        text += "\n\n🏆 中奖者：\n" + "\n".join(rows)
+    return text

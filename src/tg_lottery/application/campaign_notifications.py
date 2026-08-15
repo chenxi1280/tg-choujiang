@@ -8,9 +8,18 @@ def add_campaign_card_state(
     recipient_chat_id: int,
     *,
     state: str,
+    winners: list[dict[str, object]] | None = None,
 ) -> None:
     if campaign.published_message_id is None:
         return
+    payload: dict[str, object] = {
+        "campaign_name": campaign.name,
+        "message_id": campaign.published_message_id,
+        "has_cover": bool(campaign.presentation.get("cover_file_id")),
+        "card_state": state,
+    }
+    if winners is not None:
+        payload["winners"] = winners
     add_outbox(
         session,
         operation="edit_campaign_card_state",
@@ -18,12 +27,7 @@ def add_campaign_card_state(
         aggregate_id=str(campaign.id),
         recipient_chat_id=recipient_chat_id,
         business_key=f"campaign_card_state:{campaign.id}:{state}",
-        payload={
-            "campaign_name": campaign.name,
-            "message_id": campaign.published_message_id,
-            "has_cover": bool(campaign.presentation.get("cover_file_id")),
-            "card_state": state,
-        },
+        payload=payload,
     )
 
 

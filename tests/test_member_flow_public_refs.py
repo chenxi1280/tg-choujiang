@@ -7,7 +7,7 @@ from aiogram.types import User
 from tg_lottery.application.participants import RegistrationAttempt
 from tg_lottery.domain.enums import CampaignState, QualificationState
 from tg_lottery.domain.rules import CampaignRules
-from tg_lottery.telegram.member_flow import MemberFlow, _human_rule, _registration_success_text
+from tg_lottery.telegram.member_flow import MemberFlow, _human_rule
 
 PUBLIC_REF = "AbCdEfGhIjKlMnOpQrSt-_"
 
@@ -27,6 +27,9 @@ class ReferenceQueries:
 
 
 class IneligibleParticipants:
+    async def eligible_participant(self, campaign_id, user_id):
+        return None
+
     async def begin_registration(self, request):
         return RegistrationAttempt(
             participant_id=uuid4(),
@@ -41,6 +44,9 @@ class IneligibleParticipants:
 class EligibleParticipants:
     def __init__(self) -> None:
         self.deletions = []
+
+    async def eligible_participant(self, campaign_id, user_id):
+        return None
 
     async def begin_registration(self, request):
         return RegistrationAttempt(
@@ -122,13 +128,8 @@ async def test_success_deletion_policy_schedules_command_and_completion() -> Non
 
     assert [item["message_id"] for item in participants.deletions] == [77, 88]
     assert participants.deletions[0]["run_at"] < participants.deletions[1]["run_at"]
-    assert message.texts[0] == "报名成功。"
-
-
-def test_success_message_only_promises_an_invite_link_when_enabled() -> None:
-    assert _registration_success_text(CampaignRules()) == "报名成功。"
-    enabled = CampaignRules(bonus_types=("invite",))
-    assert "专属邀请链接" in _registration_success_text(enabled)
+    assert message.texts[0].startswith("✅ 参与成功")
+    assert "当前共 1 次抽奖机会" in message.texts[0]
 
 
 def test_legacy_bonus_rules_have_a_complete_human_readable_description() -> None:
