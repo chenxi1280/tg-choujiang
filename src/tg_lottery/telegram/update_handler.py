@@ -2,12 +2,20 @@ import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, ChatMemberUpdated, Message, Update
+from aiogram.types import (
+    CallbackQuery,
+    ChatMemberUpdated,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    Update,
+)
 
 from tg_lottery.application.activity import ActivityService, MessageObservation
 from tg_lottery.application.callback_tokens import CallbackTokenService
 from tg_lottery.application.groups import GroupService, TelegramAdmin
 from tg_lottery.application.invitations import InvitationService, JoinObservation
+from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import DomainError
@@ -18,6 +26,10 @@ from tg_lottery.telegram.public_projection import public_error_text
 
 
 class LotteryUpdateHandler:
+    _PRIVATE_COMMANDS = frozenset(
+        {"/start", "/menu", "/new", "/index", "/join", "/region", "/myid"}
+    )
+
     def __init__(
         self,
         *,
@@ -31,6 +43,8 @@ class LotteryUpdateHandler:
         activity: ActivityService,
         invitations: InvitationService,
         queries: QueryService,
+        stats: MessageStatsService,
+        bot_username: str = "",
     ) -> None:
         self._bot = bot
         self._default_timezone = default_timezone
@@ -42,6 +56,8 @@ class LotteryUpdateHandler:
         self._activity = activity
         self._invitations = invitations
         self._queries = queries
+        self._stats = stats
+        self._bot_username = bot_username
         self._logger = logging.getLogger(__name__)
 
     async def handle(self, update: Update) -> None:
@@ -69,18 +85,45 @@ class LotteryUpdateHandler:
             return
         if message.from_user is None:
             return
-        await self._activity.record_message(
-            MessageObservation(
-                chat_id=message.chat.id,
-                message_id=message.message_id,
-                user_id=message.from_user.id,
-                event_at=message.date,
-                text=message.text or message.caption,
-                is_bot=message.from_user.is_bot,
-                is_service=message.text is None and message.caption is None,
-                is_forwarded=message.forward_origin is not None,
-            )
+        text = (message.text or "").strip()
+        if text.startswith("/"):
+            await self._group_command(message, text)
+            return
+        observation = MessageObservation(
+            chat_id=message.chat.id,
+            message_id=message.message_id,
+            user_id=message.from_user.id,
+            event_at=message.date,
+            text=message.text or message.caption,
+            is_bot=message.from_user.is_bot,
+            is_service=message.text is None and message.caption is None,
+            is_forwarded=message.forward_origin is not None,
         )
+        await self._stats.record(observation)
+        await self._activity.record_message(observation)
+
+    async def _group_command(self, message: Message, text: str) -> None:
+        command = text.split(maxsplit=1)[0]
+        name, _, mention = command.partition("@")
+        if mention and mention != self._bot_username:
+            return
+        if name == "/getid":
+            await message.answer(f"本群 ID：{message.chat.id}")
+            return
+        if name in self._PRIVATE_COMMANDS:
+            await message.answer(
+                "该命令请在私聊中使用。",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="私聊我",
+                                url=f"https://t.me/{self._bot_username}",
+                            )
+                        ]
+                    ]
+                ),
+            )
 
     async def _private_message(self, message: Message) -> None:
         text = (message.text or "").strip()

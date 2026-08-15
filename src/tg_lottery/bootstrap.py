@@ -11,6 +11,7 @@ from tg_lottery.application.campaigns import CampaignService
 from tg_lottery.application.drawing import DrawingService
 from tg_lottery.application.groups import GroupService
 from tg_lottery.application.invitations import InvitationService
+from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.participants import ParticipantService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.settlement import SettlementService
@@ -35,6 +36,7 @@ class Services:
     campaigns: CampaignService
     participants: ParticipantService
     activity: ActivityService
+    message_stats: MessageStatsService
     invitations: InvitationService
     settlement: SettlementService
     drawing: DrawingService
@@ -63,6 +65,7 @@ def build_container(settings: Settings) -> Container:
         campaigns=CampaignService(uow_factory),
         participants=ParticipantService(uow_factory),
         activity=ActivityService(uow_factory),
+        message_stats=MessageStatsService(uow_factory),
         invitations=InvitationService(uow_factory),
         settlement=SettlementService(uow_factory),
         drawing=DrawingService(uow_factory),
@@ -115,6 +118,8 @@ def build_update_handler(container: Container, bot_username: str) -> LotteryUpda
         activity=services.activity,
         invitations=services.invitations,
         queries=services.queries,
+        stats=services.message_stats,
+        bot_username=bot_username,
     )
 
 

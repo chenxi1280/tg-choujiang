@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import pytest
 from aiogram.types import CallbackQuery
 
 from tg_lottery.domain.errors import UserFacingError
@@ -60,6 +63,22 @@ class RecordingMessage:
         self.answers.append(text)
 
 
+class FakeStats:
+    def __init__(self) -> None:
+        self.recorded: list = []
+
+    async def record(self, observation) -> None:
+        self.recorded.append(observation)
+
+
+class RecordingActivity:
+    def __init__(self) -> None:
+        self.recorded: list = []
+
+    async def record_message(self, observation) -> None:
+        self.recorded.append(observation)
+
+
 async def test_verify_callback_registers_clicking_user_not_bot_message_sender() -> None:
     flow = RecordingMemberFlow()
     handler = LotteryUpdateHandler(
@@ -73,6 +92,7 @@ async def test_verify_callback_registers_clicking_user_not_bot_message_sender() 
         activity=object(),
         invitations=object(),
         queries=object(),
+        stats=FakeStats(),
     )
     public_ref = "AbCdEfGhIjKlMnOpQrSt-_"
     query = _callback(f"member:verify:{public_ref}")
@@ -153,6 +173,7 @@ async def test_new_command_enters_creation_directly() -> None:
         activity=object(),
         invitations=object(),
         queries=object(),
+        stats=FakeStats(),
     )
     message = type("PrivateMessage", (), {"text": "/new"})()
 
@@ -204,6 +225,7 @@ def _handler(*, member_flow=None) -> LotteryUpdateHandler:
         activity=object(),
         invitations=object(),
         queries=object(),
+        stats=FakeStats(),
     )
 
 
@@ -230,3 +252,82 @@ def _callback(data: str) -> CallbackQuery:
             },
         }
     )
+
+
+@pytest.fixture
+def fake_bot():
+    return object()
+
+
+@pytest.fixture
+def make_handler(fake_bot):
+    def _make(*, stats=None, bot_username="") -> LotteryUpdateHandler:
+        return LotteryUpdateHandler(
+            bot=fake_bot,
+            default_timezone="Asia/Shanghai",
+            admin_flow=object(),
+            member_flow=object(),
+            personal_flow=PassthroughPersonalFlow(),
+            tokens=object(),
+            groups=object(),
+            activity=RecordingActivity(),
+            invitations=object(),
+            queries=object(),
+            stats=stats or FakeStats(),
+            bot_username=bot_username,
+        )
+
+    return _make
+
+
+def _group_message(text=None, chat_id=-100123, user_id=42):
+    return SimpleNamespace(
+        migrate_to_chat_id=None,
+        chat=SimpleNamespace(id=chat_id, type="supergroup"),
+        from_user=SimpleNamespace(id=user_id, is_bot=False),
+        message_id=1,
+        date=datetime.now(UTC),
+        text=text,
+        caption=None,
+        forward_origin=None,
+        answer=AsyncMock(),
+    )
+
+
+async def test_group_message_records_stats(fake_bot, make_handler):
+    stats = FakeStats()
+    handler = make_handler(stats=stats)
+    message = _group_message(text="今天天气不错哦", chat_id=-100123, user_id=42)
+    await handler._message(message)
+    assert [o.text for o in stats.recorded] == ["今天天气不错哦"]
+    assert handler._activity.recorded == stats.recorded
+
+
+async def test_group_command_skips_stats_and_answers_getid(fake_bot, make_handler):
+    stats = FakeStats()
+    handler = make_handler(stats=stats, bot_username="tgccjbot")
+    message = _group_message(text="/getid", chat_id=-100123, user_id=42)
+    await handler._message(message)
+    assert stats.recorded == []
+    message.answer.assert_awaited_once()
+    assert "-100123" in message.answer.await_args.args[0]
+
+
+async def test_group_private_command_guides_to_dm(fake_bot, make_handler):
+    handler = make_handler(stats=FakeStats(), bot_username="tgccjbot")
+    message = _group_message(text="/region@tgccjbot", chat_id=-100123, user_id=42)
+    await handler._message(message)
+    text = message.answer.await_args.args[0]
+    assert "私聊" in text
+    keyboard = message.answer.await_args.kwargs["reply_markup"]
+    button = keyboard.inline_keyboard[0][0]
+    assert button.url == "https://t.me/tgccjbot"
+
+
+async def test_group_command_mentioning_other_bot_is_ignored(fake_bot, make_handler):
+    stats = FakeStats()
+    handler = make_handler(stats=stats, bot_username="tgccjbot")
+    message = _group_message(text="/region@otherbot", chat_id=-100123, user_id=42)
+    await handler._message(message)
+    message.answer.assert_not_awaited()
+    assert stats.recorded == []
