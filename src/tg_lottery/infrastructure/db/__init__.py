@@ -34,6 +34,7 @@ from tg_lottery.infrastructure.db.models_engagement import (
     InviteeActivityEvent,
     InviteLink,
     TicketLedger,
+    UserGroupMessageTotal,
 )
 
 __all__ = [
@@ -64,6 +65,7 @@ __all__ = [
     "TelegramOutbox",
     "TelegramUpdate",
     "TicketLedger",
+    "UserGroupMessageTotal",
     "UserProfile",
     "UserRegionChange",
     "Winner",

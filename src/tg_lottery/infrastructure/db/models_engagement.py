@@ -107,6 +107,17 @@ class InviteeActivityEvent(Base, UuidPkMixin, CreatedAtMixin):
     source_update_id: Mapped[int | None] = mapped_column(BigInteger)
 
 
+class UserGroupMessageTotal(Base, UuidPkMixin, TimestampMixin):
+    __tablename__ = "user_group_message_totals"
+    __table_args__ = (UniqueConstraint("user_id", "chat_id"),)
+
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    total_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_content_hash: Mapped[str | None] = mapped_column(String(64))
+    last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class TicketLedger(Base, UuidPkMixin, CreatedAtMixin):
     __tablename__ = "ticket_ledger"
 
