@@ -3,9 +3,17 @@ from urllib.parse import quote
 from uuid import UUID
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, User
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    User,
+)
 
 from tg_lottery.application.invitation_models import accepts_attribution
+from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.participants import (
     ParticipantService,
     QualificationResult,
@@ -19,6 +27,7 @@ from tg_lottery.domain.enums import QualificationState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram.crypto import SecretCipher
+from tg_lottery.telegram.member_popups import failure_reply_text, popup_failure
 from tg_lottery.telegram.public_projection import campaign_state_text, format_public_time
 from tg_lottery.telegram.qualification import observe_memberships
 
@@ -31,11 +40,13 @@ class MemberFlow:
         participants: ParticipantService,
         queries: QueryService,
         cipher: SecretCipher,
+        stats: MessageStatsService | None = None,
     ) -> None:
         self._bot = bot
         self._participants = participants
         self._queries = queries
         self._cipher = cipher
+        self._stats = stats
 
     async def register(
         self,
@@ -44,6 +55,7 @@ class MemberFlow:
         *,
         user: User | None = None,
         observed_at: datetime | None = None,
+        callback: CallbackQuery | None = None,
     ) -> None:
         campaign = await self._queries.campaign_by_reference(campaign_reference)
         if campaign is None:
@@ -57,7 +69,7 @@ class MemberFlow:
         if attempt.requires_observation:
             group = await self._queries.campaign_group(campaign.id)
             state, observations = await self._complete_observation(
-                attempt, user_id=user.id, main_chat_id=group.chat_id
+                attempt, user_id=user.id, main_chat_id=group.chat_id, campaign=campaign
             )
         if state is QualificationState.ELIGIBLE:
             rules = CampaignRules.model_validate(campaign.rules)
@@ -66,18 +78,13 @@ class MemberFlow:
                 reply_markup=member_keyboard(campaign.public_ref, rules.invite_bonus_enabled),
             )
             await self._schedule_success_deletions(campaign, message, sent)
+            if callback is not None:
+                await _safe_answer(callback, "✅ 参与成功！当前 1 次基础抽奖机会", alert=False)
             return
         verify = self._qualification_keyboard(campaign, state, observations)
-        if state is QualificationState.INELIGIBLE:
-            text = "尚未满足全部群/频道参与条件。"
-            if _extended_tips(campaign):
-                text += " 完成后请重新验证。"
-            await message.answer(text, reply_markup=verify)
-        else:
-            text = "当前无法核验群/频道资格，状态保持待核验。"
-            if _extended_tips(campaign):
-                text += " 请稍后点击验证资格重试。"
-            await message.answer(text, reply_markup=verify)
+        await message.answer(failure_reply_text(campaign, state), reply_markup=verify)
+        if state is QualificationState.INELIGIBLE and callback is not None:
+            await _safe_answer(callback, popup_failure(campaign, observations), alert=True)
 
     async def _schedule_success_deletions(
         self, campaign: object, trigger: Message, completion: Message
@@ -102,7 +109,7 @@ class MemberFlow:
         )
 
     async def _complete_observation(
-        self, attempt: RegistrationAttempt, *, user_id: int, main_chat_id: int
+        self, attempt: RegistrationAttempt, *, user_id: int, main_chat_id: int, campaign: object,
     ) -> tuple[QualificationState, tuple[dict[str, object], ...]]:
         chat_ids = tuple(dict.fromkeys((main_chat_id, *attempt.required_chat_ids)))
         observed_at = utcnow()
@@ -112,18 +119,43 @@ class MemberFlow:
             user_id=user_id,
             observed_at=observed_at,
         )
+        rules = CampaignRules.model_validate(campaign.rules)
+        thresholds = {int(key): int(value) for key, value in rules.message_thresholds.items()}
+        observations = tuple(result.observations)
+        state = result.state
+        if thresholds and self._stats is not None:
+            member_ok = {
+                int(item["chat_id"])
+                for item in observations
+                if item["state"] == QualificationState.ELIGIBLE.value
+            }
+            totals = await self._stats.totals(user_id, tuple(thresholds))
+            shortfalls = tuple(
+                {
+                    "chat_id": chat_id,
+                    "state": "ineligible",
+                    "observed_status": f"messages {totals.get(chat_id, 0)}/{need}",
+                    "error_code": "message_threshold",
+                    "observed_at": observed_at.isoformat(),
+                }
+                for chat_id, need in thresholds.items()
+                if chat_id in member_ok and totals.get(chat_id, 0) < need
+            )
+            if shortfalls:
+                observations = observations + shortfalls
+                state = QualificationState.INELIGIBLE
         participant = await self._participants.complete_registration(
             QualificationResult(
                 participant_id=attempt.participant_id,
                 qualification_check_id=attempt.qualification_check_id,
-                state=result.state,
+                state=state,
                 observed_at=observed_at,
                 observed_status=result.observed_status,
                 error_code=result.error_code,
-                observations=result.observations,
+                observations=observations,
             )
         )
-        return participant.qualification_state, result.observations
+        return participant.qualification_state, observations
 
     async def show_rules(self, message: Message, campaign_reference: str | UUID) -> None:
         campaign = await self._queries.campaign_by_reference(campaign_reference)
@@ -327,11 +359,6 @@ def _registration_request(
     )
 
 
-def _extended_tips(campaign: object) -> bool:
-    presentation = getattr(campaign, "presentation", {}) or {}
-    return bool(presentation.get("message_tips", True))
-
-
 def _conditions(campaign: object) -> tuple[dict[str, object], ...]:
     presentation = getattr(campaign, "presentation", {}) or {}
     main = presentation.get("main_chat")
@@ -440,3 +467,10 @@ def _failed_condition_positions(
         for position, chat in enumerate(_conditions(campaign), start=1)
         if int(chat["id"]) in failed_ids
     )
+
+
+async def _safe_answer(query: CallbackQuery, text: str, *, alert: bool) -> None:
+    try:
+        await query.answer(text[:200], show_alert=alert)
+    except TelegramBadRequest:
+        pass
