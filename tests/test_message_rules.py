@@ -35,4 +35,5 @@ def test_rejection_reason_matrix():
     assert rejection_reason(_obs("/getid"), "/getid", 4) == "command"
     assert rejection_reason(_obs("abc"), "abc", 4) == "too_short"
     assert rejection_reason(_obs("🎉🎉🎉🎉"), "🎉🎉🎉🎉", 4) == "emoji_or_symbols_only"
+    assert rejection_reason(_obs("a🎉🎉🎉"), "a🎉🎉🎉", 4) == "too_short"
     assert rejection_reason(_obs("这是有效发言"), "这是有效发言", 4) is None

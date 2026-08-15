@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from urllib.parse import quote
 from uuid import UUID
 
 from aiogram import Bot
@@ -27,6 +26,7 @@ from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram import member_callbacks
 from tg_lottery.telegram.crypto import SecretCipher
+from tg_lottery.telegram.member_invites import invite_link_keyboard, invite_link_text
 from tg_lottery.telegram.member_popups import failure_reply_text, popup_success
 from tg_lottery.telegram.public_projection import campaign_state_text, format_public_time
 from tg_lottery.telegram.qualification import message_threshold_shortfalls, observe_memberships
@@ -92,6 +92,9 @@ class MemberFlow:
     async def _registration_success_reply(
         self, message: Message, campaign: object, total: int, *, callback: CallbackQuery | None
     ) -> None:
+        if _group_callback(callback, message):
+            await member_callbacks.safe_answer(callback, popup_success(total), alert=False)
+            return
         rules = CampaignRules.model_validate(campaign.rules)
         keyboard = member_keyboard(campaign.public_ref, rules.invite_bonus_enabled)
         sent = await message.answer(popup_success(total), reply_markup=keyboard)
@@ -332,8 +335,8 @@ class MemberFlow:
             event_at=utcnow(),
         )
         return (
-            _invite_link_text(campaign.name, link, active=active),
-            _invite_link_keyboard(link, campaign.name),
+            invite_link_text(campaign.name, link, active=active),
+            invite_link_keyboard(link, campaign.name),
         )
 
     async def _send_invite_link_to(self, user_id: int, campaign: object) -> None:
@@ -358,29 +361,15 @@ def member_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _invite_link_text(campaign_name: str, link: str, *, active: bool) -> str:
-    if active:
-        note = "仅在本期报名截止前通过该链接加入，才会计算本期邀请加成。"
-    else:
-        note = "本期已截止；此链接仍可入群，但不再计算本期或以后任何抽奖加成。"
-    return f"🔗 {campaign_name} 专属邀请链接\n\n{link}\n\n{note}"
-
-
-def _invite_link_keyboard(link: str, campaign_name: str) -> InlineKeyboardMarkup:
-    share = "https://t.me/share/url?url=" + quote(link, safe="")
-    share += "&text=" + quote(f"邀请你参加「{campaign_name}」抽奖", safe="")
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="打开群聊", url=link)],
-            [InlineKeyboardButton(text="转发给好友", url=share)],
-        ]
-    )
-
-
 def _required_user(message: Message) -> User:
     if message.from_user is None:
         raise ValueError("Telegram message has no sender")
     return message.from_user
+
+
+def _group_callback(callback: CallbackQuery | None, message: Message) -> bool:
+    chat_type = getattr(getattr(message, "chat", None), "type", None)
+    return callback is not None and chat_type != "private"
 
 
 def _registration_request(

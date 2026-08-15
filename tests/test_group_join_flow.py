@@ -144,10 +144,11 @@ async def test_register_success_keeps_eligible_when_threshold_met():
 async def test_callback_success_popup_answers_participation_success():
     campaign = _campaign({str(THRESHOLD_CHAT_ID): 10})
     callback = RecordingCallback()
+    message = RecordingMessage()
     flow = _flow(ObservingParticipants(), campaign, {THRESHOLD_CHAT_ID: 12})
 
     await flow.register(
-        RecordingMessage(),
+        message,
         PUBLIC_REF,
         user=_user(),
         observed_at=datetime.now(UTC),
@@ -159,6 +160,7 @@ async def test_callback_success_popup_answers_participation_success():
     assert text.startswith("✅ 参与成功")
     assert "当前共 3 次抽奖机会" in text
     assert show_alert is False
+    assert message.texts == []
 
 
 async def test_callback_failure_popup_alerts_threshold_gap():

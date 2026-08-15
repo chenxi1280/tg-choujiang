@@ -20,8 +20,9 @@ def rejection_reason(observation: Any, normalized: str, minimum_length: int) -> 
         return "forwarded"
     if normalized.startswith("/"):
         return "command"
-    if len(normalized) < minimum_length:
-        return "too_short"
-    if not any(character.isalnum() for character in normalized):
+    countable_length = sum(1 for character in normalized if character.isalnum())
+    if countable_length == 0:
         return "emoji_or_symbols_only"
+    if countable_length < minimum_length:
+        return "too_short"
     return None

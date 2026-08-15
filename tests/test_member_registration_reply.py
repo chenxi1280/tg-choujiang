@@ -195,10 +195,11 @@ async def test_register_already_eligible_private_start_replies_message():
 
 async def test_register_eligible_replay_reads_cached_total():
     callback = RecordingCallback()
+    message = RecordingMessage()
     flow = _flow(ReplayEligibleParticipants(), _campaign({}))
 
     await flow.register(
-        RecordingMessage(),
+        message,
         PUBLIC_REF,
         user=_user(),
         observed_at=datetime.now(UTC),
@@ -210,6 +211,7 @@ async def test_register_eligible_replay_reads_cached_total():
     assert text.startswith("✅ 参与成功")
     assert "当前共 4 次抽奖机会" in text
     assert show_alert is False
+    assert message.texts == []
 
 
 async def test_thresholds_without_stats_service_raises_runtime_error():
