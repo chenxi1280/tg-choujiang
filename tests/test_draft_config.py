@@ -8,6 +8,7 @@ from tg_lottery.telegram.draft_config import (
     missing_fields,
     new_draft,
     parse_draw_at,
+    rules_from_data,
 )
 
 
@@ -37,6 +38,33 @@ def test_new_draft_does_not_delete_completion_messages_by_default() -> None:
 
     assert data["delete_trigger_message"] is False
     assert data["completion_delete_after_seconds"] is None
+
+
+def test_new_draft_starts_with_empty_chat_message_thresholds() -> None:
+    assert new_draft()["chat_message_thresholds"] == {}
+
+
+def test_rules_from_data_includes_chat_message_thresholds() -> None:
+    data = {
+        "timezone": "Asia/Shanghai",
+        "invite_preset": "standard",
+        "chat_message_thresholds": {"-100123": 10, "-100456": None},
+    }
+
+    rules = rules_from_data(data)
+
+    assert rules.message_thresholds == {"-100123": 10}
+
+
+def test_campaign_input_freezes_chat_message_thresholds() -> None:
+    data = _complete_draft()
+    data["chat_message_thresholds"] = {"-100123": 10}
+    now = datetime(2026, 8, 9, 10, 0, tzinfo=UTC)
+
+    draft, _ = campaign_input(data, now=now)
+
+    assert draft.rules.message_thresholds == {"-100123": 10}
+    assert draft.presentation["chat_message_thresholds"] == {"-100123": 10}
 
 
 def test_single_local_draw_time_builds_internal_timeline_and_rules() -> None:

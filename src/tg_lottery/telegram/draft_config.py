@@ -56,6 +56,7 @@ def new_draft(
         "required_chat_ids": [],
         "required_chat_refs": [],
         "required_chats": [],
+        "chat_message_thresholds": {},
         "cover_file_id": None,
         "description": "",
         "username_required": False,
@@ -148,6 +149,11 @@ def rules_from_data(data: dict[str, Any]) -> CampaignRules:
         luck_mode=str(data.get("luck_mode", "off")),
         bonus_types=_bonus_types(data),
         settlement_drain_seconds=SETTLEMENT_DRAIN_SECONDS,
+        message_thresholds={
+            str(key): int(value)
+            for key, value in (data.get("chat_message_thresholds") or {}).items()
+            if value
+        },
     )
 
 
@@ -174,6 +180,7 @@ def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
         "allowed_regions",
         "required_chat_ids",
         "required_chats",
+        "chat_message_thresholds",
         "main_chat",
         "issuer",
         "issuer_name",

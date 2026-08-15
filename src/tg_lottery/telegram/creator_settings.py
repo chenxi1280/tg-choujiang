@@ -65,6 +65,9 @@ class CreatorSettings:
         self._bot = bot
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> bool:
+        if grant.action.startswith("draft_chat_threshold:"):
+            await self._change_chat_threshold(query, grant)
+            return True
         handler = self._grant_handlers().get(grant.action)
         if handler is None:
             return False
@@ -72,7 +75,7 @@ class CreatorSettings:
         return True
 
     def handles_action(self, action: str) -> bool:
-        return action in self._grant_handlers()
+        return action.startswith("draft_chat_threshold:") or action in self._grant_handlers()
 
     async def handle_message(self, message: Message, state: str, data: dict[str, Any]) -> bool:
         handler = self._text_handlers().get(state)
@@ -256,12 +259,17 @@ class CreatorSettings:
         await self._dashboard_from_message(message, data | {"allowed_regions": regions})
 
     async def _edit_participation(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:participation")
+        data = await self._required_data(query.from_user.id)
+        updated = data | {"panel_message_id": _message(query).message_id, "guided": False}
+        await self._render_participation(query, updated)
+
+    async def _render_participation(self, query: CallbackQuery, updated: dict[str, Any]) -> None:
+        await self._sessions.set(query.from_user.id, "draft:participation", updated)
         await self._render(
             query,
-            data=data,
-            text=participation.participation_text(data),
-            rows=participation.participation_rows(data),
+            data=updated,
+            text=participation.participation_text(updated),
+            rows=participation.participation_rows(updated),
         )
 
     async def _edit_participation_add(self, query: CallbackQuery, _: CallbackGrant) -> None:
@@ -306,14 +314,8 @@ class CreatorSettings:
     async def _page_participation(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         data = await self._required_data(query.from_user.id)
         delta = -1 if grant.action.endswith("prev") else 1
-        updated = data | {"participation_page": participation.participation_page(data) + delta}
-        await self._sessions.set(query.from_user.id, "draft:participation", updated)
-        await self._render(
-            query,
-            data=updated,
-            text=participation.participation_text(updated),
-            rows=participation.participation_rows(updated),
-        )
+        page = participation.participation_page(data) + delta
+        await self._render_participation(query, data | {"participation_page": page})
 
     async def _edit_participation_delete(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:participation_delete")
@@ -343,14 +345,13 @@ class CreatorSettings:
 
     async def _clear_participation(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._required_data(query.from_user.id)
-        updated = _with_required_chats(data, []) | {"participation_page": 0}
-        await self._sessions.set(query.from_user.id, "draft:participation", updated)
-        await self._render(
-            query,
-            data=updated,
-            text=participation.participation_text(updated),
-            rows=participation.participation_rows(updated),
+        await self._render_participation(
+            query, _with_required_chats(data, []) | {"participation_page": 0}
         )
+
+    async def _change_chat_threshold(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        data = await self._required_data(query.from_user.id)
+        await self._render_participation(query, participation.apply_threshold(data, grant.action))
 
     async def _edit_description(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:description")
@@ -486,8 +487,14 @@ class CreatorSettings:
 
 def _with_required_chats(data: dict[str, Any], chats: list[dict[str, Any]]) -> dict[str, Any]:
     chat_ids = [int(item["id"]) for item in chats]
+    thresholds = {
+        key: value
+        for key, value in (data.get("chat_message_thresholds") or {}).items()
+        if int(key) in chat_ids
+    }
     return data | {
         "required_chats": chats,
         "required_chat_refs": chat_ids,
         "required_chat_ids": chat_ids,
+        "chat_message_thresholds": thresholds,
     }

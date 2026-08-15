@@ -53,3 +53,14 @@ def test_weighted_draw_is_deterministic_and_in_range() -> None:
 def test_weighted_draw_requires_positive_weight() -> None:
     with pytest.raises(ValueError, match="positive weight"):
         select_weighted((WeightedEntry("a", 0),), "seed", 1)
+
+
+def test_message_thresholds_validated() -> None:
+    rules = CampaignRules(message_thresholds={"-100123": "10"})
+    assert rules.message_thresholds == {"-100123": 10}
+    with pytest.raises(ValueError, match="out of range"):
+        CampaignRules(message_thresholds={"-100123": "0"})
+    with pytest.raises(ValueError, match="out of range"):
+        CampaignRules(message_thresholds={"-100123": "501"})
+    with pytest.raises(ValueError, match="must be numeric"):
+        CampaignRules(message_thresholds={"@group": "10"})

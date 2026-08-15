@@ -2,8 +2,9 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from aiogram.types import User
+from aiogram.types import Chat, Message, User
 
+from tg_lottery.application.callback_tokens import CallbackGrant
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.campaign_creator import CampaignCreator, _validate_activity_chat
 from tg_lottery.telegram.creator_participation import (
@@ -59,8 +60,25 @@ class RecordingSessions:
         self.data = data
 
 
+class ThresholdSessions:
+    def __init__(self, data: dict) -> None:
+        self.state = "draft:participation"
+        self.data = data
+
+    async def get(self, user_id: int):
+        return SimpleNamespace(state=self.state, data=self.data)
+
+    async def set(self, user_id: int, state: str, data: dict) -> None:
+        self.state = state
+        self.data = data
+
+
 class RecordingRenderer:
     async def edit(self, target, *, text, rows) -> None:
+        self.text = text
+        self.rows = rows
+
+    async def render(self, message, *, user_id, text, rows) -> None:
         self.text = text
         self.rows = rows
 
@@ -205,13 +223,19 @@ async def test_participation_conditions_delete_selected_positions() -> None:
         {"id": -1003, "title": "条件 2", "type": "channel", "private": True},
         {"id": -1004, "title": "条件 3", "type": "supergroup", "private": True},
     ]
-    data = {"chat_id": -1001, "panel_message_id": 9, "required_chats": chats}
+    data = {
+        "chat_id": -1001,
+        "panel_message_id": 9,
+        "required_chats": chats,
+        "chat_message_thresholds": {"-1002": 10, "-1003": 5},
+    }
 
     await settings._receive_participation_delete(_message("1,3"), data)
 
     assert [item["id"] for item in sessions.data["required_chats"]] == [-1003]
     assert sessions.data["required_chat_refs"] == [-1003]
     assert sessions.data["required_chat_ids"] == [-1003]
+    assert sessions.data["chat_message_thresholds"] == {"-1003": 5}
 
 
 async def test_legacy_last_draft_required_chat_ids_are_restored_for_the_ui() -> None:
@@ -265,6 +289,76 @@ def test_custom_draw_prompt_uses_an_example_instead_of_a_python_format_string() 
 
     assert prompt == "🕒 回复开奖时间 (北京时间)\n\n例如: 2026-08-11 20:00"
     assert "%Y" not in prompt
+
+
+def _threshold_settings(sessions: ThresholdSessions) -> CreatorSettings:
+    return CreatorSettings(
+        sessions=sessions,
+        renderer=RecordingRenderer(),
+        profiles=object(),
+        queries=object(),
+        bot=RequiredChatBot(),
+    )
+
+
+def _panel_query() -> SimpleNamespace:
+    message = Message(
+        message_id=9,
+        date=datetime(2026, 8, 15, tzinfo=UTC),
+        chat=Chat(id=201, type="private"),
+    )
+    return SimpleNamespace(
+        from_user=User(id=201, is_bot=False, first_name="Creator"), message=message
+    )
+
+
+def _threshold_grant(action: str) -> CallbackGrant:
+    return CallbackGrant(action, None, {})
+
+
+async def test_change_chat_threshold_inc_noop_and_dec_to_unset() -> None:
+    sessions = ThresholdSessions({"chat_message_thresholds": {"-100123": 1}})
+    settings = _threshold_settings(sessions)
+
+    await settings._change_chat_threshold(
+        _panel_query(), _threshold_grant("draft_chat_threshold:-100123:inc")
+    )
+    assert sessions.data["chat_message_thresholds"] == {"-100123": 2}
+
+    await settings._change_chat_threshold(
+        _panel_query(), _threshold_grant("draft_chat_threshold:-100123:noop")
+    )
+    assert sessions.data["chat_message_thresholds"] == {"-100123": 2}
+
+    await settings._change_chat_threshold(
+        _panel_query(), _threshold_grant("draft_chat_threshold:-100123:dec")
+    )
+    await settings._change_chat_threshold(
+        _panel_query(), _threshold_grant("draft_chat_threshold:-100123:dec")
+    )
+    assert sessions.data["chat_message_thresholds"] == {}
+
+
+async def test_change_chat_threshold_caps_at_the_product_limit() -> None:
+    sessions = ThresholdSessions({"chat_message_thresholds": {"-100123": 500}})
+    settings = _threshold_settings(sessions)
+
+    with pytest.raises(UserFacingError, match="发言门槛最高 500 条"):
+        await settings._change_chat_threshold(
+            _panel_query(), _threshold_grant("draft_chat_threshold:-100123:inc")
+        )
+
+
+async def test_chat_threshold_grants_are_routed_by_prefix() -> None:
+    sessions = ThresholdSessions({"chat_message_thresholds": {}})
+    settings = _threshold_settings(sessions)
+
+    assert settings.handles_action("draft_chat_threshold:-100123:noop")
+    assert await settings.handle_grant(
+        _panel_query(), _threshold_grant("draft_chat_threshold:-100123:inc")
+    )
+    assert sessions.data["chat_message_thresholds"] == {"-100123": 1}
+    assert sessions.state == "draft:participation"
 
 
 def _creator(bot: RequiredChatBot) -> CampaignCreator:

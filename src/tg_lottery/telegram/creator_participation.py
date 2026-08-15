@@ -2,6 +2,7 @@ import re
 from typing import Any
 
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.domain.rules import MAX_CHAT_MESSAGE_THRESHOLD
 
 ButtonRows = list[list[tuple[str, str]]]
 PARTICIPATION_PAGE_SIZE = 10
@@ -83,8 +84,52 @@ def participation_rows(data: dict[str, Any]) -> ButtonRows:
                 ("清空全部", "draft_participation_clear"),
             ]
         )
+    start = page * PARTICIPATION_PAGE_SIZE
+    rows.extend(_threshold_rows(data, chats[start : start + PARTICIPATION_PAGE_SIZE]))
     rows.append([("↩ 返回上一层", "draft_back")])
     return rows
+
+
+def _threshold_rows(data: dict[str, Any], page_chats: list[dict[str, Any]]) -> ButtonRows:
+    thresholds = data.get("chat_message_thresholds") or {}
+    rows: ButtonRows = []
+    for chat in page_chats:
+        if chat.get("type") == "channel":
+            continue
+        chat_id = str(chat["id"])
+        current = int(thresholds.get(chat_id, 0))
+        label = f"🗣 门槛 {current} 条" if current else "🗣 门槛 未设置"
+        rows.append(
+            [
+                ("发言门槛 −", f"draft_chat_threshold:{chat_id}:dec"),
+                (label, f"draft_chat_threshold:{chat_id}:noop"),
+                ("＋", f"draft_chat_threshold:{chat_id}:inc"),
+            ]
+        )
+    return rows
+
+
+def apply_threshold(data: dict[str, Any], action: str) -> dict[str, Any]:
+    _, chat_id, op = action.split(":")
+    thresholds = apply_threshold_action(
+        dict(data.get("chat_message_thresholds") or {}), chat_id, op
+    )
+    return data | {"chat_message_thresholds": thresholds}
+
+
+def apply_threshold_action(
+    thresholds: dict[str, int], chat_id: str, op: str
+) -> dict[str, int]:
+    current = int(thresholds.get(chat_id, 0))
+    if op == "inc":
+        if current >= MAX_CHAT_MESSAGE_THRESHOLD:
+            raise UserFacingError(f"发言门槛最高 {MAX_CHAT_MESSAGE_THRESHOLD} 条")
+        return thresholds | {chat_id: current + 1}
+    if op == "dec":
+        if current > 1:
+            return thresholds | {chat_id: current - 1}
+        return {key: value for key, value in thresholds.items() if key != chat_id}
+    return thresholds  # noop 仅刷新显示
 
 
 def participation_add_text() -> str:
@@ -101,6 +146,7 @@ def participation_add_text() -> str:
 
 def participation_text(data: dict[str, Any]) -> str:
     chats = data.get("required_chats") or []
+    thresholds = data.get("chat_message_thresholds") or {}
     lines = [
         "📮 参与条件",
         "主活动群始终是参与条件。",
@@ -117,7 +163,12 @@ def participation_text(data: dict[str, Any]) -> str:
     for index, chat in enumerate(page_chats, start=start + 1):
         privacy = "私有" if chat.get("private") else f"@{chat['username']}"
         action = "关注频道" if chat.get("type") == "channel" else "加入群聊"
-        lines.append(f"{index}. {action} {chat['title']} · {privacy}")
+        line = f"{index}. {action} {chat['title']} · {privacy}"
+        if chat.get("type") != "channel":
+            current = int(thresholds.get(str(chat["id"]), 0))
+            if current:
+                line += f"（发言 ≥ {current} 条）"
+        lines.append(line)
     return "\n".join(lines)
 
 

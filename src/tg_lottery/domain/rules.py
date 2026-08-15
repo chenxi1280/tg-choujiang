@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 
 MAX_ACTIVITY_MESSAGE_THRESHOLD = 10_000
 MAX_ACTIVITY_REWARD_TICKETS = 100
+MAX_CHAT_MESSAGE_THRESHOLD = 500
 MAX_INVITE_COUNT = 100_000
 MAX_INVITE_BONUS_TICKETS = 10_000
 
@@ -61,6 +62,16 @@ class CampaignRules(BaseModel, frozen=True):
     bonus_types: tuple[Literal["invite", "activity"], ...] = ()
     unique_winner: bool = True
     settlement_drain_seconds: int = Field(default=300, ge=0)
+    message_thresholds: dict[str, int] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_message_thresholds(self) -> CampaignRules:
+        for chat_id, threshold in self.message_thresholds.items():
+            if not chat_id.lstrip("-").isdigit():
+                raise ValueError("message threshold chat ids must be numeric")
+            if not 1 <= threshold <= MAX_CHAT_MESSAGE_THRESHOLD:
+                raise ValueError("chat message threshold out of range")
+        return self
 
     @model_validator(mode="before")
     @classmethod
