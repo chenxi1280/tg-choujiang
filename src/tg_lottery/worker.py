@@ -28,6 +28,7 @@ async def run() -> None:
             invitations=container.services.invitations,
             settlement=container.services.settlement,
             drawing=container.services.drawing,
+            message_stats=container.services.message_stats,
         )
         job_worker = JobWorker(
             owner_id=job_owner,

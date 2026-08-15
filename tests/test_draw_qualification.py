@@ -127,7 +127,86 @@ def _single_invite_bonus_rule() -> CampaignRules:
     )
 
 
-def _handlers(bot: QualificationBot, session_factory) -> JobHandlers:
+class FakeStats:
+    def __init__(self, totals: dict[int, int]) -> None:
+        self._totals = totals
+        self.calls: list[tuple[int, tuple[int, ...]]] = []
+
+    async def totals(self, user_id: int, chat_ids: tuple[int, ...]) -> dict[int, int]:
+        self.calls.append((user_id, chat_ids))
+        return self._totals
+
+
+async def test_draw_review_marks_ineligible_on_message_threshold_shortfall(
+    session_factory,
+) -> None:
+    rules = CampaignRules(message_thresholds={"-100123": 10})
+    async with session_factory() as session, session.begin():
+        group, campaign, participant = await seed_campaign(
+            session, state=CampaignState.SETTLING, rules=rules
+        )
+        campaign_id = campaign.id
+        participant_id = participant.id
+        participant_user_id = participant.user_id
+        main_chat_id = group.chat_id
+    bot = QualificationBot({main_chat_id: "member"})
+    stats = FakeStats({main_chat_id: 3})
+
+    await _handlers(bot, session_factory, stats).handle(_job(str(campaign_id)))
+
+    async with session_factory() as session:
+        check = await session.scalar(
+            select(QualificationCheck).where(
+                QualificationCheck.participant_id == participant_id,
+                QualificationCheck.phase == "draw",
+            )
+        )
+        assert check.state is QualificationState.INELIGIBLE
+        shortfall = next(
+            item
+            for item in check.observations["chats"]
+            if item.get("error_code") == "message_threshold"
+        )
+        assert shortfall["chat_id"] == main_chat_id
+        assert shortfall["state"] == "ineligible"
+        assert shortfall["observed_status"] == "messages 3/10"
+    assert stats.calls == [(participant_user_id, (main_chat_id,))]
+
+
+async def test_draw_review_keeps_eligible_when_message_threshold_met(
+    session_factory,
+) -> None:
+    rules = CampaignRules(message_thresholds={"-100123": 10})
+    async with session_factory() as session, session.begin():
+        group, campaign, participant = await seed_campaign(
+            session, state=CampaignState.SETTLING, rules=rules
+        )
+        campaign_id = campaign.id
+        participant_id = participant.id
+        participant_user_id = participant.user_id
+        main_chat_id = group.chat_id
+    bot = QualificationBot({main_chat_id: "member"})
+    stats = FakeStats({main_chat_id: 12})
+
+    await _handlers(bot, session_factory, stats).handle(_job(str(campaign_id)))
+
+    async with session_factory() as session:
+        check = await session.scalar(
+            select(QualificationCheck).where(
+                QualificationCheck.participant_id == participant_id,
+                QualificationCheck.phase == "draw",
+            )
+        )
+        assert check.state is QualificationState.ELIGIBLE
+        assert [
+            item for item in check.observations["chats"] if item.get("error_code")
+        ] == []
+    assert stats.calls == [(participant_user_id, (main_chat_id,))]
+
+
+def _handlers(
+    bot: QualificationBot, session_factory, stats: FakeStats | None = None
+) -> JobHandlers:
     uow_factory = partial(UnitOfWork, session_factory)
     return JobHandlers(
         bot=bot,
@@ -136,6 +215,7 @@ def _handlers(bot: QualificationBot, session_factory) -> JobHandlers:
         invitations=InvitationService(uow_factory),
         settlement=SettlementService(uow_factory),
         drawing=DrawingService(uow_factory),
+        message_stats=stats,
     )
 
 

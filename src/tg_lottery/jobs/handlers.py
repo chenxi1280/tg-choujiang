@@ -1,3 +1,5 @@
+from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from aiogram import Bot
@@ -7,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tg_lottery.application.campaign_notifications import add_campaign_card_state
 from tg_lottery.application.drawing import DrawingService
 from tg_lottery.application.invitations import InvitationService
+from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.participants import ParticipantService
 from tg_lottery.application.records import add_outbox, utcnow
 from tg_lottery.application.required_chat_links import add_required_chat_revoke_outboxes
@@ -41,7 +44,10 @@ from tg_lottery.jobs.maintenance import (
     schedule_ticket_reconcile,
     schedule_update_retention,
 )
-from tg_lottery.telegram.qualification import observe_memberships
+from tg_lottery.telegram.qualification import (
+    QualificationObservationResult,
+    observe_memberships,
+)
 
 _START_NOOP_STATES = frozenset(
     {
@@ -66,6 +72,7 @@ class JobHandlers:
         invitations: InvitationService,
         settlement: SettlementService,
         drawing: DrawingService,
+        message_stats: MessageStatsService | None = None,
     ) -> None:
         self._bot = bot
         self._session_factory = session_factory
@@ -73,6 +80,7 @@ class JobHandlers:
         self._invitations = invitations
         self._settlement = settlement
         self._drawing = drawing
+        self._message_stats = message_stats
 
     async def handle(self, job: ScheduledJob) -> None:
         handlers = {
@@ -148,17 +156,61 @@ class JobHandlers:
                 user_id=participant.user_id,
                 observed_at=observed_at,
             )
+            state, observations = await self._merge_message_thresholds(
+                user_id=participant.user_id,
+                rules=rules,
+                result=result,
+                observed_at=observed_at,
+            )
             await self._participants.record_draw_qualification(
                 participant_id=participant.id,
-                state=result.state,
+                state=state,
                 observed_at=observed_at,
                 observed_status=result.observed_status,
                 error_code=result.error_code,
-                observations=result.observations,
+                observations=observations,
             )
             unresolved = unresolved or result.state is QualificationState.UNKNOWN
         if unresolved:
             raise JobRetry("one or more channel qualifications remain unknown")
+
+    async def _merge_message_thresholds(
+        self,
+        *,
+        user_id: int,
+        rules: CampaignRules,
+        result: QualificationObservationResult,
+        observed_at: datetime,
+    ) -> tuple[QualificationState, tuple[dict[str, Any], ...]]:
+        thresholds = {
+            int(key): int(value)
+            for key, value in (rules.message_thresholds or {}).items()
+        }
+        state = result.state
+        observations = tuple(result.observations)
+        if not thresholds:
+            return state, observations
+        member_ok = {
+            int(item["chat_id"])
+            for item in observations
+            if item["state"] == QualificationState.ELIGIBLE.value
+        }
+        totals = await self._message_stats.totals(user_id, tuple(thresholds))
+        shortfalls = tuple(
+            {
+                "chat_id": chat_id,
+                "state": "ineligible",
+                "observed_status": f"messages {totals.get(chat_id, 0)}/{need}",
+                "error_code": "message_threshold",
+                "observed_at": observed_at.isoformat(),
+            }
+            for chat_id, need in thresholds.items()
+            if chat_id in member_ok and totals.get(chat_id, 0) < need
+        )
+        if shortfalls:
+            state = QualificationState.INELIGIBLE
+            observations = observations + shortfalls
+        return state, observations
 
     async def _validate_invitation(self, job: ScheduledJob) -> None:
         invitation_id = UUID(job.aggregate_id)
