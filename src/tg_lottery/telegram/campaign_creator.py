@@ -16,6 +16,7 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.infrastructure.db import Group
+from tg_lottery.telegram import creator_participation as participation
 from tg_lottery.telegram.admin_authorization import verify_chat_admin
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
 from tg_lottery.telegram.creator_schedule import positive_int
@@ -307,6 +308,7 @@ class CampaignCreator:
         required_chats = await self._resolve_required_chats(data, creator_user_id=creator.id)
         main_chat = await self._required_chat_record(int(data["chat_id"]), admin_user_id=creator.id)
         _validate_activity_chat(data, main_chat)
+        participation.validate_main_threshold(data, main_chat)
         issuer_ref = str(data.get("issuer") or "")
         candidates = (
             await self._queries.user_ids_by_username(issuer_ref)

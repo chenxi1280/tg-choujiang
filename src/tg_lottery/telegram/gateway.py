@@ -13,6 +13,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from tg_lottery.infrastructure.db import InviteLink
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway_requests import GatewayRequest
+from tg_lottery.telegram.public_projection import public_timezone_label
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -384,7 +385,9 @@ def _draw_lines(payload: dict[str, Any]) -> list[str]:
     rules = payload.get("rules", {})
     if rules.get("draw_mode") == "full":
         return ["🎊 <b>满人开奖：</b>", f"达到 {rules['participant_target']} 人参与后立刻开奖"]
-    return ["📅 <b>开奖日期：</b>（北京时间）", _draw_time(payload)]
+    moment_line = _draw_time(payload)
+    label = public_timezone_label(str(payload["timezone"]))
+    return [f"📅 <b>开奖日期：</b>（{label}）", moment_line]
 
 
 def _draw_result_text(payload: dict[str, Any]) -> str:

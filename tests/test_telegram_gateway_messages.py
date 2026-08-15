@@ -29,6 +29,15 @@ def test_campaign_card_localizes_internal_iso_times() -> None:
     assert "+00:00" not in text
 
 
+def test_campaign_card_timezone_label_follows_campaign_timezone() -> None:
+    payload = _campaign_payload() | {"timezone": "Asia/Kuala_Lumpur"}
+
+    text = _campaign_card_text(payload)
+
+    assert "马来西亚时间" in text
+    assert "北京时间" not in text
+
+
 def test_campaign_card_accepts_legacy_minute_payload() -> None:
     payload = _campaign_payload() | {
         "cutoff_at": "2026-08-08 11:20",

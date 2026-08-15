@@ -109,6 +109,12 @@ def _threshold_rows(data: dict[str, Any], page_chats: list[dict[str, Any]]) -> B
     return rows
 
 
+def validate_main_threshold(data: dict[str, Any], main_chat: dict[str, Any]) -> None:
+    thresholds = data.get("chat_message_thresholds") or {}
+    if str(main_chat.get("id")) in thresholds and main_chat.get("type") == "channel":
+        raise UserFacingError("主活动载体是频道，无法统计发言；请先清零主群发言门槛")
+
+
 def apply_threshold(data: dict[str, Any], action: str) -> dict[str, Any]:
     _, chat_id, op = action.split(":")
     thresholds = apply_threshold_action(
@@ -142,6 +148,14 @@ def participation_add_text() -> str:
     )
 
 
+def _main_chat_line(data: dict[str, Any], thresholds: dict[str, int]) -> str | None:
+    if data.get("chat_id") is None:
+        return None
+    main_threshold = int(thresholds.get(str(data["chat_id"]), 0))
+    suffix = f"（发言 ≥ {main_threshold} 条）" if main_threshold else ""
+    return f"主活动群：{data.get('group_title') or '未命名群组'}{suffix}"
+
+
 def participation_text(data: dict[str, Any]) -> str:
     chats = data.get("required_chats") or []
     thresholds = data.get("chat_message_thresholds") or {}
@@ -150,6 +164,9 @@ def participation_text(data: dict[str, Any]) -> str:
         "主活动群始终是参与条件。",
         "可一次发送一个或多个群聊/频道链接。",
     ]
+    main_line = _main_chat_line(data, thresholds)
+    if main_line is not None:
+        lines.append(main_line)
     if not chats:
         lines.append("\n当前没有额外条件。")
         return "\n".join(lines)
