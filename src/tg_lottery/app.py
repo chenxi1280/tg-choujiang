@@ -3,6 +3,7 @@ import asyncio
 from tg_lottery.bootstrap import build_container, build_update_handler
 from tg_lottery.config import get_settings
 from tg_lottery.runtime import configure_logging, owner_id, stop_event, validate_bot
+from tg_lottery.telegram.bot_commands import register_bot_commands
 from tg_lottery.telegram.inbox import InboxProcessor
 from tg_lottery.telegram.polling import TelegramPollingAdapter
 
@@ -14,6 +15,7 @@ async def run() -> None:
     stop = stop_event()
     try:
         bot_username = await validate_bot(container.bot, settings.bot_id)
+        await register_bot_commands(container.bot)
         handler = build_update_handler(container, bot_username)
         polling = TelegramPollingAdapter(
             bot=container.bot,
