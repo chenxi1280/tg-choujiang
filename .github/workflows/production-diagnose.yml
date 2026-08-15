@@ -1,0 +1,155 @@
+name: Production Diagnose
+
+'on':
+  workflow_dispatch:
+    inputs:
+      start_at:
+        description: Incident window start in UTC (YYYY-MM-DDTHH:MM:SSZ)
+        required: true
+        default: '2026-08-14T13:50:00Z'
+      end_at:
+        description: Incident window end in UTC (YYYY-MM-DDTHH:MM:SSZ)
+        required: true
+        default: '2026-08-14T14:30:00Z'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tg-lottery-production-diagnose
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: ${{ vars.PRODUCTION_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate incident window
+        env:
+          INCIDENT_START: ${{ inputs.start_at }}
+          INCIDENT_END: ${{ inputs.end_at }}
+        run: |
+          set -euo pipefail
+          timestamp_pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
+          [[ "${INCIDENT_START}" =~ ${timestamp_pattern} ]]
+          [[ "${INCIDENT_END}" =~ ${timestamp_pattern} ]]
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          DEPLOY_HOST: ${{ secrets.PRODUCTION_HOST }}
+          DEPLOY_USER: ${{ secrets.PRODUCTION_USER }}
+          DEPLOY_PORT: ${{ secrets.PRODUCTION_PORT }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          cat > ~/.ssh/config <<EOF
+          Host production-server
+            HostName ${DEPLOY_HOST}
+            User ${DEPLOY_USER}
+            Port ${DEPLOY_PORT:-22}
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+            StrictHostKeyChecking accept-new
+          EOF
+          chmod 600 ~/.ssh/config
+      - name: Query redacted incident facts
+        env:
+          INCIDENT_START: ${{ inputs.start_at }}
+          INCIDENT_END: ${{ inputs.end_at }}
+          PRODUCTION_BASE_DIR: ${{ vars.PRODUCTION_BASE_DIR }}
+        run: |
+          set -euo pipefail
+          BASE_DIR="${PRODUCTION_BASE_DIR:-/data/tg-lottery}"
+          ssh production-server \
+            "BASE_DIR='${BASE_DIR}' INCIDENT_START='${INCIDENT_START}' INCIDENT_END='${INCIDENT_END}' bash -s" \
+            <<'REMOTE'
+          set -euo pipefail
+          source "${BASE_DIR}/current/deploy/docker-env.sh"
+          resolve_docker_command
+          printf 'current_release='
+          readlink "${BASE_DIR}/current"
+          docker_cmd exec -i app-infra-postgres \
+            psql -X -v ON_ERROR_STOP=1 \
+            -v start_at="${INCIDENT_START}" \
+            -v end_at="${INCIDENT_END}" \
+            -U postgres -d tg_lottery <<'SQL'
+          \pset pager off
+          \pset null '-'
+
+          SELECT now() AT TIME ZONE 'UTC' AS db_utc,
+                 now() AT TIME ZONE 'Asia/Shanghai' AS shanghai_now;
+
+          SELECT last_durable_update_id,
+                 last_poll_succeeded_at,
+                 integrity_status,
+                 updated_at
+          FROM polling_offsets;
+
+          SELECT state,
+                 count(*) AS rows,
+                 min(event_at) AS first_event,
+                 max(event_at) AS last_event
+          FROM telegram_updates
+          WHERE state <> 'processed'
+          GROUP BY state
+          ORDER BY state;
+
+          SELECT update_id,
+                 update_type,
+                 event_at,
+                 state,
+                 attempts,
+                 created_at,
+                 updated_at,
+                 processed_at,
+                 CASE
+                   WHEN last_error IS NULL THEN '-'
+                   ELSE split_part(last_error, ':', 1)
+                 END AS error_type
+          FROM telegram_updates
+          WHERE event_at >= :'start_at'::timestamptz
+            AND event_at <= :'end_at'::timestamptz
+          ORDER BY update_id;
+
+          SELECT operation,
+                 state,
+                 created_at,
+                 updated_at,
+                 gateway_started_at,
+                 projected_at,
+                 (remote_message_id IS NOT NULL) AS has_remote_message,
+                 CASE
+                   WHEN last_error IS NULL THEN '-'
+                   ELSE split_part(last_error, ':', 1)
+                 END AS error_type
+          FROM telegram_outbox
+          WHERE created_at >= :'start_at'::timestamptz
+            AND created_at <= :'end_at'::timestamptz
+          ORDER BY created_at;
+
+          SELECT outbox.operation,
+                 attempt.attempt_number,
+                 attempt.certainty,
+                 attempt.error_code,
+                 attempt.created_at,
+                 attempt.finished_at
+          FROM delivery_attempts AS attempt
+          JOIN telegram_outbox AS outbox ON outbox.id = attempt.outbox_id
+          WHERE outbox.created_at >= :'start_at'::timestamptz
+            AND outbox.created_at <= :'end_at'::timestamptz
+          ORDER BY attempt.created_at;
+
+          SELECT state,
+                 created_at,
+                 updated_at,
+                 draw_at,
+                 (published_message_id IS NOT NULL) AS has_published_message
+          FROM campaigns
+          WHERE created_at >= :'start_at'::timestamptz
+            AND created_at <= :'end_at'::timestamptz
+          ORDER BY created_at;
+          SQL
+          REMOTE
