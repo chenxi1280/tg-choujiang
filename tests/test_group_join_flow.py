@@ -53,6 +53,9 @@ class ObservingParticipants:
         self.result = result
         return SimpleNamespace(qualification_state=result.state, ticket_total_cache=3)
 
+    async def pending_approval_chat_ids(self, participant_id):
+        return frozenset()
+
 
 class CampaignQueries:
     def __init__(self, campaign):

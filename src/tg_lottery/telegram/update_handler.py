@@ -237,6 +237,27 @@ class LotteryUpdateHandler:
                 data.removeprefix("member:verify:"),
                 user=query.from_user,
                 observed_at=utcnow(),
+                callback=query,
+            )
+            return True
+        return await self._dispatch_member_page_callback(query, data)
+
+    async def _dispatch_member_page_callback(self, query: CallbackQuery, data: str) -> bool:
+        message = query.message
+        if not isinstance(message, Message):
+            return False
+        if data.startswith("member:missing:"):
+            payload = data.removeprefix("member:missing:")
+            reference, separator, page = payload.rpartition(":")
+            if not separator or not page.isdecimal():
+                raise ValueError("invalid missing targets callback")
+            await self._member_flow.register(
+                message,
+                reference,
+                user=query.from_user,
+                observed_at=utcnow(),
+                callback=query,
+                missing_page=int(page),
             )
             return True
         if data.startswith("member:condition:"):
@@ -283,13 +304,27 @@ class LotteryUpdateHandler:
     async def _join_request(self, event: object) -> None:
         invite = getattr(event, "invite_link", None)
         user = getattr(event, "from_user", None)
-        if invite is None or user is None:
+        if user is None:
             return
+        if invite is not None:
+            await self._record_invitation_join_request(invite, user, event.date)
+        campaign_ids = await self._queries.campaigns_for_mandatory_chat(event.chat.id)
+        for campaign_id in campaign_ids:
+            await self._member_flow.join_request_pending(
+                campaign_id=campaign_id,
+                user=user,
+                chat_id=event.chat.id,
+                observed_at=event.date,
+            )
+
+    async def _record_invitation_join_request(
+        self, invite: object, user: object, observed_at: object
+    ) -> None:
         link = await self._queries.invite_link_by_url(invite.invite_link)
         if link is None:
             return
         await self._invitations.record_join_request(
-            JoinObservation(link.id, user.id, event.date, is_bot=user.is_bot)
+            JoinObservation(link.id, user.id, observed_at, is_bot=user.is_bot)
         )
 
     async def _chat_member(self, event: ChatMemberUpdated) -> None:

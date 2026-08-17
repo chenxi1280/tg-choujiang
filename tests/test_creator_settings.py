@@ -44,6 +44,7 @@ class RequiredChatBot:
             full_name=None,
             type="supergroup",
             username="public_group" if ref == "@public_group" else None,
+            permissions=SimpleNamespace(can_send_messages=True),
         )
 
     async def get_chat_member(self, chat_id: int, user_id: int):
@@ -158,19 +159,52 @@ def test_activity_bonus_rejects_a_channel_as_the_main_chat() -> None:
     validate_main_threshold({}, {"id": -1001, "type": "channel"})
 
 
-async def test_required_chats_are_resolved_deduplicated_and_frozen() -> None:
+async def test_required_chats_reject_participation_group_overlap() -> None:
+    creator = _creator(RequiredChatBot())
+
+    with pytest.raises(UserFacingError, match=r"群组 -1001.*参与群.*准入条件"):
+        await creator._resolve_required_chats(
+            {
+                "chat_id": -1001,
+                "required_chat_refs": ["@public_group", -1003, -1001],
+            },
+            creator_user_id=201,
+        )
+
+
+async def test_required_chats_are_resolved_and_frozen() -> None:
     creator = _creator(RequiredChatBot())
 
     records = await creator._resolve_required_chats(
-        {
-            "chat_id": -1001,
-            "required_chat_refs": ["@public_group", -1003, -1001],
-        },
+        {"chat_id": -1001, "required_chat_refs": ["@public_group", -1003]},
         creator_user_id=201,
     )
 
     assert [item["id"] for item in records] == [-1002, -1003]
     assert records[0]["title"] == "群组 -1002"
+
+
+async def test_activity_bonus_rejects_mandatory_group_without_member_speech() -> None:
+    bot = RequiredChatBot()
+    original_get_chat = bot.get_chat
+
+    async def get_chat(ref: int | str):
+        chat = await original_get_chat(ref)
+        chat.permissions.can_send_messages = False
+        return chat
+
+    bot.get_chat = get_chat
+    creator = _creator(bot)
+
+    with pytest.raises(UserFacingError, match=r"群组 -1002.*禁止普通成员发言"):
+        await creator._resolve_required_chats(
+            {
+                "chat_id": -1001,
+                "required_chat_refs": ["@public_group"],
+                "bonus_types": ["activity"],
+            },
+            creator_user_id=201,
+        )
 
 
 async def test_required_chat_rejects_bot_without_admin_access() -> None:

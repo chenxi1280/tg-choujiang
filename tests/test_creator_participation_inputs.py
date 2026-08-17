@@ -34,6 +34,7 @@ class RequiredChatBot:
             full_name=None,
             type="channel",
             username=self._username,
+            permissions=None,
         )
 
     async def get_chat_member(self, chat_id: int, user_id: int):

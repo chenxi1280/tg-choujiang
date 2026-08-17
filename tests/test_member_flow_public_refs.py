@@ -252,6 +252,72 @@ async def test_missing_target_page_lists_multiple_join_links_and_unknown_separat
     assert "暂时无法核验" in text and "- 公告频道 D" in text
 
 
+async def test_missing_target_page_paginates_without_limiting_reverification() -> None:
+    campaign = SimpleNamespace(
+        id=uuid4(),
+        public_ref=PUBLIC_REF,
+        cutoff_at=datetime.now(UTC).replace(year=datetime.now(UTC).year + 1),
+        presentation={},
+    )
+    targets = tuple(
+        _target("requirement", -100200 - index, title=f"条件 {index}", chat_type="supergroup")
+        for index in range(1, 9)
+    )
+    observations = tuple({"chat_id": target.chat_id, "state": "ineligible"} for target in targets)
+    queries = SimpleNamespace(qualification_targets=_async_result(targets))
+    flow = MemberFlow(bot=object(), participants=object(), queries=queries, cipher=object())
+
+    first_text, first_keyboard = await flow._qualification_reply(
+        campaign, QualificationState.INELIGIBLE, observations, page=1
+    )
+    second_text, second_keyboard = await flow._qualification_reply(
+        campaign, QualificationState.INELIGIBLE, observations, page=2
+    )
+
+    assert "第 1/2 页" in first_text
+    first_links = [button for row in first_keyboard.inline_keyboard for button in row if button.url]
+    assert len(first_links) == 6
+    assert any(
+        button.callback_data == f"member:missing:{PUBLIC_REF}:2"
+        for row in first_keyboard.inline_keyboard
+        for button in row
+    )
+    assert "第 2/2 页" in second_text
+    second_links = [
+        button for row in second_keyboard.inline_keyboard for button in row if button.url
+    ]
+    assert len(second_links) == 2
+    assert second_keyboard.inline_keyboard[-1][0].callback_data == f"member:verify:{PUBLIC_REF}"
+
+
+async def test_waiting_approval_is_visible_and_has_no_duplicate_join_button() -> None:
+    campaign = SimpleNamespace(
+        id=uuid4(),
+        public_ref=PUBLIC_REF,
+        cutoff_at=datetime.now(UTC).replace(year=datetime.now(UTC).year + 1),
+        presentation={},
+    )
+    target = _target("requirement", -100301, title="审核群", chat_type="supergroup")
+    queries = SimpleNamespace(qualification_targets=_async_result((target,)))
+    flow = MemberFlow(bot=object(), participants=object(), queries=queries, cipher=object())
+
+    text, keyboard = await flow._qualification_reply(
+        campaign,
+        QualificationState.INELIGIBLE,
+        (
+            {
+                "chat_id": target.chat_id,
+                "state": "ineligible",
+                "observed_status": "join_request_pending",
+            },
+        ),
+    )
+
+    assert "等待管理员批准" in text
+    assert "审核群" in text and "等待批准" in text
+    assert all(button.url is None for row in keyboard.inline_keyboard for button in row)
+
+
 def _target(kind: str, chat_id: int, *, title: str, chat_type: str) -> QualificationTarget:
     return QualificationTarget(
         kind=kind,

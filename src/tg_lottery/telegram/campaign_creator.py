@@ -20,6 +20,7 @@ from tg_lottery.telegram.admin_authorization import verify_chat_admin
 from tg_lottery.telegram.creator_group_selection import (
     bind_initial_group,
     resolve_participation_groups,
+    resolve_requirements,
     selected_chat_ids,
     set_primary_group,
     toggle_group,
@@ -43,7 +44,6 @@ from tg_lottery.telegram.draft_config import (
     presentation_from_data,
 )
 from tg_lottery.telegram.issuer import creator_issuer, resolve_issuer
-from tg_lottery.telegram.required_chats import resolve_required_chat
 
 
 class CampaignCreator:
@@ -360,17 +360,7 @@ class CampaignCreator:
     async def _resolve_required_chats(
         self, data: dict[str, Any], *, creator_user_id: int
     ) -> list[dict[str, Any]]:
-        refs = data.get("required_chat_refs") or data.get("required_chat_ids", [])
-        records: list[dict[str, Any]] = []
-        seen = set(selected_chat_ids(data))
-        for ref in refs:
-            record = await resolve_required_chat(self._bot, ref, admin_user_id=creator_user_id)
-            chat_id = int(record["id"])
-            if chat_id in seen:
-                continue
-            seen.add(chat_id)
-            records.append(record | {"position": len(records) + 1})
-        return records
+        return await resolve_requirements(self._bot, data, creator_user_id=creator_user_id)
 
     async def _render_dashboard(self, user_id: int, message: Message, data: dict[str, Any]) -> None:
         updated = data | {"guided": False}

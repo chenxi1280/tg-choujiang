@@ -29,10 +29,11 @@ from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram import member_callbacks, member_condition_views
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.member_invites import invite_link_keyboard, invite_link_text
+from tg_lottery.telegram.member_missing_targets import build_missing_targets_reply
 from tg_lottery.telegram.member_observation import apply_message_thresholds
 from tg_lottery.telegram.member_popups import popup_success
 from tg_lottery.telegram.public_projection import campaign_state_text, format_public_time
-from tg_lottery.telegram.qualification import observe_memberships
+from tg_lottery.telegram.qualification import observe_memberships, with_pending_approvals
 
 
 class MemberFlow:
@@ -83,6 +84,17 @@ class MemberFlow:
             attempt, user_id=user.id, main_chat_id=group.chat_id, campaign=campaign
         )
 
+    async def join_request_pending(
+        self, *, campaign_id: UUID, user: User, chat_id: int, observed_at: datetime
+    ) -> None:
+        await self._participants.mark_membership_ineligible(
+            campaign_id=campaign_id,
+            user_id=user.id,
+            chat_id=chat_id,
+            observed_at=observed_at,
+            observed_status="join_request_pending",
+        )
+
     async def register(
         self,
         message: Message,
@@ -91,6 +103,7 @@ class MemberFlow:
         user: User | None = None,
         observed_at: datetime | None = None,
         callback: CallbackQuery | None = None,
+        missing_page: int = 1,
     ) -> None:
         campaign = await self._queries.campaign_by_reference(campaign_reference)
         if campaign is None:
@@ -126,11 +139,9 @@ class MemberFlow:
             state=state,
             observations=observations,
             user_id=user.id,
+            page=missing_page,
+            callback=callback,
         )
-        if callback is not None:
-            await member_callbacks.alert_failure(
-                callback, campaign, state, observations=observations
-            )
 
     async def _registration_success_reply(
         self, message: Message, campaign: object, total: int, *, callback: CallbackQuery | None
@@ -141,6 +152,10 @@ class MemberFlow:
             return
         rules = CampaignRules.model_validate(campaign.rules)
         keyboard = member_keyboard(campaign.public_ref, rules.invite_bonus_enabled)
+        if callback is not None:
+            await message.edit_text(popup_success(total), reply_markup=keyboard)
+            await member_callbacks.safe_answer(callback, popup_success(total), alert=False)
+            return
         sent = await message.answer(popup_success(total), reply_markup=keyboard)
         await self._schedule_success_deletions(campaign, message, sent)
         if callback is not None:
@@ -193,10 +208,14 @@ class MemberFlow:
             user_id=user_id,
             observed_at=observed_at,
         )
+        pending_chat_ids = await self._participants.pending_approval_chat_ids(
+            attempt.participant_id
+        )
         rules = CampaignRules.model_validate(campaign.rules)
         thresholds = {int(key): int(value) for key, value in rules.message_thresholds.items()}
         observations = member_condition_views.with_target_kinds(
-            result.observations, attempt.target_kinds
+            with_pending_approvals(result.observations, pending_chat_ids),
+            attempt.target_kinds,
         )
         state, observations = await apply_message_thresholds(
             self._stats,
@@ -288,9 +307,19 @@ class MemberFlow:
         state: QualificationState,
         observations: tuple[dict[str, object], ...],
         user_id: int,
+        page: int,
+        callback: CallbackQuery | None,
     ) -> None:
-        text, keyboard = await self._qualification_reply(campaign, state, observations)
-        if getattr(getattr(message, "chat", None), "type", None) in {None, "private"}:
+        text, keyboard = await self._qualification_reply(campaign, state, observations, page=page)
+        if callback is not None:
+            await member_callbacks.alert_failure(
+                callback, campaign, state, observations=observations
+            )
+        chat_type = getattr(getattr(message, "chat", None), "type", None)
+        if callback is not None and chat_type == "private":
+            await message.edit_text(text, reply_markup=keyboard)
+            return
+        if chat_type in {None, "private"}:
             await message.answer(text, reply_markup=keyboard)
             return
         try:
@@ -315,41 +344,18 @@ class MemberFlow:
         campaign: object,
         state: QualificationState,
         observations: tuple[dict[str, object], ...],
+        *,
+        page: int = 1,
     ) -> tuple[str, InlineKeyboardMarkup]:
         targets = await self._qualification_targets(campaign)
-        by_chat = {int(item["chat_id"]): item for item in observations}
-        missing = [
-            target
-            for target in targets
-            if member_condition_views.target_state(target, by_chat) == "ineligible"
-        ]
-        unknown = [
-            target
-            for target in targets
-            if member_condition_views.target_state(target, by_chat) == "unknown"
-        ]
-        rows = [
-            [
-                InlineKeyboardButton(
-                    text=member_condition_views.target_button(target),
-                    url=self._target_url(campaign, target),
-                )
-            ]
-            for target in missing
-            if member_condition_views.target_joinable(campaign, target)
-        ]
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="验证资格",
-                    callback_data=f"member:verify:{campaign.public_ref}",
-                )
-            ]
+        return build_missing_targets_reply(
+            campaign,
+            state,
+            targets,
+            observations=observations,
+            page=page,
+            target_url=self._target_url,
         )
-        text = member_condition_views.missing_targets_text(
-            campaign, state, missing=missing, unknown=unknown
-        )
-        return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
     async def _qualification_targets(self, campaign: object) -> tuple[QualificationTarget, ...]:
         loader = getattr(self._queries, "qualification_targets", None)

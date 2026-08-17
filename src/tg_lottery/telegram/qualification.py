@@ -33,6 +33,17 @@ def message_threshold_shortfalls(
     )
 
 
+def with_pending_approvals(
+    observations: tuple[dict[str, Any], ...], pending_chat_ids: frozenset[int]
+) -> tuple[dict[str, Any], ...]:
+    return tuple(
+        dict(item) | {"observed_status": "join_request_pending"}
+        if int(item["chat_id"]) in pending_chat_ids and item.get("state") == "ineligible"
+        else item
+        for item in observations
+    )
+
+
 @dataclass(frozen=True)
 class QualificationObservationResult:
     state: QualificationState

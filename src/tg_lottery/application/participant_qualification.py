@@ -108,6 +108,7 @@ async def mark_membership_ineligible(
     user_id: int,
     chat_id: int,
     observed_at: datetime,
+    observed_status: str = "left",
 ) -> None:
     async with uow_factory() as uow:
         participant = await uow.session.scalar(
@@ -121,7 +122,30 @@ async def mark_membership_ineligible(
         if participant is None:
             return
         participant.qualification_state = QualificationState.INELIGIBLE
-        uow.session.add(_membership_check(participant, chat_id, observed_at))
+        uow.session.add(
+            _membership_check(participant, chat_id, observed_at, observed_status=observed_status)
+        )
+
+
+async def pending_approval_chat_ids(
+    uow_factory: UnitOfWorkFactory, participant_id: UUID
+) -> frozenset[int]:
+    async with uow_factory() as uow:
+        checks = tuple(
+            await uow.session.scalars(
+                select(QualificationCheck)
+                .where(QualificationCheck.participant_id == participant_id)
+                .order_by(QualificationCheck.observed_at.desc(), QualificationCheck.id.desc())
+            )
+        )
+    latest: dict[int, str] = {}
+    for check in checks:
+        for item in (check.observations or {}).get("chats", []):
+            chat_id = int(item["chat_id"])
+            latest.setdefault(chat_id, str(item.get("observed_status") or ""))
+    return frozenset(
+        chat_id for chat_id, status in latest.items() if status == "join_request_pending"
+    )
 
 
 async def source_participation_group_id(
@@ -185,19 +209,23 @@ def _target_observation(
 
 
 def _membership_check(
-    participant: Participant, chat_id: int, observed_at: datetime
+    participant: Participant,
+    chat_id: int,
+    observed_at: datetime,
+    *,
+    observed_status: str,
 ) -> QualificationCheck:
     observation = {
         "chat_id": chat_id,
         "state": "ineligible",
-        "observed_status": "left",
+        "observed_status": observed_status,
         "observed_at": observed_at.isoformat(),
     }
     return QualificationCheck(
         participant_id=participant.id,
         phase="membership_event",
         state=QualificationState.INELIGIBLE,
-        observed_status="left",
+        observed_status=observed_status,
         observations={"chats": [observation]},
         source_update_id=current_update_id(),
         observed_at=observed_at,

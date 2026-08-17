@@ -96,6 +96,39 @@ async def test_registration_does_not_create_invite_link_when_invite_bonus_is_off
     assert invite_outbox_count == 0
 
 
+async def test_join_request_pending_status_persists_until_a_new_membership_fact(
+    session_factory,
+) -> None:
+    now = datetime.now(UTC)
+    chat_id = -100222
+    async with session_factory() as session, session.begin():
+        _, campaign, _ = await seed_campaign(
+            session, rules=CampaignRules(required_chat_ids=(chat_id,))
+        )
+        campaign_id = campaign.id
+    service = ParticipantService(partial(UnitOfWork, session_factory))
+    attempt = await service.begin_registration(_request(campaign_id, now))
+
+    await service.mark_membership_ineligible(
+        campaign_id=campaign_id,
+        user_id=202,
+        chat_id=chat_id,
+        observed_at=now + timedelta(seconds=1),
+        observed_status="join_request_pending",
+    )
+
+    assert await service.pending_approval_chat_ids(attempt.participant_id) == frozenset({chat_id})
+
+    await service.mark_membership_ineligible(
+        campaign_id=campaign_id,
+        user_id=202,
+        chat_id=chat_id,
+        observed_at=now + timedelta(seconds=2),
+    )
+
+    assert await service.pending_approval_chat_ids(attempt.participant_id) == frozenset()
+
+
 async def test_registration_after_cutoff_is_rejected(session_factory) -> None:
     cutoff = datetime.now(UTC) - timedelta(seconds=1)
     async with session_factory() as session, session.begin():

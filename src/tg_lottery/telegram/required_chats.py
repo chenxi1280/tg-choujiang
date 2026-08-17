@@ -29,6 +29,7 @@ async def resolve_required_chat(
         "validated": True,
         "bot_admin_validated": True,
         "creator_admin_validated": admin_user_id is not None,
+        "member_can_send_messages": _member_can_send_messages(chat),
     }
 
 
@@ -76,3 +77,9 @@ def _validate_creator_membership(chat: Any, member: Any) -> None:
 
 def _chat_title(chat: Any) -> str:
     return chat.title or chat.full_name or "未命名群组/频道"
+
+
+def _member_can_send_messages(chat: Any) -> bool | None:
+    permissions = getattr(chat, "permissions", None)
+    value = getattr(permissions, "can_send_messages", None)
+    return value if isinstance(value, bool) else None

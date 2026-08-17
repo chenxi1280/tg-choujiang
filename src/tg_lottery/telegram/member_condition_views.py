@@ -145,19 +145,36 @@ def missing_targets_text(
     state: QualificationState,
     *,
     missing: list[QualificationTarget],
+    pending: list[QualificationTarget],
     unknown: list[QualificationTarget],
+    page: tuple[int, int],
 ) -> str:
     lines = [failure_reply_text(campaign, state)]
+    if page[1] > 1:
+        lines.append(f"缺失条件第 {page[0]}/{page[1]} 页")
     participation = [item for item in missing if item.kind == "participation_group"]
     requirements = [item for item in missing if item.kind == "requirement"]
     _append_target_lines(lines, "参与群（必须全部加入）", participation)
     _append_target_lines(lines, "准入条件（必须全部满足）", requirements)
-    if unknown:
-        lines.append("\n暂时无法核验：")
-        lines.extend(f"- {item.title}" for item in unknown)
-    if not missing and not unknown:
+    _append_pending_lines(lines, pending)
+    _append_unknown_lines(lines, unknown)
+    if not missing and not pending and not unknown:
         lines.append("\n资格事实已经变化，请点击重新验证。")
     return "\n".join(lines)
+
+
+def _append_pending_lines(lines: list[str], targets: list[QualificationTarget]) -> None:
+    if not targets:
+        return
+    lines.append("\n等待管理员批准：")
+    lines.extend(f"- {item.title}（等待批准）" for item in targets)
+
+
+def _append_unknown_lines(lines: list[str], targets: list[QualificationTarget]) -> None:
+    if not targets:
+        return
+    lines.append("\n暂时无法核验：")
+    lines.extend(f"- {item.title}" for item in targets)
 
 
 def _append_target_lines(lines: list[str], title: str, targets: list[QualificationTarget]) -> None:

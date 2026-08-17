@@ -18,6 +18,7 @@ from tg_lottery.application.participant_qualification import (
     build_draw_check,
     can_apply_registration_result,
     mark_membership_ineligible,
+    pending_approval_chat_ids,
     source_participation_group_id,
     store_target_observations,
     target_chat_ids,
@@ -129,6 +130,7 @@ class ParticipantService:
         user_id: int,
         chat_id: int,
         observed_at: datetime,
+        observed_status: str = "left",
     ) -> None:
         await mark_membership_ineligible(
             self._uow_factory,
@@ -136,7 +138,11 @@ class ParticipantService:
             user_id=user_id,
             chat_id=chat_id,
             observed_at=observed_at,
+            observed_status=observed_status,
         )
+
+    async def pending_approval_chat_ids(self, participant_id: UUID) -> frozenset[int]:
+        return await pending_approval_chat_ids(self._uow_factory, participant_id)
 
     async def complete_registration(self, result: QualificationResult) -> Participant:
         async with self._uow_factory() as uow:

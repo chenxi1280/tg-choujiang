@@ -19,9 +19,40 @@ async def resolve_participation_groups(
         record = await resolve_required_chat(bot, chat_id, admin_user_id=admin_user_id)
         if record.get("type") not in {"group", "supergroup"}:
             raise UserFacingError(f"参与目标「{record['title']}」不是群聊")
-        if activity_enabled and record.get("type") == "channel":
-            raise UserFacingError(f"参与群「{record['title']}」无法统计成员发言")
+        validate_activity_target(record, activity_enabled=activity_enabled)
         records.append(record | {"position": position})
+    return records
+
+
+def validate_activity_target(record: dict[str, Any], *, activity_enabled: bool) -> None:
+    if not activity_enabled or record.get("type") == "channel":
+        return
+    allowed = record.get("member_can_send_messages")
+    if allowed is True:
+        return
+    title = record["title"]
+    if allowed is False:
+        raise UserFacingError(f"强制群「{title}」禁止普通成员发言，无法启用发言加成")
+    raise UserFacingError(f"无法确认强制群「{title}」的普通成员发言权限，请检查群权限后重试")
+
+
+async def resolve_requirements(
+    bot: object, data: dict[str, Any], *, creator_user_id: int
+) -> list[dict[str, Any]]:
+    refs = data.get("required_chat_refs") or data.get("required_chat_ids", [])
+    records: list[dict[str, Any]] = []
+    seen = set(selected_chat_ids(data))
+    activity_enabled = "activity" in data.get("bonus_types", [])
+    for ref in refs:
+        record = await resolve_required_chat(bot, ref, admin_user_id=creator_user_id)
+        chat_id = int(record["id"])
+        if chat_id in seen:
+            raise UserFacingError(
+                f"目标「{record['title']}」同时被选为参与群和准入条件，请只保留一种用途"
+            )
+        validate_activity_target(record, activity_enabled=activity_enabled)
+        seen.add(chat_id)
+        records.append(record | {"position": len(records) + 1})
     return records
 
 

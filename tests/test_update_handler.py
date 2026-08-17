@@ -17,11 +17,26 @@ class RecordingMemberFlow:
         self.campaign_reference: str | None = None
         self.action: str | None = None
         self.position: int | None = None
+        self.missing_page = 1
+        self.pending_requests: list[dict[str, object]] = []
 
-    async def register(self, message, campaign_reference, *, user=None, observed_at=None) -> None:
+    async def register(
+        self,
+        message,
+        campaign_reference,
+        *,
+        user=None,
+        observed_at=None,
+        callback=None,
+        missing_page=1,
+    ) -> None:
         self.campaign_reference = campaign_reference
         self.user_id = user.id
         self.observed_at = observed_at
+        self.missing_page = missing_page
+
+    async def join_request_pending(self, **values) -> None:
+        self.pending_requests.append(values)
 
     async def show_rules(self, message, campaign_reference) -> None:
         self.action = "rules"
@@ -112,6 +127,55 @@ async def test_legacy_verify_callback_remains_accepted() -> None:
 
     assert flow.campaign_reference == legacy_ref
     assert flow.user_id == 201
+
+
+async def test_missing_targets_page_callback_preserves_requested_page() -> None:
+    flow = RecordingMemberFlow()
+    handler = _handler(member_flow=flow)
+    public_ref = "AbCdEfGhIjKlMnOpQrSt-_"
+    query = _callback(f"member:missing:{public_ref}:2")
+
+    await handler._dispatch_callback(query, query.data)
+
+    assert flow.campaign_reference == public_ref
+    assert flow.missing_page == 2
+
+
+async def test_join_request_projects_waiting_approval_without_personal_invite() -> None:
+    flow = RecordingMemberFlow()
+    campaign_id = uuid4()
+    queries = SimpleNamespace(campaigns_for_mandatory_chat=AsyncMock(return_value=(campaign_id,)))
+    handler = LotteryUpdateHandler(
+        bot=object(),
+        default_timezone="Asia/Shanghai",
+        admin_flow=object(),
+        member_flow=flow,
+        personal_flow=PassthroughPersonalFlow(),
+        tokens=object(),
+        groups=object(),
+        activity=object(),
+        invitations=object(),
+        queries=queries,
+        stats=FakeStats(),
+    )
+    observed_at = datetime.now(UTC)
+    event = SimpleNamespace(
+        invite_link=None,
+        from_user=SimpleNamespace(id=201, is_bot=False),
+        chat=SimpleNamespace(id=-100123),
+        date=observed_at,
+    )
+
+    await handler._join_request(event)
+
+    assert flow.pending_requests == [
+        {
+            "campaign_id": campaign_id,
+            "user": event.from_user,
+            "chat_id": -100123,
+            "observed_at": observed_at,
+        }
+    ]
 
 
 async def test_rules_and_condition_start_payloads_are_distinct_from_registration() -> None:

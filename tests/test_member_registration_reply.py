@@ -57,6 +57,9 @@ class ObservingParticipants:
     async def complete_registration(self, result):
         return SimpleNamespace(qualification_state=result.state, ticket_total_cache=0)
 
+    async def pending_approval_chat_ids(self, participant_id):
+        return frozenset()
+
 
 class AlreadyEligibleParticipants:
     def __init__(self, total):
