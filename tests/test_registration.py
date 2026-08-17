@@ -216,16 +216,12 @@ async def test_full_draw_threshold_creates_one_system_trigger_in_registration_tr
             )
         ).all()
         audit = await session.scalar(
-            select(AuditLog).where(AuditLog.action == "campaign.early_cutoff")
+            select(AuditLog).where(AuditLog.action == "campaign.full_draw_threshold_candidate")
         )
-        assert campaign.state is CampaignState.SETTLING
-        assert campaign.cutoff_at == now
-        assert {job.job_type for job in jobs} == {
-            "qualification_review",
-            "revoke_invite_links",
-            "campaign_settle",
-            "campaign_draw",
-        }
+        assert campaign.state is CampaignState.RUNNING
+        assert campaign.cutoff_at > now
+        assert [job.job_type for job in jobs] == ["full_draw_verify"]
+        assert jobs[0].payload == {"candidate_at": now.isoformat()}
         assert audit.actor_user_id is None
 
 

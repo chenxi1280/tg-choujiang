@@ -6,12 +6,26 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 
-from tg_lottery.application.campaign_notifications import add_campaign_card_state
-from tg_lottery.application.campaigns import request_early_cutoff
+from tg_lottery.application.campaign_targets import QualificationTarget, qualification_targets
+from tg_lottery.application.full_draw import record_full_draw_candidate
+from tg_lottery.application.operational_blocks import (
+    has_active_campaign_block,
+    project_qualification_blocks,
+)
+from tg_lottery.application.participant_qualification import (
+    accepts_registration,
+    apply_check_result,
+    build_draw_check,
+    can_apply_registration_result,
+    mark_membership_ineligible,
+    source_participation_group_id,
+    store_target_observations,
+    target_chat_ids,
+)
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import add_job, add_outbox
 from tg_lottery.application.request_context import current_update_id
-from tg_lottery.domain.enums import CampaignState, QualificationState, TicketSource
+from tg_lottery.domain.enums import QualificationState, TicketSource
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.public_refs import is_neutral_invite_link_name, new_invite_link_name
 from tg_lottery.domain.rules import CampaignRules, canonical_hash
@@ -27,8 +41,6 @@ from tg_lottery.infrastructure.db import (
     UserProfile,
 )
 
-_REGISTRATION_STATES = frozenset({CampaignState.SCHEDULED, CampaignState.RUNNING})
-
 
 @dataclass(frozen=True)
 class RegistrationRequest:
@@ -37,6 +49,7 @@ class RegistrationRequest:
     username: str | None
     display_name: str
     observed_at: datetime
+    source_chat_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -47,6 +60,7 @@ class RegistrationAttempt:
     required_chat_ids: tuple[int, ...]
     state: QualificationState
     requires_observation: bool
+    target_kinds: tuple[tuple[int, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -75,18 +89,25 @@ class ParticipantService:
             campaign = await uow.session.scalar(
                 select(Campaign).where(Campaign.id == request.campaign_id).with_for_update()
             )
-            if not self._accepts_registration(campaign, request.observed_at):
+            if not accepts_registration(campaign, request.observed_at):
                 raise UserFacingError("活动当前不接受报名")
+            participant = await self._existing_participant(uow.session, request)
+            active_block = await has_active_campaign_block(uow.session, campaign.id)
+            if active_block and participant is None:
+                raise UserFacingError("活动正在等待 Telegram 权限恢复, 暂时不能报名")
             await self._validate_profile_requirements(uow.session, campaign, request)
-            participant = await self._participant(uow.session, request)
+            targets = await qualification_targets(uow.session, campaign)
+            participant = participant or await self._new_participant(uow.session, request)
             existing = await self._source_qualification_check(uow.session, participant.id)
             if existing is not None:
-                return self._registration_attempt(existing, campaign)
+                return self._registration_attempt(existing, campaign, targets)
             participant.qualification_state = QualificationState.PENDING
-            check = self._pending_qualification_check(participant, campaign, request)
+            check = self._pending_qualification_check(
+                participant, campaign, request, targets=targets
+            )
             uow.session.add(check)
             await uow.session.flush()
-            return self._registration_attempt(check, campaign)
+            return self._registration_attempt(check, campaign, targets)
 
     async def eligible_participant(self, campaign_id: UUID, user_id: int) -> Participant | None:
         async with self._uow_factory() as uow:
@@ -100,6 +121,22 @@ class ParticipantService:
             if participant is not None:
                 uow.session.expunge(participant)
             return participant
+
+    async def mark_membership_ineligible(
+        self,
+        *,
+        campaign_id: UUID,
+        user_id: int,
+        chat_id: int,
+        observed_at: datetime,
+    ) -> None:
+        await mark_membership_ineligible(
+            self._uow_factory,
+            campaign_id=campaign_id,
+            user_id=user_id,
+            chat_id=chat_id,
+            observed_at=observed_at,
+        )
 
     async def complete_registration(self, result: QualificationResult) -> Participant:
         async with self._uow_factory() as uow:
@@ -125,8 +162,14 @@ class ParticipantService:
                 raise ValueError("registration participant is missing")
             if check.state is not QualificationState.PENDING:
                 return participant
-            self._apply_check_result(check, result)
-            if not self._can_apply_registration_result(campaign, result):
+            apply_check_result(check, result)
+            store_target_observations(uow.session, check, result)
+            await project_qualification_blocks(
+                uow.session,
+                campaign_id=campaign.id,
+                observations=result.observations,
+            )
+            if not can_apply_registration_result(campaign, result.observed_at):
                 return participant
             participant.qualification_state = result.state
             if result.state is QualificationState.ELIGIBLE:
@@ -195,18 +238,12 @@ class ParticipantService:
         )
         if int(count or 0) < rules.participant_target:
             return
-        changed = request_early_cutoff(
+        await record_full_draw_candidate(
             session,
             campaign=campaign,
-            cutoff_at=observed_at,
-            reason=f"满人开奖达到 {count}/{rules.participant_target}",
-            actor_user_id=None,
+            observed_at=observed_at,
+            eligible_count=int(count or 0),
         )
-        if changed:
-            group = await session.get(Group, campaign.group_id)
-            if group is None:
-                raise ValueError("full draw campaign group is missing")
-            add_campaign_card_state(session, campaign, group.chat_id, state="settling")
 
     async def _registration_campaign_id(self, session: object, result: QualificationResult) -> UUID:
         row = (
@@ -236,35 +273,54 @@ class ParticipantService:
             )
             if participant is None:
                 raise ValueError("participant not found")
-            check = QualificationCheck(
-                participant_id=participant.id,
-                phase="draw",
+            check = build_draw_check(
+                participant,
                 state=state,
+                observed_at=observed_at,
                 observed_status=observed_status,
                 error_code=error_code,
-                observations={"chats": list(observations)},
-                observed_at=observed_at,
-                request_hash=canonical_hash(
-                    {"participant_id": str(participant.id), "phase": "draw"}
-                ),
-                source_update_id=current_update_id(),
+                observations=observations,
             )
             participant.qualification_state = state
             uow.session.add(check)
+            await uow.session.flush()
+            store_target_observations(
+                uow.session,
+                check,
+                QualificationResult(
+                    participant_id=participant.id,
+                    qualification_check_id=check.id,
+                    state=state,
+                    observed_at=observed_at,
+                    observed_status=observed_status,
+                    error_code=error_code,
+                    observations=observations,
+                ),
+            )
+            await project_qualification_blocks(
+                uow.session,
+                campaign_id=participant.campaign_id,
+                observations=observations,
+            )
             return check
 
-    async def _participant(self, session: object, request: RegistrationRequest) -> Participant:
+    async def _existing_participant(
+        self, session: object, request: RegistrationRequest
+    ) -> Participant | None:
         participant = await session.scalar(
             select(Participant).where(
                 Participant.campaign_id == request.campaign_id,
                 Participant.user_id == request.user_id,
             )
         )
-        if participant:
-            participant.username = request.username
-            participant.display_name = request.display_name
-            participant.private_reachable = True
-            return participant
+        if participant is None:
+            return None
+        participant.username = request.username
+        participant.display_name = request.display_name
+        participant.private_reachable = True
+        return participant
+
+    async def _new_participant(self, session: object, request: RegistrationRequest) -> Participant:
         participant = Participant(
             campaign_id=request.campaign_id,
             user_id=request.user_id,
@@ -274,6 +330,11 @@ class ParticipantService:
             qualification_state=QualificationState.PENDING,
             registered_revision=1,
             registered_source_update_id=current_update_id(),
+            registered_via_participation_group_id=await source_participation_group_id(
+                session,
+                campaign_id=request.campaign_id,
+                source_chat_id=request.source_chat_id,
+            ),
         )
         session.add(participant)
         await session.flush()
@@ -294,9 +355,12 @@ class ParticipantService:
         )
 
     def _registration_attempt(
-        self, check: QualificationCheck, campaign: Campaign
+        self,
+        check: QualificationCheck,
+        campaign: Campaign,
+        targets: tuple[QualificationTarget, ...],
     ) -> RegistrationAttempt:
-        required_chat_ids = _required_chat_ids(CampaignRules.model_validate(campaign.rules))
+        required_chat_ids = target_chat_ids(campaign, targets)
         return RegistrationAttempt(
             participant_id=check.participant_id,
             qualification_check_id=check.id,
@@ -304,6 +368,7 @@ class ParticipantService:
             required_chat_ids=required_chat_ids,
             state=check.state,
             requires_observation=check.state is QualificationState.PENDING,
+            target_kinds=tuple((target.chat_id, target.kind) for target in targets),
         )
 
     def _pending_qualification_check(
@@ -311,9 +376,10 @@ class ParticipantService:
         participant: Participant,
         campaign: Campaign,
         request: RegistrationRequest,
+        *,
+        targets: tuple[QualificationTarget, ...],
     ) -> QualificationCheck:
-        rules = CampaignRules.model_validate(campaign.rules)
-        required_chat_ids = _required_chat_ids(rules)
+        required_chat_ids = target_chat_ids(campaign, targets)
         return QualificationCheck(
             participant_id=participant.id,
             phase="registration",
@@ -386,29 +452,6 @@ class ParticipantService:
         )
         participant.ticket_total_cache += 1
 
-    def _apply_check_result(
-        self,
-        check: QualificationCheck,
-        result: QualificationResult,
-    ) -> None:
-        check.state = result.state
-        check.observed_status = result.observed_status
-        check.error_code = result.error_code
-        check.observations = {"chats": list(result.observations)}
-        check.observed_at = result.observed_at
-
-    def _can_apply_registration_result(
-        self, campaign: Campaign, result: QualificationResult
-    ) -> bool:
-        return campaign.state in _REGISTRATION_STATES and result.observed_at <= campaign.cutoff_at
-
-    def _accepts_registration(self, campaign: Campaign | None, observed_at: datetime) -> bool:
-        return bool(
-            campaign
-            and campaign.state in _REGISTRATION_STATES
-            and observed_at <= campaign.cutoff_at
-        )
-
     async def _request_invite_link(
         self,
         session: object,
@@ -444,10 +487,3 @@ class ParticipantService:
                 "name": invite_name,
             },
         )
-
-
-def _required_chat_ids(rules: CampaignRules) -> tuple[int, ...]:
-    values = ([rules.required_channel_id] if rules.required_channel_id else []) + list(
-        rules.required_chat_ids
-    )
-    return tuple(dict.fromkeys(values))

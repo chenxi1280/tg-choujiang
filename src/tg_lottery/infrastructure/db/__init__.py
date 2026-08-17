@@ -1,4 +1,10 @@
 from tg_lottery.infrastructure.db.base import Base
+from tg_lottery.infrastructure.db.models_campaign_targets import (
+    CampaignOperationalBlock,
+    CampaignParticipationGroup,
+    CampaignRequirement,
+    QualificationTargetObservation,
+)
 from tg_lottery.infrastructure.db.models_core import (
     AdminSession,
     AuditLog,
@@ -45,6 +51,9 @@ __all__ = [
     "BotRuntimeLease",
     "CallbackToken",
     "Campaign",
+    "CampaignOperationalBlock",
+    "CampaignParticipationGroup",
+    "CampaignRequirement",
     "DailyProgress",
     "DeliveryAttempt",
     "DrawEntry",
@@ -60,6 +69,7 @@ __all__ = [
     "PollingOffset",
     "Prize",
     "QualificationCheck",
+    "QualificationTargetObservation",
     "RuleRevision",
     "ScheduledJob",
     "TelegramOutbox",

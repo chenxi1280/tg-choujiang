@@ -62,25 +62,61 @@ class CreatorRenderer:
             reply_markup=keyboard,
         )
 
-    async def render_groups(self, message: Message, *, user_id: int) -> None:
-        await self.edit_groups(PanelTarget(user_id, message.chat.id, message.message_id))
+    async def render_groups(
+        self,
+        message: Message,
+        *,
+        user_id: int,
+        selected_chat_ids: tuple[int, ...] = (),
+        primary_chat_id: int | None = None,
+    ) -> None:
+        await self.edit_groups(
+            PanelTarget(user_id, message.chat.id, message.message_id),
+            selected_chat_ids=selected_chat_ids,
+            primary_chat_id=primary_chat_id,
+        )
 
-    async def edit_groups(self, target: PanelTarget) -> None:
+    async def edit_groups(
+        self,
+        target: PanelTarget,
+        *,
+        selected_chat_ids: tuple[int, ...] = (),
+        primary_chat_id: int | None = None,
+    ) -> None:
         groups = await self._queries.admin_groups(target.user_id)
         context = await self._sessions.issue_panel_context(target.user_id, target.message_id)
         requests = tuple(
-            CallbackRequest("draft_select_group", payload={"chat_id": group.chat_id})
+            request
             for group in groups
+            for request in (
+                CallbackRequest("draft_toggle_group", payload={"chat_id": group.chat_id}),
+                CallbackRequest("draft_primary_group", payload={"chat_id": group.chat_id}),
+            )
         )
         tokens = await self._create_tokens(target, requests, context=context)
+        token_pairs = zip(tokens[::2], tokens[1::2], strict=True)
         rows = [
-            [InlineKeyboardButton(text=group.title, callback_data=f"secure:{token}")]
-            for group, token in zip(groups, tokens, strict=True)
+            [
+                InlineKeyboardButton(
+                    text=("✅ " if group.chat_id in selected_chat_ids else "⬜ ") + group.title,
+                    callback_data=f"secure:{toggle_token}",
+                ),
+                InlineKeyboardButton(
+                    text="主群" if group.chat_id == primary_chat_id else "设为主群",
+                    callback_data=f"secure:{primary_token}",
+                ),
+            ]
+            for group, (toggle_token, primary_token) in zip(groups, token_pairs, strict=True)
         ]
-        back = await self._keyboard(target, [[("↩ 返回上一层", "draft_back")]], context=context)
+        back = await self._keyboard(
+            target,
+            [[("✅ 完成选择", "draft_groups_done")], [("↩ 返回上一层", "draft_back")]],
+            context=context,
+        )
         rows.extend(back.inline_keyboard)
         await self._bot.edit_message_text(
-            "👥 创建抽奖·选择活动群（必填项）\n\n请选择发布抽奖的群：",
+            f"👥 参与活动的群（已选 {len(selected_chat_ids)}）\n\n"
+            "参与者必须同时加入全部已选群；每个群都会收到活动卡。",
             chat_id=target.chat_id,
             message_id=target.message_id,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),

@@ -67,7 +67,7 @@ def split_values(value: str) -> list[str]:
 
 
 def participation_rows(data: dict[str, Any]) -> ButtonRows:
-    rows = [[("添加参与条件", "draft_participation_add")]]
+    rows = [[("添加准入条件", "draft_participation_add")]]
     chats = data.get("required_chats") or []
     page = participation_page(data)
     if len(chats) > PARTICIPATION_PAGE_SIZE:
@@ -138,8 +138,8 @@ def apply_threshold_action(thresholds: dict[str, int], chat_id: str, op: str) ->
 
 def participation_add_text() -> str:
     return (
-        "📮 添加参与条件\n\n"
-        "主活动群已自动包含，无需重复添加。\n"
+        "📮 添加准入条件（必须全部满足）\n\n"
+        "参与活动的群无需在这里重复添加。\n"
         "创建者和机器人都必须是每个目标群聊/频道的管理员。\n"
         "请直接发送群聊或频道链接，例如：https://t.me/example_group\n"
         "一次可发送一个或多个，用逗号、空格或换行分隔。\n"
@@ -160,8 +160,8 @@ def participation_text(data: dict[str, Any]) -> str:
     chats = data.get("required_chats") or []
     thresholds = data.get("chat_message_thresholds") or {}
     lines = [
-        "📮 参与条件",
-        "主活动群始终是参与条件。",
+        "📮 准入条件（必须全部满足）",
+        "参与活动的群会另行全部校验。",
         "可一次发送一个或多个群聊/频道链接。",
     ]
     main_line = _main_chat_line(data, thresholds)

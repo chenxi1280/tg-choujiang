@@ -312,12 +312,27 @@ class LotteryUpdateHandler:
         invitations = await self._queries.invitations_for_chat_user(event.chat.id, user.id)
         for invitation in invitations:
             await self._invitations.record_rejoined(invitation.campaign_id, user.id, event.date)
+        await self._project_participant_membership(event, is_member=True)
 
     async def _record_member_leave(self, event: ChatMemberUpdated) -> None:
         user = event.new_chat_member.user
         invitations = await self._queries.invitations_for_chat_user(event.chat.id, user.id)
         for invitation in invitations:
             await self._invitations.record_left(invitation.campaign_id, user.id, event.date)
+        await self._project_participant_membership(event, is_member=False)
+
+    async def _project_participant_membership(
+        self, event: ChatMemberUpdated, *, is_member: bool
+    ) -> None:
+        campaign_ids = await self._queries.campaigns_for_mandatory_chat(event.chat.id)
+        for campaign_id in campaign_ids:
+            await self._member_flow.membership_changed(
+                campaign_id=campaign_id,
+                user=event.new_chat_member.user,
+                chat_id=event.chat.id,
+                is_member=is_member,
+                observed_at=event.date,
+            )
 
     async def _sync_admin_change(self, event: ChatMemberUpdated) -> None:
         old_admin = _is_admin(event.old_chat_member)

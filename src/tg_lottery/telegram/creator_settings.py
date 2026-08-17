@@ -289,13 +289,13 @@ class CreatorSettings:
             raise UserFacingError("请至少填写一个群或频道")
         chats = list(data.get("required_chats") or [])
         existing_ids = {int(item["id"]) for item in chats}
-        existing_ids.add(int(data["chat_id"]))
+        existing_ids.update(int(value) for value in data.get("participation_group_ids") or [])
         added = []
         for value in values:
             chat = await resolve_required_chat(self._bot, value, admin_user_id=_user_id(message))
             chat_id = int(chat["id"])
             if chat_id == int(data["chat_id"]):
-                raise UserFacingError("主活动群已自动作为参与条件，无需重复添加")
+                raise UserFacingError("该目标已经是参与活动的群，不能同时作为准入条件")
             if chat_id in existing_ids:
                 raise UserFacingError("该群或频道已经在参与条件中")
             existing_ids.add(chat_id)

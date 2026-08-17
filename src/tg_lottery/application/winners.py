@@ -2,7 +2,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from tg_lottery.application.authorization import require_group_admin
+from tg_lottery.application.campaign_targets import require_campaign_admin
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import add_audit, utcnow
 from tg_lottery.domain.enums import PrizeClaimState
@@ -30,8 +30,8 @@ class WinnerService:
             )
             if campaign is None:
                 raise ValueError("winner campaign not found")
-            await require_group_admin(
-                uow.session, group_id=campaign.group_id, user_id=actor_user_id
+            await require_campaign_admin(
+                uow.session, campaign_id=campaign.id, user_id=actor_user_id
             )
             winner.claim_state = PrizeClaimState.CLAIMED
             winner.claimed_at = utcnow()

@@ -4,10 +4,17 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 
-from tg_lottery.application.authorization import require_group_admin
 from tg_lottery.application.campaign_notifications import (
-    add_campaign_card_state,
-    add_cancelled_campaign_card,
+    add_campaign_card_state_fanout,
+    add_cancelled_campaign_card_fanout,
+)
+from tg_lottery.application.campaign_targets import (
+    MULTI_GROUP_CONTRACT,
+    add_campaign_targets,
+    participation_chat_ids,
+    release_participation_groups,
+    require_campaign_admin,
+    resolve_draft_groups,
 )
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
@@ -79,8 +86,8 @@ class CampaignService:
     ) -> Campaign:
         prizes = self._validated_prizes(prizes)
         async with self._uow_factory() as uow:
-            group = await self._group(uow.session, draft.group_id)
-            await require_group_admin(uow.session, group_id=group.id, user_id=actor_user_id)
+            groups = await resolve_draft_groups(uow.session, draft, actor_user_id)
+            group = groups[0]
             existing = await self._campaign_for_source(uow.session, source)
             if existing is not None:
                 self._validate_source_retry(
@@ -90,6 +97,7 @@ class CampaignService:
             campaign = self._new_campaign(draft, group, actor_user_id, source=source)
             uow.session.add(campaign)
             await uow.session.flush()
+            await add_campaign_targets(uow.session, campaign=campaign, draft=draft, groups=groups)
             self._add_rules_and_prizes(
                 uow.session,
                 campaign=campaign,
@@ -109,8 +117,8 @@ class CampaignService:
     async def publish(self, campaign_id: UUID, actor_user_id: int, bot_username: str) -> None:
         async with self._uow_factory() as uow:
             campaign = await self._locked_campaign(uow.session, campaign_id)
-            await require_group_admin(
-                uow.session, group_id=campaign.group_id, user_id=actor_user_id
+            await require_campaign_admin(
+                uow.session, campaign_id=campaign.id, user_id=actor_user_id
             )
             if await self._publication_already_requested(uow.session, campaign):
                 return
@@ -118,14 +126,14 @@ class CampaignService:
             require_campaign_transition(campaign.state, CampaignState.PUBLISHING)
             campaign.state = CampaignState.PUBLISHING
             await self._freeze_revision(uow.session, campaign)
-            group = await self._group_by_id(uow.session, campaign.group_id)
+            chat_ids = await participation_chat_ids(uow.session, campaign.id)
             prizes = await self._prizes(uow.session, campaign.id)
             campaign.prize_plan_hash = prize_plan_hash(prizes)
             self._schedule_lifecycle(uow.session, campaign)
-            add_publication_outboxes(
+            await add_publication_outboxes(
                 uow.session,
                 campaign=campaign,
-                recipient_chat_id=group.chat_id,
+                recipient_chat_ids=chat_ids,
                 bot_username=bot_username,
                 prizes=prizes,
             )
@@ -147,19 +155,19 @@ class CampaignService:
     ) -> None:
         async with self._uow_factory() as uow:
             campaign = await self._locked_campaign(uow.session, campaign_id)
-            await require_group_admin(
-                uow.session, group_id=campaign.group_id, user_id=actor_user_id
+            await require_campaign_admin(
+                uow.session, campaign_id=campaign.id, user_id=actor_user_id
             )
             if campaign.state is target:
                 return
             require_campaign_transition(campaign.state, target)
             campaign.state = target
+            await release_participation_groups(uow.session, campaign, utcnow())
             if target is CampaignState.SETTLING:
                 self._add_settlement_job(uow.session, campaign)
             if target is CampaignState.CANCELLED:
                 self._add_revoke_job(uow.session, campaign)
-                group = await self._group_by_id(uow.session, campaign.group_id)
-                add_cancelled_campaign_card(uow.session, campaign, group.chat_id)
+                await add_cancelled_campaign_card_fanout(uow.session, campaign)
             add_audit(
                 uow.session,
                 actor_user_id=actor_user_id,
@@ -179,8 +187,8 @@ class CampaignService:
     ) -> None:
         async with self._uow_factory() as uow:
             campaign = await self._locked_campaign(uow.session, campaign_id)
-            await require_group_admin(
-                uow.session, group_id=campaign.group_id, user_id=actor_user_id
+            await require_campaign_admin(
+                uow.session, campaign_id=campaign.id, user_id=actor_user_id
             )
             changed = request_early_cutoff(
                 uow.session,
@@ -191,8 +199,7 @@ class CampaignService:
             )
             if not changed:
                 return
-            group = await self._group_by_id(uow.session, campaign.group_id)
-            add_campaign_card_state(uow.session, campaign, group.chat_id, state="settling")
+            await add_campaign_card_state_fanout(uow.session, campaign, state="settling")
 
     def _validated_prizes(self, prizes: tuple[PrizeSpec, ...]) -> tuple[PrizeSpec, ...]:
         if not prizes:
@@ -215,18 +222,6 @@ class CampaignService:
         if campaign.draw_at <= campaign.cutoff_at:
             raise ValueError("campaign draw must be after cutoff")
 
-    async def _group(self, session: object, group_id: int) -> Group:
-        group = await session.scalar(select(Group).where(Group.chat_id == group_id))
-        if group is None:
-            raise ValueError("target Telegram group is not registered")
-        return group
-
-    async def _group_by_id(self, session: object, group_id: UUID) -> Group:
-        group = await session.get(Group, group_id)
-        if group is None:
-            raise ValueError("campaign group does not exist")
-        return group
-
     def _new_campaign(
         self,
         draft: CampaignDraft,
@@ -248,6 +243,7 @@ class CampaignService:
             created_by=actor,
             source_draft_id=source.draft_id if source else None,
             source_draft_revision=source.revision if source else None,
+            contract_version=MULTI_GROUP_CONTRACT,
         )
 
     async def _campaign_for_source(

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Protocol
 from uuid import UUID
 
 from tg_lottery.domain.enums import CampaignState
@@ -13,6 +14,12 @@ ATTRIBUTION_STATES = frozenset(
         CampaignState.SETTLING,
     }
 )
+
+
+class AttributionCampaign(Protocol):
+    state: CampaignState
+    preheat_at: datetime
+    cutoff_at: datetime
 
 
 @dataclass(frozen=True)
@@ -45,3 +52,12 @@ def accepts_attribution(
     event_at: datetime,
 ) -> bool:
     return state in ATTRIBUTION_STATES and preheat_at <= event_at <= cutoff_at
+
+
+def campaign_accepts_attribution(campaign: AttributionCampaign, event_at: datetime) -> bool:
+    return accepts_attribution(
+        campaign.state,
+        preheat_at=campaign.preheat_at,
+        cutoff_at=campaign.cutoff_at,
+        event_at=event_at,
+    )

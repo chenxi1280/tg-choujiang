@@ -6,8 +6,13 @@ from aiogram import Bot
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tg_lottery.application.campaign_notifications import add_campaign_card_state
+from tg_lottery.application.campaign_notifications import add_campaign_card_state_fanout
+from tg_lottery.application.campaign_targets import QualificationTarget, qualification_targets
 from tg_lottery.application.drawing import DrawingService
+from tg_lottery.application.full_draw import (
+    FULL_DRAW_VERIFY_JOB,
+    confirm_full_draw_candidate,
+)
 from tg_lottery.application.invitations import InvitationService
 from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.participants import ParticipantService
@@ -91,6 +96,7 @@ class JobHandlers:
             "revoke_invite_links": self._revoke_invite_links,
             "campaign_settle": self._campaign_settle,
             "campaign_draw": self._campaign_draw,
+            FULL_DRAW_VERIFY_JOB: self._full_draw_verify,
             UPDATE_RETENTION_JOB_TYPE: self._telegram_update_retention,
             TICKET_RECONCILE_JOB_TYPE: self._ticket_cache_reconcile,
             FULL_DRAW_RECONCILE_JOB_TYPE: self._full_draw_reconcile,
@@ -134,25 +140,23 @@ class JobHandlers:
                 raise JobRetry(f"campaign cannot settle from {campaign.state}")
             require_campaign_transition(campaign.state, CampaignState.SETTLING)
             campaign.state = CampaignState.SETTLING
-            group = await session.get(Group, campaign.group_id)
-            if group is None:
-                raise ValueError("campaign group not found")
-            add_campaign_card_state(session, campaign, group.chat_id, state="settling")
+            await add_campaign_card_state_fanout(session, campaign, state="settling")
 
-    async def _qualification_review(self, job: ScheduledJob) -> None:
+    async def _qualification_review(self, job: ScheduledJob, *, force: bool = False) -> None:
         campaign_id = UUID(job.aggregate_id)
-        campaign, group_chat_id, participants = await self._campaign_and_participants(campaign_id)
+        campaign, targets, participants = await self._campaign_and_participants(campaign_id)
         if campaign.state in _TERMINAL_STATES:
             return
         rules = CampaignRules.model_validate(campaign.rules)
+        chat_ids = await _target_chat_ids(self._session_factory, campaign, rules, targets=targets)
         unresolved = False
         for participant in participants:
-            if await self._has_final_draw_check(participant.id):
+            if not force and await self._has_final_draw_check(participant.id):
                 continue
             observed_at = utcnow()
             result = await observe_memberships(
                 self._bot,
-                chat_ids=_required_chat_ids(group_chat_id, rules),
+                chat_ids=chat_ids,
                 user_id=participant.user_id,
                 observed_at=observed_at,
             )
@@ -162,6 +166,7 @@ class JobHandlers:
                 result=result,
                 observed_at=observed_at,
             )
+            observations = _tag_target_kinds(observations, targets)
             await self._participants.record_draw_qualification(
                 participant_id=participant.id,
                 state=state,
@@ -298,6 +303,18 @@ class JobHandlers:
             raise JobRetry(f"campaign is not ready to draw: {state}")
         await self._drawing.run(campaign_id)
 
+    async def _full_draw_verify(self, job: ScheduledJob) -> None:
+        await self._qualification_review(job, force=True)
+        candidate_at = datetime.fromisoformat(str(job.payload["candidate_at"]))
+        try:
+            async with self._session_factory() as session, session.begin():
+                campaign = await self._locked_campaign(session, job.aggregate_id)
+                await confirm_full_draw_candidate(
+                    session, campaign=campaign, candidate_at=candidate_at
+                )
+        except SettlementBlocked as exc:
+            raise JobRetry(str(exc)) from exc
+
     async def _telegram_update_retention(self, job: ScheduledJob) -> None:
         if job.aggregate_id != "system":
             raise ValueError("update retention job requires system aggregate")
@@ -344,22 +361,18 @@ class JobHandlers:
 
     async def _campaign_and_participants(
         self, campaign_id: UUID
-    ) -> tuple[Campaign, int, list[Participant]]:
+    ) -> tuple[Campaign, tuple[QualificationTarget, ...], list[Participant]]:
         async with self._session_factory() as session:
             campaign = await session.get(Campaign, campaign_id)
             if campaign is None:
                 raise ValueError("campaign not found")
-            group_chat_id = await session.scalar(
-                select(Group.chat_id).where(Group.id == campaign.group_id)
-            )
-            if group_chat_id is None:
-                raise ValueError("campaign group not found")
+            targets = await qualification_targets(session, campaign)
             participants = (
                 await session.scalars(
                     select(Participant).where(Participant.campaign_id == campaign_id)
                 )
             ).all()
-            return campaign, group_chat_id, list(participants)
+            return campaign, targets, list(participants)
 
     async def _has_final_draw_check(self, participant_id: UUID) -> bool:
         async with self._session_factory() as session:
@@ -402,3 +415,33 @@ def _required_chat_ids(main_chat_id: int, rules: CampaignRules) -> tuple[int, ..
         values.append(rules.required_channel_id)
     values.extend(rules.required_chat_ids)
     return tuple(dict.fromkeys(values))
+
+
+async def _target_chat_ids(
+    session_factory: async_sessionmaker[AsyncSession],
+    campaign: Campaign,
+    rules: CampaignRules,
+    *,
+    targets: tuple[QualificationTarget, ...],
+) -> tuple[int, ...]:
+    if targets:
+        return tuple(target.chat_id for target in targets)
+    main = campaign.presentation.get("main_chat") or {}
+    if main.get("id") is not None:
+        return _required_chat_ids(int(main["id"]), rules)
+    async with session_factory() as session:
+        group = await session.get(Group, campaign.group_id)
+    if group is None:
+        raise ValueError("campaign group not found")
+    return _required_chat_ids(group.chat_id, rules)
+
+
+def _tag_target_kinds(
+    observations: tuple[dict[str, Any], ...],
+    targets: tuple[QualificationTarget, ...],
+) -> tuple[dict[str, Any], ...]:
+    kinds = {target.chat_id: target.kind for target in targets}
+    return tuple(
+        dict(item) | {"target_kind": kinds.get(int(item["chat_id"]), "requirement")}
+        for item in observations
+    )

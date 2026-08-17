@@ -6,7 +6,18 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.campaign_query_targets import (
+    active_campaign_by_chat as load_active_campaign_by_chat,
+)
+from tg_lottery.application.campaign_query_targets import (
+    campaigns_for_mandatory_chat as load_campaigns_for_mandatory_chat,
+)
+from tg_lottery.application.campaign_query_targets import (
+    load_campaign_targets,
+    mandatory_chat_ids,
+)
 from tg_lottery.application.campaign_references import resolve_campaign_reference
+from tg_lottery.application.campaign_targets import QualificationTarget
 from tg_lottery.domain.enums import (
     CampaignState,
     InvitationState,
@@ -14,7 +25,6 @@ from tg_lottery.domain.enums import (
     QualificationState,
     TicketSource,
 )
-from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import (
     Campaign,
     DrawRun,
@@ -198,6 +208,10 @@ class QueryService:
                 session.expunge(row)
             return row
 
+    async def qualification_targets(self, campaign_id: UUID) -> tuple[QualificationTarget, ...]:
+        async with self._session_factory() as session:
+            return await load_campaign_targets(session, campaign_id)
+
     async def campaign_group(self, campaign_id: UUID) -> Group:
         async with self._session_factory() as session:
             group = await session.scalar(
@@ -215,22 +229,13 @@ class QueryService:
                 session.expunge(group)
             return group
 
+    async def campaigns_for_mandatory_chat(self, chat_id: int) -> tuple[UUID, ...]:
+        async with self._session_factory() as session:
+            return await load_campaigns_for_mandatory_chat(session, chat_id)
+
     async def active_campaign_by_chat(self, chat_id: int) -> Campaign | None:
         async with self._session_factory() as session:
-            campaign = await session.scalar(
-                select(Campaign)
-                .join(Group, Group.id == Campaign.group_id)
-                .where(
-                    Group.chat_id == chat_id,
-                    Campaign.state.not_in(
-                        [
-                            CampaignState.DRAWN,
-                            CampaignState.ARCHIVED,
-                            CampaignState.CANCELLED,
-                        ]
-                    ),
-                )
-            )
+            campaign = await load_active_campaign_by_chat(session, chat_id)
             if campaign:
                 session.expunge(campaign)
             return campaign
@@ -329,9 +334,8 @@ class QueryService:
         async with self._session_factory() as session:
             rows = (
                 await session.execute(
-                    select(Invitation, Campaign, Group)
+                    select(Invitation, Campaign)
                     .join(Campaign, Campaign.id == Invitation.campaign_id)
-                    .join(Group, Group.id == Campaign.group_id)
                     .where(
                         Invitation.invitee_user_id == user_id,
                         Campaign.state.in_(
@@ -347,17 +351,13 @@ class QueryService:
                 )
             ).all()
             invitations = []
-            for invitation, campaign, group in rows:
-                rules = CampaignRules.model_validate(campaign.rules)
-                required = _required_chat_ids(group.chat_id, rules)
-                if chat_id in required:
-                    session.expunge(invitation)
-                    invitations.append(invitation)
+            for invitation, campaign in rows:
+                required = await mandatory_chat_ids(session, campaign)
+                if chat_id not in required:
+                    continue
+                session.expunge(invitation)
+                invitations.append(invitation)
             return tuple(invitations)
-
-    async def invitation_for_chat_user(self, chat_id: int, user_id: int) -> Invitation | None:
-        invitations = await self.invitations_for_chat_user(chat_id, user_id)
-        return invitations[0] if invitations else None
 
     async def campaign_stats(self, campaign_id: UUID) -> CampaignStats:
         async with self._session_factory() as session:
@@ -491,8 +491,3 @@ def _campaign_category_states(category: str) -> tuple[CampaignState, ...]:
         raise ValueError("抽奖分类无效")
     terminal = {CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED}
     return tuple(state for state in CampaignState if state not in terminal)
-
-
-def _required_chat_ids(main_chat_id: int, rules: CampaignRules) -> tuple[int, ...]:
-    values = (main_chat_id, rules.required_channel_id, *rules.required_chat_ids)
-    return tuple(dict.fromkeys(int(value) for value in values if value is not None))

@@ -24,6 +24,7 @@ DEFAULT_INVITE_REWARD_TIERS = (
     {"invite_count": 2, "total_bonus": 3},
 )
 DEFAULT_INVITE_BONUS_CAP = 3
+DEFAULT_VALID_INVITES_PER_TICKET = 2
 DEFAULT_ACTIVITY_MESSAGE_THRESHOLD = 10
 DEFAULT_ACTIVITY_REWARD_TICKETS = 1
 
@@ -44,6 +45,8 @@ def new_draft(
         "draft_revision": 0,
         "chat_id": chat_id,
         "group_title": group_title,
+        "participation_group_ids": [chat_id] if chat_id is not None else [],
+        "participation_groups": [],
         "timezone": timezone,
         "title": "",
         "draw_at": "",
@@ -66,6 +69,8 @@ def new_draft(
         "luck_mode": "off",
         "bonus_types": [],
         "invite_reward_tiers": [dict(item) for item in DEFAULT_INVITE_REWARD_TIERS],
+        "invite_reward_mode": "ratio",
+        "valid_invites_per_ticket": DEFAULT_VALID_INVITES_PER_TICKET,
         "invite_bonus_cap": DEFAULT_INVITE_BONUS_CAP,
         "activity_message_threshold": DEFAULT_ACTIVITY_MESSAGE_THRESHOLD,
         "activity_reward_tickets": DEFAULT_ACTIVITY_REWARD_TICKETS,
@@ -104,6 +109,9 @@ def campaign_input(
     rules = rules_from_data(data)
     draft = CampaignDraft(
         group_id=int(data["chat_id"]),
+        participation_group_ids=tuple(
+            int(value) for value in data.get("participation_group_ids") or [data["chat_id"]]
+        ),
         name=str(data["title"]),
         preheat_at=now,
         cutoff_at=cutoff_at,
@@ -129,13 +137,7 @@ def rules_from_data(data: dict[str, Any]) -> CampaignRules:
         daily_ticket_cap=activity_reward,
         settle_once_per_day=True,
     )
-    raw_tiers = data.get("invite_reward_tiers", DEFAULT_INVITE_REWARD_TIERS)
-    tiers = tuple(InviteRewardTier.model_validate(item) for item in raw_tiers)
-    invite = InviteRule(
-        retention_hours=INVITE_PRESETS[str(data["invite_preset"])].retention_hours,
-        reward_tiers=tiers,
-        max_bonus_tickets=int(data.get("invite_bonus_cap", DEFAULT_INVITE_BONUS_CAP)),
-    )
+    invite = _invite_rule(data)
     return CampaignRules(
         timezone=str(data["timezone"]),
         activity=activity,
@@ -180,6 +182,8 @@ def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
         "allowed_regions",
         "required_chat_ids",
         "required_chats",
+        "participation_group_ids",
+        "participation_groups",
         "chat_message_thresholds",
         "main_chat",
         "issuer",
@@ -191,6 +195,8 @@ def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
         "luck_mode",
         "bonus_types",
         "invite_reward_tiers",
+        "invite_reward_mode",
+        "valid_invites_per_ticket",
         "invite_bonus_cap",
         "activity_message_threshold",
         "activity_reward_tickets",
@@ -215,3 +221,22 @@ def _bonus_types(data: dict[str, Any]) -> tuple[str, ...]:
     if "bonus_types" in data:
         return tuple(data["bonus_types"])
     return ("invite", "activity") if data.get("luck_mode") != "off" else ()
+
+
+def _invite_rule(data: dict[str, Any]) -> InviteRule:
+    mode = str(data.get("invite_reward_mode", "tiered"))
+    common = {
+        "mode": mode,
+        "retention_hours": INVITE_PRESETS[str(data["invite_preset"])].retention_hours,
+        "max_bonus_tickets": int(data.get("invite_bonus_cap", DEFAULT_INVITE_BONUS_CAP)),
+    }
+    if mode == "ratio":
+        return InviteRule(
+            **common,
+            valid_invites_per_ticket=int(
+                data.get("valid_invites_per_ticket", DEFAULT_VALID_INVITES_PER_TICKET)
+            ),
+        )
+    raw_tiers = data.get("invite_reward_tiers", DEFAULT_INVITE_REWARD_TIERS)
+    tiers = tuple(InviteRewardTier.model_validate(item) for item in raw_tiers)
+    return InviteRule(**common, reward_tiers=tiers)

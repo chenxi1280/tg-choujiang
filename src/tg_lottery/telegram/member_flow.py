@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -10,6 +11,7 @@ from aiogram.types import (
     User,
 )
 
+from tg_lottery.application.campaign_targets import MULTI_GROUP_CONTRACT, QualificationTarget
 from tg_lottery.application.invitation_models import accepts_attribution
 from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.participants import (
@@ -24,12 +26,13 @@ from tg_lottery.application.required_chat_links import decrypt_required_chat_url
 from tg_lottery.domain.enums import QualificationState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
-from tg_lottery.telegram import member_callbacks
+from tg_lottery.telegram import member_callbacks, member_condition_views
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.member_invites import invite_link_keyboard, invite_link_text
-from tg_lottery.telegram.member_popups import failure_reply_text, popup_success
+from tg_lottery.telegram.member_observation import apply_message_thresholds
+from tg_lottery.telegram.member_popups import popup_success
 from tg_lottery.telegram.public_projection import campaign_state_text, format_public_time
-from tg_lottery.telegram.qualification import message_threshold_shortfalls, observe_memberships
+from tg_lottery.telegram.qualification import observe_memberships
 
 
 class MemberFlow:
@@ -50,6 +53,36 @@ class MemberFlow:
         self._stats = stats
         self._bot_username = bot_username
 
+    async def membership_changed(
+        self,
+        *,
+        campaign_id: UUID,
+        user: User,
+        chat_id: int,
+        is_member: bool,
+        observed_at: datetime,
+    ) -> None:
+        if not is_member:
+            await self._participants.mark_membership_ineligible(
+                campaign_id=campaign_id,
+                user_id=user.id,
+                chat_id=chat_id,
+                observed_at=observed_at,
+            )
+            return
+        campaign = await self._queries.campaign(campaign_id)
+        if campaign is None:
+            return
+        attempt = await self._participants.begin_registration(
+            _registration_request(campaign.id, user, observed_at)
+        )
+        if not attempt.requires_observation:
+            return
+        group = await self._queries.campaign_group(campaign.id)
+        await self._complete_observation(
+            attempt, user_id=user.id, main_chat_id=group.chat_id, campaign=campaign
+        )
+
     async def register(
         self,
         message: Message,
@@ -68,7 +101,12 @@ class MemberFlow:
             await member_callbacks.already_reply(callback, message, existing.ticket_total_cache)
             return
         attempt = await self._participants.begin_registration(
-            _registration_request(campaign.id, user, observed_at or message.date)
+            _registration_request(
+                campaign.id,
+                user,
+                observed_at or message.date,
+                source_chat_id=_source_chat_id(message),
+            )
         )
         state, observations, total = attempt.state, (), 0
         if attempt.requires_observation:
@@ -82,8 +120,13 @@ class MemberFlow:
                 total = replay.ticket_total_cache if replay is not None else 1
             await self._registration_success_reply(message, campaign, total, callback=callback)
             return
-        verify = self._qualification_keyboard(campaign, state, observations)
-        await message.answer(failure_reply_text(campaign, state), reply_markup=verify)
+        await self._send_qualification_failure(
+            message,
+            campaign=campaign,
+            state=state,
+            observations=observations,
+            user_id=user.id,
+        )
         if callback is not None:
             await member_callbacks.alert_failure(
                 callback, campaign, state, observations=observations
@@ -92,7 +135,8 @@ class MemberFlow:
     async def _registration_success_reply(
         self, message: Message, campaign: object, total: int, *, callback: CallbackQuery | None
     ) -> None:
-        if _group_callback(callback, message):
+        chat_type = getattr(getattr(message, "chat", None), "type", None)
+        if callback is not None and chat_type != "private":
             await member_callbacks.safe_answer(callback, popup_success(total), alert=False)
             return
         rules = CampaignRules.model_validate(campaign.rules)
@@ -151,26 +195,18 @@ class MemberFlow:
         )
         rules = CampaignRules.model_validate(campaign.rules)
         thresholds = {int(key): int(value) for key, value in rules.message_thresholds.items()}
-        if thresholds and self._stats is None:
-            raise RuntimeError("message stats service is required for thresholds")
-        observations = tuple(result.observations)
-        state = result.state
-        if thresholds:
-            member_ok = {
-                int(item["chat_id"])
-                for item in observations
-                if item["state"] == QualificationState.ELIGIBLE.value
-            }
-            totals = await self._stats.totals(user_id, tuple(thresholds))
-            shortfalls = message_threshold_shortfalls(
-                member_ok=member_ok,
-                thresholds=thresholds,
-                totals=totals,
-                observed_at=observed_at,
-            )
-            if shortfalls:
-                observations = observations + shortfalls
-                state = QualificationState.INELIGIBLE
+        observations = member_condition_views.with_target_kinds(
+            result.observations, attempt.target_kinds
+        )
+        state, observations = await apply_message_thresholds(
+            self._stats,
+            result.state,
+            observations,
+            attempt=attempt,
+            user_id=user_id,
+            observed_at=observed_at,
+            thresholds=thresholds,
+        )
         participant = await self._participants.complete_registration(
             QualificationResult(
                 participant_id=attempt.participant_id,
@@ -195,11 +231,11 @@ class MemberFlow:
             f"当前状态: {campaign_state_text(campaign.state)}",
             "奖品: " + "、".join(f"{item.name} × {item.winner_count}" for item in prizes),
             f"开奖时间: {format_public_time(campaign.draw_at, campaign.timezone)}",
-            _draw_rule(rules),
-            _human_rule(rules),
-            f"发奖人员: {_issuer_name(campaign)}",
-            _deletion_rule(campaign),
-            _condition_summary(campaign),
+            member_condition_views.draw_rule(rules),
+            member_condition_views.human_rule(rules),
+            f"发奖人员: {member_condition_views.issuer_name(campaign)}",
+            member_condition_views.deletion_rule(campaign),
+            member_condition_views.condition_summary(campaign),
         ]
         await message.answer("\n".join(lines), reply_markup=self._condition_keyboard(campaign))
 
@@ -209,7 +245,7 @@ class MemberFlow:
         campaign = await self._queries.campaign_by_reference(campaign_reference)
         if campaign is None:
             raise UserFacingError("活动不存在或已经失效")
-        conditions = _conditions(campaign)
+        conditions = member_condition_views.conditions(campaign)
         if position < 1 or position > len(conditions):
             raise UserFacingError("参与条件不存在或已经失效")
         chat = conditions[position - 1]
@@ -219,11 +255,14 @@ class MemberFlow:
             rows.append(
                 [
                     InlineKeyboardButton(
-                        text=_condition_action(chat), url=self._condition_url(campaign, chat)
+                        text=member_condition_views.condition_action(chat),
+                        url=self._condition_url(campaign, chat),
                     )
                 ]
             )
-        navigation = _condition_navigation(campaign.public_ref, position, len(conditions))
+        navigation = member_condition_views.condition_navigation(
+            campaign.public_ref, position, len(conditions)
+        )
         if navigation:
             rows.append(navigation)
         rows.append(
@@ -234,30 +273,71 @@ class MemberFlow:
             ]
         )
         keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
-        instruction = _condition_instruction(chat, rules)
+        instruction = member_condition_views.condition_instruction(chat, rules)
         if chat.get("invite_revoked_at") and not chat.get("join_url"):
             instruction = f"「{chat['title']}」的加入入口已关闭。"
         await message.answer(
             f"参与条件 {position}/{len(conditions)}：{instruction}", reply_markup=keyboard
         )
 
-    def _qualification_keyboard(
+    async def _send_qualification_failure(
+        self,
+        message: Message,
+        *,
+        campaign: object,
+        state: QualificationState,
+        observations: tuple[dict[str, object], ...],
+        user_id: int,
+    ) -> None:
+        text, keyboard = await self._qualification_reply(campaign, state, observations)
+        if getattr(getattr(message, "chat", None), "type", None) in {None, "private"}:
+            await message.answer(text, reply_markup=keyboard)
+            return
+        try:
+            await self._bot.send_message(user_id, text, reply_markup=keyboard)
+        except TelegramAPIError:
+            await message.answer(
+                "请先私聊机器人查看尚未满足的加入条件。",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="打开加入条件",
+                                url=f"https://t.me/{self._bot_username}?start=join_{campaign.public_ref}",
+                            )
+                        ]
+                    ]
+                ),
+            )
+
+    async def _qualification_reply(
         self,
         campaign: object,
         state: QualificationState,
         observations: tuple[dict[str, object], ...],
-    ) -> InlineKeyboardMarkup:
-        failed = _failed_condition_positions(campaign, state, observations)
-        rows = []
-        if failed:
-            rows.append(
-                [
-                    InlineKeyboardButton(
-                        text=f"查看未满足条件（{len(failed)}项）",
-                        callback_data=f"member:condition:{campaign.public_ref}:{failed[0]}",
-                    )
-                ]
-            )
+    ) -> tuple[str, InlineKeyboardMarkup]:
+        targets = await self._qualification_targets(campaign)
+        by_chat = {int(item["chat_id"]): item for item in observations}
+        missing = [
+            target
+            for target in targets
+            if member_condition_views.target_state(target, by_chat) == "ineligible"
+        ]
+        unknown = [
+            target
+            for target in targets
+            if member_condition_views.target_state(target, by_chat) == "unknown"
+        ]
+        rows = [
+            [
+                InlineKeyboardButton(
+                    text=member_condition_views.target_button(target),
+                    url=self._target_url(campaign, target),
+                )
+            ]
+            for target in missing
+            if member_condition_views.target_joinable(campaign, target)
+        ]
         rows.append(
             [
                 InlineKeyboardButton(
@@ -266,17 +346,38 @@ class MemberFlow:
                 )
             ]
         )
-        return InlineKeyboardMarkup(inline_keyboard=rows)
+        text = member_condition_views.missing_targets_text(
+            campaign, state, missing=missing, unknown=unknown
+        )
+        return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+    async def _qualification_targets(self, campaign: object) -> tuple[QualificationTarget, ...]:
+        loader = getattr(self._queries, "qualification_targets", None)
+        if loader is not None:
+            return await loader(campaign.id)
+        if getattr(campaign, "contract_version", "v1") == MULTI_GROUP_CONTRACT:
+            raise RuntimeError("multi-group query service cannot load qualification targets")
+        return ()
+
+    def _target_url(self, campaign: object, target: QualificationTarget) -> str:
+        if target.public_join_url:
+            return str(target.public_join_url)
+        if target.encrypted_join_url is None or target.revoked_at is not None:
+            raise UserFacingError("该加入入口尚未准备好或已经撤销")
+        return self._cipher.decrypt(
+            target.encrypted_join_url,
+            context=target.secret_context,
+        )
 
     def _condition_keyboard(self, campaign: object) -> InlineKeyboardMarkup | None:
-        conditions = _conditions(campaign)
+        conditions = member_condition_views.conditions(campaign)
         if not conditions:
             return None
         rows = [
             [
                 InlineKeyboardButton(
-                    text=f"查看参与条件（{len(conditions)}项）",
-                    callback_data=f"member:condition:{campaign.public_ref}:1",
+                    text=f"查看加入入口（{len(conditions)}项）",
+                    url=f"https://t.me/{self._bot_username}?start=join_{campaign.public_ref}",
                 )
             ]
         ]
@@ -367,13 +468,19 @@ def _required_user(message: Message) -> User:
     return message.from_user
 
 
-def _group_callback(callback: CallbackQuery | None, message: Message) -> bool:
-    chat_type = getattr(getattr(message, "chat", None), "type", None)
-    return callback is not None and chat_type != "private"
+def _source_chat_id(message: Message) -> int | None:
+    chat = getattr(message, "chat", None)
+    if chat is None or getattr(chat, "type", None) == "private":
+        return None
+    return int(chat.id)
 
 
 def _registration_request(
-    campaign_id: UUID, user: User, observed_at: datetime
+    campaign_id: UUID,
+    user: User,
+    observed_at: datetime,
+    *,
+    source_chat_id: int | None = None,
 ) -> RegistrationRequest:
     return RegistrationRequest(
         campaign_id=campaign_id,
@@ -381,108 +488,5 @@ def _registration_request(
         username=user.username,
         display_name=user.full_name,
         observed_at=observed_at,
-    )
-
-
-def _conditions(campaign: object) -> tuple[dict[str, object], ...]:
-    presentation = getattr(campaign, "presentation", {}) or {}
-    main = presentation.get("main_chat")
-    extras = presentation.get("required_chats") or []
-    values = ([main] if isinstance(main, dict) else []) + list(extras)
-    return tuple(item for item in values if isinstance(item, dict))
-
-
-def _draw_rule(rules: CampaignRules) -> str:
-    if rules.draw_mode == "full":
-        return f"开奖方式: 满 {rules.participant_target} 人后进入结算，30 天中午兜底"
-    return "开奖方式: 定时开奖"
-
-
-def _human_rule(rules: CampaignRules) -> str:
-    if not rules.bonus_types:
-        return "抽奖加成: 关闭，仅计算基础抽奖次数"
-    parts = []
-    if rules.invite_bonus_enabled:
-        parts.append(_invite_rule_text(rules))
-    if rules.activity_bonus_enabled:
-        parts.append(
-            f"每个条件群每天有效发言 {rules.activity.message_threshold} 条，"
-            f"全部达标+{rules.activity.reward_tickets} 次"
-        )
-    return "抽奖加成: " + "；".join(parts)
-
-
-def _invite_rule_text(rules: CampaignRules) -> str:
-    if not rules.invite.reward_tiers:
-        return f"每个有效邀请+{rules.invite.reward_tickets}次"
-    tiers = ", ".join(
-        f"{tier.invite_count}人+{tier.total_bonus}次" for tier in rules.invite.reward_tiers
-    )
-    return f"邀请 {tiers}，上限 {rules.invite.max_bonus_tickets} 次"
-
-
-def _issuer_name(campaign: object) -> str:
-    presentation = getattr(campaign, "presentation", {}) or {}
-    return str(presentation.get("issuer_name") or "活动创建者")
-
-
-def _deletion_rule(campaign: object) -> str:
-    presentation = getattr(campaign, "presentation", {}) or {}
-    trigger = "删除报名命令" if presentation.get("delete_trigger_message") else "保留报名命令"
-    seconds = presentation.get("completion_delete_after_seconds")
-    if seconds is None:
-        return f"消息删除: {trigger}; 完成提示不自动删除"
-    return f"消息删除: {trigger}; 完成提示 {int(seconds)} 秒后删除"
-
-
-def _condition_summary(campaign: object) -> str:
-    labels = []
-    for chat in _conditions(campaign):
-        suffix = " (加入入口已关闭)" if chat.get("invite_revoked_at") else ""
-        labels.append(f"{chat['title']}{suffix}")
-    if len(labels) > 3:
-        return f"参与条件: 共 {len(labels)} 项（请点击逐项查看）"
-    return "参与条件: " + ("、".join(labels) if labels else "无额外条件")
-
-
-def _condition_action(chat: dict[str, object]) -> str:
-    return "关注频道" if chat.get("type") == "channel" else "加入群聊"
-
-
-def _condition_instruction(chat: dict[str, object], rules: CampaignRules) -> str:
-    instruction = f"请{_condition_action(chat)}「{chat['title']}」"
-    if rules.activity_bonus_enabled and chat.get("type") != "channel":
-        instruction += f"；本群每天需发送 {rules.activity.message_threshold} 条有效消息"
-    return instruction + "，完成加入后点击验证资格。"
-
-
-def _condition_navigation(
-    campaign_ref: str, position: int, count: int
-) -> list[InlineKeyboardButton]:
-    buttons = []
-    if position > 1:
-        buttons.append(
-            InlineKeyboardButton(
-                text="← 上一项", callback_data=f"member:condition:{campaign_ref}:{position - 1}"
-            )
-        )
-    if position < count:
-        buttons.append(
-            InlineKeyboardButton(
-                text="下一项 →", callback_data=f"member:condition:{campaign_ref}:{position + 1}"
-            )
-        )
-    return buttons
-
-
-def _failed_condition_positions(
-    campaign: object,
-    state: QualificationState,
-    observations: tuple[dict[str, object], ...],
-) -> tuple[int, ...]:
-    failed_ids = {int(item["chat_id"]) for item in observations if item["state"] == state.value}
-    return tuple(
-        position
-        for position, chat in enumerate(_conditions(campaign), start=1)
-        if int(chat["id"]) in failed_ids
+        source_chat_id=source_chat_id,
     )

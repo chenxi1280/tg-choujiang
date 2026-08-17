@@ -6,13 +6,14 @@ from aiogram.types import Chat, Message, User
 
 from tg_lottery.application.callback_tokens import CallbackGrant
 from tg_lottery.domain.errors import UserFacingError
-from tg_lottery.telegram.campaign_creator import CampaignCreator, _validate_activity_chat
+from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_participation import (
     parse_chat_refs,
     parse_positions,
     participation_add_text,
     participation_rows,
     participation_text,
+    validate_main_threshold,
 )
 from tg_lottery.telegram.creator_settings import (
     CreatorSettings,
@@ -138,9 +139,9 @@ def test_participation_add_button_opens_a_distinct_input_prompt() -> None:
         bot=RequiredChatBot(),
     )
 
-    assert rows[0] == [("添加参与条件", "draft_participation_add")]
+    assert rows[0] == [("添加准入条件", "draft_participation_add")]
     assert "请直接发送群聊或频道链接" in participation_add_text()
-    assert "主活动群已自动包含" in participation_add_text()
+    assert "参与活动的群无需在这里重复添加" in participation_add_text()
     assert "创建者和机器人都必须" in participation_add_text()
     assert "数字 chat ID 仅用于高级操作" in participation_add_text()
     assert (
@@ -149,9 +150,12 @@ def test_participation_add_button_opens_a_distinct_input_prompt() -> None:
 
 
 def test_activity_bonus_rejects_a_channel_as_the_main_chat() -> None:
-    with pytest.raises(UserFacingError, match="频道无法统计成员发言"):
-        _validate_activity_chat({"bonus_types": ["activity"]}, {"type": "channel"})
-    _validate_activity_chat({"bonus_types": ["invite"]}, {"type": "channel"})
+    with pytest.raises(UserFacingError, match=r"频道.*无法统计发言"):
+        validate_main_threshold(
+            {"chat_message_thresholds": {"-1001": 1}},
+            {"id": -1001, "type": "channel"},
+        )
+    validate_main_threshold({}, {"id": -1001, "type": "channel"})
 
 
 async def test_required_chats_are_resolved_deduplicated_and_frozen() -> None:
@@ -173,7 +177,10 @@ async def test_required_chat_rejects_bot_without_admin_access() -> None:
     creator = _creator(RequiredChatBot(status="member"))
 
     with pytest.raises(UserFacingError, match=r"群组 -1002.*设为管理员"):
-        await creator._required_chat_record("@public_group")
+        await creator._resolve_required_chats(
+            {"chat_id": -1001, "required_chat_refs": ["@public_group"]},
+            creator_user_id=201,
+        )
 
 
 async def test_required_chat_rejects_creator_without_admin_access() -> None:
@@ -204,7 +211,7 @@ async def test_participation_conditions_accumulate_by_resolved_chat_id() -> None
     with pytest.raises(UserFacingError, match="已经在参与条件"):
         await settings._receive_participation(_message("@public_group"), sessions.data)
 
-    with pytest.raises(UserFacingError, match="主活动群已自动作为参与条件"):
+    with pytest.raises(UserFacingError, match="已经是参与活动的群"):
         await settings._receive_participation(_message("-1001"), sessions.data)
 
 

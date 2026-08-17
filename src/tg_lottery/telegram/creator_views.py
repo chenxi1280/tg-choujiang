@@ -33,7 +33,8 @@ def preview_text(data: dict[str, Any]) -> str:
         f"🏞️ 封面设置：{'【已设置】' if data.get('cover_file_id') else '【等待设置】'}\n\n"
         f"🪪 用户限制：{_user_limits(data)}\n\n"
         f"🌏️ 地区限制：{_region_limits(data)}\n\n"
-        f"📮 参与条件：{_participation(data)}\n\n"
+        f"👥 参与活动的群：{_participation_groups(data)}\n"
+        f"📮 准入条件：{_requirements(data)}\n\n"
         f"🎁 奖品内容：\n{_prize_lines(data.get('prizes', []))}\n"
         f"⚠️ 抽奖说明：{data.get('description') or '【等待设置】'}\n\n"
         f"🔋 抽奖加成：{bonus_summary(data)}\n\n"
@@ -47,14 +48,14 @@ def preview_text(data: dict[str, Any]) -> str:
 
 def dashboard_rows() -> ButtonRows:
     return [
-        [("活动群", "draft_group")],
+        [("参与活动的群", "draft_group")],
         [
             ("活动标题", "draft_title"),
             ("上传封面", "draft_cover"),
             ("用户限制", "draft_user_limits"),
         ],
         [
-            ("参与条件", "draft_participation"),
+            ("准入条件", "draft_participation"),
             ("奖品内容", "draft_prizes"),
             ("抽奖说明", "draft_description"),
         ],
@@ -119,10 +120,17 @@ def _region_limits(data: dict[str, Any]) -> str:
     return "、".join(regions) if regions else "全国"
 
 
-def _participation(data: dict[str, Any]) -> str:
-    group = data.get("group_title") or "【等待设置】"
+def _requirements(data: dict[str, Any]) -> str:
     count = len(data.get("required_chat_refs") or data.get("required_chat_ids", []))
-    return f"加入 {group}" + (f" 等 {count + 1} 个群/频道" if count else "")
+    return f"{count} 项（必须全部满足）" if count else "无额外条件"
+
+
+def _participation_groups(data: dict[str, Any]) -> str:
+    groups = data.get("participation_groups") or []
+    if not groups:
+        return "【等待设置】"
+    primary = data.get("group_title") or groups[0].get("title")
+    return f"{len(groups)} 个（必须全部加入），主群：{primary}"
 
 
 def _prize_lines(prizes: list[dict[str, Any]]) -> str:

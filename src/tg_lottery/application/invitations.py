@@ -3,13 +3,15 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 
+from tg_lottery.application.campaign_targets import qualification_targets
 from tg_lottery.application.invitation_models import (
     InvitationValidationAttempt,
     JoinObservation,
-    accepts_attribution,
+    campaign_accepts_attribution,
     required_chat_ids,
 )
 from tg_lottery.application.invitation_rewards import add_invite_bonus, invite_bonus_target
+from tg_lottery.application.operational_blocks import has_active_campaign_block
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import add_job
 from tg_lottery.application.request_context import current_update_id
@@ -38,7 +40,7 @@ class InvitationService:
             link, campaign = await self._link_and_campaign(uow.session, observation.invite_link_id)
             if await self._is_self_invite(uow.session, link, observation.invitee_user_id):
                 return None
-            if not self._accepts_attribution(campaign, observation.event_at):
+            if not campaign_accepts_attribution(campaign, observation.event_at):
                 return None
             return await self._upsert_candidate(
                 uow.session,
@@ -54,7 +56,7 @@ class InvitationService:
             link, campaign = await self._link_and_campaign(uow.session, observation.invite_link_id)
             if await self._is_self_invite(uow.session, link, observation.invitee_user_id):
                 return None
-            if not self._accepts_attribution(campaign, observation.event_at):
+            if not campaign_accepts_attribution(campaign, observation.event_at):
                 return None
             invitation = await self._upsert_candidate(
                 uow.session,
@@ -79,7 +81,7 @@ class InvitationService:
             recoverable = invitation.left_at is not None or (
                 invitation.state is InvitationState.LEFT_BEFORE_VALID
             )
-            if not recoverable or not self._accepts_attribution(campaign, event_at):
+            if not recoverable or not campaign_accepts_attribution(campaign, event_at):
                 return None
             self._schedule_validation(uow.session, invitation, campaign, event_at=event_at)
             return invitation
@@ -136,6 +138,8 @@ class InvitationService:
             )
             if invitation.state is InvitationState.VALID:
                 return self._no_observation(invitation)
+            if await has_active_campaign_block(uow.session, campaign.id):
+                raise InvitationValidationDeferred("campaign operational block is active")
             self._require_validation_window(invitation, campaign, observed_at)
             if invitation.due_at is None or invitation.due_at > campaign.cutoff_at:
                 invitation.state = InvitationState.EXPIRED_UNQUALIFIED
@@ -149,17 +153,22 @@ class InvitationService:
                 InvitationState.EXPIRED_UNQUALIFIED,
             }:
                 return self._no_observation(invitation)
-            group = await uow.session.get(Group, campaign.group_id)
-            if group is None:
-                raise ValueError("invitation group is missing")
+            targets = await qualification_targets(uow.session, campaign)
+            if targets:
+                chat_ids = tuple(target.chat_id for target in targets)
+            else:
+                group = await uow.session.get(Group, campaign.group_id)
+                if group is None:
+                    raise ValueError("invitation group is missing")
+                chat_ids = required_chat_ids(
+                    group.chat_id, CampaignRules.model_validate(campaign.rules)
+                )
             invitation.state = InvitationState.CHECKING
             invitation.validation_error = None
             return InvitationValidationAttempt(
                 invitation_id=invitation.id,
                 invitee_user_id=invitation.invitee_user_id,
-                chat_ids=required_chat_ids(
-                    group.chat_id, CampaignRules.model_validate(campaign.rules)
-                ),
+                chat_ids=chat_ids,
                 requires_observation=True,
             )
 
@@ -300,7 +309,7 @@ class InvitationService:
     ) -> None:
         if not rules.invite_bonus_enabled:
             return
-        if rules.invite.reward_tiers:
+        if rules.invite.mode == "ratio" or rules.invite.reward_tiers:
             await self._reconcile_tier_bonus(
                 session,
                 invitation=invitation,
@@ -486,11 +495,3 @@ class InvitationService:
         session.add(invitation)
         await session.flush()
         return invitation
-
-    def _accepts_attribution(self, campaign: Campaign, event_at: datetime) -> bool:
-        return accepts_attribution(
-            campaign.state,
-            preheat_at=campaign.preheat_at,
-            cutoff_at=campaign.cutoff_at,
-            event_at=event_at,
-        )

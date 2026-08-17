@@ -7,14 +7,17 @@ from sqlalchemy import select
 
 from tests.helpers import seed_campaign
 from tg_lottery.application.drawing import DrawingService
+from tg_lottery.application.full_draw import FULL_DRAW_VERIFY_JOB
 from tg_lottery.application.invitations import InvitationService, JoinObservation
 from tg_lottery.application.participants import ParticipantService
 from tg_lottery.application.settlement import SettlementService
 from tg_lottery.domain.enums import CampaignState, InvitationState, JobState, QualificationState
 from tg_lottery.domain.rules import CampaignRules, InviteRewardTier, InviteRule
 from tg_lottery.infrastructure.db import (
+    Campaign,
     Invitation,
     InviteLink,
+    PollingOffset,
     QualificationCheck,
     ScheduledJob,
     TicketLedger,
@@ -200,6 +203,51 @@ async def test_draw_review_keeps_eligible_when_message_threshold_met(
         assert check.state is QualificationState.ELIGIBLE
         assert [item for item in check.observations["chats"] if item.get("error_code")] == []
     assert stats.calls == [(participant_user_id, (main_chat_id,))]
+
+
+async def test_full_draw_candidate_requalifies_and_then_enters_settlement(
+    session_factory,
+) -> None:
+    candidate_at = datetime.now(UTC)
+    rules = CampaignRules(draw_mode="full", participant_target=1)
+    async with session_factory() as session, session.begin():
+        group, campaign, _ = await seed_campaign(session, rules=rules)
+        session.add(
+            PollingOffset(
+                bot_id=1,
+                last_durable_update_id=1,
+                last_poll_succeeded_at=candidate_at + timedelta(seconds=1),
+                updated_at=candidate_at + timedelta(seconds=1),
+            )
+        )
+        campaign_id = campaign.id
+        chat_id = group.chat_id
+
+    job = ScheduledJob(
+        job_type=FULL_DRAW_VERIFY_JOB,
+        aggregate_id=str(campaign_id),
+        business_key=f"test:full_draw:{campaign_id}",
+        payload={"candidate_at": candidate_at.isoformat()},
+        run_at=candidate_at,
+        state=JobState.CLAIMED,
+        attempts=1,
+    )
+    await _handlers(QualificationBot({chat_id: "member"}), session_factory).handle(job)
+
+    async with session_factory() as session:
+        campaign = await session.get(Campaign, campaign_id)
+        jobs = tuple(
+            await session.scalars(
+                select(ScheduledJob.job_type).where(ScheduledJob.aggregate_id == str(campaign_id))
+            )
+        )
+    assert campaign is not None and campaign.state is CampaignState.SETTLING
+    assert set(jobs) == {
+        "qualification_review",
+        "revoke_invite_links",
+        "campaign_settle",
+        "campaign_draw",
+    }
 
 
 def _handlers(

@@ -1,7 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta
-from hashlib import sha256
+from datetime import timedelta
 from uuid import UUID
 
 from aiogram.exceptions import (
@@ -15,22 +14,22 @@ from aiogram.exceptions import (
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tg_lottery.application.campaign_notifications import add_cancelled_campaign_card
-from tg_lottery.application.records import add_outbox, utcnow
-from tg_lottery.application.required_chat_links import project_required_chat_operation
-from tg_lottery.domain.enums import CampaignState, DeliveryCertainty, OutboxState
+from tg_lottery.application.operational_blocks import (
+    record_outbox_target_block,
+    resolve_outbox_target_block,
+)
+from tg_lottery.application.records import utcnow
+from tg_lottery.domain.enums import DeliveryCertainty, OutboxState
 from tg_lottery.infrastructure.db import (
-    Campaign,
     DeliveryAttempt,
-    InviteLink,
-    Participant,
     TelegramOutbox,
 )
 from tg_lottery.infrastructure.heartbeat import run_with_heartbeat
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway import GatewayResult, TelegramGateway
-from tg_lottery.telegram.gateway_requests import GatewayCall, build_gateway_call, invite_link_id
+from tg_lottery.telegram.gateway_requests import GatewayCall, build_gateway_call
 from tg_lottery.telegram.outbox_payloads import InviteNameFactory, normalize_pending_invite_name
+from tg_lottery.telegram.outbox_projection import project_outbox_success
 from tg_lottery.telegram.outbox_records import (
     add_delivery_attempt,
     delivery_log_context,
@@ -285,6 +284,12 @@ class OutboxWorker:
             row.last_error = str(exc)[:4000]
             row.lease_owner = None
             row.lease_until = None
+            await record_outbox_target_block(
+                session,
+                row,
+                error_code=type(exc).__name__,
+                details=str(exc),
+            )
             return attempt_number
 
     async def _unknown(self, outbox_id: UUID, attempt_number: int, exc: Exception) -> None:
@@ -302,6 +307,12 @@ class OutboxWorker:
             row.last_error = str(exc)[:4000]
             row.lease_owner = None
             row.lease_until = None
+            await record_outbox_target_block(
+                session,
+                row,
+                error_code=type(exc).__name__,
+                details=str(exc),
+            )
 
     async def _recover_ambiguous(self) -> None:
         now = utcnow()
@@ -334,6 +345,12 @@ class OutboxWorker:
                 row.state = OutboxState.UNKNOWN_HOLD
                 row.lease_owner = None
                 row.lease_until = None
+                await record_outbox_target_block(
+                    session,
+                    row,
+                    error_code="worker_lost_after_gateway_start",
+                    details="lease expired after gateway_started_at",
+                )
 
     async def _project_pending_confirmations(self) -> int:
         async with self._session_factory() as session:
@@ -372,7 +389,10 @@ class OutboxWorker:
                 raise RuntimeError("only confirmed outbox rows can be projected")
             if row.projected_at is not None:
                 return
-            await self._project_success(session, row, self._stored_result(row))
+            await project_outbox_success(
+                session, row, self._stored_result(row), cipher=self._cipher
+            )
+            await resolve_outbox_target_block(session, row)
             row.projected_at = utcnow()
             row.encrypted_remote_secret = None
             row.last_error = None
@@ -396,86 +416,6 @@ class OutboxWorker:
             remote_message_id=row.remote_message_id,
             invite_link=secret,
         )
-
-    async def _project_success(
-        self, session: AsyncSession, row: TelegramOutbox, result: GatewayResult
-    ) -> None:
-        if await project_required_chat_operation(session, row, result, cipher=self._cipher):
-            return
-        if row.operation == "send_campaign_card":
-            await self._project_campaign_card(session, row)
-            return
-        if row.operation == "create_invite_link":
-            await self._project_invite_link(session, row, result)
-            return
-        if row.operation == "revoke_invite_link":
-            link = await self._required_link(session, row)
-            link.revoked_at = utcnow()
-
-    async def _project_campaign_card(self, session: AsyncSession, row: TelegramOutbox) -> None:
-        campaign = await session.get(Campaign, UUID(row.aggregate_id), with_for_update=True)
-        if campaign is None:
-            raise RuntimeError("published campaign disappeared")
-        if campaign.published_message_id == row.remote_message_id and campaign.state in {
-            CampaignState.SCHEDULED,
-            CampaignState.RUNNING,
-        }:
-            return
-        if campaign.state is CampaignState.CANCELLED:
-            campaign.published_message_id = row.remote_message_id
-            add_cancelled_campaign_card(session, campaign, row.recipient_chat_id)
-            return
-        if campaign.state is not CampaignState.PUBLISHING:
-            raise RuntimeError("campaign publication projection has invalid state")
-        campaign.published_message_id = row.remote_message_id
-        campaign.state = (
-            CampaignState.RUNNING if utcnow() >= campaign.preheat_at else CampaignState.SCHEDULED
-        )
-
-    async def _project_invite_link(
-        self, session: AsyncSession, row: TelegramOutbox, result: GatewayResult
-    ) -> None:
-        participant_id = UUID(str(row.payload["participant_id"]))
-        existing = await session.scalar(
-            select(InviteLink).where(InviteLink.participant_id == participant_id)
-        )
-        if existing:
-            return
-        if result.invite_link is None:
-            raise RuntimeError("Telegram success omitted encrypted invite_link")
-        link = InviteLink(
-            campaign_id=UUID(str(row.payload["campaign_id"])),
-            participant_id=participant_id,
-            link_hash=sha256(result.invite_link.encode()).hexdigest(),
-            telegram_name=str(row.payload["name"]),
-            expire_at=datetime.fromisoformat(str(row.payload["expire_at"])),
-            remote_created_at=utcnow(),
-        )
-        session.add(link)
-        await session.flush()
-        link.encrypted_url = self._cipher.encrypt(
-            result.invite_link,
-            context=f"invite-link:{link.id}",
-        )
-        participant = await session.get(Participant, participant_id)
-        if participant is None:
-            raise RuntimeError("invite link participant disappeared")
-        add_outbox(
-            session,
-            operation="send_invite_link",
-            aggregate_type="invite_link",
-            aggregate_id=str(link.id),
-            recipient_chat_id=participant.user_id,
-            business_key=f"send_invite_link:{link.id}:{participant.user_id}",
-            payload={"invite_link_id": str(link.id)},
-        )
-
-    async def _required_link(self, session: AsyncSession, outbox: TelegramOutbox) -> InviteLink:
-        link_id = invite_link_id(outbox)
-        link = await session.get(InviteLink, link_id, with_for_update=True) if link_id else None
-        if link is None:
-            raise RuntimeError("invite link projection target is missing")
-        return link
 
     async def _locked(self, session: AsyncSession, outbox_id: UUID) -> TelegramOutbox:
         row = await session.get(TelegramOutbox, outbox_id, with_for_update=True)

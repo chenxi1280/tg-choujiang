@@ -4,14 +4,12 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tg_lottery.application.campaign_notifications import add_campaign_card_state
-from tg_lottery.application.campaigns import request_early_cutoff
+from tg_lottery.application.full_draw import record_full_draw_candidate
 from tg_lottery.application.records import add_audit
 from tg_lottery.domain.enums import CampaignState, JobState, QualificationState, UpdateState
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import (
     Campaign,
-    Group,
     Participant,
     ScheduledJob,
     TelegramUpdate,
@@ -120,6 +118,14 @@ async def _reconcile_full_draw(session: AsyncSession, campaign_id: object, now: 
     )
     if int(eligible or 0) < rules.participant_target:
         return 0
+    created = await record_full_draw_candidate(
+        session,
+        campaign=campaign,
+        observed_at=now,
+        eligible_count=int(eligible or 0),
+    )
+    if not created:
+        return 0
     add_audit(
         session,
         actor_user_id=None,
@@ -129,19 +135,7 @@ async def _reconcile_full_draw(session: AsyncSession, campaign_id: object, now: 
         reason="满人阈值已达到但截止触发尚未持久化",
         details={"eligible": int(eligible or 0), "target": rules.participant_target},
     )
-    changed = request_early_cutoff(
-        session,
-        campaign=campaign,
-        cutoff_at=now,
-        reason=f"满人开奖对账达到 {eligible}/{rules.participant_target}",
-        actor_user_id=None,
-    )
-    if changed:
-        group = await session.get(Group, campaign.group_id)
-        if group is None:
-            raise ValueError("full draw campaign group is missing")
-        add_campaign_card_state(session, campaign, group.chat_id, state="settling")
-    return int(changed)
+    return 1
 
 
 async def reconcile_ticket_caches(session: AsyncSession) -> int:

@@ -4,7 +4,11 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from tg_lottery.application.campaign_notifications import add_campaign_card_state
+from tg_lottery.application.campaign_notifications import add_campaign_card_state_fanout
+from tg_lottery.application.campaign_targets import (
+    participation_chat_ids,
+    release_participation_groups,
+)
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.application.records import add_outbox, utcnow
@@ -18,7 +22,6 @@ from tg_lottery.infrastructure.db import (
     DrawRound,
     DrawRun,
     DrawSnapshot,
-    Group,
     Participant,
     Prize,
     Winner,
@@ -98,6 +101,7 @@ class DrawingService:
             )
             draw_run.completed_at = utcnow()
             campaign.state = CampaignState.DRAWN
+            await release_participation_groups(uow.session, campaign, utcnow())
             return draw_run
 
     async def _draw_all(
@@ -277,26 +281,25 @@ class DrawingService:
         draw_run: DrawRun,
         outcome: DrawOutcome,
     ) -> None:
-        group = await session.get(Group, campaign.group_id)
-        if group is None:
-            raise ValueError("campaign group is missing")
-        add_campaign_card_state(
+        winners = [self._winner_payload(item) for item in outcome.awards]
+        await add_campaign_card_state_fanout(
             session,
             campaign,
-            group.chat_id,
             state="drawn",
-            winners=[self._winner_payload(item) for item in outcome.awards],
+            winners=winners,
         )
         presentation = campaign.presentation or {}
         extended_tips = bool(presentation.get("message_tips", True))
-        await self._queue_group_result(
-            session,
-            campaign=campaign,
-            draw_run=draw_run,
-            outcome=outcome,
-            chat_id=group.chat_id,
-            extended_tips=extended_tips,
-        )
+        chat_ids = await participation_chat_ids(session, campaign.id, confirmed_only=True)
+        for chat_id in chat_ids:
+            await self._queue_group_result(
+                session,
+                campaign=campaign,
+                draw_run=draw_run,
+                outcome=outcome,
+                chat_id=chat_id,
+                extended_tips=extended_tips,
+            )
         self._queue_winner_notices(
             session,
             campaign=campaign,

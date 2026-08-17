@@ -15,6 +15,12 @@ BONUS_ACTIONS = frozenset(
         "draft_bonus_toggle_invite",
         "draft_bonus_toggle_activity",
         "draft_bonus_invite",
+        "draft_bonus_invite_mode_ratio",
+        "draft_bonus_invite_mode_tiered",
+        "draft_bonus_invite_ratio_dec",
+        "draft_bonus_invite_ratio_inc",
+        "draft_bonus_invite_cap_dec",
+        "draft_bonus_invite_cap_inc",
         "draft_bonus_invite_count_dec",
         "draft_bonus_invite_count_inc",
         "draft_bonus_invite_total_dec",
@@ -41,9 +47,7 @@ def bonus_summary(data: dict[str, Any]) -> str:
         return "关闭"
     summaries = []
     if "invite" in types:
-        tiers = data.get("invite_reward_tiers", [])
-        values = ", ".join(f"{item['invite_count']}人+{item['total_bonus']}次" for item in tiers)
-        summaries.append(f"邀请({values}，上限{data['invite_bonus_cap']}次)")
+        summaries.append(_invite_summary(data))
     if "activity" in types:
         summaries.append(
             f"发言(每个条件群每天{data['activity_message_threshold']}条，"
@@ -58,7 +62,7 @@ def bonus_rows(data: dict[str, Any]) -> ButtonRows:
     activity = "✅ 发言加成" if "activity" in types else "⬜ 发言加成"
     rows = [[(invite, "draft_bonus_toggle_invite"), (activity, "draft_bonus_toggle_activity")]]
     if "invite" in types:
-        rows.append([("设置邀请阶梯", "draft_bonus_invite")])
+        rows.append([("设置邀请加成", "draft_bonus_invite")])
     if "activity" in types:
         rows.append([("设置每日发言", "draft_bonus_activity")])
     rows.append([("↩ 返回抽奖预览", "draft_back")])
@@ -66,6 +70,11 @@ def bonus_rows(data: dict[str, Any]) -> ButtonRows:
 
 
 def invite_bonus_text(data: dict[str, Any]) -> str:
+    if _invite_mode(data) == "ratio":
+        return (
+            "👥 邀请抽奖加成\n\n"
+            f"每 {_ratio(data)} 个有效邀请 +1 次，最多 {data['invite_bonus_cap']} 次。"
+        )
     return (
         "👥 邀请抽奖加成\n\n"
         f"当前阶梯：{_tier_summary(data)}\n"
@@ -74,8 +83,23 @@ def invite_bonus_text(data: dict[str, Any]) -> str:
 
 
 def invite_bonus_rows(data: dict[str, Any]) -> ButtonRows:
+    mode_rows = [
+        [
+            (
+                "✅ 简单比例" if _invite_mode(data) == "ratio" else "简单比例",
+                "draft_bonus_invite_mode_ratio",
+            ),
+            (
+                "✅ 累计阶梯" if _invite_mode(data) == "tiered" else "累计阶梯",
+                "draft_bonus_invite_mode_tiered",
+            ),
+        ]
+    ]
+    if _invite_mode(data) == "ratio":
+        return mode_rows + _ratio_rows(data)
     last = _tiers(data)[-1]
     return [
+        *mode_rows,
         [
             ("邀请人数 −", "draft_bonus_invite_count_dec"),
             (f"{last['invite_count']} 人", "draft_bonus_invite"),
@@ -122,6 +146,12 @@ def apply_bonus_action(data: dict[str, Any], action: str) -> dict[str, Any]:
         return _toggle_type(data, "invite")
     if action == "draft_bonus_toggle_activity":
         return _toggle_type(data, "activity")
+    if action.startswith("draft_bonus_invite_mode_"):
+        return data | {"invite_reward_mode": action.rsplit("_", 1)[-1]}
+    if action.startswith("draft_bonus_invite_ratio_"):
+        return _change_ratio(data, action)
+    if action.startswith("draft_bonus_invite_cap_"):
+        return _change_cap(data, action)
     if action.startswith("draft_bonus_invite_"):
         return _change_invite(data, action)
     if action.startswith("draft_bonus_activity_"):
@@ -169,6 +199,18 @@ def _change_invite(data: dict[str, Any], action: str) -> dict[str, Any]:
     if action.endswith("total_inc"):
         return _change_last_tier(data, tiers, ("total_bonus", 1, 1, MAX_INVITE_BONUS_TICKETS))
     return data
+
+
+def _change_ratio(data: dict[str, Any], action: str) -> dict[str, Any]:
+    delta = -1 if action.endswith("dec") else 1
+    value = _bounded(_ratio(data) + delta, 1, MAX_INVITE_COUNT)
+    return data | {"valid_invites_per_ticket": value}
+
+
+def _change_cap(data: dict[str, Any], action: str) -> dict[str, Any]:
+    delta = -1 if action.endswith("dec") else 1
+    value = _bounded(int(data["invite_bonus_cap"]) + delta, 1, MAX_INVITE_BONUS_TICKETS)
+    return data | {"invite_bonus_cap": value}
 
 
 def _change_last_tier(
@@ -227,3 +269,35 @@ def _tier_summary(data: dict[str, Any]) -> str:
     return "、".join(
         f"{item['invite_count']} 人 +{item['total_bonus']} 次" for item in _tiers(data)
     )
+
+
+def _invite_mode(data: dict[str, Any]) -> str:
+    return str(data.get("invite_reward_mode", "tiered"))
+
+
+def _ratio(data: dict[str, Any]) -> int:
+    return int(data.get("valid_invites_per_ticket", 2))
+
+
+def _invite_summary(data: dict[str, Any]) -> str:
+    if _invite_mode(data) == "ratio":
+        return f"邀请(每{_ratio(data)}个有效邀请+1次，上限{data['invite_bonus_cap']}次)"
+    tiers = data.get("invite_reward_tiers", [])
+    values = ", ".join(f"{item['invite_count']}人+{item['total_bonus']}次" for item in tiers)
+    return f"邀请({values}，上限{data['invite_bonus_cap']}次)"
+
+
+def _ratio_rows(data: dict[str, Any]) -> ButtonRows:
+    return [
+        [
+            ("邀请人数 −", "draft_bonus_invite_ratio_dec"),
+            (f"每 {_ratio(data)} 人", "draft_bonus_invite"),
+            ("＋", "draft_bonus_invite_ratio_inc"),
+        ],
+        [
+            ("上限 −", "draft_bonus_invite_cap_dec"),
+            (f"最多 {data['invite_bonus_cap']} 次", "draft_bonus_invite"),
+            ("＋", "draft_bonus_invite_cap_inc"),
+        ],
+        [("↩ 返回加成设置", "draft_bonus_menu")],
+    ]

@@ -28,15 +28,24 @@ class InviteRewardTier(BaseModel, frozen=True):
 
 
 class InviteRule(BaseModel, frozen=True):
+    mode: Literal["ratio", "tiered"] = "tiered"
     reward_tickets: int = Field(default=1, ge=1)
     retention_hours: int = Field(default=24, ge=1)
     require_activity: bool = False
     required_messages: int = Field(default=0, ge=0)
     reward_tiers: tuple[InviteRewardTier, ...] = ()
+    valid_invites_per_ticket: int | None = Field(default=None, ge=1)
     max_bonus_tickets: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def validate_reward_tiers(self) -> InviteRule:
+        if self.mode == "ratio":
+            return self._validate_ratio()
+        return self._validate_tiered()
+
+    def _validate_tiered(self) -> InviteRule:
+        if self.valid_invites_per_ticket is not None:
+            raise ValueError("tiered invite rewards cannot set a ratio")
         counts = [tier.invite_count for tier in self.reward_tiers]
         totals = [tier.total_bonus for tier in self.reward_tiers]
         if counts != sorted(set(counts)) or totals != sorted(set(totals)):
@@ -45,6 +54,15 @@ class InviteRule(BaseModel, frozen=True):
             raise ValueError("invite reward tiers require max bonus tickets")
         if totals and totals[-1] != self.max_bonus_tickets:
             raise ValueError("last invite reward tier must equal max bonus tickets")
+        return self
+
+    def _validate_ratio(self) -> InviteRule:
+        if self.valid_invites_per_ticket is None:
+            raise ValueError("ratio invite rewards require valid invites per ticket")
+        if self.max_bonus_tickets is None:
+            raise ValueError("ratio invite rewards require max bonus tickets")
+        if self.reward_tiers:
+            raise ValueError("ratio invite rewards cannot set reward tiers")
         return self
 
 
@@ -92,6 +110,7 @@ class CampaignRules(BaseModel, frozen=True):
 
 class CampaignDraft(BaseModel, frozen=True):
     group_id: int
+    participation_group_ids: tuple[int, ...] = ()
     name: str = Field(min_length=1, max_length=120)
     preheat_at: datetime
     cutoff_at: datetime
@@ -115,6 +134,30 @@ class CampaignDraft(BaseModel, frozen=True):
     def validate_bonus_ranges(self) -> CampaignDraft:
         _validate_new_campaign_bonus_ranges(self.rules)
         return self
+
+    @model_validator(mode="after")
+    def validate_participation_groups(self) -> CampaignDraft:
+        group_ids = self.all_participation_group_ids
+        if group_ids[0] != self.group_id:
+            raise ValueError("primary participation group must be first")
+        if len(group_ids) != len(set(group_ids)):
+            raise ValueError("participation groups must be unique")
+        requirements = {value for value in self.rules.required_chat_ids}
+        if self.rules.required_channel_id is not None:
+            requirements.add(self.rules.required_channel_id)
+        requirements.update(
+            int(item["id"])
+            for item in self.presentation.get("required_chats") or []
+            if isinstance(item, dict) and item.get("id") is not None
+        )
+        overlap = requirements.intersection(group_ids)
+        if overlap:
+            raise ValueError(f"participation groups conflict with requirements: {sorted(overlap)}")
+        return self
+
+    @property
+    def all_participation_group_ids(self) -> tuple[int, ...]:
+        return self.participation_group_ids or (self.group_id,)
 
 
 def _validate_new_campaign_bonus_ranges(rules: CampaignRules) -> None:
@@ -140,6 +183,11 @@ def _validate_invite_bonus_range(rules: CampaignRules) -> None:
         raise ValueError("invite count exceeds product limit")
     if rules.invite.reward_tickets > MAX_INVITE_BONUS_TICKETS:
         raise ValueError("invite reward tickets exceed product limit")
+    if (
+        rules.invite.valid_invites_per_ticket is not None
+        and rules.invite.valid_invites_per_ticket > MAX_INVITE_COUNT
+    ):
+        raise ValueError("valid invites per ticket exceeds product limit")
     if (
         rules.invite.max_bonus_tickets is not None
         and rules.invite.max_bonus_tickets > MAX_INVITE_BONUS_TICKETS

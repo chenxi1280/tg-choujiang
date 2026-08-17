@@ -79,10 +79,10 @@ def test_single_local_draw_time_builds_internal_timeline_and_rules() -> None:
     assert draft.rules.activity.message_threshold == 10
     assert draft.rules.activity.settle_once_per_day is True
     assert draft.rules.invite.retention_hours == 24
-    assert [(item.invite_count, item.total_bonus) for item in draft.rules.invite.reward_tiers] == [
-        (1, 1),
-        (2, 3),
-    ]
+    assert draft.rules.invite.mode == "ratio"
+    assert draft.rules.invite.valid_invites_per_ticket == 2
+    assert draft.rules.invite.max_bonus_tickets == 3
+    assert draft.rules.invite.reward_tiers == ()
     assert draft.rules.bonus_types == ()
     assert [prize.winner_count for prize in prizes] == [1, 2]
     assert all(prize.claim_instructions == "请联系活动管理员领取奖品" for prize in prizes)

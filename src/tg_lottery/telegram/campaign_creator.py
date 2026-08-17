@@ -15,9 +15,15 @@ from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.domain.errors import UserFacingError
-from tg_lottery.infrastructure.db import Group
 from tg_lottery.telegram import creator_participation as participation
 from tg_lottery.telegram.admin_authorization import verify_chat_admin
+from tg_lottery.telegram.creator_group_selection import (
+    bind_initial_group,
+    resolve_participation_groups,
+    selected_chat_ids,
+    set_primary_group,
+    toggle_group,
+)
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
 from tg_lottery.telegram.creator_schedule import positive_int
 from tg_lottery.telegram.creator_settings import CreatorSettings
@@ -89,7 +95,7 @@ class CampaignCreator:
             raise UserFacingError("没有可管理的群，请先将机器人设为群管理员")
         data = new_draft()
         if len(groups) == 1:
-            data = _bind_group(data, groups[0])
+            data = bind_initial_group(data, groups[0])
         return (
             data
             | {
@@ -137,7 +143,9 @@ class CampaignCreator:
     def _grant_handlers(self):
         return {
             "draft_group": self._show_groups,
-            "draft_select_group": self._select_group,
+            "draft_toggle_group": self._change_group_selection,
+            "draft_primary_group": self._change_group_selection,
+            "draft_groups_done": self._finish_group_selection,
             "draft_title": self._edit_title,
             "draft_prizes": self._show_prize_prompt,
             "draft_add_prize": self._show_prize_prompt,
@@ -151,21 +159,37 @@ class CampaignCreator:
         }
 
     async def _show_groups(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        await self._set_state(query, "draft:idle", guided=False)
-        await self._renderer.render_groups(_message(query), user_id=query.from_user.id)
+        data = await self._set_state(query, "draft:idle", guided=False)
+        await self._render_group_selection(query, data)
 
-    async def _select_group(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+    async def _change_group_selection(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         chat_id = int(grant.payload["chat_id"])
         await verify_chat_admin(self._bot, chat_id, query.from_user.id)
         group = await self._queries.group_by_chat_id(chat_id)
         if group is None:
             raise UserFacingError("活动群不存在")
-        data = _bind_group(await self._required_session(query.from_user.id), group)
+        current = await self._required_session(query.from_user.id)
+        data = (
+            set_primary_group(current, group)
+            if grant.action == "draft_primary_group"
+            else toggle_group(current, group)
+        )
         await self._sessions.set(query.from_user.id, "draft:idle", data)
-        if data.get("guided") and not data.get("title"):
-            await self._prompt_title(query.from_user.id, _message(query), data)
-            return
+        await self._render_group_selection(query, data)
+
+    async def _finish_group_selection(self, query: CallbackQuery, _: CallbackGrant) -> None:
+        data = await self._required_session(query.from_user.id)
+        if not selected_chat_ids(data):
+            raise UserFacingError("请至少选择一个参与活动的群")
         await self._render_dashboard(query.from_user.id, _message(query), data)
+
+    async def _render_group_selection(self, query: CallbackQuery, data: dict[str, Any]) -> None:
+        await self._renderer.render_groups(
+            _message(query),
+            user_id=query.from_user.id,
+            selected_chat_ids=selected_chat_ids(data),
+            primary_chat_id=int(data["chat_id"]) if data.get("chat_id") else None,
+        )
 
     async def _edit_title(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:title", guided=False)
@@ -305,9 +329,14 @@ class CampaignCreator:
     ) -> dict[str, Any]:
         if data.get("published_campaign_id"):
             return data
+        participation_groups = await resolve_participation_groups(
+            self._bot,
+            chat_ids=selected_chat_ids(data),
+            admin_user_id=creator.id,
+            activity_enabled="activity" in data.get("bonus_types", []),
+        )
         required_chats = await self._resolve_required_chats(data, creator_user_id=creator.id)
-        main_chat = await self._required_chat_record(int(data["chat_id"]), admin_user_id=creator.id)
-        _validate_activity_chat(data, main_chat)
+        main_chat = participation_groups[0]
         participation.validate_main_threshold(data, main_chat)
         issuer_ref = str(data.get("issuer") or "")
         candidates = (
@@ -321,6 +350,8 @@ class CampaignCreator:
             | {
                 "required_chat_ids": [item["id"] for item in required_chats],
                 "required_chats": required_chats,
+                "participation_group_ids": [item["id"] for item in participation_groups],
+                "participation_groups": participation_groups,
                 "main_chat": main_chat,
             }
             | issuer
@@ -331,7 +362,7 @@ class CampaignCreator:
     ) -> list[dict[str, Any]]:
         refs = data.get("required_chat_refs") or data.get("required_chat_ids", [])
         records: list[dict[str, Any]] = []
-        seen: set[int] = {int(data["chat_id"])}
+        seen = set(selected_chat_ids(data))
         for ref in refs:
             record = await resolve_required_chat(self._bot, ref, admin_user_id=creator_user_id)
             chat_id = int(record["id"])
@@ -340,17 +371,6 @@ class CampaignCreator:
             seen.add(chat_id)
             records.append(record | {"position": len(records) + 1})
         return records
-
-    async def _required_chat_record(
-        self, ref: int | str, *, admin_user_id: int | None = None
-    ) -> dict[str, Any]:
-        return await resolve_required_chat(self._bot, ref, admin_user_id=admin_user_id)
-
-    async def _prompt_title(self, user_id: int, message: Message, data: dict[str, Any]) -> None:
-        await self._sessions.set(user_id, "draft:title", data)
-        await self._render_text(
-            user_id, message, data=data, text=title_prompt_text(data), rows=_back_rows()
-        )
 
     async def _render_dashboard(self, user_id: int, message: Message, data: dict[str, Any]) -> None:
         updated = data | {"guided": False}
@@ -372,7 +392,11 @@ class CampaignCreator:
         await self._edit_from_text(message, data=data, text=prizes_text(data), rows=rows)
 
     async def _render_groups_from_text(self, message: Message, data: dict[str, Any]) -> None:
-        await self._renderer.edit_groups(_target(message, data))
+        await self._renderer.edit_groups(
+            _target(message, data),
+            selected_chat_ids=selected_chat_ids(data),
+            primary_chat_id=int(data["chat_id"]) if data.get("chat_id") else None,
+        )
 
     async def _prompt_title_from_text(self, message: Message, data: dict[str, Any]) -> None:
         await self._sessions.set(_user(message).id, "draft:title", data)
@@ -450,13 +474,6 @@ class CampaignCreator:
         await self._renderer.edit(_target(message, data), text=text, rows=rows)
 
 
-def _validate_activity_chat(data: dict[str, Any], main_chat: dict[str, Any]) -> None:
-    if "activity" not in data.get("bonus_types", []):
-        return
-    if main_chat.get("type") == "channel":
-        raise UserFacingError("频道无法统计成员发言，请关闭发言抽奖加成或选择群聊作为活动群")
-
-
 def _message(query: CallbackQuery) -> Message:
     if not isinstance(query.message, Message):
         raise ValueError("callback message is no longer accessible")
@@ -475,14 +492,6 @@ def _target(message: Message, data: dict[str, Any]) -> PanelTarget:
         chat_id=message.chat.id,
         message_id=int(data["panel_message_id"]),
     )
-
-
-def _bind_group(data: dict[str, Any], group: Group) -> dict[str, Any]:
-    return data | {
-        "chat_id": group.chat_id,
-        "group_title": group.title,
-        "timezone": group.timezone,
-    }
 
 
 def _back_rows() -> list[list[tuple[str, str]]]:

@@ -3,6 +3,8 @@ from uuid import UUID
 
 from sqlalchemy import exists, func, or_, select
 
+from tg_lottery.application.campaign_targets import qualification_targets
+from tg_lottery.application.operational_blocks import has_active_campaign_block
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.domain.enums import (
@@ -112,15 +114,23 @@ class SettlementService:
             blockers.append("invitation_validation_pending")
         if await self._has_pending_qualifications(session, campaign.id):
             blockers.append("qualification_review_pending")
+        if await has_active_campaign_block(session, campaign.id):
+            blockers.append("campaign_operational_blocked")
         if not await self._polling_fresh_after_cutoff(session, campaign.cutoff_at):
             blockers.append("polling_not_fresh_after_cutoff")
         if blockers:
             raise SettlementBlocked(",".join(blockers))
 
     async def _has_pending_updates(self, session: object, campaign: Campaign) -> bool:
-        chat_id = await session.scalar(select(Group.chat_id).where(Group.id == campaign.group_id))
-        if chat_id is None:
-            raise SettlementBlocked("campaign_group_missing")
+        targets = await qualification_targets(session, campaign)
+        chat_ids = tuple(target.chat_id for target in targets)
+        if not chat_ids:
+            chat_id = await session.scalar(
+                select(Group.chat_id).where(Group.id == campaign.group_id)
+            )
+            if chat_id is None:
+                raise SettlementBlocked("campaign_group_missing")
+            chat_ids = (chat_id,)
         update_id = await session.scalar(
             select(TelegramUpdate.id)
             .where(
@@ -128,7 +138,7 @@ class SettlementService:
                 TelegramUpdate.state.in_(_PENDING_UPDATE_STATES),
                 or_(
                     TelegramUpdate.routing_campaign_id == str(campaign.id),
-                    TelegramUpdate.routing_chat_id == chat_id,
+                    TelegramUpdate.routing_chat_id.in_(chat_ids),
                 ),
             )
             .limit(1)

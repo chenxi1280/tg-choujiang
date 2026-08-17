@@ -1,26 +1,33 @@
 from collections.abc import Sequence
 
+from sqlalchemy import select
+
+from tg_lottery.application.campaign_targets import MULTI_GROUP_CONTRACT
 from tg_lottery.application.records import add_outbox
 from tg_lottery.domain.public_refs import new_invite_link_name
-from tg_lottery.infrastructure.db import Campaign, Prize
+from tg_lottery.infrastructure.db import (
+    Campaign,
+    CampaignParticipationGroup,
+    CampaignRequirement,
+    Group,
+    Prize,
+)
 
 
-def add_publication_outboxes(
+async def add_publication_outboxes(
     session: object,
     *,
     campaign: Campaign,
-    recipient_chat_id: int,
+    recipient_chat_ids: Sequence[int],
     bot_username: str,
     prizes: Sequence[Prize],
 ) -> None:
-    private_chats = tuple(
-        item for item in _conditions(campaign.presentation) if item.get("private")
-    )
+    private_chats = await _private_chats(session, campaign)
     if not private_chats:
-        add_campaign_card_outbox(
+        _add_campaign_cards(
             session,
             campaign=campaign,
-            recipient_chat_id=recipient_chat_id,
+            recipient_chat_ids=recipient_chat_ids,
             bot_username=bot_username,
             prizes=prizes,
         )
@@ -58,7 +65,7 @@ def add_campaign_card_outbox(
         aggregate_type="campaign",
         aggregate_id=str(campaign.id),
         recipient_chat_id=recipient_chat_id,
-        business_key=f"publish:{campaign.id}:{campaign.config_revision}",
+        business_key=(f"publish:{campaign.id}:{campaign.config_revision}:{recipient_chat_id}"),
         payload=campaign_card_payload(campaign, bot_username, prizes),
     )
 
@@ -89,7 +96,59 @@ def campaign_card_payload(
 
 
 def _conditions(presentation: dict[str, object]) -> tuple[dict[str, object], ...]:
-    main = presentation.get("main_chat")
+    participation = presentation.get("participation_groups") or []
     extras = presentation.get("required_chats") or []
-    values = ([main] if isinstance(main, dict) else []) + list(extras)
-    return tuple(item for item in values if isinstance(item, dict))
+    main = presentation.get("main_chat")
+    values = list(participation) + list(extras)
+    if not participation and isinstance(main, dict):
+        values.insert(0, main)
+    unique = {int(item["id"]): item for item in values if isinstance(item, dict)}
+    return tuple(unique.values())
+
+
+async def _private_chats(session: object, campaign: Campaign) -> tuple[dict[str, object], ...]:
+    if campaign.contract_version != MULTI_GROUP_CONTRACT:
+        return tuple(item for item in _conditions(campaign.presentation) if item.get("private"))
+    participation = tuple(
+        await session.execute(
+            select(CampaignParticipationGroup, Group.chat_id)
+            .join(Group, Group.id == CampaignParticipationGroup.group_id)
+            .where(
+                CampaignParticipationGroup.campaign_id == campaign.id,
+                CampaignParticipationGroup.private.is_(True),
+            )
+            .order_by(CampaignParticipationGroup.position)
+        )
+    )
+    requirements = tuple(
+        await session.execute(
+            select(CampaignRequirement, Group.chat_id)
+            .outerjoin(Group, Group.id == CampaignRequirement.target_group_id)
+            .where(
+                CampaignRequirement.campaign_id == campaign.id,
+                CampaignRequirement.private.is_(True),
+            )
+            .order_by(CampaignRequirement.position)
+        )
+    )
+    values = ({"id": chat_id} for _, chat_id in participation)
+    extras = ({"id": chat_id or row.chat_id_snapshot} for row, chat_id in requirements)
+    return tuple(values) + tuple(extras)
+
+
+def _add_campaign_cards(
+    session: object,
+    *,
+    campaign: Campaign,
+    recipient_chat_ids: Sequence[int],
+    bot_username: str,
+    prizes: Sequence[Prize],
+) -> None:
+    for chat_id in recipient_chat_ids:
+        add_campaign_card_outbox(
+            session,
+            campaign=campaign,
+            recipient_chat_id=chat_id,
+            bot_username=bot_username,
+            prizes=prizes,
+        )

@@ -21,6 +21,8 @@ from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import (
     ActivityEvent,
     Campaign,
+    CampaignParticipationGroup,
+    CampaignRequirement,
     DailyProgress,
     Group,
     Invitation,
@@ -273,6 +275,26 @@ class ActivityService:
     async def _active_campaigns(
         self, session: object, chat_id: int
     ) -> tuple[tuple[Campaign, int], ...]:
+        participation_campaigns = (
+            select(CampaignParticipationGroup.campaign_id)
+            .join(Group, Group.id == CampaignParticipationGroup.group_id)
+            .where(
+                or_(
+                    Group.chat_id == chat_id,
+                    CampaignParticipationGroup.chat_id_snapshot == chat_id,
+                )
+            )
+        )
+        requirement_campaigns = (
+            select(CampaignRequirement.campaign_id)
+            .outerjoin(Group, Group.id == CampaignRequirement.target_group_id)
+            .where(
+                or_(
+                    CampaignRequirement.chat_id_snapshot == chat_id,
+                    Group.chat_id == chat_id,
+                )
+            )
+        )
         rows = await session.execute(
             select(Campaign, Group.chat_id)
             .join(Group, Group.id == Campaign.group_id)
@@ -281,6 +303,8 @@ class ActivityService:
                 or_(
                     Group.chat_id == chat_id,
                     Campaign.rules.op("@>")({"required_chat_ids": [chat_id]}),
+                    Campaign.id.in_(participation_campaigns),
+                    Campaign.id.in_(requirement_campaigns),
                 ),
             )
             .order_by(Campaign.id)

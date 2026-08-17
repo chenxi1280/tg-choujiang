@@ -10,7 +10,8 @@ def test_preview_is_a_business_card_with_waiting_fields() -> None:
     assert "🏞️ 封面设置" in text
     assert "🪪 用户限制" in text
     assert "🌏️ 地区限制" in text
-    assert "📮 参与条件" in text
+    assert "👥 参与活动的群" in text
+    assert "📮 准入条件" in text
     assert "🎁 奖品内容" in text
     assert "⚠️ 抽奖说明" in text
     assert "🔋 抽奖加成" in text
@@ -23,9 +24,9 @@ def test_preview_is_a_business_card_with_waiting_fields() -> None:
 def test_dashboard_uses_compact_three_column_business_buttons() -> None:
     rows = dashboard_rows()
 
-    assert rows[0] == [("活动群", "draft_group")]
+    assert rows[0] == [("参与活动的群", "draft_group")]
     assert [label for label, _ in rows[1]] == ["活动标题", "上传封面", "用户限制"]
-    assert [label for label, _ in rows[2]] == ["参与条件", "奖品内容", "抽奖说明"]
+    assert [label for label, _ in rows[2]] == ["准入条件", "奖品内容", "抽奖说明"]
     assert [label for label, _ in rows[3]] == ["抽奖加成", "开奖方式", "发奖人员"]
     assert rows[4] == [
         ("消息提示", "draft_messages"),

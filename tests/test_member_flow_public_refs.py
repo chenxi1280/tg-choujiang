@@ -4,10 +4,12 @@ from uuid import uuid4
 
 from aiogram.types import User
 
+from tg_lottery.application.campaign_targets import QualificationTarget
 from tg_lottery.application.participants import RegistrationAttempt
 from tg_lottery.domain.enums import CampaignState, QualificationState
 from tg_lottery.domain.rules import CampaignRules
-from tg_lottery.telegram.member_flow import MemberFlow, _human_rule
+from tg_lottery.telegram.member_condition_views import human_rule
+from tg_lottery.telegram.member_flow import MemberFlow
 
 PUBLIC_REF = "AbCdEfGhIjKlMnOpQrSt-_"
 
@@ -135,7 +137,7 @@ async def test_success_deletion_policy_schedules_command_and_completion() -> Non
 def test_legacy_bonus_rules_have_a_complete_human_readable_description() -> None:
     legacy = CampaignRules.model_validate({"luck_mode": "standard"})
 
-    text = _human_rule(legacy)
+    text = human_rule(legacy)
 
     assert "每个有效邀请+1次" in text
     assert "None" not in text
@@ -175,7 +177,7 @@ async def test_rules_remain_visible_after_private_condition_link_is_revoked() ->
 
     assert "私有参与群 (加入入口已关闭)" in message.texts[-1]
     button = message.reply_markup.inline_keyboard[0][0]
-    assert button.callback_data == f"member:condition:{PUBLIC_REF}:1"
+    assert button.url == f"https://t.me/?start=join_{PUBLIC_REF}"
 
 
 async def test_condition_page_distinguishes_channel_and_supports_navigation() -> None:
@@ -215,6 +217,54 @@ async def test_condition_page_distinguishes_channel_and_supports_navigation() ->
     await flow.show_condition(message, PUBLIC_REF, 2)
 
     assert "本群每天需发送 10 条有效消息" in message.texts[-1]
+
+
+async def test_missing_target_page_lists_multiple_join_links_and_unknown_separately() -> None:
+    campaign = SimpleNamespace(
+        id=uuid4(),
+        public_ref=PUBLIC_REF,
+        cutoff_at=datetime.now(UTC).replace(year=datetime.now(UTC).year + 1),
+        presentation={},
+    )
+    targets = (
+        _target("participation_group", -100101, title="参与群 A", chat_type="supergroup"),
+        _target("participation_group", -100102, title="参与群 B", chat_type="supergroup"),
+        _target("requirement", -100103, title="准入群 C", chat_type="supergroup"),
+        _target("requirement", -100104, title="公告频道 D", chat_type="channel"),
+    )
+    queries = SimpleNamespace(qualification_targets=_async_result(targets))
+    flow = MemberFlow(bot=object(), participants=object(), queries=queries, cipher=object())
+    observations = (
+        {"chat_id": -100101, "state": "eligible"},
+        {"chat_id": -100102, "state": "ineligible"},
+        {"chat_id": -100103, "state": "ineligible"},
+        {"chat_id": -100104, "state": "unknown"},
+    )
+
+    text, keyboard = await flow._qualification_reply(
+        campaign, QualificationState.INELIGIBLE, observations
+    )
+
+    urls = [button.url for row in keyboard.inline_keyboard for button in row if button.url]
+    assert urls == ["https://t.me/group_b", "https://t.me/group_c"]
+    assert "参与群" in text and "必须全部加入" in text
+    assert "准入条件" in text and "必须全部满足" in text
+    assert "暂时无法核验" in text and "- 公告频道 D" in text
+
+
+def _target(kind: str, chat_id: int, *, title: str, chat_type: str) -> QualificationTarget:
+    return QualificationTarget(
+        kind=kind,
+        record_id=uuid4(),
+        chat_id=chat_id,
+        title=title,
+        chat_type=chat_type,
+        private=False,
+        public_join_url=f"https://t.me/{'group_b' if chat_id == -100102 else 'group_c'}",
+        encrypted_join_url=None,
+        revoked_at=None,
+        secret_context="test",
+    )
 
 
 def _async_result(value):

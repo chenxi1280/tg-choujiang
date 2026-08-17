@@ -1,5 +1,7 @@
+from sqlalchemy import select
+
 from tg_lottery.application.records import add_outbox
-from tg_lottery.infrastructure.db import Campaign
+from tg_lottery.infrastructure.db import Campaign, CampaignParticipationGroup, Group
 
 
 def add_campaign_card_state(
@@ -9,12 +11,14 @@ def add_campaign_card_state(
     *,
     state: str,
     winners: list[dict[str, object]] | None = None,
+    message_id: int | None = None,
 ) -> None:
-    if campaign.published_message_id is None:
+    remote_message_id = message_id or campaign.published_message_id
+    if remote_message_id is None:
         return
     payload: dict[str, object] = {
         "campaign_name": campaign.name,
-        "message_id": campaign.published_message_id,
+        "message_id": remote_message_id,
         "has_cover": bool(campaign.presentation.get("cover_file_id")),
         "card_state": state,
     }
@@ -26,15 +30,20 @@ def add_campaign_card_state(
         aggregate_type="campaign",
         aggregate_id=str(campaign.id),
         recipient_chat_id=recipient_chat_id,
-        business_key=f"campaign_card_state:{campaign.id}:{state}",
+        business_key=f"campaign_card_state:{campaign.id}:{state}:{recipient_chat_id}",
         payload=payload,
     )
 
 
 def add_cancelled_campaign_card(
-    session: object, campaign: Campaign, recipient_chat_id: int
+    session: object,
+    campaign: Campaign,
+    recipient_chat_id: int,
+    *,
+    message_id: int | None = None,
 ) -> None:
-    if campaign.published_message_id is None:
+    remote_message_id = message_id or campaign.published_message_id
+    if remote_message_id is None:
         return
     add_outbox(
         session,
@@ -42,10 +51,64 @@ def add_cancelled_campaign_card(
         aggregate_type="campaign",
         aggregate_id=str(campaign.id),
         recipient_chat_id=recipient_chat_id,
-        business_key=f"campaign_card_cancelled:{campaign.id}:{campaign.published_message_id}",
+        business_key=f"campaign_card_cancelled:{campaign.id}:{remote_message_id}",
         payload={
             "campaign_name": campaign.name,
-            "message_id": campaign.published_message_id,
+            "message_id": remote_message_id,
             "has_cover": bool(campaign.presentation.get("cover_file_id")),
         },
     )
+
+
+async def add_campaign_card_state_fanout(
+    session: object,
+    campaign: Campaign,
+    *,
+    state: str,
+    winners: list[dict[str, object]] | None = None,
+) -> None:
+    rows = await _published_targets(session, campaign.id)
+    if not rows:
+        group = await session.get(Group, campaign.group_id)
+        if group is not None:
+            add_campaign_card_state(session, campaign, group.chat_id, state=state, winners=winners)
+        return
+    for target, chat_id in rows:
+        add_campaign_card_state(
+            session,
+            campaign,
+            chat_id,
+            state=state,
+            winners=winners,
+            message_id=target.published_message_id,
+        )
+
+
+async def add_cancelled_campaign_card_fanout(session: object, campaign: Campaign) -> None:
+    rows = await _published_targets(session, campaign.id)
+    if not rows:
+        group = await session.get(Group, campaign.group_id)
+        if group is not None:
+            add_cancelled_campaign_card(session, campaign, group.chat_id)
+        return
+    for target, chat_id in rows:
+        add_cancelled_campaign_card(
+            session,
+            campaign,
+            chat_id,
+            message_id=target.published_message_id,
+        )
+
+
+async def _published_targets(session: object, campaign_id: object) -> tuple[object, ...]:
+    rows = await session.execute(
+        select(CampaignParticipationGroup, Group.chat_id)
+        .join(Group, Group.id == CampaignParticipationGroup.group_id)
+        .where(
+            CampaignParticipationGroup.campaign_id == campaign_id,
+            CampaignParticipationGroup.publication_state == "confirmed",
+            CampaignParticipationGroup.published_message_id.is_not(None),
+        )
+        .order_by(CampaignParticipationGroup.position)
+    )
+    return tuple(rows)

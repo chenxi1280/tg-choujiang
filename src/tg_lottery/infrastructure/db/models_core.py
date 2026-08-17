@@ -124,12 +124,6 @@ class Campaign(Base, UuidPkMixin, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("public_ref", name="uq_campaigns_public_ref"),
         UniqueConstraint("source_draft_id", name="uq_campaigns_source_draft_id"),
-        Index(
-            "uq_campaigns_group_nonterminal",
-            "group_id",
-            unique=True,
-            postgresql_where=text("state NOT IN ('drawn', 'archived', 'cancelled')"),
-        ),
         Index("ix_campaigns_rules_gin", "rules", postgresql_using="gin"),
     )
 
@@ -158,6 +152,9 @@ class Campaign(Base, UuidPkMixin, TimestampMixin):
     source_draft_revision: Mapped[int | None] = mapped_column(Integer)
     published_message_id: Mapped[int | None] = mapped_column(BigInteger)
     settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    contract_version: Mapped[str] = mapped_column(
+        String(16), default="v1", server_default="v1", nullable=False
+    )
 
 
 class RuleRevision(Base, UuidPkMixin, CreatedAtMixin):
@@ -202,6 +199,9 @@ class Participant(Base, UuidPkMixin, TimestampMixin):
     registered_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     registered_source_update_id: Mapped[int | None] = mapped_column(BigInteger)
     ticket_total_cache: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    registered_via_participation_group_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("campaign_participation_groups.id", ondelete="SET NULL")
+    )
 
 
 class QualificationCheck(Base, UuidPkMixin, CreatedAtMixin):
@@ -229,6 +229,12 @@ class QualificationCheck(Base, UuidPkMixin, CreatedAtMixin):
     request_hash: Mapped[str | None] = mapped_column(String(64))
     source_update_id: Mapped[int | None] = mapped_column(BigInteger)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    participation_groups_state: Mapped[QualificationState | None] = mapped_column(
+        enum_type(QualificationState, "qualification_participation_state")
+    )
+    requirements_state: Mapped[QualificationState | None] = mapped_column(
+        enum_type(QualificationState, "qualification_requirements_state")
+    )
 
 
 class AdminSession(Base, TimestampMixin):

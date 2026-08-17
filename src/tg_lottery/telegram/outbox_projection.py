@@ -1,0 +1,176 @@
+from datetime import datetime
+from hashlib import sha256
+from uuid import UUID
+
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tg_lottery.application.campaign_notifications import add_cancelled_campaign_card
+from tg_lottery.application.records import add_outbox, utcnow
+from tg_lottery.application.required_chat_links import project_required_chat_operation
+from tg_lottery.domain.enums import CampaignState
+from tg_lottery.infrastructure.db import (
+    Campaign,
+    CampaignParticipationGroup,
+    Group,
+    InviteLink,
+    Participant,
+    TelegramOutbox,
+)
+from tg_lottery.telegram.crypto import SecretCipher
+from tg_lottery.telegram.gateway import GatewayResult
+from tg_lottery.telegram.gateway_requests import invite_link_id
+
+
+async def project_outbox_success(
+    session: AsyncSession,
+    row: TelegramOutbox,
+    result: GatewayResult,
+    *,
+    cipher: SecretCipher,
+) -> None:
+    if await project_required_chat_operation(session, row, result, cipher=cipher):
+        return
+    if row.operation == "send_campaign_card":
+        await _project_campaign_card(session, row)
+        return
+    if row.operation == "create_invite_link":
+        await _project_invite_link(session, row, result, cipher=cipher)
+        return
+    if row.operation == "revoke_invite_link":
+        link = await _required_link(session, row)
+        link.revoked_at = utcnow()
+
+
+async def _project_campaign_card(session: AsyncSession, row: TelegramOutbox) -> None:
+    campaign = await session.get(Campaign, UUID(row.aggregate_id), with_for_update=True)
+    if campaign is None:
+        raise RuntimeError("published campaign disappeared")
+    target = await _participation_target(session, campaign.id, row.recipient_chat_id)
+    if target is not None:
+        await _project_multi_group_card(session, campaign=campaign, target=target, row=row)
+        return
+    _project_legacy_card(session, campaign, row)
+
+
+async def _participation_target(
+    session: AsyncSession, campaign_id: UUID, chat_id: int
+) -> CampaignParticipationGroup | None:
+    return await session.scalar(
+        select(CampaignParticipationGroup)
+        .join(Group, Group.id == CampaignParticipationGroup.group_id)
+        .where(
+            CampaignParticipationGroup.campaign_id == campaign_id,
+            or_(
+                Group.chat_id == chat_id,
+                CampaignParticipationGroup.chat_id_snapshot == chat_id,
+            ),
+        )
+        .with_for_update()
+    )
+
+
+def _project_legacy_card(session: AsyncSession, campaign: Campaign, row: TelegramOutbox) -> None:
+    if campaign.published_message_id == row.remote_message_id and campaign.state in {
+        CampaignState.SCHEDULED,
+        CampaignState.RUNNING,
+    }:
+        return
+    if campaign.state is CampaignState.CANCELLED:
+        campaign.published_message_id = row.remote_message_id
+        add_cancelled_campaign_card(session, campaign, row.recipient_chat_id)
+        return
+    if campaign.state is not CampaignState.PUBLISHING:
+        raise RuntimeError("campaign publication projection has invalid state")
+    campaign.published_message_id = row.remote_message_id
+    campaign.state = (
+        CampaignState.RUNNING if utcnow() >= campaign.preheat_at else CampaignState.SCHEDULED
+    )
+
+
+async def _project_multi_group_card(
+    session: AsyncSession,
+    *,
+    campaign: Campaign,
+    target: CampaignParticipationGroup,
+    row: TelegramOutbox,
+) -> None:
+    target.published_message_id = row.remote_message_id
+    target.publication_state = "confirmed"
+    target.published_at = target.published_at or utcnow()
+    if target.is_primary:
+        campaign.published_message_id = row.remote_message_id
+    if campaign.state is CampaignState.CANCELLED:
+        add_cancelled_campaign_card(
+            session, campaign, row.recipient_chat_id, message_id=row.remote_message_id
+        )
+        return
+    if campaign.state is not CampaignState.PUBLISHING:
+        raise RuntimeError("campaign publication projection has invalid state")
+    pending = await session.scalar(
+        select(CampaignParticipationGroup.id).where(
+            CampaignParticipationGroup.campaign_id == campaign.id,
+            CampaignParticipationGroup.publication_state != "confirmed",
+        )
+    )
+    if pending is None:
+        campaign.state = (
+            CampaignState.RUNNING if utcnow() >= campaign.preheat_at else CampaignState.SCHEDULED
+        )
+
+
+async def _project_invite_link(
+    session: AsyncSession,
+    row: TelegramOutbox,
+    result: GatewayResult,
+    *,
+    cipher: SecretCipher,
+) -> None:
+    participant_id = UUID(str(row.payload["participant_id"]))
+    existing = await session.scalar(
+        select(InviteLink).where(InviteLink.participant_id == participant_id)
+    )
+    if existing:
+        return
+    if result.invite_link is None:
+        raise RuntimeError("Telegram success omitted encrypted invite_link")
+    link = _new_invite_link(row, result, participant_id)
+    session.add(link)
+    await session.flush()
+    link.encrypted_url = cipher.encrypt(result.invite_link, context=f"invite-link:{link.id}")
+    participant = await session.get(Participant, participant_id)
+    if participant is None:
+        raise RuntimeError("invite link participant disappeared")
+    add_outbox(
+        session,
+        operation="send_invite_link",
+        aggregate_type="invite_link",
+        aggregate_id=str(link.id),
+        recipient_chat_id=participant.user_id,
+        business_key=f"send_invite_link:{link.id}:{participant.user_id}",
+        payload={"invite_link_id": str(link.id)},
+    )
+
+
+def _new_invite_link(
+    row: TelegramOutbox, result: GatewayResult, participant_id: UUID
+) -> InviteLink:
+    secret = result.invite_link
+    if secret is None:
+        raise RuntimeError("Telegram success omitted encrypted invite_link")
+    return InviteLink(
+        campaign_id=UUID(str(row.payload["campaign_id"])),
+        participant_id=participant_id,
+        link_hash=sha256(secret.encode()).hexdigest(),
+        telegram_name=str(row.payload["name"]),
+        expire_at=datetime.fromisoformat(str(row.payload["expire_at"])),
+        remote_created_at=utcnow(),
+    )
+
+
+async def _required_link(session: AsyncSession, row: TelegramOutbox) -> InviteLink:
+    link_id = invite_link_id(row)
+    link = await session.get(InviteLink, link_id, with_for_update=True) if link_id else None
+    if link is None:
+        raise RuntimeError("invite link projection target is missing")
+    return link

@@ -34,16 +34,16 @@ async def test_full_draw_reconcile_triggers_missed_threshold_once(session_factor
     async with session_factory() as session:
         campaign = await session.get(Campaign, campaign_id)
         job_count = await session.scalar(select(func.count(ScheduledJob.id)))
-        audit = await session.scalar(
-            select(AuditLog).where(AuditLog.action == "campaign.early_cutoff")
+        candidate = await session.scalar(
+            select(AuditLog).where(AuditLog.action == "campaign.full_draw_threshold_candidate")
         )
         recovery = await session.scalar(
             select(AuditLog).where(AuditLog.action == "campaign.full_draw_recovery_detected")
         )
-    assert campaign is not None and campaign.state is CampaignState.SETTLING
-    assert campaign.cutoff_at == now
-    assert job_count == 4
-    assert audit is not None and audit.actor_user_id is None
+    assert campaign is not None and campaign.state is CampaignState.RUNNING
+    assert campaign.cutoff_at > now
+    assert job_count == 1
+    assert candidate is not None and candidate.actor_user_id is None
     assert recovery.details == {"eligible": 1, "target": 1}
 
 

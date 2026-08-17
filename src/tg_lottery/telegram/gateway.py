@@ -213,7 +213,10 @@ class TelegramGateway:
         encrypted = base64.urlsafe_b64decode(str(payload["join_url_encrypted"]).encode())
         link = self._cipher.decrypt(
             encrypted,
-            context=(f"required-chat:{payload['campaign_id']}:{int(payload['chat_id'])}"),
+            context=str(
+                payload.get("secret_context")
+                or f"required-chat:{payload['campaign_id']}:{int(payload['chat_id'])}"
+            ),
         )
         result = await self._bot.revoke_chat_invite_link(outbox.recipient_chat_id, link)
         return GatewayResult(remote_result=result.model_dump(mode="json", exclude_none=True))
@@ -268,34 +271,33 @@ def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🔋 获取加成链接", callback_data=f"member:bonus:{ref}")]
         )
     rows.append([InlineKeyboardButton(text="📜 活动规则", callback_data=f"member:rules:{ref}")])
-    conditions = _campaign_conditions(payload)
-    if any(not item.get("join_url") for item in conditions):
-        rows.append(
-            [InlineKeyboardButton(text="查看参与条件入口", url=_condition_deep_link(payload, 1))]
-        )
+    rows.append(
+        [InlineKeyboardButton(text="查看加入入口", url=_campaign_deep_link(payload, "join"))]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _campaign_conditions(payload: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     presentation = payload.get("presentation", {})
+    participation = presentation.get("participation_groups") or []
     main = presentation.get("main_chat")
     extras = presentation.get("required_chats") or []
-    values = ([main] if isinstance(main, dict) else []) + list(extras)
-    return tuple(item for item in values if isinstance(item, dict))
-
-
-def _condition_deep_link(payload: dict[str, Any], position: int) -> str:
-    return (
-        f"https://t.me/{payload['bot_username']}?start="
-        f"condition_{payload['campaign_ref']}_{position}"
-    )
+    values = list(participation) + list(extras)
+    if not participation and isinstance(main, dict):
+        values.insert(0, main)
+    unique = {int(item["id"]): item for item in values if isinstance(item, dict)}
+    return tuple(unique.values())
 
 
 def _campaign_card_text(payload: dict[str, Any]) -> str:
     timezone = payload.get("timezone")
     if not timezone:
         raise ValueError("campaign card timezone is required")
-    lines = [f"🎰 <b>{html.escape(str(payload['name']))}</b>", "", "📮 <b>参与条件：</b>"]
+    lines = [
+        f"🎰 <b>{html.escape(str(payload['name']))}</b>",
+        "",
+        "📮 <b>参与群与准入条件（必须全部满足）：</b>",
+    ]
     lines.extend(_requirement_lines(payload))
     lines += ["", "🎁 <b>奖品内容：</b>"]
     lines += [
@@ -366,6 +368,10 @@ def _bonus_line(payload: dict[str, Any]) -> str:
 
 
 def _invite_bonus_text(invite: dict[str, Any]) -> str:
+    if invite.get("mode") == "ratio":
+        count = invite.get("valid_invites_per_ticket")
+        cap = invite.get("max_bonus_tickets")
+        return f"每邀请{count}个有效新成员+1次（上限{cap}）"
     tiers = ", ".join(
         f"{tier['invite_count']}人+{tier['total_bonus']}次"
         for tier in invite.get("reward_tiers") or []
