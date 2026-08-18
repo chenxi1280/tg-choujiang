@@ -179,5 +179,37 @@ jobs:
           WHERE campaign.created_at >= :'start_at'::timestamptz
             AND campaign.created_at <= :'end_at'::timestamptz
           ORDER BY job.run_at, job.job_type;
+
+          SELECT campaign.name AS campaign_name,
+                 campaign.contract_version,
+                 pg.position,
+                 grp.title AS group_title,
+                 pg.is_primary,
+                 pg.private,
+                 (pg.encrypted_join_url IS NOT NULL) AS has_encrypted_link,
+                 pg.invite_created_at,
+                 pg.publication_state,
+                 pg.published_message_id,
+                 pg.released_at
+          FROM campaigns AS campaign
+          JOIN campaign_participation_groups AS pg ON pg.campaign_id = campaign.id
+          JOIN groups AS grp ON grp.id = pg.group_id
+          WHERE campaign.created_at >= :'start_at'::timestamptz
+            AND campaign.created_at <= :'end_at'::timestamptz
+          ORDER BY campaign.created_at, pg.position;
+
+          SELECT campaign.name AS campaign_name,
+                 req.position,
+                 req.chat_type,
+                 req.title,
+                 req.private,
+                 (req.encrypted_join_url IS NOT NULL) AS has_encrypted_link,
+                 req.message_threshold,
+                 req.chat_id_snapshot
+          FROM campaigns AS campaign
+          JOIN campaign_requirements AS req ON req.campaign_id = campaign.id
+          WHERE campaign.created_at >= :'start_at'::timestamptz
+            AND campaign.created_at <= :'end_at'::timestamptz
+          ORDER BY campaign.created_at, req.position;
           SQL
           REMOTE
