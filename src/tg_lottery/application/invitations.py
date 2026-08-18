@@ -3,7 +3,6 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from tg_lottery.application.campaign_targets import qualification_targets
 from tg_lottery.application.group_membership_facts import (
     MembershipObservation,
     first_source_matches_invitation,
@@ -21,7 +20,6 @@ from tg_lottery.application.invitation_models import (
     InvitationValidationAttempt,
     JoinObservation,
     campaign_accepts_attribution,
-    required_chat_ids,
 )
 from tg_lottery.application.invitation_records import (
     accepts_bonus,
@@ -35,6 +33,10 @@ from tg_lottery.application.invitation_records import (
 )
 from tg_lottery.application.invitation_records import (
     record_existing_member as record_existing_member_fact,
+)
+from tg_lottery.application.invitation_validation import (
+    mark_terminal_validation,
+    validation_chat_ids,
 )
 from tg_lottery.application.operational_blocks import (
     has_active_campaign_block,
@@ -262,32 +264,13 @@ class InvitationService:
             if await self._validation_blocked(uow.session, campaign.id, target=target):
                 raise InvitationValidationDeferred("campaign operational block is active")
             self._require_validation_window(invitation, campaign, observed_at)
-            if invitation.due_at is None or invitation.due_at > campaign.cutoff_at:
-                invitation.state = InvitationState.EXPIRED_UNQUALIFIED
-                invitation.final_reason = "retention_after_cutoff"
+            if mark_terminal_validation(invitation, campaign):
                 return self._no_observation(invitation)
-            if campaign.state not in {CampaignState.RUNNING, CampaignState.SETTLING}:
-                invitation.state = InvitationState.EXPIRED_UNQUALIFIED
-                invitation.final_reason = "campaign_not_running"
-                return self._no_observation(invitation)
-            if invitation.state in {
-                InvitationState.LEFT_BEFORE_VALID,
-                InvitationState.INVALID,
-                InvitationState.EXPIRED_UNQUALIFIED,
-            }:
-                return self._no_observation(invitation)
-            targets = await qualification_targets(uow.session, campaign)
-            if target is not None:
-                chat_ids = (target.chat_id_snapshot,)
-            elif targets:
-                chat_ids = tuple(target.chat_id for target in targets)
-            else:
-                group = await uow.session.get(Group, campaign.group_id)
-                if group is None:
-                    raise ValueError("invitation group is missing")
-                chat_ids = required_chat_ids(
-                    group.chat_id, CampaignRules.model_validate(campaign.rules)
-                )
+            chat_ids = await validation_chat_ids(
+                uow.session,
+                campaign=campaign,
+                target=target,
+            )
             invitation.state = InvitationState.CHECKING
             invitation.validation_error = None
             return InvitationValidationAttempt(

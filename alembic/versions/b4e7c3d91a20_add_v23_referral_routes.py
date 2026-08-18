@@ -111,6 +111,12 @@ def _version_invite_links() -> None:
 
 
 def _backfill_routes() -> None:
+    _insert_referral_routes()
+    _attach_referral_routes()
+    _create_invite_link_version_indexes()
+
+
+def _insert_referral_routes() -> None:
     op.execute(
         """
         INSERT INTO campaign_referral_routes (
@@ -147,6 +153,9 @@ def _backfill_routes() -> None:
         WHERE link.participation_group_id IS NOT NULL
         """
     )
+
+
+def _attach_referral_routes() -> None:
     op.execute(
         """
         UPDATE invite_links AS link
@@ -158,6 +167,9 @@ def _backfill_routes() -> None:
           AND link.participation_group_id IS NOT NULL
         """
     )
+
+
+def _create_invite_link_version_indexes() -> None:
     op.create_index(
         "uq_invite_links_current_route",
         "invite_links",

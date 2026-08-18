@@ -40,29 +40,53 @@ async def verify_publication_bonus_permissions(
 
 
 def _action_targets(data: dict[str, Any], action: str) -> list[tuple[int, str]]:
-    working = data.get("bonus_working_copy") or {}
-    if action.endswith("_save") and working:
-        return [(int(working["chat_id"]), str(working["kind"]))]
-    copy_state = data.get("bonus_copy") or {}
-    if action.startswith("draft_bonus_copy_toggle:") and copy_state:
-        chat_id = int(action.rsplit(":", 1)[-1])
-        return [(chat_id, str(copy_state["kind"]))]
-    if action == "draft_bonus_copy_all" and copy_state:
-        source_id = int(copy_state["source_chat_id"])
-        candidates = [
-            int(group["id"])
-            for group in data.get("participation_groups") or []
-            if int(group["id"]) != source_id
-        ]
-        page = int(copy_state.get("page", 0))
-        return [
-            (chat_id, str(copy_state["kind"]))
-            for chat_id in candidates[page * COPY_PAGE_SIZE : (page + 1) * COPY_PAGE_SIZE]
-        ]
-    if action == "draft_bonus_copy_confirm" and copy_state:
-        kind = str(copy_state["kind"])
-        return [(int(chat_id), kind) for chat_id in copy_state.get("targets", [])]
+    if action.endswith("_save"):
+        return _working_target(data)
+    if action.startswith("draft_bonus_copy_toggle:"):
+        return _copy_toggle_target(data, action)
+    if action == "draft_bonus_copy_all":
+        return _copy_page_targets(data)
+    if action == "draft_bonus_copy_confirm":
+        return _copy_confirm_targets(data)
     return []
+
+
+def _working_target(data: dict[str, Any]) -> list[tuple[int, str]]:
+    working = data.get("bonus_working_copy") or {}
+    if not working:
+        return []
+    return [(int(working["chat_id"]), str(working["kind"]))]
+
+
+def _copy_toggle_target(data: dict[str, Any], action: str) -> list[tuple[int, str]]:
+    copy_state = data.get("bonus_copy") or {}
+    if not copy_state:
+        return []
+    chat_id = int(action.rsplit(":", 1)[-1])
+    return [(chat_id, str(copy_state["kind"]))]
+
+
+def _copy_page_targets(data: dict[str, Any]) -> list[tuple[int, str]]:
+    copy_state = data.get("bonus_copy") or {}
+    if not copy_state:
+        return []
+    source_id = int(copy_state["source_chat_id"])
+    candidates = [
+        int(group["id"])
+        for group in data.get("participation_groups") or []
+        if int(group["id"]) != source_id
+    ]
+    page = int(copy_state.get("page", 0))
+    page_ids = candidates[page * COPY_PAGE_SIZE : (page + 1) * COPY_PAGE_SIZE]
+    return [(chat_id, str(copy_state["kind"])) for chat_id in page_ids]
+
+
+def _copy_confirm_targets(data: dict[str, Any]) -> list[tuple[int, str]]:
+    copy_state = data.get("bonus_copy") or {}
+    if not copy_state:
+        return []
+    kind = str(copy_state["kind"])
+    return [(int(chat_id), kind) for chat_id in copy_state.get("targets", [])]
 
 
 async def _permission_errors(bot: Bot, user_id: int, targets: list[tuple[int, str]]) -> list[str]:

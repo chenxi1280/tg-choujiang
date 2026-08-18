@@ -233,16 +233,28 @@ async def invitations_for_chat_user(
         rows = await _candidate_invitations(session, user_id)
         invitations = []
         for invitation, campaign, target_chat_id in rows:
-            if target_chat_id is not None:
-                if target_chat_id == chat_id:
-                    session.expunge(invitation)
-                    invitations.append(invitation)
+            if not await _invitation_matches_chat(
+                session,
+                campaign=campaign,
+                target_chat_id=target_chat_id,
+                chat_id=chat_id,
+            ):
                 continue
-            required = await mandatory_chat_ids(session, campaign)
-            if chat_id in required:
-                session.expunge(invitation)
-                invitations.append(invitation)
+            session.expunge(invitation)
+            invitations.append(invitation)
         return tuple(invitations)
+
+
+async def _invitation_matches_chat(
+    session: AsyncSession,
+    *,
+    campaign: Campaign,
+    target_chat_id: int | None,
+    chat_id: int,
+) -> bool:
+    if target_chat_id is not None:
+        return target_chat_id == chat_id
+    return chat_id in await mandatory_chat_ids(session, campaign)
 
 
 async def _candidate_invitations(session: AsyncSession, user_id: int) -> list[object]:

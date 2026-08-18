@@ -80,11 +80,13 @@ async def test_publication_retry_only_requeues_explicit_failures(session_factory
         session.add(secondary)
         await session.flush()
         session.add(GroupAdmin(group_id=secondary.id, user_id=101, source="owner", active=True))
-        failed_target = _publication_target(campaign.id, primary, 1, "failed")
-        unknown_target = _publication_target(campaign.id, secondary, 2, "unknown")
+        failed_target = _publication_target(campaign.id, primary, position=1, state="failed")
+        unknown_target = _publication_target(campaign.id, secondary, position=2, state="unknown")
         session.add_all((failed_target, unknown_target))
-        failed = _publication_outbox(session, campaign.id, primary.chat_id, "failed")
-        unknown = _publication_outbox(session, campaign.id, secondary.chat_id, "unknown")
+        failed = _publication_outbox(session, campaign.id, chat_id=primary.chat_id, suffix="failed")
+        unknown = _publication_outbox(
+            session, campaign.id, chat_id=secondary.chat_id, suffix="unknown"
+        )
         failed.state = OutboxState.PRE_ACCEPT_FAILED
         unknown.state = OutboxState.UNKNOWN_HOLD
         campaign_id = campaign.id
@@ -116,7 +118,7 @@ async def test_publication_retry_only_requeues_explicit_failures(session_factory
         await service.retry_failed_publication(campaign_id, 101)
 
 
-def _publication_target(campaign_id, group, position: int, state: str):
+def _publication_target(campaign_id, group, *, position: int, state: str):
     return CampaignParticipationGroup(
         campaign_id=campaign_id,
         group_id=group.id,
@@ -128,7 +130,7 @@ def _publication_target(campaign_id, group, position: int, state: str):
     )
 
 
-def _publication_outbox(session, campaign_id, chat_id: int, suffix: str):
+def _publication_outbox(session, campaign_id, *, chat_id: int, suffix: str):
     return add_outbox(
         session,
         operation="send_campaign_card",

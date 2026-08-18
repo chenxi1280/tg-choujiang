@@ -173,6 +173,10 @@ def rules_from_data(data: dict[str, Any]) -> CampaignRules:
 
 
 def missing_fields(data: dict[str, Any]) -> tuple[str, ...]:
+    return (*_missing_campaign_fields(data), *_missing_group_bonus_fields(data))
+
+
+def _missing_campaign_fields(data: dict[str, Any]) -> list[str]:
     missing: list[str] = []
     if data.get("chat_id") is None:
         missing.append("活动群")
@@ -184,14 +188,19 @@ def missing_fields(data: dict[str, Any]) -> tuple[str, ...]:
         missing.append("满人数量")
     if data.get("draw_mode") != "full" and not data.get("draw_at"):
         missing.append("开奖时间")
+    return missing
+
+
+def _missing_group_bonus_fields(data: dict[str, Any]) -> list[str]:
+    if not data.get("participation_groups"):
+        return []
+    missing: list[str] = []
     types = set(data.get("bonus_types") or [])
-    if data.get("participation_groups") and "invite" in types:
-        if not _has_enabled_group_rule(data, "invite"):
-            missing.append("至少配置一个群的邀请加成")
-    if data.get("participation_groups") and "activity" in types:
-        if not _has_enabled_group_rule(data, "activity"):
-            missing.append("至少配置一个群的发言加成")
-    return tuple(missing)
+    if "invite" in types and not _has_enabled_group_rule(data, "invite"):
+        missing.append("至少配置一个群的邀请加成")
+    if "activity" in types and not _has_enabled_group_rule(data, "activity"):
+        missing.append("至少配置一个群的发言加成")
+    return missing
 
 
 def _has_enabled_group_rule(data: dict[str, Any], kind: str) -> bool:

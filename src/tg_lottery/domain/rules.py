@@ -179,33 +179,51 @@ class CampaignDraft(BaseModel, frozen=True):
     @model_validator(mode="after")
     def validate_participation_groups(self) -> CampaignDraft:
         group_ids = self.all_participation_group_ids
-        if self.group_id not in group_ids:
-            raise ValueError("compatibility group must be a participation group")
-        if len(group_ids) != len(set(group_ids)):
-            raise ValueError("participation groups must be unique")
-        requirements = {value for value in self.rules.required_chat_ids}
-        if self.rules.required_channel_id is not None:
-            requirements.add(self.rules.required_channel_id)
-        requirements.update(
-            int(item["id"])
-            for item in self.presentation.get("required_chats") or []
-            if isinstance(item, dict) and item.get("id") is not None
-        )
-        overlap = requirements.intersection(group_ids)
-        if overlap:
-            raise ValueError(f"participation groups conflict with requirements: {sorted(overlap)}")
-        bonus_chat_ids = {
-            int(value)
-            for value in (*self.rules.group_invite_rules, *self.rules.group_activity_rules)
-        }
-        unknown = bonus_chat_ids.difference(group_ids)
-        if unknown:
-            raise ValueError(f"group bonus rules require participation groups: {sorted(unknown)}")
+        _validate_group_identity(self.group_id, group_ids)
+        _validate_requirement_scope(group_ids, self.rules, self.presentation)
+        _validate_bonus_scope(group_ids, self.rules)
         return self
 
     @property
     def all_participation_group_ids(self) -> tuple[int, ...]:
         return self.participation_group_ids or (self.group_id,)
+
+
+def _validate_group_identity(group_id: int, group_ids: tuple[int, ...]) -> None:
+    if group_id not in group_ids:
+        raise ValueError("compatibility group must be a participation group")
+    if len(group_ids) != len(set(group_ids)):
+        raise ValueError("participation groups must be unique")
+
+
+def _validate_requirement_scope(
+    group_ids: tuple[int, ...], rules: CampaignRules, presentation: dict[str, Any]
+) -> None:
+    requirements = _requirement_ids(rules, presentation)
+    overlap = requirements.intersection(group_ids)
+    if overlap:
+        raise ValueError(f"participation groups conflict with requirements: {sorted(overlap)}")
+
+
+def _requirement_ids(rules: CampaignRules, presentation: dict[str, Any]) -> set[int]:
+    requirements = set(rules.required_chat_ids)
+    if rules.required_channel_id is not None:
+        requirements.add(rules.required_channel_id)
+    requirements.update(
+        int(item["id"])
+        for item in presentation.get("required_chats") or []
+        if isinstance(item, dict) and item.get("id") is not None
+    )
+    return requirements
+
+
+def _validate_bonus_scope(group_ids: tuple[int, ...], rules: CampaignRules) -> None:
+    bonus_chat_ids = {
+        int(value) for value in (*rules.group_invite_rules, *rules.group_activity_rules)
+    }
+    unknown = bonus_chat_ids.difference(group_ids)
+    if unknown:
+        raise ValueError(f"group bonus rules require participation groups: {sorted(unknown)}")
 
 
 def _validate_new_campaign_bonus_ranges(rules: CampaignRules) -> None:
