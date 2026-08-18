@@ -5,10 +5,12 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.telegram.creator_views import main_keyboard
 from tg_lottery.telegram.member_records import show_ticket_record
+from tg_lottery.telegram.participant_list_views import (
+    build_participated_campaign_list,
+    parse_campaign_list_callback,
+)
 from tg_lottery.telegram.public_projection import (
     campaign_state_text,
-    format_public_time,
-    qualification_state_text,
 )
 
 REGIONS = (
@@ -104,6 +106,14 @@ class PersonalFlow:
                 public_ref=data.removeprefix("nav:joined:"),
             )
             return True
+        if data.startswith("nav:join:"):
+            category, page = parse_campaign_list_callback(data.removeprefix("nav:join:"))
+            await self.show_joined(message, category=category, page=page)
+            return True
+        if data.startswith("nav:invites:"):
+            category, page = parse_campaign_list_callback(data.removeprefix("nav:invites:"))
+            await self.show_invitation_campaigns(message, category=category, page=page)
+            return True
         if data.startswith("profile:region:"):
             await self._set_region(query, data.removeprefix("profile:region:"))
             return True
@@ -133,53 +143,28 @@ class PersonalFlow:
             reply_markup=_index_keyboard(self._bot_username),
         )
 
-    async def show_joined(self, message: Message) -> None:
-        rows = await self._queries.participated_campaigns(_user(message).id)
-        if not rows:
-            await message.answer("您未参与任何抽奖")
-            return
-        lines = [
-            f"• {row.name}｜{campaign_state_text(row.state)}｜"
-            f"资格 {qualification_state_text(row.qualification)}｜{row.tickets} 票｜"
-            f"开奖 {format_public_time(row.draw_at, row.timezone)}"
-            for row in rows
-        ]
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    text=f"{row.name}｜{campaign_state_text(row.state)}｜{row.tickets} 次",
-                    callback_data=f"nav:joined:{row.public_ref}",
-                )
-            ]
-            for row in rows
-        ]
-        await message.answer(
-            "🎟 我参加的抽奖\n\n" + "\n".join(lines) + "\n\n点击活动查看参与和邀请记录。",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+    async def show_joined(
+        self, message: Message, *, category: str = "active", page: int = 0
+    ) -> None:
+        result = await self._queries.participated_campaign_page(
+            _user(message).id,
+            category=category,
+            page=page,
         )
+        text, keyboard = build_participated_campaign_list(result, invitation_only=False)
+        await message.answer(text, reply_markup=keyboard)
 
-    async def show_invitation_campaigns(self, message: Message) -> None:
-        rows = await self._queries.participated_campaigns(_user(message).id)
-        if not rows:
-            await message.answer(
-                "还没有可显示的入群记录。参加开启邀请加成的活动后，可从活动页面分享本期链接。",
-                reply_markup=main_keyboard(),
-            )
-            return
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    text=(f"{row.name} #{row.public_ref[:6]}｜{campaign_state_text(row.state)}"),
-                    callback_data=f"member:invites:{row.public_ref}:0",
-                )
-            ]
-            for row in rows
-        ]
-        buttons.append([InlineKeyboardButton(text="返回首页", callback_data="nav:index")])
-        await message.answer(
-            "👥 我的邀请记录\n\n请选择一次具体抽奖。",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+    async def show_invitation_campaigns(
+        self, message: Message, *, category: str = "active", page: int = 0
+    ) -> None:
+        result = await self._queries.participated_campaign_page(
+            _user(message).id,
+            category=category,
+            page=page,
+            invitation_only=True,
         )
+        text, keyboard = build_participated_campaign_list(result, invitation_only=True)
+        await message.answer(text, reply_markup=keyboard)
 
     async def show_regions(self, message: Message) -> None:
         profile = await self._profiles.get(_user(message).id)

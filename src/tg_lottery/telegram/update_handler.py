@@ -236,6 +236,8 @@ class LotteryUpdateHandler:
             return True
         if data == "member:noop":
             return True
+        if await member_callbacks.bonus_navigation_callback(self._member_flow, query, data):
+            return True
         if data.startswith("member:invite_group:"):
             await member_callbacks.group_invite_callback(
                 self._member_flow, query, data.removeprefix("member:invite_group:")

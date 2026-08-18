@@ -12,8 +12,13 @@ from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.public_refs import is_campaign_public_ref
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram.member_bonus_permissions import inspect_bonus_permissions
-from tg_lottery.telegram.member_group_invites import build_group_invite_payload
+from tg_lottery.telegram.member_bonus_views import (
+    build_bonus_category,
+    build_bonus_group_detail,
+    build_bonus_overview,
+)
 from tg_lottery.telegram.member_popups import popup_already_participated, popup_failure
+from tg_lottery.telegram.member_records import show_invitation_records
 
 if TYPE_CHECKING:
     from tg_lottery.telegram.member_flow import MemberFlow
@@ -23,6 +28,19 @@ if TYPE_CHECKING:
 async def record_callback(
     flow: "MemberFlow", personal: "PersonalFlow", query: CallbackQuery, *, data: str
 ) -> bool:
+    if data.startswith("m:ir:"):
+        reference, chat_id, group_page, status_filter, page = _group_record_reference(data)
+        await show_invitation_records(
+            query.message,
+            flow._queries,
+            query.from_user.id,
+            public_ref=reference,
+            page=page,
+            chat_id=chat_id,
+            group_page=group_page,
+            status_filter=status_filter,
+        )
+        return True
     if data.startswith("member:tickets:"):
         await flow.show_tickets(
             query.message,
@@ -137,10 +155,9 @@ async def _bonus_payload(
 ) -> tuple[str, InlineKeyboardMarkup]:
     if rules.group_invite_rules or rules.group_activity_rules:
         unavailable = await inspect_bonus_permissions(flow._bot, rules)
-        return await build_group_invite_payload(
+        return await build_bonus_overview(
             campaign,
             user_id=user_id,
-            page=0,
             queries=flow._queries,
             cipher=flow._cipher,
             bot_username=flow._bot_username,
@@ -189,6 +206,68 @@ async def invite_page_callback(flow: "MemberFlow", query: CallbackQuery, payload
     )
 
 
+async def bonus_category_callback(
+    flow: "MemberFlow", query: CallbackQuery, payload: str, *, category: str
+) -> None:
+    reference, page = _reference_page(payload, label="加成列表")
+    campaign, rules = await _eligible_bonus_campaign(flow, reference, query.from_user.id)
+    unavailable = await inspect_bonus_permissions(flow._bot, rules)
+    text, markup = await build_bonus_category(
+        campaign,
+        user_id=query.from_user.id,
+        category=category,
+        page=page,
+        queries=flow._queries,
+        cipher=flow._cipher,
+        bot_username=flow._bot_username,
+        unavailable=unavailable,
+    )
+    await query.message.answer(text, reply_markup=markup)
+
+
+async def bonus_group_detail_callback(
+    flow: "MemberFlow", query: CallbackQuery, payload: str, *, category: str
+) -> None:
+    reference, chat_id, return_page = _reference_chat_page(payload, label="加成群")
+    campaign, rules = await _eligible_bonus_campaign(flow, reference, query.from_user.id)
+    unavailable = await inspect_bonus_permissions(flow._bot, rules)
+    text, markup = await build_bonus_group_detail(
+        campaign,
+        user_id=query.from_user.id,
+        category=category,
+        chat_id=chat_id,
+        return_page=return_page,
+        queries=flow._queries,
+        cipher=flow._cipher,
+        bot_username=flow._bot_username,
+        unavailable=unavailable,
+    )
+    await query.message.answer(text, reply_markup=markup)
+
+
+async def bonus_navigation_callback(flow: "MemberFlow", query: CallbackQuery, data: str) -> bool:
+    if data.startswith("m:bo:"):
+        await show_bonus_message(
+            flow,
+            query.message,
+            data.removeprefix("m:bo:"),
+            user_id=query.from_user.id,
+        )
+        return True
+    routes = (
+        ("member:bonus_invites:", bonus_category_callback, "invites"),
+        ("member:bonus_activity:", bonus_category_callback, "activity"),
+        ("m:id:", bonus_group_detail_callback, "invites"),
+        ("m:ad:", bonus_group_detail_callback, "activity"),
+    )
+    matched = next((route for route in routes if data.startswith(route[0])), None)
+    if matched is None:
+        return False
+    prefix, handler, category = matched
+    await handler(flow, query, data.removeprefix(prefix), category=category)
+    return True
+
+
 async def rules_callback(
     flow: "MemberFlow", query: CallbackQuery, campaign_reference: str | UUID
 ) -> None:
@@ -212,3 +291,53 @@ def _invitation_record_reference(data: str) -> tuple[str, int]:
     if page < 0:
         raise ValueError("邀请记录页码无效")
     return public_ref, page
+
+
+async def _eligible_bonus_campaign(
+    flow: "MemberFlow", reference: str, user_id: int
+) -> tuple[object, CampaignRules]:
+    campaign = await flow._queries.campaign_by_reference(reference)
+    if campaign is None:
+        raise UserFacingError("活动不存在或已经失效")
+    rules = CampaignRules.model_validate(campaign.rules)
+    if not await _registered_for_bonus(flow, campaign, rules, user_id=user_id):
+        raise UserFacingError("请先点击「立即参与」完成全部参与群资格校验")
+    return campaign, rules
+
+
+def _reference_page(payload: str, *, label: str) -> tuple[str, int]:
+    reference, separator, raw_page = payload.rpartition(":")
+    if not separator or not is_campaign_public_ref(reference) or not raw_page.isdecimal():
+        raise ValueError(f"{label}按钮参数无效")
+    return reference, int(raw_page)
+
+
+def _reference_chat_page(payload: str, *, label: str) -> tuple[str, int, int]:
+    parts = payload.rsplit(":", 2)
+    if len(parts) != 3 or not is_campaign_public_ref(parts[0]):
+        raise ValueError(f"{label}按钮参数无效")
+    try:
+        chat_id, return_page = int(parts[1]), int(parts[2])
+    except ValueError as exc:
+        raise ValueError(f"{label}按钮参数无效") from exc
+    if return_page < 0:
+        raise ValueError(f"{label}返回页码无效")
+    return parts[0], chat_id, return_page
+
+
+def _group_record_reference(data: str) -> tuple[str, int, int, str, int]:
+    value = data.removeprefix("m:ir:")
+    parts = value.rsplit(":", 4)
+    if len(parts) != 5 or not is_campaign_public_ref(parts[0]):
+        raise ValueError("逐群邀请记录按钮参数无效")
+    reference, raw_chat_id, raw_group_page, status_filter, raw_page = parts
+    if status_filter not in {"all", "pending", "valid", "invalid"}:
+        raise ValueError("逐群邀请记录筛选无效")
+    try:
+        chat_id = int(raw_chat_id)
+        group_page, page = int(raw_group_page), int(raw_page)
+    except ValueError as exc:
+        raise ValueError("逐群邀请记录按钮参数无效") from exc
+    if page < 0 or group_page < 0:
+        raise ValueError("逐群邀请记录页码无效")
+    return reference, chat_id, group_page, status_filter, page

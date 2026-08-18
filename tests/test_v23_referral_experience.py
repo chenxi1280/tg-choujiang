@@ -287,6 +287,20 @@ async def test_group_history_blocks_cross_campaign_re_attribution(session_factor
     assert records.invalid == 1
     assert records.rows[0].group_title == "测试群"
     assert records.rows[0].final_reason == "existing_member"
+    await _assert_grouped_existing_member_records(session_factory, second_ref)
+
+
+async def _assert_grouped_existing_member_records(session_factory, public_ref: str) -> None:
+    grouped = await QueryService(session_factory).campaign_invitation_records(
+        202,
+        public_ref,
+        chat_id=-100123,
+        status_filter="invalid",
+    )
+    assert grouped is not None
+    assert grouped.group_title == "测试群"
+    assert grouped.status_filter == "invalid"
+    assert len(grouped.rows) == 1
 
 
 def _link(

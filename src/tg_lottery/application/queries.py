@@ -24,10 +24,14 @@ from tg_lottery.application.group_bonus_progress import (
 )
 from tg_lottery.application.participant_records import (
     CampaignInvitationRecords,
+    InvitationRecordFilter,
     ParticipantCampaignDetail,
     ParticipatedCampaign,
+    ParticipatedCampaignPage,
+    ParticipationCategory,
     load_campaign_invitation_records,
     load_participant_campaign_detail,
+    load_participated_campaign_page,
     load_participated_campaigns,
 )
 from tg_lottery.application.publication_queries import (
@@ -173,6 +177,22 @@ class QueryService:
     async def participated_campaigns(self, user_id: int) -> list[ParticipatedCampaign]:
         return await load_participated_campaigns(self._session_factory, user_id)
 
+    async def participated_campaign_page(
+        self,
+        user_id: int,
+        *,
+        category: ParticipationCategory,
+        page: int,
+        invitation_only: bool = False,
+    ) -> ParticipatedCampaignPage:
+        return await load_participated_campaign_page(
+            self._session_factory,
+            user_id,
+            category=category,
+            page=page,
+            invitation_only=invitation_only,
+        )
+
     async def created_campaigns(self, user_id: int, category: str) -> list[Campaign]:
         states = _campaign_category_states(category)
         async with self._session_factory() as session:
@@ -254,10 +274,23 @@ class QueryService:
         return await load_participant_campaign_detail(self._session_factory, user_id, public_ref)
 
     async def campaign_invitation_records(
-        self, user_id: int, public_ref: str, page: int = 0
+        self,
+        user_id: int,
+        public_ref: str,
+        *,
+        page: int = 0,
+        chat_id: int | None = None,
+        group_page: int = 0,
+        status_filter: InvitationRecordFilter = "all",
     ) -> CampaignInvitationRecords | None:
         return await load_campaign_invitation_records(
-            self._session_factory, user_id, public_ref, page=page
+            self._session_factory,
+            user_id,
+            public_ref,
+            page=page,
+            chat_id=chat_id,
+            group_page=group_page,
+            status_filter=status_filter,
         )
 
     async def group_bonus_progress(

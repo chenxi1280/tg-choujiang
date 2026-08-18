@@ -27,7 +27,10 @@ def invite_link_keyboard(link: str, campaign_name: str) -> InlineKeyboardMarkup:
 
 
 def member_keyboard(
-    campaign_reference: str | None = None, bonus_enabled: bool = False
+    campaign_reference: str | None = None,
+    bonus_enabled: bool = False,
+    *,
+    invite_enabled: bool | None = None,
 ) -> InlineKeyboardMarkup:
     ticket_callback = (
         f"member:tickets:{campaign_reference}" if campaign_reference else "member:tickets"
@@ -45,7 +48,9 @@ def member_keyboard(
                 )
             ]
         )
-    rows.append([InlineKeyboardButton(text="邀请记录", callback_data=invite_callback)])
+    show_invitation_record = bonus_enabled if invite_enabled is None else invite_enabled
+    if show_invitation_record:
+        rows.append([InlineKeyboardButton(text="邀请记录", callback_data=invite_callback)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

@@ -2,9 +2,11 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from tests.helpers import seed_campaign
+from tg_lottery.application.participant_records import ParticipatedCampaignPage
 from tg_lottery.application.queries import ParticipatedCampaign, QueryService
 from tg_lottery.domain.enums import CampaignState, QualificationState
-from tg_lottery.infrastructure.db import Participant
+from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.infrastructure.db import Campaign, Participant
 from tg_lottery.telegram.personal_flow import PersonalFlow
 
 
@@ -32,6 +34,17 @@ class PersonalQueries:
                 timezone="Asia/Shanghai",
             )
         ]
+
+    async def participated_campaign_page(
+        self,
+        _: int,
+        *,
+        category: str,
+        page: int,
+        invitation_only: bool = False,
+    ) -> ParticipatedCampaignPage:
+        rows = tuple(await self.participated_campaigns(0)) if category == "active" else ()
+        return ParticipatedCampaignPage(category, page, 1, rows)
 
     async def created_campaigns(self, _: int, __: str) -> list[object]:
         return [
@@ -70,8 +83,16 @@ async def test_personal_lists_render_business_states_and_local_time() -> None:
     assert "+00:00" not in rendered
     button = message.reply_markups[-1].inline_keyboard[0][0]
     assert button.callback_data == "nav:campaign:AbCdEfGhIjKlMnOpQrSt-_"
-    joined_button = message.reply_markups[0].inline_keyboard[0][0]
+    joined_button = message.reply_markups[0].inline_keyboard[1][0]
     assert joined_button.callback_data == "nav:joined:AbCdEfGhIjKlMnOpQrSt-_"
+    category_callbacks = {
+        button.callback_data for button in message.reply_markups[0].inline_keyboard[0]
+    }
+    assert category_callbacks == {
+        "nav:join:active:0",
+        "nav:join:pending:0",
+        "nav:join:ended:0",
+    }
 
 
 async def test_participated_query_carries_frozen_campaign_timezone(session_factory) -> None:
@@ -93,3 +114,31 @@ async def test_participated_query_carries_frozen_campaign_timezone(session_facto
 
     assert len(rows) == 1
     assert rows[0].timezone == "Asia/Kuala_Lumpur"
+
+
+async def test_participated_pages_filter_state_and_invitation_surface(session_factory) -> None:
+    async with session_factory() as session, session.begin():
+        _, campaign, _ = await seed_campaign(session)
+        campaign_id = campaign.id
+    queries = QueryService(session_factory)
+
+    without_invites = await queries.participated_campaign_page(
+        201, category="active", page=0, invitation_only=True
+    )
+    assert without_invites.rows == ()
+
+    async with session_factory() as session, session.begin():
+        campaign = await session.get(Campaign, campaign_id)
+        campaign.rules = CampaignRules(bonus_types=("invite",)).model_dump(mode="json")
+    active = await queries.participated_campaign_page(
+        201, category="active", page=0, invitation_only=True
+    )
+    assert len(active.rows) == 1
+
+    async with session_factory() as session, session.begin():
+        campaign = await session.get(Campaign, campaign_id)
+        campaign.state = CampaignState.DRAWN
+    ended = await queries.participated_campaign_page(
+        201, category="ended", page=0, invitation_only=True
+    )
+    assert len(ended.rows) == 1

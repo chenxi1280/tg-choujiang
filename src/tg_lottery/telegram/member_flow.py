@@ -33,7 +33,10 @@ from tg_lottery.telegram.member_invites import legacy_invite_link_payload, membe
 from tg_lottery.telegram.member_missing_targets import build_missing_targets_reply
 from tg_lottery.telegram.member_observation import apply_message_thresholds
 from tg_lottery.telegram.member_popups import popup_success
-from tg_lottery.telegram.member_records import show_invitation_records, show_ticket_record
+from tg_lottery.telegram.member_records import (
+    show_invitation_groups,
+    show_ticket_record,
+)
 from tg_lottery.telegram.member_referral_landing import show_referral_landing
 from tg_lottery.telegram.public_projection import campaign_state_text, format_public_time
 from tg_lottery.telegram.qualification import observe_memberships, with_pending_approvals
@@ -159,7 +162,11 @@ class MemberFlow:
             await member_callbacks.safe_answer(callback, popup_success(total), alert=False)
             return
         rules = CampaignRules.model_validate(campaign.rules)
-        keyboard = member_keyboard(campaign.public_ref, bool(rules.bonus_types))
+        keyboard = member_keyboard(
+            campaign.public_ref,
+            bool(rules.bonus_types),
+            invite_enabled=rules.invite_bonus_enabled,
+        )
         if callback is not None:
             await message.edit_text(popup_success(total), reply_markup=keyboard)
             await member_callbacks.safe_answer(callback, popup_success(total), alert=False)
@@ -410,7 +417,7 @@ class MemberFlow:
     async def show_invitations(
         self, message: Message, user_id: int, *, public_ref: str, page: int = 0
     ) -> None:
-        await show_invitation_records(
+        await show_invitation_groups(
             message, self._queries, user_id, public_ref=public_ref, page=page
         )
 
