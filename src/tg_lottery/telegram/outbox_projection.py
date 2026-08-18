@@ -100,6 +100,7 @@ async def _project_multi_group_card(
     target.published_at = target.published_at or utcnow()
     if target.is_primary:
         campaign.published_message_id = row.remote_message_id
+    await session.flush()
     if campaign.state is CampaignState.CANCELLED:
         add_cancelled_campaign_card(
             session, campaign, row.recipient_chat_id, message_id=row.remote_message_id

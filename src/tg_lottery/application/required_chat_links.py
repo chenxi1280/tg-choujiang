@@ -234,6 +234,7 @@ async def _project_target_invite(
     )
     target.join_url_hash = sha256(link.encode()).hexdigest()
     target.invite_created_at = utcnow()
+    await session.flush()
     add_audit(
         session,
         actor_user_id=None,
