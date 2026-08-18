@@ -17,8 +17,13 @@ from tg_lottery.infrastructure.db import (
     Group,
 )
 
-MULTI_GROUP_CONTRACT = "v2.1"
+MULTI_GROUP_CONTRACT = "v2.3"
+MULTI_GROUP_CONTRACTS = frozenset({"v2.1", "v2.2", MULTI_GROUP_CONTRACT})
 _TERMINAL_STATES = frozenset({CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED})
+
+
+def uses_multi_group_contract(campaign: object) -> bool:
+    return getattr(campaign, "contract_version", "v1") in MULTI_GROUP_CONTRACTS
 
 
 @dataclass(frozen=True)
@@ -117,7 +122,7 @@ async def participation_chat_ids(
     campaign = await session.get(Campaign, campaign_id)
     if campaign is None:
         raise ValueError("campaign not found")
-    if campaign.contract_version == MULTI_GROUP_CONTRACT:
+    if uses_multi_group_contract(campaign):
         raise RuntimeError("multi-group campaign has no participation targets")
     group = await session.get(Group, campaign.group_id)
     return (group.chat_id,) if group is not None else ()
@@ -142,7 +147,7 @@ async def qualification_targets(
             .order_by(CampaignRequirement.position)
         )
     )
-    if campaign.contract_version == MULTI_GROUP_CONTRACT and not groups:
+    if uses_multi_group_contract(campaign) and not groups:
         raise RuntimeError("multi-group campaign has no participation targets")
     return tuple(_group_target(campaign, item, chat_id) for item, chat_id in groups) + tuple(
         _requirement_target(campaign, item, chat_id) for item, chat_id in requirements
@@ -286,6 +291,6 @@ def _qualification_secret_context(
     kind: str,
     row: CampaignParticipationGroup | CampaignRequirement,
 ) -> str:
-    if campaign.contract_version == MULTI_GROUP_CONTRACT:
+    if uses_multi_group_contract(campaign):
         return f"campaign-target:{campaign.id}:{kind}:{row.id}"
     return f"required-chat:{campaign.id}:{row.chat_id_snapshot}"

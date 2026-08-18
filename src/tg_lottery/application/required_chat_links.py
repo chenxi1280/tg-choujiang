@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tg_lottery.application.campaign_targets import MULTI_GROUP_CONTRACT
+from tg_lottery.application.campaign_targets import uses_multi_group_contract
 from tg_lottery.application.publication import add_campaign_card_outbox
 from tg_lottery.application.records import add_audit, add_outbox, utcnow
 from tg_lottery.infrastructure.db import (
@@ -33,7 +33,7 @@ async def project_required_chat_invite(
 ) -> None:
     campaign = await _campaign(session, row)
     chat_id = int(row.payload["chat_id"])
-    if campaign.contract_version == MULTI_GROUP_CONTRACT:
+    if uses_multi_group_contract(campaign):
         await _project_target_invite(
             session,
             campaign=campaign,
@@ -68,7 +68,7 @@ async def project_required_chat_invite(
 async def project_required_chat_revoke(session: AsyncSession, row: TelegramOutbox) -> None:
     campaign = await _campaign(session, row)
     chat_id = int(row.payload["chat_id"])
-    if campaign.contract_version == MULTI_GROUP_CONTRACT:
+    if uses_multi_group_contract(campaign):
         target = await _target_row(session, campaign.id, chat_id)
         target.revoked_at = target.revoked_at or utcnow()
         target.encrypted_join_url = None
@@ -106,7 +106,7 @@ async def project_required_chat_operation(
 
 
 async def add_required_chat_revoke_outboxes(session: AsyncSession, campaign: Campaign) -> None:
-    if campaign.contract_version == MULTI_GROUP_CONTRACT:
+    if uses_multi_group_contract(campaign):
         await _add_target_revoke_outboxes(session, campaign)
         return
     for chat in _conditions(campaign.presentation):
@@ -147,7 +147,7 @@ def decrypt_required_chat_url(
 async def _ensure_campaign_card(
     session: AsyncSession, campaign: Campaign, bot_username: str
 ) -> None:
-    if campaign.contract_version == MULTI_GROUP_CONTRACT:
+    if uses_multi_group_contract(campaign):
         await _ensure_multi_group_cards(session, campaign, bot_username)
         return
     if any(

@@ -59,10 +59,34 @@ class InviteRule(BaseModel, frozen=True):
     def _validate_ratio(self) -> InviteRule:
         if self.valid_invites_per_ticket is None:
             raise ValueError("ratio invite rewards require valid invites per ticket")
-        if self.max_bonus_tickets is None:
-            raise ValueError("ratio invite rewards require max bonus tickets")
         if self.reward_tiers:
             raise ValueError("ratio invite rewards cannot set reward tiers")
+        return self
+
+
+class GroupInviteRule(BaseModel, frozen=True):
+    enabled: bool = True
+    invites_per_cycle: int = Field(default=2, ge=1)
+    cap_mode: Literal["limited", "unlimited"] = "unlimited"
+    max_bonus_tickets: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_cap(self) -> GroupInviteRule:
+        _validate_cap(self.cap_mode, self.max_bonus_tickets, "invite")
+        return self
+
+
+class GroupActivityRule(BaseModel, frozen=True):
+    enabled: bool = True
+    messages_per_cycle: int = Field(default=10, ge=1)
+    min_text_length: int = Field(default=5, ge=1)
+    reward_tickets: int = Field(default=1, ge=1)
+    daily_cap_mode: Literal["limited", "unlimited"] = "limited"
+    daily_max_cycles: int | None = Field(default=1, ge=1)
+
+    @model_validator(mode="after")
+    def validate_cap(self) -> GroupActivityRule:
+        _validate_cap(self.daily_cap_mode, self.daily_max_cycles, "activity")
         return self
 
 
@@ -81,6 +105,8 @@ class CampaignRules(BaseModel, frozen=True):
     unique_winner: bool = True
     settlement_drain_seconds: int = Field(default=300, ge=0)
     message_thresholds: dict[str, int] = Field(default_factory=dict)
+    group_invite_rules: dict[str, GroupInviteRule] = Field(default_factory=dict)
+    group_activity_rules: dict[str, GroupActivityRule] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_message_thresholds(self) -> CampaignRules:
@@ -89,6 +115,13 @@ class CampaignRules(BaseModel, frozen=True):
                 raise ValueError("message threshold chat ids must be numeric")
             if not 1 <= threshold <= MAX_CHAT_MESSAGE_THRESHOLD:
                 raise ValueError("chat message threshold out of range")
+        return self
+
+    @model_validator(mode="after")
+    def validate_group_rule_keys(self) -> CampaignRules:
+        for chat_id in (*self.group_invite_rules, *self.group_activity_rules):
+            if not chat_id.lstrip("-").isdigit():
+                raise ValueError("group bonus rule chat ids must be numeric")
         return self
 
     @model_validator(mode="before")
@@ -106,6 +139,14 @@ class CampaignRules(BaseModel, frozen=True):
     @property
     def activity_bonus_enabled(self) -> bool:
         return "activity" in self.bonus_types
+
+    def invite_rule_for(self, chat_id: int) -> GroupInviteRule | None:
+        rule = self.group_invite_rules.get(str(chat_id))
+        return rule if rule is not None and rule.enabled else None
+
+    def activity_rule_for(self, chat_id: int) -> GroupActivityRule | None:
+        rule = self.group_activity_rules.get(str(chat_id))
+        return rule if rule is not None and rule.enabled else None
 
 
 class CampaignDraft(BaseModel, frozen=True):
@@ -138,8 +179,8 @@ class CampaignDraft(BaseModel, frozen=True):
     @model_validator(mode="after")
     def validate_participation_groups(self) -> CampaignDraft:
         group_ids = self.all_participation_group_ids
-        if group_ids[0] != self.group_id:
-            raise ValueError("primary participation group must be first")
+        if self.group_id not in group_ids:
+            raise ValueError("compatibility group must be a participation group")
         if len(group_ids) != len(set(group_ids)):
             raise ValueError("participation groups must be unique")
         requirements = {value for value in self.rules.required_chat_ids}
@@ -153,6 +194,13 @@ class CampaignDraft(BaseModel, frozen=True):
         overlap = requirements.intersection(group_ids)
         if overlap:
             raise ValueError(f"participation groups conflict with requirements: {sorted(overlap)}")
+        bonus_chat_ids = {
+            int(value)
+            for value in (*self.rules.group_invite_rules, *self.rules.group_activity_rules)
+        }
+        unknown = bonus_chat_ids.difference(group_ids)
+        if unknown:
+            raise ValueError(f"group bonus rules require participation groups: {sorted(unknown)}")
         return self
 
     @property
@@ -163,6 +211,13 @@ class CampaignDraft(BaseModel, frozen=True):
 def _validate_new_campaign_bonus_ranges(rules: CampaignRules) -> None:
     _validate_activity_bonus_range(rules)
     _validate_invite_bonus_range(rules)
+
+
+def _validate_cap(mode: str, value: int | None, label: str) -> None:
+    if mode == "limited" and value is None:
+        raise ValueError(f"limited {label} bonus requires a cap")
+    if mode == "unlimited" and value is not None:
+        raise ValueError(f"unlimited {label} bonus cannot store a cap")
 
 
 def _validate_activity_bonus_range(rules: CampaignRules) -> None:

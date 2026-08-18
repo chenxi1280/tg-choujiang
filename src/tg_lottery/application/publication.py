@@ -2,7 +2,7 @@ from collections.abc import Sequence
 
 from sqlalchemy import select
 
-from tg_lottery.application.campaign_targets import MULTI_GROUP_CONTRACT
+from tg_lottery.application.campaign_targets import uses_multi_group_contract
 from tg_lottery.application.records import add_outbox
 from tg_lottery.domain.public_refs import new_invite_link_name
 from tg_lottery.infrastructure.db import (
@@ -107,7 +107,7 @@ def _conditions(presentation: dict[str, object]) -> tuple[dict[str, object], ...
 
 
 async def _private_chats(session: object, campaign: Campaign) -> tuple[dict[str, object], ...]:
-    if campaign.contract_version != MULTI_GROUP_CONTRACT:
+    if not uses_multi_group_contract(campaign):
         return tuple(item for item in _conditions(campaign.presentation) if item.get("private"))
     participation = tuple(
         await session.execute(

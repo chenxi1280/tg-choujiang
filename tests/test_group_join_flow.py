@@ -246,6 +246,9 @@ class PassthroughPersonalFlow:
     async def handle_callback(self, query, data):
         return False
 
+    async def show_joined(self, message):
+        return None
+
 
 class InviteStartFlow:
     def __init__(self):
@@ -371,7 +374,7 @@ async def test_bonus_callback_sends_invite_link_to_private_chat():
     chat_id, text, _ = bot.sent[0]
     assert chat_id == 201
     assert "专属邀请链接" in text
-    assert query.answers == [("专属邀请链接已私聊发送给你", False)]
+    assert query.answers == [("加成进度已私聊发送给你", False)]
 
 
 async def test_bonus_callback_private_failure_guides_user_to_dm():
@@ -385,9 +388,9 @@ async def test_bonus_callback_private_failure_guides_user_to_dm():
 
     await flow.bonus_callback(query, PUBLIC_REF)
 
-    assert "获取加成链接需要先和机器人建立私聊" in message.texts[0]
+    assert "查看加成需要先和机器人建立私聊" in message.texts[0]
     button = message.markups[0].inline_keyboard[0][0]
-    assert button.url == f"https://t.me/tgccjbot?start=invite_{PUBLIC_REF}"
+    assert button.url == f"https://t.me/tgccjbot?start=bonus_{PUBLIC_REF}"
     assert query.answers[-1] == ("请先私聊机器人一次", True)
 
 

@@ -8,6 +8,10 @@ from sqlalchemy import func, select
 
 from tg_lottery.application.campaign_targets import QualificationTarget, qualification_targets
 from tg_lottery.application.full_draw import record_full_draw_candidate
+from tg_lottery.application.group_invite_links import (
+    GroupInviteLinkRequest,
+    request_group_invite_link,
+)
 from tg_lottery.application.operational_blocks import (
     has_active_campaign_block,
     project_qualification_blocks,
@@ -24,20 +28,17 @@ from tg_lottery.application.participant_qualification import (
     target_chat_ids,
 )
 from tg_lottery.application.ports import UnitOfWorkFactory
-from tg_lottery.application.records import add_job, add_outbox
+from tg_lottery.application.records import add_job
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import QualificationState, TicketSource
 from tg_lottery.domain.errors import UserFacingError
-from tg_lottery.domain.public_refs import is_neutral_invite_link_name, new_invite_link_name
+from tg_lottery.domain.public_refs import new_invite_link_name, new_referral_public_ref
 from tg_lottery.domain.rules import CampaignRules, canonical_hash
 from tg_lottery.infrastructure.db import (
     Campaign,
-    Group,
-    InviteLink,
     Participant,
     QualificationCheck,
     ScheduledJob,
-    TelegramOutbox,
     TicketLedger,
     UserProfile,
 )
@@ -81,9 +82,11 @@ class ParticipantService:
         uow_factory: UnitOfWorkFactory,
         *,
         invite_name_factory: Callable[[], str] = new_invite_link_name,
+        referral_ref_factory: Callable[[], str] = new_referral_public_ref,
     ) -> None:
         self._uow_factory = uow_factory
         self._invite_name_factory = invite_name_factory
+        self._referral_ref_factory = referral_ref_factory
 
     async def begin_registration(self, request: RegistrationRequest) -> RegistrationAttempt:
         async with self._uow_factory() as uow:
@@ -122,6 +125,16 @@ class ParticipantService:
             if participant is not None:
                 uow.session.expunge(participant)
             return participant
+
+    async def request_group_invite_link(
+        self, campaign_id: UUID, user_id: int, chat_id: int, *, bot_username: str
+    ) -> None:
+        await request_group_invite_link(
+            self._uow_factory,
+            request=GroupInviteLinkRequest(campaign_id, user_id, chat_id, bot_username),
+            name_factory=self._invite_name_factory,
+            ref_factory=self._referral_ref_factory,
+        )
 
     async def mark_membership_ineligible(
         self,
@@ -192,15 +205,12 @@ class ParticipantService:
         participant: Participant,
         result: QualificationResult,
     ) -> None:
-        rules = CampaignRules.model_validate(campaign.rules)
         await self._ensure_registration_ticket(
             session,
             campaign=campaign,
             participant=participant,
             observed_at=result.observed_at,
         )
-        if rules.invite_bonus_enabled:
-            await self._ensure_invite_link(session, campaign, participant)
         await self._trigger_full_draw_if_ready(
             session, campaign=campaign, observed_at=result.observed_at
         )
@@ -417,19 +427,6 @@ class ParticipantService:
             allowed = "、".join(rules.allowed_regions)
             raise UserFacingError(f"本抽奖仅限地区: {allowed}, 请先使用 /region 设置")
 
-    async def _ensure_invite_link(
-        self, session: object, campaign: Campaign, participant: Participant
-    ) -> None:
-        group = await session.get(Group, campaign.group_id) if campaign else None
-        if group is None:
-            raise ValueError("registration campaign or group is missing")
-        await self._request_invite_link(
-            session,
-            campaign=campaign,
-            group=group,
-            participant=participant,
-        )
-
     async def _ensure_registration_ticket(
         self,
         session: object,
@@ -457,39 +454,3 @@ class ParticipantService:
             )
         )
         participant.ticket_total_cache += 1
-
-    async def _request_invite_link(
-        self,
-        session: object,
-        *,
-        campaign: Campaign,
-        group: Group,
-        participant: Participant,
-    ) -> None:
-        existing_link = await session.scalar(
-            select(InviteLink.id).where(InviteLink.participant_id == participant.id)
-        )
-        business_key = f"invite_link:{campaign.id}:{participant.id}"
-        existing_outbox = await session.scalar(
-            select(TelegramOutbox.id).where(TelegramOutbox.business_key == business_key)
-        )
-        if existing_link or existing_outbox:
-            return
-        invite_name = self._invite_name_factory()
-        if not is_neutral_invite_link_name(invite_name):
-            raise ValueError("invite link name is invalid")
-        add_outbox(
-            session,
-            operation="create_invite_link",
-            aggregate_type="participant",
-            aggregate_id=str(participant.id),
-            recipient_chat_id=group.chat_id,
-            business_key=business_key,
-            payload={
-                "campaign_id": str(campaign.id),
-                "participant_id": str(participant.id),
-                "expire_at": campaign.cutoff_at.isoformat(),
-                "persistent": True,
-                "name": invite_name,
-            },
-        )

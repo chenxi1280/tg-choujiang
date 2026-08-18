@@ -69,10 +69,8 @@ async def test_registration_persists_pending_before_external_result(session_fact
         assert participant.qualification_state is QualificationState.ELIGIBLE
         assert participant.ticket_total_cache == 1
         assert registration_tickets == 1
-        assert outbox_count == 1
-        assert invite_outbox.payload["name"] == "lottery_fixed_public"
-        assert invite_outbox.payload["persistent"] is True
-        assert participant.id.hex[:20] not in invite_outbox.payload["name"]
+        assert outbox_count == 0
+        assert invite_outbox is None
 
 
 async def test_registration_does_not_create_invite_link_when_invite_bonus_is_off(

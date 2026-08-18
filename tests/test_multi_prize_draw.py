@@ -9,8 +9,9 @@ from tg_lottery.application.drawing import DrawingService
 from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.application.settlement import SettlementService
 from tg_lottery.domain.enums import CampaignState, QualificationState, TicketSource
-from tg_lottery.domain.errors import SettlementBlocked
+from tg_lottery.domain.errors import SettlementBlocked, UserFacingError
 from tg_lottery.infrastructure.db import (
+    CampaignOperationalBlock,
     DrawRound,
     DrawSnapshot,
     Participant,
@@ -81,6 +82,29 @@ async def test_drawn_card_state_carries_winner_names(session_factory) -> None:
     assert len(winners) == 3
     assert {item["display_name"] for item in winners} == {"成员一", "成员2", "成员3"}
     assert all(item["prize_name"] in {"一等奖", "二等奖"} for item in winners)
+
+
+async def test_draw_is_blocked_while_any_group_permission_fact_is_unknown(
+    session_factory,
+) -> None:
+    now = datetime.now(UTC)
+    campaign_id = await _seed_multi_prize_case(session_factory, now)
+    uow_factory = partial(UnitOfWork, session_factory)
+    await SettlementService(uow_factory).settle(campaign_id, now)
+    async with session_factory() as session, session.begin():
+        session.add(
+            CampaignOperationalBlock(
+                campaign_id=campaign_id,
+                target_kind="participation_group",
+                chat_id=-100123,
+                error_code="membership_unknown",
+                first_detected_at=now,
+                last_observed_at=now,
+            )
+        )
+
+    with pytest.raises(UserFacingError, match="恢复并重新核验后才能开奖"):
+        await DrawingService(uow_factory).run(campaign_id, actor_user_id=101)
 
 
 async def test_settlement_blocks_when_published_prize_plan_changes(session_factory) -> None:

@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from tg_lottery.domain.enums import TicketSource
-from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.domain.rules import CampaignRules, GroupInviteRule
 from tg_lottery.infrastructure.db import Campaign, Invitation, Participant, TicketLedger
 
 
@@ -21,6 +21,7 @@ async def add_invite_bonus(
         TicketLedger(
             campaign_id=campaign.id,
             participant_id=participant.id,
+            participation_group_id=invitation.participation_group_id,
             delta=reward,
             source_type=TicketSource.INVITATION if reward > 0 else TicketSource.REVERSAL,
             source_ref=str(invitation.id),
@@ -35,9 +36,12 @@ async def add_invite_bonus(
 def invite_bonus_target(rules: CampaignRules, invite_count: int) -> int:
     if rules.invite.mode == "ratio":
         divisor = rules.invite.valid_invites_per_ticket
-        if divisor is None or rules.invite.max_bonus_tickets is None:
+        if divisor is None:
             raise ValueError("ratio invite reward rule is incomplete")
-        return min(invite_count // divisor, rules.invite.max_bonus_tickets)
+        target = invite_count // divisor
+        if rules.invite.max_bonus_tickets is None:
+            return target
+        return min(target, rules.invite.max_bonus_tickets)
     target = 0
     for tier in rules.invite.reward_tiers:
         if invite_count < tier.invite_count:
@@ -46,3 +50,12 @@ def invite_bonus_target(rules: CampaignRules, invite_count: int) -> int:
     if rules.invite.max_bonus_tickets is None:
         return target
     return min(target, rules.invite.max_bonus_tickets)
+
+
+def group_invite_bonus_target(rule: GroupInviteRule, invite_count: int) -> int:
+    target = invite_count // rule.invites_per_cycle
+    if rule.cap_mode == "unlimited":
+        return target
+    if rule.max_bonus_tickets is None:
+        raise ValueError("limited group invite reward rule is incomplete")
+    return min(target, rule.max_bonus_tickets)

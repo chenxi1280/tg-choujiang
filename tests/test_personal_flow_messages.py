@@ -23,6 +23,7 @@ class PersonalQueries:
     async def participated_campaigns(self, _: int) -> list[ParticipatedCampaign]:
         return [
             ParticipatedCampaign(
+                public_ref="AbCdEfGhIjKlMnOpQrSt-_",
                 name="周末抽奖",
                 state=CampaignState.RUNNING,
                 qualification=QualificationState.ELIGIBLE,
@@ -69,6 +70,8 @@ async def test_personal_lists_render_business_states_and_local_time() -> None:
     assert "+00:00" not in rendered
     button = message.reply_markups[-1].inline_keyboard[0][0]
     assert button.callback_data == "nav:campaign:AbCdEfGhIjKlMnOpQrSt-_"
+    joined_button = message.reply_markups[0].inline_keyboard[0][0]
+    assert joined_button.callback_data == "nav:joined:AbCdEfGhIjKlMnOpQrSt-_"
 
 
 async def test_participated_query_carries_frozen_campaign_timezone(session_factory) -> None:

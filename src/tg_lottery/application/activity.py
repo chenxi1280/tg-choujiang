@@ -7,7 +7,12 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 
-from tg_lottery.application.activity_rules import activity_chat_ids, activity_ticket_target
+from tg_lottery.application.activity_rules import (
+    activity_chat_ids,
+    activity_min_text_length,
+    activity_ticket_target,
+)
+from tg_lottery.application.group_activity_progress import increment_group_activity_progress
 from tg_lottery.application.message_rules import normalize_text, rejection_reason
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.request_context import current_update_id
@@ -105,10 +110,19 @@ class ActivityService:
         if not rules.invite.require_activity:
             return None
         invitation = await session.scalar(
-            select(Invitation).where(
+            select(Invitation)
+            .outerjoin(
+                CampaignParticipationGroup,
+                CampaignParticipationGroup.id == Invitation.participation_group_id,
+            )
+            .where(
                 Invitation.campaign_id == campaign.id,
                 Invitation.invitee_user_id == observation.user_id,
                 Invitation.state.in_([InvitationState.JOINED_PENDING, InvitationState.CHECKING]),
+                or_(
+                    Invitation.participation_group_id.is_(None),
+                    CampaignParticipationGroup.chat_id_snapshot == observation.chat_id,
+                ),
             )
         )
         if invitation is None:
@@ -122,8 +136,24 @@ class ActivityService:
         )
         if existing:
             return existing
+        return await self._new_invitee_activity_event(
+            session,
+            invitation=invitation,
+            observation=observation,
+            rules=rules,
+        )
+
+    async def _new_invitee_activity_event(
+        self,
+        session: object,
+        *,
+        invitation: Invitation,
+        observation: MessageObservation,
+        rules: CampaignRules,
+    ) -> InviteeActivityEvent:
         normalized = normalize_text(observation.text)
-        reason = rejection_reason(observation, normalized, rules.activity.min_text_length)
+        minimum = activity_min_text_length(rules, observation.chat_id)
+        reason = rejection_reason(observation, normalized, minimum)
         content_hash = sha256(normalized.encode()).hexdigest()
         duplicate = await self._invitee_duplicate(
             session,
@@ -158,7 +188,8 @@ class ActivityService:
         normalized = normalize_text(observation.text)
         content_hash = sha256(normalized.encode()).hexdigest()
         local_date = observation.event_at.astimezone(ZoneInfo(campaign.timezone)).date()
-        reason = rejection_reason(observation, normalized, rules.activity.min_text_length)
+        minimum = activity_min_text_length(rules, observation.chat_id)
+        reason = rejection_reason(observation, normalized, minimum)
         if reason is None:
             reason = await self._duplicate_reason(
                 session,
@@ -207,6 +238,45 @@ class ActivityService:
         chat_id: int,
         activity_chat_ids: tuple[int, ...],
     ) -> None:
+        if rules.activity_rule_for(chat_id) is not None:
+            await increment_group_activity_progress(
+                session,
+                campaign=campaign,
+                participant=participant,
+                local_date=local_date,
+                event_at=event_at,
+                rules=rules,
+                chat_id=chat_id,
+            )
+            return
+        progress = await self._locked_legacy_progress(
+            session,
+            campaign=campaign,
+            participant=participant,
+            local_date=local_date,
+        )
+        counts = dict(progress.valid_message_counts or {})
+        counts[str(chat_id)] = int(counts.get(str(chat_id), 0)) + 1
+        progress.valid_message_counts = counts
+        progress.valid_message_count = sum(int(value) for value in counts.values())
+        target = activity_ticket_target(counts, activity_chat_ids, rules)
+        await self._award_new_tickets(
+            session,
+            campaign=campaign,
+            participant=participant,
+            progress=progress,
+            target=target,
+            event_at=event_at,
+        )
+
+    async def _locked_legacy_progress(
+        self,
+        session: object,
+        *,
+        campaign: Campaign,
+        participant: Participant,
+        local_date: date,
+    ) -> DailyProgress:
         statement = insert(DailyProgress).values(
             campaign_id=campaign.id,
             participant_id=participant.id,
@@ -222,24 +292,13 @@ class ActivityService:
                 DailyProgress.campaign_id == campaign.id,
                 DailyProgress.participant_id == participant.id,
                 DailyProgress.local_date == local_date,
+                DailyProgress.participation_group_id.is_(None),
             )
             .with_for_update()
         )
         if progress is None:
             raise RuntimeError("daily progress upsert failed")
-        counts = dict(progress.valid_message_counts or {})
-        counts[str(chat_id)] = int(counts.get(str(chat_id), 0)) + 1
-        progress.valid_message_counts = counts
-        progress.valid_message_count = sum(int(value) for value in counts.values())
-        target = activity_ticket_target(counts, activity_chat_ids, rules)
-        await self._award_new_tickets(
-            session,
-            campaign=campaign,
-            participant=participant,
-            progress=progress,
-            target=target,
-            event_at=event_at,
-        )
+        return progress
 
     async def _award_new_tickets(
         self,

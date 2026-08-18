@@ -129,8 +129,7 @@ def _participation_groups(data: dict[str, Any]) -> str:
     groups = data.get("participation_groups") or []
     if not groups:
         return "【等待设置】"
-    primary = data.get("group_title") or groups[0].get("title")
-    return f"{len(groups)} 个（必须全部加入），主群：{primary}"
+    return f"{len(groups)} 个（必须全部加入）"
 
 
 def _prize_lines(prizes: list[dict[str, Any]]) -> str:

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -13,13 +11,21 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import creator_bonus as bonus
+from tg_lottery.telegram import creator_group_bonus as group_bonus
 from tg_lottery.telegram import creator_participation as participation
+from tg_lottery.telegram.creator_bonus_permissions import verify_bonus_action
 from tg_lottery.telegram.creator_messages import (
     MESSAGE_DELAYS,
     message_settings_rows,
     message_settings_text,
 )
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer
+from tg_lottery.telegram.creator_required_chats_data import (
+    required_draft_data,
+    restore_required_chats,
+    validated_text_changes,
+    with_required_chats,
+)
 from tg_lottery.telegram.creator_schedule import positive_int, quick_draw_at, validate_draw_time
 from tg_lottery.telegram.creator_settings_ui import (
     _back_rows,
@@ -65,6 +71,9 @@ class CreatorSettings:
         self._bot = bot
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> bool:
+        if group_bonus.handles_action(grant.action):
+            await self._change_bonus(query, grant)
+            return True
         if grant.action.startswith("draft_chat_threshold:"):
             await self._change_chat_threshold(query, grant)
             return True
@@ -75,7 +84,11 @@ class CreatorSettings:
         return True
 
     def handles_action(self, action: str) -> bool:
-        return action.startswith("draft_chat_threshold:") or action in self._grant_handlers()
+        return (
+            action.startswith("draft_chat_threshold:")
+            or group_bonus.handles_action(action)
+            or action in self._grant_handlers()
+        )
 
     async def handle_message(self, message: Message, state: str, data: dict[str, Any]) -> bool:
         handler = self._text_handlers().get(state)
@@ -138,6 +151,7 @@ class CreatorSettings:
             "draft:participation_delete": self._receive_participation_delete,
             "draft:description": self._receive_description,
             "draft:issuer": self._receive_issuer,
+            "draft:bonus_input": self._receive_bonus_input,
         }
 
     async def _show_draw_modes(self, query: CallbackQuery, _: CallbackGrant) -> None:
@@ -208,10 +222,22 @@ class CreatorSettings:
         await self._render(query, data=data, text=text, rows=rows)
 
     async def _change_bonus(self, query: CallbackQuery, grant: CallbackGrant) -> None:
-        data = bonus.apply_bonus_action(await self._required_data(query.from_user.id), grant.action)
-        await self._sessions.set(query.from_user.id, "draft:idle", data)
+        current = await self._required_data(query.from_user.id)
+        await verify_bonus_action(self._bot, query.from_user.id, current, action=grant.action)
+        data = bonus.apply_bonus_action(current, grant.action)
+        state = "draft:bonus_input" if data.get("bonus_input_field") else "draft:idle"
+        await self._sessions.set(query.from_user.id, state, data)
         text, rows = bonus.bonus_view(data, grant.action)
+        if state == "draft:bonus_input":
+            text = group_bonus.input_prompt(data)
+            rows = [[("取消输入", "draft_bonus_group_cancel")]]
         await self._render(query, data=data, text=text, rows=rows)
+
+    async def _receive_bonus_input(self, message: Message, data: dict[str, Any]) -> None:
+        updated = group_bonus.receive_input(data, message.text or "")
+        await self._sessions.set(_user_id(message), "draft:idle", updated)
+        text, rows = bonus.bonus_view(updated, "")
+        await self._renderer.edit(_target(message, updated), text=text, rows=rows)
 
     async def _edit_cover(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:cover")
@@ -301,7 +327,7 @@ class CreatorSettings:
             existing_ids.add(chat_id)
             added.append(chat)
         updated_chats = [*chats, *added]
-        updated = _with_required_chats(data, updated_chats) | {
+        updated = with_required_chats(data, updated_chats) | {
             "participation_page": (len(updated_chats) - 1) // participation.PARTICIPATION_PAGE_SIZE,
         }
         await self._sessions.set(_user_id(message), "draft:participation", updated)
@@ -333,7 +359,7 @@ class CreatorSettings:
         chats = list(data.get("required_chats") or [])
         positions = set(participation.parse_positions(message.text or "", len(chats)))
         kept = [chat for index, chat in enumerate(chats, start=1) if index not in positions]
-        updated = _with_required_chats(data, kept) | {
+        updated = with_required_chats(data, kept) | {
             "participation_page": participation.participation_page(data | {"required_chats": kept}),
         }
         await self._sessions.set(_user_id(message), "draft:participation", updated)
@@ -346,7 +372,7 @@ class CreatorSettings:
     async def _clear_participation(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._required_data(query.from_user.id)
         await self._render_participation(
-            query, _with_required_chats(data, []) | {"participation_page": 0}
+            query, with_required_chats(data, []) | {"participation_page": 0}
         )
 
     async def _change_chat_threshold(self, query: CallbackQuery, grant: CallbackGrant) -> None:
@@ -416,21 +442,12 @@ class CreatorSettings:
                 "creator_name",
             )
         }
-        restored = await self._restore_required_chats(
-            ensure_draft_identity(last_draft | protected), user_id=query.from_user.id
+        restored = await restore_required_chats(
+            self._bot,
+            ensure_draft_identity(last_draft | protected),
+            user_id=query.from_user.id,
         )
         await self._dashboard(query, restored | {"guided": False})
-
-    async def _restore_required_chats(
-        self, data: dict[str, Any], *, user_id: int
-    ) -> dict[str, Any]:
-        records = list(data.get("required_chats") or [])
-        refs = [record["id"] for record in records]
-        refs = refs or data.get("required_chat_refs") or data.get("required_chat_ids") or []
-        records = [
-            await resolve_required_chat(self._bot, ref, admin_user_id=user_id) for ref in refs
-        ]
-        return _with_required_chats(data, records)
 
     async def _receive_text(
         self,
@@ -441,10 +458,8 @@ class CreatorSettings:
         label: str,
         limit: int,
     ) -> None:
-        value = (message.text or "").strip()
-        if not 1 <= len(value) <= limit:
-            raise UserFacingError(f"{label}长度必须为 1–{limit} 字")
-        await self._dashboard_from_message(message, data | {key: value})
+        changes = validated_text_changes(message.text or "", key=key, label=label, limit=limit)
+        await self._dashboard_from_message(message, data | changes)
 
     async def _update(self, query: CallbackQuery, changes: dict[str, Any]) -> None:
         await self._dashboard(query, await self._required_data(query.from_user.id) | changes)
@@ -467,10 +482,7 @@ class CreatorSettings:
         return updated
 
     async def _required_data(self, user_id: int) -> dict[str, Any]:
-        session = await self._sessions.get(user_id)
-        if session is None or not session.state.startswith("draft:"):
-            raise UserFacingError("创建草稿已过期，请发送 /new 重新创建")
-        return dict(session.data)
+        return await required_draft_data(self._sessions, user_id)
 
     async def _render(
         self,
@@ -483,18 +495,3 @@ class CreatorSettings:
         await self._renderer.render(
             _message(query), user_id=query.from_user.id, text=text, rows=rows
         )
-
-
-def _with_required_chats(data: dict[str, Any], chats: list[dict[str, Any]]) -> dict[str, Any]:
-    chat_ids = [int(item["id"]) for item in chats]
-    thresholds = {
-        key: value
-        for key, value in (data.get("chat_message_thresholds") or {}).items()
-        if int(key) in chat_ids
-    }
-    return data | {
-        "required_chats": chats,
-        "required_chat_refs": chat_ids,
-        "required_chat_ids": chat_ids,
-        "chat_message_thresholds": thresholds,
-    }

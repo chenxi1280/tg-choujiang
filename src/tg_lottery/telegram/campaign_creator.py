@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID
 
 from aiogram import Bot
 from aiogram.types import CallbackQuery, Message, User
@@ -10,21 +9,17 @@ from tg_lottery.application.admin_sessions import AdminSessionService
 from tg_lottery.application.callback_tokens import (
     CallbackGrant,
 )
-from tg_lottery.application.campaigns import CampaignService, DraftSource
+from tg_lottery.application.campaigns import CampaignService
 from tg_lottery.application.queries import QueryService
-from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.domain.errors import UserFacingError
-from tg_lottery.telegram import creator_participation as participation
-from tg_lottery.telegram.admin_authorization import verify_chat_admin
+from tg_lottery.telegram import creator_group_bonus as group_bonus
+from tg_lottery.telegram.creator_group_picker import CreatorGroupPicker
 from tg_lottery.telegram.creator_group_selection import (
     bind_initial_group,
-    resolve_participation_groups,
-    resolve_requirements,
     selected_chat_ids,
-    set_primary_group,
-    toggle_group,
 )
+from tg_lottery.telegram.creator_publication import CreatorPublisher
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
 from tg_lottery.telegram.creator_schedule import positive_int
 from tg_lottery.telegram.creator_settings import CreatorSettings
@@ -37,13 +32,8 @@ from tg_lottery.telegram.creator_views import (
     prizes_text,
     title_prompt_text,
 )
-from tg_lottery.telegram.draft_config import (
-    campaign_input,
-    ensure_draft_identity,
-    new_draft,
-    presentation_from_data,
-)
-from tg_lottery.telegram.issuer import creator_issuer, resolve_issuer
+from tg_lottery.telegram.draft_config import ensure_draft_identity, new_draft
+from tg_lottery.telegram.issuer import creator_issuer
 
 
 class CampaignCreator:
@@ -59,14 +49,25 @@ class CampaignCreator:
         settings: CreatorSettings,
         profiles: UserProfileService,
     ) -> None:
-        self._bot = bot
-        self._bot_username = bot_username
         self._sessions = sessions
-        self._campaigns = campaigns
         self._queries = queries
         self._renderer = renderer
         self._settings = settings
-        self._profiles = profiles
+        self._group_picker = CreatorGroupPicker(
+            bot=bot,
+            sessions=sessions,
+            queries=queries,
+            renderer=renderer,
+        )
+        self._publisher = CreatorPublisher(
+            bot=bot,
+            bot_username=bot_username,
+            sessions=sessions,
+            campaigns=campaigns,
+            queries=queries,
+            profiles=profiles,
+            renderer=renderer,
+        )
 
     async def start(self, query: CallbackQuery) -> None:
         await self._open(query.from_user, _message(query))
@@ -142,10 +143,17 @@ class CampaignCreator:
 
     def _grant_handlers(self):
         return {
-            "draft_group": self._show_groups,
-            "draft_toggle_group": self._change_group_selection,
-            "draft_primary_group": self._change_group_selection,
-            "draft_groups_done": self._finish_group_selection,
+            "draft_group": self._group_picker.show,
+            "draft_group_problem": self._group_picker.problem,
+            "draft_toggle_group": self._group_picker.toggle,
+            "draft_groups_select_page": self._group_picker.select_page,
+            "draft_groups_clear_page": self._group_picker.clear_page,
+            "draft_group_remove_confirm": self._group_picker.confirm_remove,
+            "draft_group_remove_cancel": self._group_picker.cancel_remove,
+            "draft_groups_prev": self._group_picker.page,
+            "draft_groups_next": self._group_picker.page,
+            "draft_groups_refresh": self._group_picker.page,
+            "draft_groups_done": self._group_picker.done,
             "draft_title": self._edit_title,
             "draft_prizes": self._show_prize_prompt,
             "draft_add_prize": self._show_prize_prompt,
@@ -155,41 +163,9 @@ class CampaignCreator:
             "draft_clear": self._confirm_clear,
             "draft_clear_confirm": self._clear,
             "draft_home": self._home,
-            "draft_publish": self._publish,
+            "draft_publish": self._publisher.confirm,
+            "draft_publish_confirm": self._publisher.publish,
         }
-
-    async def _show_groups(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:idle", guided=False)
-        await self._render_group_selection(query, data)
-
-    async def _change_group_selection(self, query: CallbackQuery, grant: CallbackGrant) -> None:
-        chat_id = int(grant.payload["chat_id"])
-        await verify_chat_admin(self._bot, chat_id, query.from_user.id)
-        group = await self._queries.group_by_chat_id(chat_id)
-        if group is None:
-            raise UserFacingError("活动群不存在")
-        current = await self._required_session(query.from_user.id)
-        data = (
-            set_primary_group(current, group)
-            if grant.action == "draft_primary_group"
-            else toggle_group(current, group)
-        )
-        await self._sessions.set(query.from_user.id, "draft:idle", data)
-        await self._render_group_selection(query, data)
-
-    async def _finish_group_selection(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._required_session(query.from_user.id)
-        if not selected_chat_ids(data):
-            raise UserFacingError("请至少选择一个参与活动的群")
-        await self._render_dashboard(query.from_user.id, _message(query), data)
-
-    async def _render_group_selection(self, query: CallbackQuery, data: dict[str, Any]) -> None:
-        await self._renderer.render_groups(
-            _message(query),
-            user_id=query.from_user.id,
-            selected_chat_ids=selected_chat_ids(data),
-            primary_chat_id=int(data["chat_id"]) if data.get("chat_id") else None,
-        )
 
     async def _edit_title(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:title", guided=False)
@@ -267,6 +243,21 @@ class CampaignCreator:
 
     async def _show_dashboard(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:idle", guided=False)
+        if group_bonus.working_copy_dirty(data):
+            rows = [
+                [("放弃修改", "draft_bonus_group_cancel")],
+                [("继续编辑", "draft_bonus_continue_editing")],
+            ]
+            await self._render_text(
+                query.from_user.id,
+                _message(query),
+                data=data,
+                text="当前群的加成设置尚未保存。要放弃修改还是继续编辑？",
+                rows=rows,
+            )
+            return
+        if data.get("bonus_working_copy"):
+            data = group_bonus.apply_action(data, "draft_bonus_group_cancel")
         await self._render_dashboard(query.from_user.id, _message(query), data)
 
     async def _confirm_clear(self, query: CallbackQuery, _: CallbackGrant) -> None:
@@ -288,79 +279,6 @@ class CampaignCreator:
         data = await self._set_state(query, "draft:idle", guided=False)
         await self._sessions.set(query.from_user.id, "draft:idle", data)
         await _message(query).edit_text("请选择操作：", reply_markup=main_keyboard())
-
-    async def _publish(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._required_session(query.from_user.id)
-        if data.get("published_campaign_id"):
-            await self._finish_publication(query, data, UUID(str(data["published_campaign_id"])))
-            return
-        now = utcnow()
-        campaign_input(data, now=now)
-        await verify_chat_admin(
-            self._bot, int(data["chat_id"]), query.from_user.id, require_invites=True
-        )
-        resolved = await self._resolve_publication_data(data, query.from_user)
-        draft, prizes = campaign_input(resolved, now=now)
-        source = DraftSource(str(resolved["draft_id"]), int(resolved["draft_revision"]))
-        campaign = await self._campaigns.create_draft(
-            draft, prizes, query.from_user.id, source=source
-        )
-        progress = resolved | {
-            "published_campaign_id": str(campaign.id),
-            "publish_stage": "campaign_created",
-        }
-        await self._sessions.set(query.from_user.id, "draft:publishing", progress)
-        await self._finish_publication(query, progress, campaign.id)
-
-    async def _finish_publication(
-        self, query: CallbackQuery, data: dict[str, Any], campaign_id: UUID
-    ) -> None:
-        await self._campaigns.publish(campaign_id, query.from_user.id, self._bot_username)
-        accepted = data | {"publish_stage": "publication_accepted"}
-        await self._sessions.set(query.from_user.id, "draft:publishing", accepted)
-        await self._profiles.save_last_draft(
-            query.from_user.id, accepted | presentation_from_data(accepted), utcnow()
-        )
-        await self._sessions.clear(query.from_user.id)
-        await _message(query).edit_text("🎉 发布请求已提交，群活动卡片确认送达后正式开始。")
-
-    async def _resolve_publication_data(
-        self, data: dict[str, Any], creator: User
-    ) -> dict[str, Any]:
-        if data.get("published_campaign_id"):
-            return data
-        participation_groups = await resolve_participation_groups(
-            self._bot,
-            chat_ids=selected_chat_ids(data),
-            admin_user_id=creator.id,
-            activity_enabled="activity" in data.get("bonus_types", []),
-        )
-        required_chats = await self._resolve_required_chats(data, creator_user_id=creator.id)
-        main_chat = participation_groups[0]
-        participation.validate_main_threshold(data, main_chat)
-        issuer_ref = str(data.get("issuer") or "")
-        candidates = (
-            await self._queries.user_ids_by_username(issuer_ref)
-            if issuer_ref.startswith("@")
-            else ()
-        )
-        issuer = await resolve_issuer(self._bot, issuer_ref, creator, candidate_user_ids=candidates)
-        return (
-            data
-            | {
-                "required_chat_ids": [item["id"] for item in required_chats],
-                "required_chats": required_chats,
-                "participation_group_ids": [item["id"] for item in participation_groups],
-                "participation_groups": participation_groups,
-                "main_chat": main_chat,
-            }
-            | issuer
-        )
-
-    async def _resolve_required_chats(
-        self, data: dict[str, Any], *, creator_user_id: int
-    ) -> list[dict[str, Any]]:
-        return await resolve_requirements(self._bot, data, creator_user_id=creator_user_id)
 
     async def _render_dashboard(self, user_id: int, message: Message, data: dict[str, Any]) -> None:
         updated = data | {"guided": False}
@@ -385,7 +303,7 @@ class CampaignCreator:
         await self._renderer.edit_groups(
             _target(message, data),
             selected_chat_ids=selected_chat_ids(data),
-            primary_chat_id=int(data["chat_id"]) if data.get("chat_id") else None,
+            page=int(data.get("group_page", 0)),
         )
 
     async def _prompt_title_from_text(self, message: Message, data: dict[str, Any]) -> None:

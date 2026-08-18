@@ -28,6 +28,7 @@ from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.domain.transitions import require_campaign_transition
 from tg_lottery.infrastructure.db import (
     Campaign,
+    CampaignParticipationGroup,
     Group,
     InviteLink,
     Participant,
@@ -261,15 +262,20 @@ class JobHandlers:
     async def _queue_personal_link_revocations(
         self, session: object, *, campaign_id: UUID, chat_id: int
     ) -> None:
-        links = (
-            await session.scalars(
-                select(InviteLink).where(
+        rows = (
+            await session.execute(
+                select(InviteLink, CampaignParticipationGroup.chat_id_snapshot)
+                .outerjoin(
+                    CampaignParticipationGroup,
+                    CampaignParticipationGroup.id == InviteLink.participation_group_id,
+                )
+                .where(
                     InviteLink.campaign_id == campaign_id,
                     InviteLink.revoked_at.is_(None),
                 )
             )
         ).all()
-        for link in links:
+        for link, target_chat_id in rows:
             business_key = f"revoke_invite_link:{link.id}"
             exists = await session.scalar(
                 select(TelegramOutbox.id).where(TelegramOutbox.business_key == business_key)
@@ -281,9 +287,12 @@ class JobHandlers:
                 operation="revoke_invite_link",
                 aggregate_type="invite_link",
                 aggregate_id=str(link.id),
-                recipient_chat_id=chat_id,
+                recipient_chat_id=target_chat_id or chat_id,
                 business_key=business_key,
-                payload={"invite_link_id": str(link.id)},
+                payload={
+                    "invite_link_id": str(link.id),
+                    "reason": "campaign_cancelled",
+                },
             )
 
     async def _campaign_settle(self, job: ScheduledJob) -> None:

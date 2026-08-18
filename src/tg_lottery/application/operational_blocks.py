@@ -29,6 +29,21 @@ async def has_active_campaign_block(session: object, campaign_id: UUID) -> bool:
     return block_id is not None
 
 
+async def has_active_target_block(
+    session: object, campaign_id: UUID, *, chat_ids: tuple[int, ...]
+) -> bool:
+    if not chat_ids:
+        return False
+    block_id = await session.scalar(
+        select(CampaignOperationalBlock.id).where(
+            CampaignOperationalBlock.campaign_id == campaign_id,
+            CampaignOperationalBlock.chat_id.in_(chat_ids),
+            CampaignOperationalBlock.resolved_at.is_(None),
+        )
+    )
+    return block_id is not None
+
+
 async def record_outbox_target_block(
     session: object,
     row: TelegramOutbox,

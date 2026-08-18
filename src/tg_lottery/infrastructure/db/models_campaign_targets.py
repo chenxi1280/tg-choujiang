@@ -36,9 +36,8 @@ class CampaignParticipationGroup(Base, UuidPkMixin, TimestampMixin):
             postgresql_where=text("is_primary"),
         ),
         Index(
-            "uq_campaign_participation_active_group",
+            "ix_campaign_participation_active_group",
             "group_id",
-            unique=True,
             postgresql_where=text("released_at IS NULL"),
         ),
     )

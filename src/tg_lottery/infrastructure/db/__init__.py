@@ -35,7 +35,9 @@ from tg_lottery.infrastructure.db.models_draw import (
 )
 from tg_lottery.infrastructure.db.models_engagement import (
     ActivityEvent,
+    CampaignReferralRoute,
     DailyProgress,
+    GroupMembershipFact,
     Invitation,
     InviteeActivityEvent,
     InviteLink,
@@ -53,6 +55,7 @@ __all__ = [
     "Campaign",
     "CampaignOperationalBlock",
     "CampaignParticipationGroup",
+    "CampaignReferralRoute",
     "CampaignRequirement",
     "DailyProgress",
     "DeliveryAttempt",
@@ -62,6 +65,7 @@ __all__ = [
     "DrawSnapshot",
     "Group",
     "GroupAdmin",
+    "GroupMembershipFact",
     "Invitation",
     "InviteLink",
     "InviteeActivityEvent",

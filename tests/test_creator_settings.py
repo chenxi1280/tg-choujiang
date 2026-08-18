@@ -7,6 +7,7 @@ from aiogram.types import Chat, Message, User
 from tg_lottery.application.callback_tokens import CallbackGrant
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.campaign_creator import CampaignCreator
+from tg_lottery.telegram.creator_group_selection import resolve_requirements
 from tg_lottery.telegram.creator_participation import (
     parse_chat_refs,
     parse_positions,
@@ -15,6 +16,7 @@ from tg_lottery.telegram.creator_participation import (
     participation_text,
     validate_main_threshold,
 )
+from tg_lottery.telegram.creator_required_chats_data import restore_required_chats
 from tg_lottery.telegram.creator_settings import (
     CreatorSettings,
     custom_draw_prompt,
@@ -160,10 +162,9 @@ def test_activity_bonus_rejects_a_channel_as_the_main_chat() -> None:
 
 
 async def test_required_chats_reject_participation_group_overlap() -> None:
-    creator = _creator(RequiredChatBot())
-
     with pytest.raises(UserFacingError, match=r"群组 -1001.*参与群.*准入条件"):
-        await creator._resolve_required_chats(
+        await resolve_requirements(
+            RequiredChatBot(),
             {
                 "chat_id": -1001,
                 "required_chat_refs": ["@public_group", -1003, -1001],
@@ -173,9 +174,8 @@ async def test_required_chats_reject_participation_group_overlap() -> None:
 
 
 async def test_required_chats_are_resolved_and_frozen() -> None:
-    creator = _creator(RequiredChatBot())
-
-    records = await creator._resolve_required_chats(
+    records = await resolve_requirements(
+        RequiredChatBot(),
         {"chat_id": -1001, "required_chat_refs": ["@public_group", -1003]},
         creator_user_id=201,
     )
@@ -194,10 +194,9 @@ async def test_activity_bonus_rejects_mandatory_group_without_member_speech() ->
         return chat
 
     bot.get_chat = get_chat
-    creator = _creator(bot)
-
     with pytest.raises(UserFacingError, match=r"群组 -1002.*禁止普通成员发言"):
-        await creator._resolve_required_chats(
+        await resolve_requirements(
+            bot,
             {
                 "chat_id": -1001,
                 "required_chat_refs": ["@public_group"],
@@ -208,20 +207,18 @@ async def test_activity_bonus_rejects_mandatory_group_without_member_speech() ->
 
 
 async def test_required_chat_rejects_bot_without_admin_access() -> None:
-    creator = _creator(RequiredChatBot(status="member"))
-
     with pytest.raises(UserFacingError, match=r"群组 -1002.*设为管理员"):
-        await creator._resolve_required_chats(
+        await resolve_requirements(
+            RequiredChatBot(status="member"),
             {"chat_id": -1001, "required_chat_refs": ["@public_group"]},
             creator_user_id=201,
         )
 
 
 async def test_required_chat_rejects_creator_without_admin_access() -> None:
-    creator = _creator(RequiredChatBot(creator_status="member"))
-
     with pytest.raises(UserFacingError, match=r"群组 -1002.*创建者.*管理员"):
-        await creator._resolve_required_chats(
+        await resolve_requirements(
+            RequiredChatBot(creator_status="member"),
             {"chat_id": -1001, "required_chat_refs": ["@public_group"]},
             creator_user_id=201,
         )
@@ -280,15 +277,8 @@ async def test_participation_conditions_delete_selected_positions() -> None:
 
 
 async def test_legacy_last_draft_required_chat_ids_are_restored_for_the_ui() -> None:
-    settings = CreatorSettings(
-        sessions=RecordingSessions(),
-        renderer=RecordingRenderer(),
-        profiles=object(),
-        queries=object(),
-        bot=RequiredChatBot(),
-    )
-
-    restored = await settings._restore_required_chats(
+    restored = await restore_required_chats(
+        RequiredChatBot(),
         {"required_chat_ids": [-1003], "required_chat_refs": [], "required_chats": []},
         user_id=201,
     )

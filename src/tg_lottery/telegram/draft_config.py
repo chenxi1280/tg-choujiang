@@ -11,6 +11,8 @@ from tg_lottery.domain.rules import (
     ActivityRule,
     CampaignDraft,
     CampaignRules,
+    GroupActivityRule,
+    GroupInviteRule,
     InviteRewardTier,
     InviteRule,
 )
@@ -72,8 +74,11 @@ def new_draft(
         "invite_reward_mode": "ratio",
         "valid_invites_per_ticket": DEFAULT_VALID_INVITES_PER_TICKET,
         "invite_bonus_cap": DEFAULT_INVITE_BONUS_CAP,
+        "invite_cap_mode": "limited",
+        "group_invite_rules": {},
         "activity_message_threshold": DEFAULT_ACTIVITY_MESSAGE_THRESHOLD,
         "activity_reward_tickets": DEFAULT_ACTIVITY_REWARD_TICKETS,
+        "group_activity_rules": {},
         "message_tips": True,
         "delete_trigger_message": False,
         "completion_delete_after_seconds": None,
@@ -156,6 +161,14 @@ def rules_from_data(data: dict[str, Any]) -> CampaignRules:
             for key, value in (data.get("chat_message_thresholds") or {}).items()
             if value
         },
+        group_invite_rules={
+            str(key): GroupInviteRule.model_validate(value)
+            for key, value in (data.get("group_invite_rules") or {}).items()
+        },
+        group_activity_rules={
+            str(key): GroupActivityRule.model_validate(value)
+            for key, value in (data.get("group_activity_rules") or {}).items()
+        },
     )
 
 
@@ -171,7 +184,18 @@ def missing_fields(data: dict[str, Any]) -> tuple[str, ...]:
         missing.append("满人数量")
     if data.get("draw_mode") != "full" and not data.get("draw_at"):
         missing.append("开奖时间")
+    types = set(data.get("bonus_types") or [])
+    if data.get("participation_groups") and "invite" in types:
+        if not _has_enabled_group_rule(data, "invite"):
+            missing.append("至少配置一个群的邀请加成")
+    if data.get("participation_groups") and "activity" in types:
+        if not _has_enabled_group_rule(data, "activity"):
+            missing.append("至少配置一个群的发言加成")
     return tuple(missing)
+
+
+def _has_enabled_group_rule(data: dict[str, Any], kind: str) -> bool:
+    return any(rule.get("enabled") for rule in (data.get(f"group_{kind}_rules") or {}).values())
 
 
 def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
@@ -198,8 +222,11 @@ def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
         "invite_reward_mode",
         "valid_invites_per_ticket",
         "invite_bonus_cap",
+        "invite_cap_mode",
+        "group_invite_rules",
         "activity_message_threshold",
         "activity_reward_tickets",
+        "group_activity_rules",
         "message_tips",
         "delete_trigger_message",
         "completion_delete_after_seconds",
@@ -228,7 +255,7 @@ def _invite_rule(data: dict[str, Any]) -> InviteRule:
     common = {
         "mode": mode,
         "retention_hours": INVITE_PRESETS[str(data["invite_preset"])].retention_hours,
-        "max_bonus_tickets": int(data.get("invite_bonus_cap", DEFAULT_INVITE_BONUS_CAP)),
+        "max_bonus_tickets": _invite_cap(data),
     }
     if mode == "ratio":
         return InviteRule(
@@ -240,3 +267,9 @@ def _invite_rule(data: dict[str, Any]) -> InviteRule:
     raw_tiers = data.get("invite_reward_tiers", DEFAULT_INVITE_REWARD_TIERS)
     tiers = tuple(InviteRewardTier.model_validate(item) for item in raw_tiers)
     return InviteRule(**common, reward_tiers=tiers)
+
+
+def _invite_cap(data: dict[str, Any]) -> int | None:
+    if data.get("invite_cap_mode") == "unlimited":
+        return None
+    return int(data.get("invite_bonus_cap", DEFAULT_INVITE_BONUS_CAP))

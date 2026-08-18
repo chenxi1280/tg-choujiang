@@ -9,8 +9,14 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from tg_lottery.application.admin_sessions import AdminSessionService, DraftPanelContext
 from tg_lottery.application.callback_tokens import CallbackRequest, CallbackTokenService
 from tg_lottery.application.queries import QueryService
+from tg_lottery.infrastructure.db import Group
+from tg_lottery.telegram.creator_group_availability import (
+    GroupAvailability,
+    inspect_group_availability,
+)
 
 TOKEN_LIFETIME = timedelta(hours=24)
+GROUP_PAGE_SIZE = 6
 ButtonRows = list[list[tuple[str, str]]]
 
 
@@ -68,12 +74,12 @@ class CreatorRenderer:
         *,
         user_id: int,
         selected_chat_ids: tuple[int, ...] = (),
-        primary_chat_id: int | None = None,
+        page: int = 0,
     ) -> None:
         await self.edit_groups(
             PanelTarget(user_id, message.chat.id, message.message_id),
             selected_chat_ids=selected_chat_ids,
-            primary_chat_id=primary_chat_id,
+            page=page,
         )
 
     async def edit_groups(
@@ -81,46 +87,79 @@ class CreatorRenderer:
         target: PanelTarget,
         *,
         selected_chat_ids: tuple[int, ...] = (),
-        primary_chat_id: int | None = None,
+        page: int = 0,
     ) -> None:
         groups = await self._queries.admin_groups(target.user_id)
+        maximum = max(0, (len(groups) - 1) // GROUP_PAGE_SIZE)
+        page = min(maximum, max(0, page))
+        visible = groups[page * GROUP_PAGE_SIZE : (page + 1) * GROUP_PAGE_SIZE]
         context = await self._sessions.issue_panel_context(target.user_id, target.message_id)
-        requests = tuple(
-            request
-            for group in groups
-            for request in (
-                CallbackRequest("draft_toggle_group", payload={"chat_id": group.chat_id}),
-                CallbackRequest("draft_primary_group", payload={"chat_id": group.chat_id}),
-            )
+        rows = await self._group_buttons(
+            target,
+            groups=visible,
+            selected_chat_ids=selected_chat_ids,
+            context=context,
         )
-        tokens = await self._create_tokens(target, requests, context=context)
-        token_pairs = zip(tokens[::2], tokens[1::2], strict=True)
-        rows = [
-            [
-                InlineKeyboardButton(
-                    text=("✅ " if group.chat_id in selected_chat_ids else "⬜ ") + group.title,
-                    callback_data=f"secure:{toggle_token}",
-                ),
-                InlineKeyboardButton(
-                    text="主群" if group.chat_id == primary_chat_id else "设为主群",
-                    callback_data=f"secure:{primary_token}",
-                ),
-            ]
-            for group, (toggle_token, primary_token) in zip(groups, token_pairs, strict=True)
-        ]
         back = await self._keyboard(
             target,
-            [[("✅ 完成选择", "draft_groups_done")], [("↩ 返回上一层", "draft_back")]],
+            [
+                *_group_page_rows(page, maximum),
+                [("全选本页", "draft_groups_select_page"), ("清空本页", "draft_groups_clear_page")],
+                [("🔄 刷新群列表", "draft_groups_refresh")],
+                [("✅ 完成选择", "draft_groups_done")],
+                [("↩ 返回上一层", "draft_back")],
+            ],
             context=context,
         )
         rows.extend(back.inline_keyboard)
         await self._bot.edit_message_text(
             f"👥 参与活动的群（已选 {len(selected_chat_ids)}）\n\n"
-            "参与者必须同时加入全部已选群；每个群都会收到活动卡。",
+            "参与者必须同时加入全部已选群；每个群都会收到活动卡。\n"
+            "若群不在列表，请先把机器人加入该群并设为管理员，再点刷新。",
             chat_id=target.chat_id,
             message_id=target.message_id,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
         )
+
+    async def _group_buttons(
+        self,
+        target: PanelTarget,
+        *,
+        groups: list[Group],
+        selected_chat_ids: tuple[int, ...],
+        context: DraftPanelContext,
+    ) -> list[list[InlineKeyboardButton]]:
+        availability = [
+            await inspect_group_availability(self._bot, group.chat_id, target.user_id)
+            for group in groups
+        ]
+        parallel_counts = [
+            len(await self._queries.active_campaigns_by_chat(group.chat_id)) for group in groups
+        ]
+        requests = tuple(
+            CallbackRequest(
+                "draft_toggle_group" if status.selectable else "draft_group_problem",
+                payload={"chat_id": group.chat_id, "reason": status.reason},
+            )
+            for group, status in zip(groups, availability, strict=True)
+        )
+        tokens = await self._create_tokens(target, requests, context=context)
+        return [
+            [
+                InlineKeyboardButton(
+                    text=_group_button_text(
+                        group,
+                        status,
+                        group.chat_id in selected_chat_ids,
+                        parallel_count=parallel_count,
+                    ),
+                    callback_data=f"secure:{token}",
+                ),
+            ]
+            for group, status, token, parallel_count in zip(
+                groups, availability, tokens, parallel_counts, strict=True
+            )
+        ]
 
     async def _keyboard(
         self,
@@ -169,3 +208,29 @@ class CreatorRenderer:
             requests=scoped_requests,
             expires_in=TOKEN_LIFETIME,
         )
+
+
+def _group_button_text(
+    group: Group,
+    status: GroupAvailability,
+    selected: bool,
+    *,
+    parallel_count: int,
+) -> str:
+    if not status.selectable:
+        return f"⚠ {group.title}（{group.chat_id}）｜{status.status}"
+    prefix = "✅ " if selected else "⬜ "
+    parallel = f"｜另有 {parallel_count} 个进行中活动" if parallel_count else ""
+    return prefix + f"{group.title}（{group.chat_id}）" + parallel
+
+
+def _group_page_rows(page: int, maximum: int) -> ButtonRows:
+    if not maximum:
+        return []
+    return [
+        [
+            ("上一页", "draft_groups_prev"),
+            (f"{page + 1}/{maximum + 1}", "draft_groups_refresh"),
+            ("下一页", "draft_groups_next"),
+        ]
+    ]

@@ -7,11 +7,18 @@ from sqlalchemy import select
 
 from tests.helpers import seed_campaign
 from tg_lottery.application.groups import GroupService, TelegramAdmin
+from tg_lottery.application.publication_queries import PublicationIssue
 from tg_lottery.application.queries import QueryService
+from tg_lottery.domain.enums import CampaignState, OutboxState
 from tg_lottery.domain.errors import AuthorizationDenied
 from tg_lottery.infrastructure.db import Group
 from tg_lottery.infrastructure.db.uow import UnitOfWork
-from tg_lottery.telegram.admin_flow import DRAW_CONFIRMATION_TEXT, AdminFlow
+from tg_lottery.telegram.admin_flow import (
+    DRAW_CONFIRMATION_TEXT,
+    AdminFlow,
+    _publication_actions,
+    _publication_issue_state,
+)
 
 
 class FakeAdminBot:
@@ -118,3 +125,19 @@ def test_draw_confirmation_uses_business_language_only() -> None:
     assert DRAW_CONFIRMATION_TEXT == "开奖结果已生成, 群公告和中奖通知正在发送。"
     assert "数据库" not in DRAW_CONFIRMATION_TEXT
     assert "独立送达" not in DRAW_CONFIRMATION_TEXT
+
+
+def test_publication_buttons_never_retry_unknown_delivery() -> None:
+    unknown = PublicationIssue(-1001, "未知群", OutboxState.UNKNOWN_HOLD, "timeout")
+    failed = PublicationIssue(-1002, "失败群", OutboxState.PRE_ACCEPT_FAILED, "rejected")
+
+    assert _publication_actions(CampaignState.PUBLISHING, (unknown,)) == (
+        "refresh_publication",
+        "publication_issues",
+    )
+    assert _publication_actions(CampaignState.PUBLISHING, (unknown, failed)) == (
+        "refresh_publication",
+        "publication_issues",
+        "retry_publication",
+    )
+    assert "不会自动重试" in _publication_issue_state(OutboxState.UNKNOWN_HOLD)

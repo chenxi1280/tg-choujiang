@@ -1,6 +1,4 @@
 from dataclasses import dataclass
-from datetime import datetime
-from hashlib import sha256
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -10,20 +8,62 @@ from tg_lottery.application.campaign_query_targets import (
     active_campaign_by_chat as load_active_campaign_by_chat,
 )
 from tg_lottery.application.campaign_query_targets import (
+    active_campaigns_by_chat as load_active_campaigns_by_chat,
+)
+from tg_lottery.application.campaign_query_targets import (
     campaigns_for_mandatory_chat as load_campaigns_for_mandatory_chat,
 )
 from tg_lottery.application.campaign_query_targets import (
     load_campaign_targets,
-    mandatory_chat_ids,
 )
 from tg_lottery.application.campaign_references import resolve_campaign_reference
 from tg_lottery.application.campaign_targets import QualificationTarget
+from tg_lottery.application.group_bonus_progress import (
+    GroupBonusProgress,
+    load_group_bonus_progress,
+)
+from tg_lottery.application.participant_records import (
+    CampaignInvitationRecords,
+    ParticipantCampaignDetail,
+    ParticipatedCampaign,
+    load_campaign_invitation_records,
+    load_participant_campaign_detail,
+    load_participated_campaigns,
+)
+from tg_lottery.application.publication_queries import (
+    PublicationIssue,
+    load_publication_issues,
+)
+from tg_lottery.application.query_invites import (
+    GroupInviteLinkStatus,
+    ReferralLanding,
+)
+from tg_lottery.application.query_invites import (
+    current_link_for_route as load_current_link_for_route,
+)
+from tg_lottery.application.query_invites import (
+    group_invite_link_statuses as load_group_invite_link_statuses,
+)
+from tg_lottery.application.query_invites import (
+    invitations_for_chat_user as load_invitations_for_chat_user,
+)
+from tg_lottery.application.query_invites import (
+    invite_link_by_url as load_invite_link_by_url,
+)
+from tg_lottery.application.query_invites import (
+    invite_link_for_participant as load_invite_link_for_participant,
+)
+from tg_lottery.application.query_invites import (
+    referral_landing_by_reference as load_referral_landing_by_reference,
+)
+from tg_lottery.application.query_invites import (
+    referral_route_by_reference as load_referral_route_by_reference,
+)
 from tg_lottery.domain.enums import (
     CampaignState,
     InvitationState,
     OutboxState,
     QualificationState,
-    TicketSource,
 )
 from tg_lottery.infrastructure.db import (
     Campaign,
@@ -42,22 +82,6 @@ from tg_lottery.infrastructure.db import (
 
 
 @dataclass(frozen=True)
-class TicketSummary:
-    campaign_name: str
-    total: int
-    registration: int
-    popularity: int
-    invitation: int
-
-
-@dataclass(frozen=True)
-class InvitationSummary:
-    pending: int
-    valid: int
-    invalid: int
-
-
-@dataclass(frozen=True)
 class CampaignStats:
     participants: int
     valid_invitations: int
@@ -71,16 +95,6 @@ class AdminCampaignSummary:
     active: int
     drawn: int
     cancelled: int
-
-
-@dataclass(frozen=True)
-class ParticipatedCampaign:
-    name: str
-    state: CampaignState
-    qualification: QualificationState
-    tickets: int
-    draw_at: datetime
-    timezone: str
 
 
 @dataclass(frozen=True)
@@ -157,29 +171,7 @@ class QueryService:
         )
 
     async def participated_campaigns(self, user_id: int) -> list[ParticipatedCampaign]:
-        async with self._session_factory() as session:
-            rows = (
-                await session.execute(
-                    select(
-                        Campaign.name,
-                        Campaign.state,
-                        Participant.qualification_state,
-                        func.coalesce(func.sum(TicketLedger.delta), 0),
-                        Campaign.draw_at,
-                        Campaign.timezone,
-                    )
-                    .join(Participant, Participant.campaign_id == Campaign.id)
-                    .outerjoin(TicketLedger, TicketLedger.participant_id == Participant.id)
-                    .where(Participant.user_id == user_id)
-                    .group_by(Campaign.id, Participant.id)
-                    .order_by(Participant.created_at.desc())
-                    .limit(20)
-                )
-            ).all()
-        return [
-            ParticipatedCampaign(name, state, qualification, int(tickets), draw_at, timezone)
-            for name, state, qualification, tickets, draw_at, timezone in rows
-        ]
+        return await load_participated_campaigns(self._session_factory, user_id)
 
     async def created_campaigns(self, user_id: int, category: str) -> list[Campaign]:
         states = _campaign_category_states(category)
@@ -240,6 +232,13 @@ class QueryService:
                 session.expunge(campaign)
             return campaign
 
+    async def active_campaigns_by_chat(self, chat_id: int) -> tuple[Campaign, ...]:
+        async with self._session_factory() as session:
+            campaigns = await load_active_campaigns_by_chat(session, chat_id)
+            for campaign in campaigns:
+                session.expunge(campaign)
+            return campaigns
+
     async def prizes(self, campaign_id: UUID) -> list[Prize]:
         async with self._session_factory() as session:
             rows = (
@@ -249,115 +248,52 @@ class QueryService:
             ).all()
             return list(rows)
 
-    async def ticket_summary(self, user_id: int) -> TicketSummary | None:
-        async with self._session_factory() as session:
-            participant = await session.scalar(
-                select(Participant)
-                .join(Campaign)
-                .where(
-                    Participant.user_id == user_id,
-                    Campaign.state.not_in([CampaignState.ARCHIVED, CampaignState.CANCELLED]),
-                )
-                .order_by(Campaign.created_at.desc())
-                .limit(1)
-            )
-            if participant is None:
-                return None
-            campaign = await session.get(Campaign, participant.campaign_id)
-            totals = await self._ticket_totals(session, participant.id)
-            return TicketSummary(
-                campaign_name=campaign.name if campaign else "未知活动",
-                total=sum(totals.values()),
-                registration=totals.get(TicketSource.REGISTRATION, 0),
-                popularity=totals.get(TicketSource.POPULARITY, 0),
-                invitation=totals.get(TicketSource.INVITATION, 0)
-                + totals.get(TicketSource.REVERSAL, 0),
-            )
+    async def participant_campaign_detail(
+        self, user_id: int, public_ref: str
+    ) -> ParticipantCampaignDetail | None:
+        return await load_participant_campaign_detail(self._session_factory, user_id, public_ref)
 
-    async def invitation_summary(self, user_id: int) -> InvitationSummary | None:
-        async with self._session_factory() as session:
-            participant = await session.scalar(
-                select(Participant)
-                .join(Campaign)
-                .where(Participant.user_id == user_id)
-                .order_by(Campaign.created_at.desc())
-                .limit(1)
-            )
-            if participant is None:
-                return None
-            states = (
-                await session.execute(
-                    select(Invitation.state, func.count(Invitation.id))
-                    .where(Invitation.inviter_participant_id == participant.id)
-                    .group_by(Invitation.state)
-                )
-            ).all()
-            counts = {state: int(count) for state, count in states}
-            valid = counts.get(InvitationState.VALID, 0)
-            pending = sum(
-                counts.get(state, 0)
-                for state in (
-                    InvitationState.ATTRIBUTION_CANDIDATE,
-                    InvitationState.JOINED_PENDING,
-                    InvitationState.CHECKING,
-                    InvitationState.VALIDATION_UNKNOWN,
-                )
-            )
-            return InvitationSummary(pending, valid, sum(counts.values()) - pending - valid)
+    async def campaign_invitation_records(
+        self, user_id: int, public_ref: str, page: int = 0
+    ) -> CampaignInvitationRecords | None:
+        return await load_campaign_invitation_records(
+            self._session_factory, user_id, public_ref, page=page
+        )
+
+    async def group_bonus_progress(
+        self, campaign_id: UUID, user_id: int
+    ) -> GroupBonusProgress | None:
+        return await load_group_bonus_progress(self._session_factory, campaign_id, user_id)
 
     async def invite_link_by_url(self, url: str) -> InviteLink | None:
-        digest = sha256(url.encode()).hexdigest()
-        async with self._session_factory() as session:
-            link = await session.scalar(select(InviteLink).where(InviteLink.link_hash == digest))
-            if link:
-                session.expunge(link)
-            return link
+        return await load_invite_link_by_url(self._session_factory, url)
 
     async def invite_link_for_participant(
-        self, campaign_id: UUID, user_id: int
+        self, campaign_id: UUID, user_id: int, chat_id: int | None = None
     ) -> InviteLink | None:
-        async with self._session_factory() as session:
-            link = await session.scalar(
-                select(InviteLink)
-                .join(Participant, Participant.id == InviteLink.participant_id)
-                .where(
-                    InviteLink.campaign_id == campaign_id,
-                    Participant.campaign_id == campaign_id,
-                    Participant.user_id == user_id,
-                )
-            )
-            if link:
-                session.expunge(link)
-            return link
+        return await load_invite_link_for_participant(
+            self._session_factory,
+            campaign_id=campaign_id,
+            user_id=user_id,
+            chat_id=chat_id,
+        )
+
+    async def group_invite_link_statuses(
+        self, campaign_id: UUID, user_id: int
+    ) -> dict[int, GroupInviteLinkStatus]:
+        return await load_group_invite_link_statuses(self._session_factory, campaign_id, user_id)
+
+    async def referral_route_by_reference(self, public_ref: str):
+        return await load_referral_route_by_reference(self._session_factory, public_ref)
+
+    async def current_link_for_route(self, route_id: UUID) -> InviteLink | None:
+        return await load_current_link_for_route(self._session_factory, route_id)
+
+    async def referral_landing_by_reference(self, public_ref: str) -> ReferralLanding | None:
+        return await load_referral_landing_by_reference(self._session_factory, public_ref)
 
     async def invitations_for_chat_user(self, chat_id: int, user_id: int) -> tuple[Invitation, ...]:
-        async with self._session_factory() as session:
-            rows = (
-                await session.execute(
-                    select(Invitation, Campaign)
-                    .join(Campaign, Campaign.id == Invitation.campaign_id)
-                    .where(
-                        Invitation.invitee_user_id == user_id,
-                        Campaign.state.in_(
-                            [
-                                CampaignState.SCHEDULED,
-                                CampaignState.RUNNING,
-                                CampaignState.PAUSED,
-                                CampaignState.SETTLING,
-                            ]
-                        ),
-                    )
-                    .order_by(Invitation.created_at.desc())
-                )
-            ).all()
-            invitations = []
-            for invitation, campaign in rows:
-                required = await mandatory_chat_ids(session, campaign)
-                if chat_id not in required:
-                    continue
-                session.expunge(invitation)
-                invitations.append(invitation)
-            return tuple(invitations)
+        return await load_invitations_for_chat_user(self._session_factory, chat_id, user_id)
 
     async def campaign_stats(self, campaign_id: UUID) -> CampaignStats:
         async with self._session_factory() as session:
@@ -433,6 +369,9 @@ class QueryService:
                 unknown=counts.get(OutboxState.UNKNOWN_HOLD, 0),
             )
 
+    async def publication_issues(self, campaign_id: UUID) -> tuple[PublicationIssue, ...]:
+        return await load_publication_issues(self._session_factory, campaign_id)
+
     async def _delivery_aggregate_ids(
         self, session: AsyncSession, campaign_id: UUID
     ) -> tuple[str, ...]:
@@ -468,18 +407,6 @@ class QueryService:
                 )
             ).all()
             return [WinnerRow(winner, participant, prize) for winner, participant, prize in rows]
-
-    async def _ticket_totals(
-        self, session: AsyncSession, participant_id: UUID
-    ) -> dict[TicketSource, int]:
-        rows = (
-            await session.execute(
-                select(TicketLedger.source_type, func.sum(TicketLedger.delta))
-                .where(TicketLedger.participant_id == participant_id)
-                .group_by(TicketLedger.source_type)
-            )
-        ).all()
-        return {source: int(total) for source, total in rows}
 
 
 def _campaign_category_states(category: str) -> tuple[CampaignState, ...]:

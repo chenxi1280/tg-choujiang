@@ -74,7 +74,12 @@ async def campaigns_for_mandatory_chat(session: object, chat_id: int) -> tuple[U
 
 
 async def active_campaign_by_chat(session: object, chat_id: int) -> Campaign | None:
-    campaign = await session.scalar(
+    campaigns = await active_campaigns_by_chat(session, chat_id)
+    return campaigns[0] if campaigns else None
+
+
+async def active_campaigns_by_chat(session: object, chat_id: int) -> tuple[Campaign, ...]:
+    participation = await session.scalars(
         select(Campaign)
         .join(
             CampaignParticipationGroup,
@@ -88,16 +93,21 @@ async def active_campaign_by_chat(session: object, chat_id: int) -> Campaign | N
             ),
             Campaign.state.not_in(_TERMINAL_STATES),
         )
+        .order_by(Campaign.created_at.desc())
     )
-    return campaign or await _legacy_active_campaign_by_chat(session, chat_id)
+    legacy = await _legacy_active_campaigns_by_chat(session, chat_id)
+    values = {campaign.id: campaign for campaign in (*participation, *legacy)}
+    return tuple(values.values())
 
 
-async def _legacy_active_campaign_by_chat(session: object, chat_id: int) -> Campaign | None:
-    return await session.scalar(
+async def _legacy_active_campaigns_by_chat(session: object, chat_id: int) -> tuple[Campaign, ...]:
+    rows = await session.scalars(
         select(Campaign)
         .join(Group, Group.id == Campaign.group_id)
         .where(
             Group.chat_id == chat_id,
             Campaign.state.not_in(_TERMINAL_STATES),
         )
+        .order_by(Campaign.created_at.desc())
     )
+    return tuple(rows)

@@ -1,31 +1,57 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from tg_lottery.application.campaign_targets import qualification_targets
+from tg_lottery.application.group_membership_facts import (
+    MembershipObservation,
+    first_source_matches_invitation,
+    has_membership_history,
+    mark_invitation_member_left,
+    observe_existing_member,
+    observe_join,
+)
+from tg_lottery.application.invitation_bonus_service import (
+    award_invitation_bonus,
+    invitation_activity_requirement_met,
+    reconcile_invitation_bonus,
+)
 from tg_lottery.application.invitation_models import (
     InvitationValidationAttempt,
     JoinObservation,
     campaign_accepts_attribution,
     required_chat_ids,
 )
-from tg_lottery.application.invitation_rewards import add_invite_bonus, invite_bonus_target
-from tg_lottery.application.operational_blocks import has_active_campaign_block
+from tg_lottery.application.invitation_records import (
+    accepts_bonus,
+    invalid_candidate,
+    is_self_invite,
+    link_and_campaign,
+    locked_invitation_by_user,
+    matches_target_group,
+    participation_target,
+    upsert_candidate,
+)
+from tg_lottery.application.invitation_records import (
+    record_existing_member as record_existing_member_fact,
+)
+from tg_lottery.application.operational_blocks import (
+    has_active_campaign_block,
+    has_active_target_block,
+)
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import add_job
 from tg_lottery.application.request_context import current_update_id
-from tg_lottery.domain.enums import CampaignState, InvitationState, TicketSource
+from tg_lottery.domain.enums import CampaignState, InvitationState
 from tg_lottery.domain.errors import InvitationValidationDeferred
 from tg_lottery.domain.rules import CampaignRules, invite_due_at
 from tg_lottery.infrastructure.db import (
     Campaign,
+    CampaignParticipationGroup,
     Group,
     Invitation,
-    InviteeActivityEvent,
     InviteLink,
-    Participant,
-    TicketLedger,
 )
 
 
@@ -34,15 +60,44 @@ class InvitationService:
         self._uow_factory = uow_factory
 
     async def record_join_request(self, observation: JoinObservation) -> Invitation | None:
-        if observation.is_bot or observation.was_already_member:
+        if observation.is_bot:
             return None
         async with self._uow_factory() as uow:
-            link, campaign = await self._link_and_campaign(uow.session, observation.invite_link_id)
-            if await self._is_self_invite(uow.session, link, observation.invitee_user_id):
+            link, campaign = await link_and_campaign(uow.session, observation.invite_link_id)
+            if not await matches_target_group(uow.session, link, observation.chat_id):
                 return None
-            if not campaign_accepts_attribution(campaign, observation.event_at):
+            if await is_self_invite(uow.session, link, observation.invitee_user_id):
                 return None
-            return await self._upsert_candidate(
+            if _ignore_join_observation(link, campaign, observation.event_at):
+                return None
+            if observation.was_already_member:
+                await observe_existing_member(
+                    uow.session,
+                    link=link,
+                    user_id=observation.invitee_user_id,
+                    observed_at=observation.event_at,
+                )
+            if observation.was_already_member or await has_membership_history(
+                uow.session, link=link, user_id=observation.invitee_user_id
+            ):
+                return await invalid_candidate(
+                    uow.session,
+                    link=link,
+                    campaign=campaign,
+                    observation=observation,
+                    reason="existing_member",
+                )
+            if not await accepts_bonus(
+                uow.session, link=link, campaign=campaign, event_at=observation.event_at
+            ):
+                return await invalid_candidate(
+                    uow.session,
+                    link=link,
+                    campaign=campaign,
+                    observation=observation,
+                    reason="after_bonus_deadline",
+                )
+            return await upsert_candidate(
                 uow.session,
                 link=link,
                 campaign=campaign,
@@ -50,57 +105,104 @@ class InvitationService:
             )
 
     async def record_joined(self, observation: JoinObservation) -> Invitation | None:
-        if observation.is_bot or observation.was_already_member:
+        if observation.is_bot:
             return None
         async with self._uow_factory() as uow:
-            link, campaign = await self._link_and_campaign(uow.session, observation.invite_link_id)
-            if await self._is_self_invite(uow.session, link, observation.invitee_user_id):
-                return None
-            if not campaign_accepts_attribution(campaign, observation.event_at):
-                return None
-            invitation = await self._upsert_candidate(
-                uow.session,
+            link, campaign = await link_and_campaign(uow.session, observation.invite_link_id)
+            return await self._record_joined_fact(
+                uow.session, link, campaign, observation=observation
+            )
+
+    async def _record_joined_fact(
+        self,
+        session: object,
+        link: InviteLink,
+        campaign: Campaign,
+        *,
+        observation: JoinObservation,
+    ) -> Invitation | None:
+        if not await matches_target_group(session, link, observation.chat_id):
+            return None
+        if await is_self_invite(session, link, observation.invitee_user_id):
+            return None
+        membership = await _observe_join_membership(session, link, observation)
+        if _ignore_join_observation(link, campaign, observation.event_at):
+            return None
+        if observation.was_already_member or not membership.first_for_link:
+            return await invalid_candidate(
+                session,
                 link=link,
                 campaign=campaign,
                 observation=observation,
+                reason="existing_member",
             )
-            if invitation.state is InvitationState.VALID and invitation.left_at is None:
-                return invitation
-            self._schedule_validation(
-                uow.session, invitation, campaign, event_at=observation.event_at
+        if not await accepts_bonus(
+            session, link=link, campaign=campaign, event_at=observation.event_at
+        ):
+            return await invalid_candidate(
+                session,
+                link=link,
+                campaign=campaign,
+                observation=observation,
+                reason="after_bonus_deadline",
             )
+        invitation = await upsert_candidate(
+            session, link=link, campaign=campaign, observation=observation
+        )
+        if invitation.state is InvitationState.VALID and invitation.left_at is None:
             return invitation
+        self._schedule_validation(session, invitation, campaign, event_at=observation.event_at)
+        return invitation
 
     async def record_rejoined(
-        self, campaign_id: UUID, invitee_user_id: int, event_at: datetime
+        self,
+        campaign_id: UUID,
+        invitee_user_id: int,
+        event_at: datetime,
+        *,
+        participation_group_id: UUID | None = None,
     ) -> Invitation | None:
         async with self._uow_factory() as uow:
-            invitation, campaign = await self._locked_invitation_by_user(
-                uow.session, campaign_id, invitee_user_id
+            invitation, campaign = await locked_invitation_by_user(
+                uow.session,
+                campaign_id,
+                invitee_user_id,
+                participation_group_id=participation_group_id,
             )
             recoverable = invitation.left_at is not None or (
                 invitation.state is InvitationState.LEFT_BEFORE_VALID
             )
             if not recoverable or not campaign_accepts_attribution(campaign, event_at):
                 return None
+            if not await first_source_matches_invitation(uow.session, invitation):
+                return None
             self._schedule_validation(uow.session, invitation, campaign, event_at=event_at)
             return invitation
 
     async def record_left(
-        self, campaign_id: UUID, invitee_user_id: int, event_at: datetime
+        self,
+        campaign_id: UUID,
+        invitee_user_id: int,
+        event_at: datetime,
+        *,
+        participation_group_id: UUID | None = None,
     ) -> None:
         async with self._uow_factory() as uow:
-            invitation, campaign = await self._locked_invitation_by_user(
-                uow.session, campaign_id, invitee_user_id
+            invitation, campaign = await locked_invitation_by_user(
+                uow.session,
+                campaign_id,
+                invitee_user_id,
+                participation_group_id=participation_group_id,
             )
             if invitation.left_at is not None:
                 return
             invitation.left_at = event_at
+            await mark_invitation_member_left(uow.session, invitation, observed_at=event_at)
             if invitation.state is InvitationState.VALID:
                 if event_at <= campaign.cutoff_at:
                     invitation.validation_version += 1
                     rules = CampaignRules.model_validate(campaign.rules)
-                    await self._reconcile_tier_bonus(
+                    await reconcile_invitation_bonus(
                         uow.session,
                         invitation=invitation,
                         campaign=campaign,
@@ -110,8 +212,26 @@ class InvitationService:
                     )
                     invitation.state = InvitationState.INVALID
                     invitation.validation_error = "left_after_valid"
+                    invitation.final_reason = "left_before_cutoff"
                 return
             invitation.state = InvitationState.LEFT_BEFORE_VALID
+            invitation.final_reason = "left_before_valid"
+
+    async def record_existing_member(
+        self,
+        referral_route_id: UUID,
+        invitee_user_id: int,
+        event_at: datetime,
+        *,
+        display_name: str | None = None,
+    ) -> Invitation | None:
+        return await record_existing_member_fact(
+            self._uow_factory,
+            referral_route_id=referral_route_id,
+            invitee_user_id=invitee_user_id,
+            event_at=event_at,
+            display_name=display_name,
+        )
 
     async def validate(
         self,
@@ -138,14 +258,17 @@ class InvitationService:
             )
             if invitation.state is InvitationState.VALID:
                 return self._no_observation(invitation)
-            if await has_active_campaign_block(uow.session, campaign.id):
+            target = await participation_target(uow.session, invitation)
+            if await self._validation_blocked(uow.session, campaign.id, target=target):
                 raise InvitationValidationDeferred("campaign operational block is active")
             self._require_validation_window(invitation, campaign, observed_at)
             if invitation.due_at is None or invitation.due_at > campaign.cutoff_at:
                 invitation.state = InvitationState.EXPIRED_UNQUALIFIED
+                invitation.final_reason = "retention_after_cutoff"
                 return self._no_observation(invitation)
             if campaign.state not in {CampaignState.RUNNING, CampaignState.SETTLING}:
                 invitation.state = InvitationState.EXPIRED_UNQUALIFIED
+                invitation.final_reason = "campaign_not_running"
                 return self._no_observation(invitation)
             if invitation.state in {
                 InvitationState.LEFT_BEFORE_VALID,
@@ -154,7 +277,9 @@ class InvitationService:
             }:
                 return self._no_observation(invitation)
             targets = await qualification_targets(uow.session, campaign)
-            if targets:
+            if target is not None:
+                chat_ids = (target.chat_id_snapshot,)
+            elif targets:
                 chat_ids = tuple(target.chat_id for target in targets)
             else:
                 group = await uow.session.get(Group, campaign.group_id)
@@ -171,6 +296,21 @@ class InvitationService:
                 chat_ids=chat_ids,
                 requires_observation=True,
             )
+
+    async def _validation_blocked(
+        self,
+        session: object,
+        campaign_id: UUID,
+        *,
+        target: CampaignParticipationGroup | None,
+    ) -> bool:
+        if target is None:
+            return await has_active_campaign_block(session, campaign_id)
+        group = await session.get(Group, target.group_id)
+        chat_ids = {target.chat_id_snapshot}
+        if group is not None:
+            chat_ids.add(group.chat_id)
+        return await has_active_target_block(session, campaign_id, chat_ids=tuple(chat_ids))
 
     async def complete_validation(
         self,
@@ -217,21 +357,25 @@ class InvitationService:
             )
         if campaign.state not in {CampaignState.RUNNING, CampaignState.SETTLING}:
             invitation.state = InvitationState.EXPIRED_UNQUALIFIED
+            invitation.final_reason = "campaign_closed"
             return invitation
         if is_current_member is None:
             invitation.state = InvitationState.VALIDATION_UNKNOWN
             invitation.validation_error = "membership_unknown"
+            invitation.final_reason = "validation_unknown"
             return invitation
         if not is_current_member:
             invitation.state = InvitationState.LEFT_BEFORE_VALID
             invitation.validation_error = "membership_ineligible"
+            invitation.final_reason = "left_before_valid"
             return invitation
         rules = CampaignRules.model_validate(campaign.rules)
-        if not await self._activity_requirement_met(session, invitation, rules):
+        if not await invitation_activity_requirement_met(session, invitation, rules):
             invitation.state = InvitationState.INVALID
             invitation.validation_error = "invitee_activity_not_met"
+            invitation.final_reason = "invitee_activity_not_met"
             return invitation
-        await self._award(
+        await award_invitation_bonus(
             session,
             invitation=invitation,
             campaign=campaign,
@@ -239,6 +383,7 @@ class InvitationService:
         )
         invitation.state = InvitationState.VALID
         invitation.validation_error = None
+        invitation.final_reason = None
         return invitation
 
     async def _locked_invitation_campaign(
@@ -286,114 +431,6 @@ class InvitationService:
             requires_observation=False,
         )
 
-    async def _activity_requirement_met(
-        self, session: object, invitation: Invitation, rules: CampaignRules
-    ) -> bool:
-        if not rules.invite.require_activity:
-            return True
-        count = await session.scalar(
-            select(func.count(InviteeActivityEvent.id)).where(
-                InviteeActivityEvent.invitation_id == invitation.id,
-                InviteeActivityEvent.accepted.is_(True),
-            )
-        )
-        return int(count or 0) >= rules.invite.required_messages
-
-    async def _award(
-        self,
-        session: object,
-        *,
-        invitation: Invitation,
-        campaign: Campaign,
-        rules: CampaignRules,
-    ) -> None:
-        if not rules.invite_bonus_enabled:
-            return
-        if rules.invite.mode == "ratio" or rules.invite.reward_tiers:
-            await self._reconcile_tier_bonus(
-                session,
-                invitation=invitation,
-                campaign=campaign,
-                rules=rules,
-                reason="valid",
-                occurred_at=invitation.due_at or invitation.joined_at,
-            )
-            return
-        await self._award_legacy_bonus(
-            session,
-            invitation=invitation,
-            campaign=campaign,
-            rules=rules,
-        )
-
-    async def _reconcile_tier_bonus(
-        self,
-        session: object,
-        *,
-        invitation: Invitation,
-        campaign: Campaign,
-        rules: CampaignRules,
-        reason: str,
-        occurred_at: datetime | None,
-    ) -> None:
-        valid_count = await session.scalar(
-            select(func.count(Invitation.id)).where(
-                Invitation.campaign_id == campaign.id,
-                Invitation.inviter_participant_id == invitation.inviter_participant_id,
-                Invitation.id != invitation.id,
-                Invitation.state == InvitationState.VALID,
-                Invitation.left_at.is_(None),
-            )
-        )
-        invite_count = int(valid_count or 0)
-        if reason == "valid":
-            invite_count += 1
-        target = invite_bonus_target(rules, invite_count)
-        current = await session.scalar(
-            select(func.coalesce(func.sum(TicketLedger.delta), 0)).where(
-                TicketLedger.campaign_id == campaign.id,
-                TicketLedger.participant_id == invitation.inviter_participant_id,
-                TicketLedger.source_type.in_([TicketSource.INVITATION, TicketSource.REVERSAL]),
-            )
-        )
-        delta = target - int(current or 0)
-        if delta == 0:
-            return
-        await add_invite_bonus(
-            session,
-            invitation=invitation,
-            campaign=campaign,
-            reward=delta,
-            business_key=(
-                f"invite_bonus:{campaign.id}:{invitation.id}:"
-                f"{invitation.validation_version}:{reason}"
-            ),
-            occurred_at=occurred_at,
-        )
-
-    async def _award_legacy_bonus(
-        self,
-        session: object,
-        *,
-        invitation: Invitation,
-        campaign: Campaign,
-        rules: CampaignRules,
-    ) -> None:
-        business_key = f"invite:{invitation.id}:{invitation.validation_version}"
-        existing = await session.scalar(
-            select(TicketLedger.id).where(TicketLedger.business_key == business_key)
-        )
-        if existing:
-            return
-        await add_invite_bonus(
-            session,
-            invitation=invitation,
-            campaign=campaign,
-            reward=rules.invite.reward_tickets,
-            business_key=business_key,
-            occurred_at=invitation.due_at,
-        )
-
     def _schedule_validation(
         self,
         session: object,
@@ -410,6 +447,7 @@ class InvitationService:
         invitation.left_at = None
         invitation.due_at = due_at
         invitation.state = InvitationState.JOINED_PENDING
+        invitation.final_reason = None
         invitation.source_update_id = current_update_id()
         add_job(
             session,
@@ -419,79 +457,26 @@ class InvitationService:
             run_at=due_at,
         )
 
-    async def _locked_invitation_by_user(
-        self,
-        session: object,
-        campaign_id: UUID,
-        invitee_user_id: int,
-    ) -> tuple[Invitation, Campaign]:
-        campaign = await session.scalar(
-            select(Campaign).where(Campaign.id == campaign_id).with_for_update()
-        )
-        if campaign is None:
-            raise ValueError("invitation campaign is missing")
-        invitation = await session.scalar(
-            select(Invitation)
-            .where(
-                Invitation.campaign_id == campaign_id,
-                Invitation.invitee_user_id == invitee_user_id,
-            )
-            .with_for_update()
-        )
-        if invitation is None:
-            raise ValueError("invitation not found")
-        return invitation, campaign
 
-    async def _link_and_campaign(
-        self, session: object, invite_link_id: UUID
-    ) -> tuple[InviteLink, Campaign]:
-        link = await session.get(InviteLink, invite_link_id)
-        if link is None:
-            raise ValueError("invite link was not created by this bot")
-        campaign = await session.scalar(
-            select(Campaign).where(Campaign.id == link.campaign_id).with_for_update()
-        )
-        if campaign is None:
-            raise ValueError("invite link campaign is missing")
-        return link, campaign
+def _ignore_join_observation(link: InviteLink, campaign: Campaign, event_at: datetime) -> bool:
+    if event_at < campaign.preheat_at:
+        return True
+    return link.referral_route_id is None and not campaign_accepts_attribution(campaign, event_at)
 
-    async def _is_self_invite(
-        self, session: object, link: InviteLink, invitee_user_id: int
-    ) -> bool:
-        inviter_user_id = await session.scalar(
-            select(Participant.user_id).where(Participant.id == link.participant_id)
-        )
-        if inviter_user_id is None:
-            raise ValueError("invite link participant is missing")
-        return inviter_user_id == invitee_user_id
 
-    async def _upsert_candidate(
-        self,
-        session: object,
-        *,
-        link: InviteLink,
-        campaign: Campaign,
-        observation: JoinObservation,
-    ) -> Invitation:
-        invitation = await session.scalar(
-            select(Invitation)
-            .where(
-                Invitation.campaign_id == campaign.id,
-                Invitation.invitee_user_id == observation.invitee_user_id,
-            )
-            .with_for_update()
+async def _observe_join_membership(
+    session: object, link: InviteLink, observation: JoinObservation
+) -> MembershipObservation:
+    if observation.was_already_member:
+        await observe_existing_member(
+            session,
+            link=link,
+            user_id=observation.invitee_user_id,
+            observed_at=observation.event_at,
         )
-        if invitation:
-            return invitation
-        invitation = Invitation(
-            campaign_id=campaign.id,
-            invite_link_id=link.id,
-            inviter_participant_id=link.participant_id,
-            invitee_user_id=observation.invitee_user_id,
-            state=InvitationState.ATTRIBUTION_CANDIDATE,
-            candidate_at=observation.event_at,
-            source_update_id=current_update_id(),
-        )
-        session.add(invitation)
-        await session.flush()
-        return invitation
+    return await observe_join(
+        session,
+        link=link,
+        user_id=observation.invitee_user_id,
+        observed_at=observation.event_at,
+    )

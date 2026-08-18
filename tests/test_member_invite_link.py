@@ -88,8 +88,12 @@ def test_registration_keyboard_exposes_only_the_current_campaign_link() -> None:
     keyboard = member_keyboard("AbCdEfGhIjKlMnOpQrSt-_", True)
     buttons = [button for row in keyboard.inline_keyboard for button in row]
 
-    invite = next(button for button in buttons if button.text == "获取本期邀请链接")
-    assert invite.callback_data == "member:invite:AbCdEfGhIjKlMnOpQrSt-_"
+    invite = next(button for button in buttons if button.text == "我的加成")
+    assert invite.callback_data == "member:bonus:AbCdEfGhIjKlMnOpQrSt-_"
+    tickets = next(button for button in buttons if button.text == "我的抽奖次数")
+    records = next(button for button in buttons if button.text == "邀请记录")
+    assert tickets.callback_data == "member:tickets:AbCdEfGhIjKlMnOpQrSt-_"
+    assert records.callback_data == "member:invites:AbCdEfGhIjKlMnOpQrSt-_:0"
 
 
 async def test_invite_link_query_requires_matching_campaign_and_user(session_factory) -> None:

@@ -10,10 +10,11 @@ from tg_lottery.application.callback_tokens import (
 )
 from tg_lottery.application.campaigns import CampaignService
 from tg_lottery.application.drawing import DrawingService
+from tg_lottery.application.publication_queries import PublicationIssue
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.winners import WinnerService
-from tg_lottery.domain.enums import CampaignState, PrizeClaimState
+from tg_lottery.domain.enums import CampaignState, OutboxState, PrizeClaimState
 from tg_lottery.telegram.admin_authorization import verify_chat_admin
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.public_projection import campaign_state_text
@@ -108,6 +109,9 @@ class AdminFlow:
             "draw": self._draw,
             "cancel": self._cancel,
             "mark_claimed": self._mark_claimed,
+            "refresh_publication": self._refresh_publication,
+            "publication_issues": self._publication_issues,
+            "retry_publication": self._retry_publication,
         }
         handler = handlers.get(grant.action)
         if handler is None:
@@ -175,11 +179,37 @@ class AdminFlow:
         await self._winners.mark_claimed(winner_id, query.from_user.id)
         await _message(query).answer("领奖状态已登记。")
 
+    async def _refresh_publication(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        campaign_id = _campaign_id(grant)
+        await self._verify_admin(campaign_id, query.from_user.id)
+        await self._show_campaign(_message(query), campaign_id, query.from_user.id)
+
+    async def _retry_publication(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        campaign_id = _campaign_id(grant)
+        await self._verify_admin(campaign_id, query.from_user.id)
+        count = await self._campaigns.retry_failed_publication(campaign_id, query.from_user.id)
+        await _message(query).answer(f"已将 {count} 个明确失败群重新排队。")
+        await self._show_campaign(_message(query), campaign_id, query.from_user.id)
+
+    async def _publication_issues(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        campaign_id = _campaign_id(grant)
+        await self._verify_admin(campaign_id, query.from_user.id)
+        issues = await self._queries.publication_issues(campaign_id)
+        if not issues:
+            await _message(query).answer("当前没有明确失败或远端结果未知的参与群。")
+            return
+        lines = ["发布异常群："]
+        for issue in issues:
+            state = _publication_issue_state(issue.state)
+            lines.append(f"• {issue.title}（{issue.chat_id}）\n  {state}：{issue.error[:160]}")
+        await _message(query).answer("\n".join(lines))
+
     async def _show_campaign(self, message: Message, campaign_id: UUID, user_id: int) -> None:
         campaign = await self._required_campaign(campaign_id)
         stats = await self._queries.campaign_stats(campaign_id)
         deliveries = await self._queries.delivery_summary(campaign_id)
-        actions = _campaign_actions(campaign.state)
+        issues = await self._load_publication_issues(campaign.id, campaign.state)
+        actions = _campaign_actions(campaign.state) + _publication_actions(campaign.state, issues)
         requests = tuple(CallbackRequest(action, campaign_id=campaign_id) for action in actions)
         labels = {
             "pause": "暂停",
@@ -187,6 +217,9 @@ class AdminFlow:
             "early_cutoff": "提前截止",
             "draw": "立即开奖",
             "cancel": "取消",
+            "refresh_publication": "🔄 刷新发布状态",
+            "publication_issues": "查看失败/未知群",
+            "retry_publication": "重试明确失败群",
         }
         tokens = await self._tokens.create_many(
             owner_user_id=user_id,
@@ -208,6 +241,13 @@ class AdminFlow:
         )
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
         await message.answer(text, reply_markup=keyboard)
+
+    async def _load_publication_issues(
+        self, campaign_id: UUID, state: CampaignState
+    ) -> tuple[PublicationIssue, ...]:
+        if state is not CampaignState.PUBLISHING:
+            return ()
+        return await self._queries.publication_issues(campaign_id)
 
     async def _claim_buttons(
         self, message: Message, campaign_id: UUID, user_id: int
@@ -284,3 +324,22 @@ def _campaign_actions(state: CampaignState) -> tuple[str, ...]:
     if state in {CampaignState.DRAFT, CampaignState.PUBLISHING}:
         return ("cancel",)
     return ()
+
+
+def _publication_actions(
+    state: CampaignState, issues: tuple[PublicationIssue, ...]
+) -> tuple[str, ...]:
+    if state is not CampaignState.PUBLISHING:
+        return ()
+    actions = ["refresh_publication"]
+    if issues:
+        actions.append("publication_issues")
+    if any(issue.state is OutboxState.PRE_ACCEPT_FAILED for issue in issues):
+        actions.append("retry_publication")
+    return tuple(actions)
+
+
+def _publication_issue_state(state: OutboxState) -> str:
+    if state is OutboxState.PRE_ACCEPT_FAILED:
+        return "明确失败，可安全重试"
+    return "远端结果未知，不会自动重试"

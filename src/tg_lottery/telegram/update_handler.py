@@ -21,6 +21,7 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import DomainError
 from tg_lottery.telegram import member_callbacks
 from tg_lottery.telegram.admin_flow import AdminFlow
+from tg_lottery.telegram.bot_permission_reminders import send_bot_permission_reminder
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.personal_flow import PersonalFlow
 from tg_lottery.telegram.public_projection import public_error_text
@@ -161,6 +162,17 @@ class LotteryUpdateHandler:
                 message, payload.removeprefix("invite_"), user_id=message.from_user.id
             )
             return True
+        if payload.startswith("bonus_"):
+            await member_callbacks.show_bonus_message(
+                self._member_flow,
+                message,
+                payload.removeprefix("bonus_"),
+                user_id=message.from_user.id,
+            )
+            return True
+        if payload.startswith("ref_"):
+            await self._member_flow.show_referral_landing(message, payload.removeprefix("ref_"))
+            return True
         if not payload.startswith("condition_"):
             return False
         reference, separator, position = payload.removeprefix("condition_").rpartition("_")
@@ -218,11 +230,21 @@ class LotteryUpdateHandler:
             return False
         if await self._dispatch_card_callback(query, data):
             return True
-        if data == "member:tickets":
-            await self._member_flow.show_tickets(message, query.from_user.id)
+        if await member_callbacks.record_callback(
+            self._member_flow, self._personal_flow, query, data=data
+        ):
             return True
-        if data == "member:invites":
-            await self._member_flow.show_invitations(message, query.from_user.id)
+        if data == "member:noop":
+            return True
+        if data.startswith("member:invite_group:"):
+            await member_callbacks.group_invite_callback(
+                self._member_flow, query, data.removeprefix("member:invite_group:")
+            )
+            return True
+        if data.startswith("member:invite_page:"):
+            await member_callbacks.invite_page_callback(
+                self._member_flow, query, data.removeprefix("member:invite_page:")
+            )
             return True
         if data.startswith("member:invite:"):
             await self._member_flow.show_invite_link(
@@ -307,7 +329,9 @@ class LotteryUpdateHandler:
         if user is None:
             return
         if invite is not None:
-            await self._record_invitation_join_request(invite, user, event.date)
+            await self._record_invitation_join_request(
+                invite, user, event.date, chat_id=event.chat.id
+            )
         campaign_ids = await self._queries.campaigns_for_mandatory_chat(event.chat.id)
         for campaign_id in campaign_ids:
             await self._member_flow.join_request_pending(
@@ -318,13 +342,20 @@ class LotteryUpdateHandler:
             )
 
     async def _record_invitation_join_request(
-        self, invite: object, user: object, observed_at: object
+        self, invite: object, user: object, observed_at: object, *, chat_id: int
     ) -> None:
         link = await self._queries.invite_link_by_url(invite.invite_link)
         if link is None:
             return
         await self._invitations.record_join_request(
-            JoinObservation(link.id, user.id, observed_at, is_bot=user.is_bot)
+            JoinObservation(
+                link.id,
+                user.id,
+                observed_at,
+                is_bot=user.is_bot,
+                chat_id=chat_id,
+                display_name=user.full_name,
+            )
         )
 
     async def _chat_member(self, event: ChatMemberUpdated) -> None:
@@ -342,18 +373,35 @@ class LotteryUpdateHandler:
             link = await self._queries.invite_link_by_url(event.invite_link.invite_link)
             if link:
                 await self._invitations.record_joined(
-                    JoinObservation(link.id, user.id, event.date, is_bot=user.is_bot)
+                    JoinObservation(
+                        link.id,
+                        user.id,
+                        event.date,
+                        is_bot=user.is_bot,
+                        chat_id=event.chat.id,
+                        display_name=user.full_name,
+                    )
                 )
         invitations = await self._queries.invitations_for_chat_user(event.chat.id, user.id)
         for invitation in invitations:
-            await self._invitations.record_rejoined(invitation.campaign_id, user.id, event.date)
+            await self._invitations.record_rejoined(
+                invitation.campaign_id,
+                user.id,
+                event.date,
+                participation_group_id=invitation.participation_group_id,
+            )
         await self._project_participant_membership(event, is_member=True)
 
     async def _record_member_leave(self, event: ChatMemberUpdated) -> None:
         user = event.new_chat_member.user
         invitations = await self._queries.invitations_for_chat_user(event.chat.id, user.id)
         for invitation in invitations:
-            await self._invitations.record_left(invitation.campaign_id, user.id, event.date)
+            await self._invitations.record_left(
+                invitation.campaign_id,
+                user.id,
+                event.date,
+                participation_group_id=invitation.participation_group_id,
+            )
         await self._project_participant_membership(event, is_member=False)
 
     async def _project_participant_membership(
@@ -385,6 +433,7 @@ class LotteryUpdateHandler:
         )
 
     async def _my_chat_member(self, event: ChatMemberUpdated) -> None:
+        await send_bot_permission_reminder(self._bot, event)
         if not _is_admin(event.new_chat_member):
             await self._groups.deactivate_group(event.chat.id, event.date)
             return

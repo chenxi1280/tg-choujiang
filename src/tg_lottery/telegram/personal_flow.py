@@ -4,6 +4,7 @@ from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.telegram.creator_views import main_keyboard
+from tg_lottery.telegram.member_records import show_ticket_record
 from tg_lottery.telegram.public_projection import (
     campaign_state_text,
     format_public_time,
@@ -95,12 +96,21 @@ class PersonalFlow:
         if data.startswith("nav:created:"):
             await self._show_created(message, data.removeprefix("nav:created:"))
             return True
+        if data.startswith("nav:joined:"):
+            await show_ticket_record(
+                message,
+                self._queries,
+                query.from_user.id,
+                public_ref=data.removeprefix("nav:joined:"),
+            )
+            return True
         if data.startswith("profile:region:"):
             await self._set_region(query, data.removeprefix("profile:region:"))
             return True
         handlers = {
             "nav:index": self.show_index,
             "nav:join": self.show_joined,
+            "nav:invites": self.show_invitation_campaigns,
             "nav:region": self.show_regions,
             "nav:myid": self.show_user_id,
         }
@@ -134,7 +144,42 @@ class PersonalFlow:
             f"开奖 {format_public_time(row.draw_at, row.timezone)}"
             for row in rows
         ]
-        await message.answer("🎟 我参加的抽奖\n\n" + "\n".join(lines))
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    text=f"{row.name}｜{campaign_state_text(row.state)}｜{row.tickets} 次",
+                    callback_data=f"nav:joined:{row.public_ref}",
+                )
+            ]
+            for row in rows
+        ]
+        await message.answer(
+            "🎟 我参加的抽奖\n\n" + "\n".join(lines) + "\n\n点击活动查看参与和邀请记录。",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+        )
+
+    async def show_invitation_campaigns(self, message: Message) -> None:
+        rows = await self._queries.participated_campaigns(_user(message).id)
+        if not rows:
+            await message.answer(
+                "还没有可显示的入群记录。参加开启邀请加成的活动后，可从活动页面分享本期链接。",
+                reply_markup=main_keyboard(),
+            )
+            return
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    text=(f"{row.name} #{row.public_ref[:6]}｜{campaign_state_text(row.state)}"),
+                    callback_data=f"member:invites:{row.public_ref}:0",
+                )
+            ]
+            for row in rows
+        ]
+        buttons.append([InlineKeyboardButton(text="返回首页", callback_data="nav:index")])
+        await message.answer(
+            "👥 我的邀请记录\n\n请选择一次具体抽奖。",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+        )
 
     async def show_regions(self, message: Message) -> None:
         profile = await self._profiles.get(_user(message).id)
@@ -186,6 +231,10 @@ def _index_keyboard(bot_username: str) -> InlineKeyboardMarkup:
     channel_url = f"https://t.me/{bot_username}?startchannel=lottery"
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(text="我参加的抽奖", callback_data="nav:join"),
+                InlineKeyboardButton(text="我的邀请记录", callback_data="nav:invites"),
+            ],
             [InlineKeyboardButton(text="发起抽奖活动", callback_data="nav:create")],
             [
                 InlineKeyboardButton(text="进行中", callback_data="nav:created:active"),

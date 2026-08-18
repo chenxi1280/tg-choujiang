@@ -7,6 +7,8 @@ from tg_lottery.domain.rules import (
     MAX_INVITE_BONUS_TICKETS,
     MAX_INVITE_COUNT,
 )
+from tg_lottery.telegram import creator_bonus_copy as bonus_copy
+from tg_lottery.telegram import creator_group_bonus as group_bonus
 
 ButtonRows = list[list[tuple[str, str]]]
 
@@ -42,6 +44,8 @@ def bonus_text(data: dict[str, Any]) -> str:
 
 
 def bonus_summary(data: dict[str, Any]) -> str:
+    if data.get("group_invite_rules") or data.get("group_activity_rules"):
+        return group_bonus.summary(data)
     types = set(data.get("bonus_types", []))
     if not types:
         return "关闭"
@@ -142,6 +146,8 @@ def activity_bonus_rows(data: dict[str, Any]) -> ButtonRows:
 
 
 def apply_bonus_action(data: dict[str, Any], action: str) -> dict[str, Any]:
+    if group_bonus.handles_action(action):
+        return group_bonus.apply_action(data, action)
     if action == "draft_bonus_toggle_invite":
         return _toggle_type(data, "invite")
     if action == "draft_bonus_toggle_activity":
@@ -160,6 +166,20 @@ def apply_bonus_action(data: dict[str, Any], action: str) -> dict[str, Any]:
 
 
 def bonus_view(data: dict[str, Any], action: str) -> tuple[str, ButtonRows]:
+    if data.get("bonus_copy"):
+        return bonus_copy.copy_view(data)
+    working = data.get("bonus_working_copy")
+    if isinstance(working, dict):
+        return group_bonus.editor_view(data, working)
+    if action == "draft_bonus_copy_confirm":
+        kind = str(data.get("bonus_copy_result_kind") or "invite")
+        return group_bonus.list_view(data, kind)
+    if action == "draft_bonus_invite":
+        return group_bonus.list_view(data, "invite")
+    if action == "draft_bonus_activity":
+        return group_bonus.list_view(data, "activity")
+    if action.startswith("draft_bonus_group_page:"):
+        return group_bonus.list_view(data, group_bonus.page_kind(action))
     if action.startswith("draft_bonus_invite"):
         return invite_bonus_text(data), invite_bonus_rows(data)
     if action.startswith("draft_bonus_activity"):

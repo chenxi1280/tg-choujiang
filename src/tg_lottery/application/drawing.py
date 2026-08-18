@@ -9,11 +9,13 @@ from tg_lottery.application.campaign_targets import (
     participation_chat_ids,
     release_participation_groups,
 )
+from tg_lottery.application.operational_blocks import has_active_campaign_block
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.application.records import add_outbox, utcnow
 from tg_lottery.domain.draw import ALGORITHM_VERSION, Selection, WeightedEntry, select_weighted
 from tg_lottery.domain.enums import CampaignState
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.domain.transitions import require_campaign_transition
 from tg_lottery.infrastructure.db import (
@@ -76,6 +78,8 @@ class DrawingService:
             )
             if existing:
                 return existing
+            if await has_active_campaign_block(uow.session, campaign.id):
+                raise UserFacingError("活动存在群权限阻断, 恢复并重新核验后才能开奖")
             require_campaign_transition(campaign.state, CampaignState.DRAWING)
             campaign.state = CampaignState.DRAWING
             draw_run = DrawRun(

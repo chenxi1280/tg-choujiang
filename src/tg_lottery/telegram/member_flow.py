@@ -11,8 +11,8 @@ from aiogram.types import (
     User,
 )
 
-from tg_lottery.application.campaign_targets import MULTI_GROUP_CONTRACT, QualificationTarget
-from tg_lottery.application.invitation_models import accepts_attribution
+from tg_lottery.application.campaign_targets import QualificationTarget, uses_multi_group_contract
+from tg_lottery.application.invitations import InvitationService
 from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.participants import (
     ParticipantService,
@@ -28,10 +28,13 @@ from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram import member_callbacks, member_condition_views
 from tg_lottery.telegram.crypto import SecretCipher
-from tg_lottery.telegram.member_invites import invite_link_keyboard, invite_link_text
+from tg_lottery.telegram.member_group_invites import build_group_invite_payload
+from tg_lottery.telegram.member_invites import legacy_invite_link_payload, member_keyboard
 from tg_lottery.telegram.member_missing_targets import build_missing_targets_reply
 from tg_lottery.telegram.member_observation import apply_message_thresholds
 from tg_lottery.telegram.member_popups import popup_success
+from tg_lottery.telegram.member_records import show_invitation_records, show_ticket_record
+from tg_lottery.telegram.member_referral_landing import show_referral_landing
 from tg_lottery.telegram.public_projection import campaign_state_text, format_public_time
 from tg_lottery.telegram.qualification import observe_memberships, with_pending_approvals
 
@@ -45,6 +48,7 @@ class MemberFlow:
         queries: QueryService,
         cipher: SecretCipher,
         stats: MessageStatsService | None = None,
+        invitations: InvitationService | None = None,
         bot_username: str = "",
     ) -> None:
         self._bot = bot
@@ -52,7 +56,11 @@ class MemberFlow:
         self._queries = queries
         self._cipher = cipher
         self._stats = stats
+        self._invitations = invitations
         self._bot_username = bot_username
+
+    async def show_referral_landing(self, message: Message, public_ref: str) -> None:
+        await show_referral_landing(self, message, public_ref)
 
     async def membership_changed(
         self,
@@ -151,7 +159,7 @@ class MemberFlow:
             await member_callbacks.safe_answer(callback, popup_success(total), alert=False)
             return
         rules = CampaignRules.model_validate(campaign.rules)
-        keyboard = member_keyboard(campaign.public_ref, rules.invite_bonus_enabled)
+        keyboard = member_keyboard(campaign.public_ref, bool(rules.bonus_types))
         if callback is not None:
             await message.edit_text(popup_success(total), reply_markup=keyboard)
             await member_callbacks.safe_answer(callback, popup_success(total), alert=False)
@@ -361,7 +369,7 @@ class MemberFlow:
         loader = getattr(self._queries, "qualification_targets", None)
         if loader is not None:
             return await loader(campaign.id)
-        if getattr(campaign, "contract_version", "v1") == MULTI_GROUP_CONTRACT:
+        if uses_multi_group_contract(campaign):
             raise RuntimeError("multi-group query service cannot load qualification targets")
         return ()
 
@@ -396,28 +404,23 @@ class MemberFlow:
             raise UserFacingError("该参与条件邀请链接已撤销")
         return decrypt_required_chat_url(self._cipher, campaign.id, chat)
 
-    async def show_tickets(self, message: Message, user_id: int) -> None:
-        summary = await self._queries.ticket_summary(user_id)
-        if summary is None:
-            await message.answer("当前没有参与中的活动。")
-            return
-        await message.answer(
-            f"{summary.campaign_name}\n总抽奖次数: {summary.total}\n"
-            f"基础票: {summary.registration}\n"
-            f"发言加成: {summary.popularity}\n邀请加成: {summary.invitation}"
-        )
+    async def show_tickets(self, message: Message, user_id: int, *, public_ref: str) -> None:
+        await show_ticket_record(message, self._queries, user_id, public_ref=public_ref)
 
-    async def show_invitations(self, message: Message, user_id: int) -> None:
-        summary = await self._queries.invitation_summary(user_id)
-        if summary is None:
-            await message.answer("当前没有邀请记录。")
-            return
-        await message.answer(
-            f"待验证: {summary.pending}\n已生效: {summary.valid}\n已失效: {summary.invalid}"
+    async def show_invitations(
+        self, message: Message, user_id: int, *, public_ref: str, page: int = 0
+    ) -> None:
+        await show_invitation_records(
+            message, self._queries, user_id, public_ref=public_ref, page=page
         )
 
     async def show_invite_link(
-        self, message: Message, campaign_reference: str | UUID, *, user_id: int
+        self,
+        message: Message,
+        campaign_reference: str | UUID,
+        *,
+        user_id: int,
+        page: int = 0,
     ) -> None:
         campaign = await self._queries.campaign_by_reference(campaign_reference)
         if campaign is None:
@@ -425,47 +428,34 @@ class MemberFlow:
         rules = CampaignRules.model_validate(campaign.rules)
         if not rules.invite_bonus_enabled:
             raise UserFacingError("本期抽奖没有开启邀请加成")
-        text, markup = await self._invite_link_payload(campaign, user_id)
+        text, markup = await self._invite_link_payload(campaign, user_id, page=page)
         await message.answer(text, reply_markup=markup)
 
     async def _invite_link_payload(
-        self, campaign: object, user_id: int
+        self, campaign: object, user_id: int, *, page: int = 0
     ) -> tuple[str, InlineKeyboardMarkup]:
-        stored = await self._queries.invite_link_for_participant(campaign.id, user_id)
-        if stored is None or stored.encrypted_url is None:
-            raise UserFacingError("本期专属链接正在创建，或你尚未完成报名，请稍后再点")
-        link = self._cipher.decrypt(stored.encrypted_url, context=f"invite-link:{stored.id}")
-        active = accepts_attribution(
-            campaign.state,
-            preheat_at=campaign.preheat_at,
-            cutoff_at=campaign.cutoff_at,
-            event_at=utcnow(),
-        )
-        return (
-            invite_link_text(campaign.name, link, active=active),
-            invite_link_keyboard(link, campaign.name),
+        rules = CampaignRules.model_validate(campaign.rules)
+        if rules.group_invite_rules:
+            participant = await self._participants.eligible_participant(campaign.id, user_id)
+            if participant is None:
+                raise UserFacingError("请先点击「立即参与」并完成全部参与群资格校验")
+            return await build_group_invite_payload(
+                campaign,
+                user_id=user_id,
+                page=page,
+                queries=self._queries,
+                cipher=self._cipher,
+            )
+        return await legacy_invite_link_payload(
+            campaign,
+            user_id=user_id,
+            queries=self._queries,
+            cipher=self._cipher,
         )
 
     async def _send_invite_link_to(self, user_id: int, campaign: object) -> None:
         text, markup = await self._invite_link_payload(campaign, user_id)
         await self._bot.send_message(user_id, text, reply_markup=markup)
-
-
-def member_keyboard(
-    campaign_reference: str | None = None, invite_bonus_enabled: bool = False
-) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text="我的抽奖次数", callback_data="member:tickets")]]
-    if invite_bonus_enabled and campaign_reference:
-        rows.append(
-            [
-                InlineKeyboardButton(
-                    text="获取本期邀请链接",
-                    callback_data=f"member:invite:{campaign_reference}",
-                )
-            ]
-        )
-    rows.append([InlineKeyboardButton(text="邀请记录", callback_data="member:invites")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _required_user(message: Message) -> User:

@@ -29,6 +29,8 @@ class JoinObservation:
     event_at: datetime
     is_bot: bool = False
     was_already_member: bool = False
+    chat_id: int | None = None
+    display_name: str | None = None
 
 
 @dataclass(frozen=True)

@@ -10,6 +10,10 @@ def activity_chat_ids(campaign: object, main_chat_id: int) -> tuple[int, ...]:
     if not participation:
         return _legacy_activity_chat_ids(main_chat_id, extras)
     rules = CampaignRules.model_validate(getattr(campaign, "rules", {}))
+    if rules.group_activity_rules:
+        return tuple(
+            int(chat_id) for chat_id, rule in rules.group_activity_rules.items() if rule.enabled
+        )
     group_ids = [
         int(chat["id"])
         for chat in participation
@@ -49,3 +53,22 @@ def activity_ticket_target(
     if rules.activity.settle_once_per_day:
         return rules.activity.reward_tickets if completed else 0
     return min(rules.activity.daily_ticket_cap, completed * rules.activity.reward_tickets)
+
+
+def group_activity_ticket_target(
+    counts: dict[str, Any], chat_id: int, rules: CampaignRules
+) -> int | None:
+    rule = rules.activity_rule_for(chat_id)
+    if rule is None:
+        return None
+    cycles = int(counts.get(str(chat_id), 0)) // rule.messages_per_cycle
+    if rule.daily_cap_mode == "limited":
+        if rule.daily_max_cycles is None:
+            raise ValueError("limited group activity rule is incomplete")
+        cycles = min(cycles, rule.daily_max_cycles)
+    return cycles * rule.reward_tickets
+
+
+def activity_min_text_length(rules: CampaignRules, chat_id: int) -> int:
+    rule = rules.activity_rule_for(chat_id)
+    return rule.min_text_length if rule is not None else rules.activity.min_text_length

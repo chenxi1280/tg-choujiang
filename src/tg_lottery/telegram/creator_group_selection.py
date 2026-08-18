@@ -13,15 +13,34 @@ async def resolve_participation_groups(
     chat_ids: tuple[int, ...],
     admin_user_id: int,
     activity_enabled: bool,
+    activity_chat_ids: frozenset[int] | None = None,
 ) -> list[dict[str, Any]]:
     records = []
+    errors = []
     for position, chat_id in enumerate(chat_ids, start=1):
-        record = await resolve_required_chat(bot, chat_id, admin_user_id=admin_user_id)
-        if record.get("type") not in {"group", "supergroup"}:
-            raise UserFacingError(f"参与目标「{record['title']}」不是群聊")
-        validate_activity_target(record, activity_enabled=activity_enabled)
-        records.append(record | {"position": position})
+        try:
+            record = await resolve_required_chat(bot, chat_id, admin_user_id=admin_user_id)
+            if record.get("type") not in {"group", "supergroup"}:
+                raise UserFacingError(f"参与目标「{record['title']}」不是群聊")
+            enabled = (
+                activity_enabled if activity_chat_ids is None else chat_id in activity_chat_ids
+            )
+            validate_activity_target(record, activity_enabled=enabled)
+            records.append(record | {"position": position})
+        except UserFacingError as exc:
+            errors.append(f"· {chat_id}：{exc.public_message}")
+    if errors:
+        raise UserFacingError("以下参与群需要处理：\n" + "\n".join(errors))
     return records
+
+
+def configured_activity_chat_ids(data: dict[str, Any]) -> frozenset[int] | None:
+    configured = data.get("group_activity_rules") or {}
+    if configured:
+        return frozenset(
+            int(chat_id) for chat_id, rule in configured.items() if rule.get("enabled")
+        )
+    return None
 
 
 def validate_activity_target(record: dict[str, Any], *, activity_enabled: bool) -> None:
@@ -43,16 +62,22 @@ async def resolve_requirements(
     records: list[dict[str, Any]] = []
     seen = set(selected_chat_ids(data))
     activity_enabled = "activity" in data.get("bonus_types", [])
+    errors = []
     for ref in refs:
-        record = await resolve_required_chat(bot, ref, admin_user_id=creator_user_id)
-        chat_id = int(record["id"])
-        if chat_id in seen:
-            raise UserFacingError(
-                f"目标「{record['title']}」同时被选为参与群和准入条件，请只保留一种用途"
-            )
-        validate_activity_target(record, activity_enabled=activity_enabled)
-        seen.add(chat_id)
-        records.append(record | {"position": len(records) + 1})
+        try:
+            record = await resolve_required_chat(bot, ref, admin_user_id=creator_user_id)
+            chat_id = int(record["id"])
+            if chat_id in seen:
+                raise UserFacingError(
+                    f"目标「{record['title']}」同时被选为参与群和准入条件，请只保留一种用途"
+                )
+            validate_activity_target(record, activity_enabled=activity_enabled)
+            seen.add(chat_id)
+            records.append(record | {"position": len(records) + 1})
+        except UserFacingError as exc:
+            errors.append(f"· {ref}：{exc.public_message}")
+    if errors:
+        raise UserFacingError("以下准入条件需要处理：\n" + "\n".join(errors))
     return records
 
 
@@ -81,15 +106,6 @@ def toggle_group(data: dict[str, Any], group: Group) -> dict[str, Any]:
     return _with_groups(data, records, primary)
 
 
-def set_primary_group(data: dict[str, Any], group: Group) -> dict[str, Any]:
-    records = list(data.get("participation_groups") or [])
-    if group.chat_id not in {int(item["id"]) for item in records}:
-        raise UserFacingError("请先勾选该群，再将它设为主参与群")
-    primary = next(item for item in records if int(item["id"]) == group.chat_id)
-    ordered = [primary, *(item for item in records if item is not primary)]
-    return _with_groups(data, ordered, primary)
-
-
 def selected_chat_ids(data: dict[str, Any]) -> tuple[int, ...]:
     records = data.get("participation_groups") or []
     if records:
@@ -103,12 +119,25 @@ def selected_chat_ids(data: dict[str, Any]) -> tuple[int, ...]:
 def _with_groups(
     data: dict[str, Any], records: list[dict[str, Any]], primary: dict[str, Any]
 ) -> dict[str, Any]:
+    selected = {str(item["id"]) for item in records}
+    invite_rules = {
+        key: value
+        for key, value in (data.get("group_invite_rules") or {}).items()
+        if key in selected
+    }
+    activity_rules = {
+        key: value
+        for key, value in (data.get("group_activity_rules") or {}).items()
+        if key in selected
+    }
     return data | {
         "chat_id": int(primary["id"]),
         "group_title": str(primary["title"]),
         "timezone": str(primary["timezone"]),
         "participation_group_ids": [int(item["id"]) for item in records],
         "participation_groups": records,
+        "group_invite_rules": invite_rules,
+        "group_activity_rules": activity_rules,
     }
 
 
@@ -118,6 +147,10 @@ def _clear_groups(data: dict[str, Any]) -> dict[str, Any]:
         "group_title": "",
         "participation_group_ids": [],
         "participation_groups": [],
+        "group_invite_rules": {},
+        "group_activity_rules": {},
+        "bonus_types": [],
+        "luck_mode": "off",
     }
 
 

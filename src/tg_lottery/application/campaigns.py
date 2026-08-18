@@ -19,6 +19,7 @@ from tg_lottery.application.campaign_targets import (
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.application.publication import add_publication_outboxes
+from tg_lottery.application.publication_recovery import retry_failed_publication
 from tg_lottery.application.records import add_audit, add_job, utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignDraft, CampaignRules, canonical_hash
@@ -176,6 +177,9 @@ class CampaignService:
                 aggregate_id=str(campaign.id),
                 reason=reason,
             )
+
+    async def retry_failed_publication(self, campaign_id: UUID, actor_user_id: int) -> int:
+        return await retry_failed_publication(self._uow_factory, campaign_id, actor_user_id)
 
     async def early_cutoff(
         self,

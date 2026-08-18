@@ -12,6 +12,7 @@ from tg_lottery.domain.enums import CampaignState
 from tg_lottery.infrastructure.db import (
     Campaign,
     CampaignParticipationGroup,
+    CampaignReferralRoute,
     Group,
     InviteLink,
     Participant,
@@ -40,6 +41,7 @@ async def project_outbox_success(
     if row.operation == "revoke_invite_link":
         link = await _required_link(session, row)
         link.revoked_at = utcnow()
+        link.revoked_reason = str(row.payload.get("reason") or "explicit_remote_revoke")
 
 
 async def _project_campaign_card(session: AsyncSession, row: TelegramOutbox) -> None:
@@ -128,20 +130,27 @@ async def _project_invite_link(
     cipher: SecretCipher,
 ) -> None:
     participant_id = UUID(str(row.payload["participant_id"]))
-    existing = await session.scalar(
-        select(InviteLink).where(InviteLink.participant_id == participant_id)
-    )
+    route_id = _route_id(row)
+    existing = await _current_invite_link(session, row, participant_id, route_id=route_id)
     if existing:
         return
     if result.invite_link is None:
         raise RuntimeError("Telegram success omitted encrypted invite_link")
-    link = _new_invite_link(row, result, participant_id)
+    await _validate_route(session, route_id, participant_id)
+    link = _new_invite_link(row, result, participant_id, route_id=route_id)
     session.add(link)
     await session.flush()
     link.encrypted_url = cipher.encrypt(result.invite_link, context=f"invite-link:{link.id}")
     participant = await session.get(Participant, participant_id)
     if participant is None:
         raise RuntimeError("invite link participant disappeared")
+    payload = {
+        "invite_link_id": str(link.id),
+        "group_title": row.payload.get("group_title"),
+    }
+    referral_url = _referral_url(row)
+    if referral_url:
+        payload["referral_url"] = referral_url
     add_outbox(
         session,
         operation="send_invite_link",
@@ -149,12 +158,61 @@ async def _project_invite_link(
         aggregate_id=str(link.id),
         recipient_chat_id=participant.user_id,
         business_key=f"send_invite_link:{link.id}:{participant.user_id}",
-        payload={"invite_link_id": str(link.id)},
+        payload=payload,
     )
 
 
+def _route_id(row: TelegramOutbox) -> UUID | None:
+    raw = row.payload.get("referral_route_id")
+    return UUID(str(raw)) if raw else None
+
+
+async def _current_invite_link(
+    session: AsyncSession,
+    row: TelegramOutbox,
+    participant_id: UUID,
+    *,
+    route_id: UUID | None,
+) -> InviteLink | None:
+    if route_id:
+        return await session.scalar(
+            select(InviteLink).where(
+                InviteLink.referral_route_id == route_id,
+                InviteLink.is_current.is_(True),
+            )
+        )
+    group_id = row.payload.get("participation_group_id")
+    group_clause = (
+        InviteLink.participation_group_id == UUID(str(group_id))
+        if group_id
+        else InviteLink.participation_group_id.is_(None)
+    )
+    return await session.scalar(
+        select(InviteLink).where(
+            InviteLink.campaign_id == UUID(str(row.payload["campaign_id"])),
+            InviteLink.participant_id == participant_id,
+            group_clause,
+            InviteLink.is_current.is_(True),
+        )
+    )
+
+
+async def _validate_route(
+    session: AsyncSession, route_id: UUID | None, participant_id: UUID
+) -> None:
+    if route_id is None:
+        return
+    route = await session.get(CampaignReferralRoute, route_id)
+    if route is None or route.participant_id != participant_id:
+        raise RuntimeError("invite link referral route disappeared")
+
+
 def _new_invite_link(
-    row: TelegramOutbox, result: GatewayResult, participant_id: UUID
+    row: TelegramOutbox,
+    result: GatewayResult,
+    participant_id: UUID,
+    *,
+    route_id: UUID | None,
 ) -> InviteLink:
     secret = result.invite_link
     if secret is None:
@@ -162,11 +220,33 @@ def _new_invite_link(
     return InviteLink(
         campaign_id=UUID(str(row.payload["campaign_id"])),
         participant_id=participant_id,
+        participation_group_id=(
+            UUID(str(row.payload["participation_group_id"]))
+            if row.payload.get("participation_group_id")
+            else None
+        ),
+        referral_route_id=route_id,
+        version=int(row.payload.get("link_version", 1)),
+        is_current=True,
         link_hash=sha256(secret.encode()).hexdigest(),
         telegram_name=str(row.payload["name"]),
-        expire_at=datetime.fromisoformat(str(row.payload["expire_at"])),
+        expire_at=(
+            datetime.fromisoformat(str(row.payload["expire_at"]))
+            if row.payload.get("expire_at")
+            else None
+        ),
         remote_created_at=utcnow(),
     )
+
+
+def _referral_url(row: TelegramOutbox) -> str | None:
+    if not row.payload.get("referral_route_id"):
+        return None
+    username = str(row.payload.get("bot_username") or "").removeprefix("@")
+    public_ref = str(row.payload["referral_public_ref"])
+    if not username:
+        raise RuntimeError("invite link projection requires bot username")
+    return f"https://t.me/{username}?start=ref_{public_ref}"
 
 
 async def _required_link(session: AsyncSession, row: TelegramOutbox) -> InviteLink:

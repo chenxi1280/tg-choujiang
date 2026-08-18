@@ -178,15 +178,20 @@ class TelegramGateway:
     async def _send_invite_link(
         self, outbox: GatewayRequest, invite_link: InviteLink | None
     ) -> GatewayResult:
-        if invite_link is None or invite_link.encrypted_url is None:
-            raise ValueError("send_invite_link requires a stored encrypted invite link")
-        link = self._cipher.decrypt(
-            invite_link.encrypted_url,
-            context=f"invite-link:{invite_link.id}",
-        )
+        if invite_link is None:
+            raise ValueError("send_invite_link requires a stored invite link")
+        link = str(outbox.payload.get("referral_url") or "")
+        if not link:
+            if invite_link.encrypted_url is None:
+                raise ValueError("send_invite_link requires an encrypted URL")
+            link = self._cipher.decrypt(
+                invite_link.encrypted_url,
+                context=f"invite-link:{invite_link.id}",
+            )
+        title = str(outbox.payload.get("group_title") or "本期活动群")
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
-            "你的本期专属邀请链接:\n" + link,
+            f"你的「{title}」本期邀请入口（仅归因到该活动和该群）:\n" + link,
             disable_web_page_preview=True,
         )
         return GatewayResult(
@@ -266,10 +271,8 @@ def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
     rules = payload.get("rules") or {}
     ref = str(payload["campaign_ref"])
     rows = [[InlineKeyboardButton(text="🎫 立即参与", callback_data=f"member:join:{ref}")]]
-    if _invite_enabled(rules):
-        rows.append(
-            [InlineKeyboardButton(text="🔋 获取加成链接", callback_data=f"member:bonus:{ref}")]
-        )
+    if _bonus_enabled(rules):
+        rows.append([InlineKeyboardButton(text="🔋 我的加成", callback_data=f"member:bonus:{ref}")])
     rows.append([InlineKeyboardButton(text="📜 活动规则", callback_data=f"member:rules:{ref}")])
     rows.append(
         [InlineKeyboardButton(text="查看加入入口", url=_campaign_deep_link(payload, "join"))]
@@ -429,11 +432,11 @@ def _campaign_issuer(payload: dict[str, Any]) -> str:
     return str(presentation.get("issuer_name") or "活动创建者")
 
 
-def _invite_enabled(rules: dict[str, Any]) -> bool:
+def _bonus_enabled(rules: dict[str, Any]) -> bool:
     bonus_types = rules.get("bonus_types")
     if bonus_types is None:
         return rules.get("luck_mode") != "off"
-    return "invite" in bonus_types
+    return bool(set(bonus_types) & {"invite", "activity"})
 
 
 def _campaign_state_card_text(payload: dict[str, Any]) -> str:
