@@ -73,6 +73,8 @@ class PersonalFlow:
         )
 
     async def handle_command(self, message: Message, text: str) -> bool:
+        if not text.strip():
+            return False
         command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]
         handlers = {
             "/index": self.show_index,

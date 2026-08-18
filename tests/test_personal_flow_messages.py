@@ -44,6 +44,15 @@ class PersonalQueries:
         ]
 
 
+async def test_personal_command_ignores_empty_text() -> None:
+    message = RecordingMessage()
+    flow = PersonalFlow(profiles=None, queries=PersonalQueries(), bot_username="lottery_bot")
+
+    assert await flow.handle_command(message, "") is False
+    assert await flow.handle_command(message, "   ") is False
+    assert message.answers == []
+
+
 async def test_personal_lists_render_business_states_and_local_time() -> None:
     message = RecordingMessage()
     flow = PersonalFlow(profiles=None, queries=PersonalQueries(), bot_username="lottery_bot")
