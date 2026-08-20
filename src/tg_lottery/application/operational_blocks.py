@@ -57,7 +57,7 @@ async def record_outbox_target_block(
     error_code: str,
     details: str,
 ) -> None:
-    target = await _target_identity(session, row)
+    target = await _target_identity(session, row, mark_publication_failed=True)
     if target is None:
         return
     campaign_id, target_kind, chat_id = target
@@ -258,7 +258,12 @@ async def _active_target_block(
     )
 
 
-async def _target_identity(session: object, row: TelegramOutbox) -> tuple[UUID, str, int] | None:
+async def _target_identity(
+    session: object,
+    row: TelegramOutbox,
+    *,
+    mark_publication_failed: bool = False,
+) -> tuple[UUID, str, int] | None:
     if row.operation not in _TARGET_OPERATIONS or row.aggregate_type != "campaign":
         return None
     campaign_id = UUID(row.aggregate_id)
@@ -274,7 +279,7 @@ async def _target_identity(session: object, row: TelegramOutbox) -> tuple[UUID, 
         )
     )
     if participation is not None:
-        if row.operation == "send_campaign_card":
+        if row.operation == "send_campaign_card" and mark_publication_failed:
             participation.publication_state = (
                 "unknown" if row.state is OutboxState.UNKNOWN_HOLD else "failed"
             )

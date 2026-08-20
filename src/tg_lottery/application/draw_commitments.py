@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from tg_lottery.application.campaign_targets import (
     participation_chat_ids,
     requires_draw_commitment,
+    restore_confirmed_participation_targets,
 )
 from tg_lottery.application.records import add_audit, add_outbox
 from tg_lottery.domain.enums import OutboxState
@@ -30,6 +31,7 @@ async def ensure_draw_commitment(
 ) -> DrawCommitment | None:
     if not requires_draw_commitment(campaign):
         return None
+    await restore_confirmed_participation_targets(session, campaign.id)
     existing = await session.scalar(
         select(DrawCommitment).where(DrawCommitment.campaign_id == campaign.id)
     )
@@ -61,6 +63,7 @@ async def ensure_draw_commitment(
 async def require_commitment_confirmed(session: object, campaign: Campaign) -> None:
     if not requires_draw_commitment(campaign):
         return
+    await restore_confirmed_participation_targets(session, campaign.id)
     commitment = await session.scalar(
         select(DrawCommitment).where(DrawCommitment.campaign_id == campaign.id)
     )

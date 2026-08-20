@@ -10,7 +10,10 @@ from tests.helpers import seed_campaign
 from tg_lottery.application.campaigns import CampaignService
 from tg_lottery.application.draw_commitments import commitment_hash, ensure_draw_commitment
 from tg_lottery.application.drawing import DrawingService
-from tg_lottery.application.operational_blocks import record_outbox_target_block
+from tg_lottery.application.operational_blocks import (
+    record_outbox_target_block,
+    resolve_outbox_target_block,
+)
 from tg_lottery.application.settlement import SettlementService
 from tg_lottery.domain.enums import CampaignState, OutboxState, QualificationState, TicketSource
 from tg_lottery.domain.errors import SettlementBlocked
@@ -87,6 +90,50 @@ async def test_draw_commitment_creation_is_idempotent_per_campaign(session_facto
     assert first is not None and second is not None
     assert first.id == second.id
     assert count == 1
+
+
+async def test_commitment_restores_target_from_confirmed_card_fact(session_factory) -> None:
+    now = datetime.now(UTC)
+    campaign_id = await _seed_v24_case(session_factory, now)
+    async with session_factory() as session, session.begin():
+        target = await session.scalar(
+            select(CampaignParticipationGroup).where(
+                CampaignParticipationGroup.campaign_id == campaign_id
+            )
+        )
+        assert target is not None
+        target.publication_state = "failed"
+        session.add(_confirmed_campaign_card(campaign_id, target.chat_id_snapshot, now))
+
+    async with session_factory() as session, session.begin():
+        campaign = await session.get(Campaign, campaign_id)
+        assert campaign is not None
+        await ensure_draw_commitment(session, campaign, now)
+        target = await session.scalar(
+            select(CampaignParticipationGroup).where(
+                CampaignParticipationGroup.campaign_id == campaign_id
+            )
+        )
+        assert target is not None and target.publication_state == "confirmed"
+
+
+async def test_resolving_confirmed_card_block_does_not_mark_target_failed(
+    session_factory,
+) -> None:
+    now = datetime.now(UTC)
+    campaign_id = await _seed_v24_case(session_factory, now)
+    async with session_factory() as session, session.begin():
+        target = await session.scalar(
+            select(CampaignParticipationGroup).where(
+                CampaignParticipationGroup.campaign_id == campaign_id
+            )
+        )
+        assert target is not None
+        row = _confirmed_campaign_card(campaign_id, target.chat_id_snapshot, now)
+        session.add(row)
+        await session.flush()
+        await resolve_outbox_target_block(session, row)
+        assert target.publication_state == "confirmed"
 
 
 @pytest.mark.parametrize(
@@ -205,4 +252,20 @@ def _ticket(campaign_id, participant_id, cutoff: datetime) -> TicketLedger:
         source_ref="v24-seed",
         business_key="v24-seed-ticket",
         occurred_at=cutoff,
+    )
+
+
+def _confirmed_campaign_card(campaign_id, chat_id: int, now: datetime) -> TelegramOutbox:
+    return TelegramOutbox(
+        operation="send_campaign_card",
+        aggregate_type="campaign",
+        aggregate_id=str(campaign_id),
+        recipient_chat_id=chat_id,
+        business_key=f"confirmed-card:{campaign_id}",
+        request_hash="c" * 64,
+        payload={},
+        run_at=now,
+        state=OutboxState.CONFIRMED,
+        remote_message_id=9902,
+        updated_at=now,
     )

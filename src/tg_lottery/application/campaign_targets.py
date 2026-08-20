@@ -8,13 +8,14 @@ from uuid import UUID
 from sqlalchemy import select
 
 from tg_lottery.application.authorization import require_group_admin
-from tg_lottery.domain.enums import CampaignState
+from tg_lottery.domain.enums import CampaignState, OutboxState
 from tg_lottery.domain.rules import CampaignDraft
 from tg_lottery.infrastructure.db import (
     Campaign,
     CampaignParticipationGroup,
     CampaignRequirement,
     Group,
+    TelegramOutbox,
 )
 
 MULTI_GROUP_CONTRACT = "v2.4"
@@ -131,6 +132,35 @@ async def participation_chat_ids(
         raise RuntimeError("multi-group campaign has no participation targets")
     group = await session.get(Group, campaign.group_id)
     return (group.chat_id,) if group is not None else ()
+
+
+async def restore_confirmed_participation_targets(session: object, campaign_id: UUID) -> int:
+    statement = (
+        select(CampaignParticipationGroup, TelegramOutbox)
+        .join(
+            TelegramOutbox,
+            TelegramOutbox.recipient_chat_id == CampaignParticipationGroup.chat_id_snapshot,
+        )
+        .where(
+            CampaignParticipationGroup.campaign_id == campaign_id,
+            TelegramOutbox.aggregate_type == "campaign",
+            TelegramOutbox.aggregate_id == str(campaign_id),
+            TelegramOutbox.operation == "send_campaign_card",
+            TelegramOutbox.state == OutboxState.CONFIRMED,
+            TelegramOutbox.remote_message_id.is_not(None),
+        )
+        .with_for_update(of=CampaignParticipationGroup)
+    )
+    rows = tuple(await session.execute(statement))
+    repaired = 0
+    for target, outbox in rows:
+        if target.publication_state == "confirmed":
+            continue
+        target.publication_state = "confirmed"
+        target.published_message_id = outbox.remote_message_id
+        target.published_at = target.published_at or outbox.updated_at
+        repaired += 1
+    return repaired
 
 
 async def qualification_targets(
