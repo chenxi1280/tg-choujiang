@@ -370,22 +370,22 @@ async def test_campaign_card_matches_lotterybest_format() -> None:
     assert bot.pinned[0][2]["disable_notification"] is True
 
 
-async def test_campaign_keyboard_uses_callback_buttons() -> None:
+async def test_campaign_keyboard_uses_private_rules_link() -> None:
     bot = FakeCardBot()
     gateway = TelegramGateway(bot, object())
 
     await gateway.execute(GatewayRequest("send_campaign_card", -1001, _lotterybest_card_payload()))
 
     keyboard = bot.sent[0][2]["reply_markup"]
-    datas = [b.callback_data for row in keyboard.inline_keyboard for b in row]
-    urls = [b.url for row in keyboard.inline_keyboard for b in row if b.url]
+    buttons = [row[0] for row in keyboard.inline_keyboard]
 
-    assert any(d.startswith("member:join:") for d in datas)
-    assert any(d.startswith("member:bonus:") for d in datas)
-    assert not any(d and d.startswith("member:rules:") for d in datas)
-    assert any("?start=rules_" in url for url in urls)
-    assert sum(d is None for d in datas) == 2
-    assert len(urls) == 2
+    assert len(buttons) == 4
+    assert buttons[0].callback_data.startswith("member:join:")
+    assert buttons[1].callback_data.startswith("member:bonus:")
+    assert "?start=rules_" in buttons[2].url
+    assert "?start=join_" in buttons[3].url
+    assert buttons[2].callback_data is None
+    assert buttons[3].callback_data is None
 
 
 async def test_pin_failure_does_not_fail_delivery() -> None:

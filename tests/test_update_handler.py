@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 from aiogram.types import CallbackQuery, Message
 
-from tg_lottery.domain.errors import RecoverableDraftCallback, UserFacingError
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.update_handler import LotteryUpdateHandler, _public_chat_title
 
 
@@ -57,22 +57,12 @@ class RecordingAdminFlow:
     def __init__(self) -> None:
         self.started = False
         self.campaign_reference = None
-        self.recovered = False
 
     async def start_create_message(self, message) -> None:
         self.started = True
 
     async def show_campaign_reference(self, query, reference) -> None:
         self.campaign_reference = reference
-
-    async def recover_draft_callback(self, query) -> bool:
-        self.recovered = True
-        return True
-
-
-class ExpiredDraftTokens:
-    async def consume(self, token: str, *, owner_user_id: int, chat_id: int):
-        raise RecoverableDraftCallback("callback token is expired")
 
 
 class PassthroughPersonalFlow:
@@ -286,19 +276,6 @@ async def test_menu_command_redirects_to_unified_index() -> None:
     assert personal.index_shown == 1
 
 
-async def test_expired_draft_callback_refreshes_active_panel() -> None:
-    admin = RecordingAdminFlow()
-    handler = _handler_with_admin(admin)
-    handler._tokens = ExpiredDraftTokens()
-    query = _RecordingCallbackQuery("secure:expired", _private_bot_message())
-
-    await handler._dispatch_secure_callback(query, query.data)
-
-    assert admin.recovered is True
-    assert "草稿面板已刷新" in query.answers[0][0]
-    assert query.answers[0][1] is True
-
-
 async def test_campaign_list_item_opens_authorized_campaign_detail() -> None:
     admin_flow = RecordingAdminFlow()
     handler = _handler_with_admin(admin_flow)
@@ -345,18 +322,6 @@ def _group_card_message() -> Message:
             "chat": {"id": -100888, "type": "supergroup"},
             "from": {"id": 123, "is_bot": True, "first_name": "Bot"},
             "text": "campaign card",
-        }
-    )
-
-
-def _private_bot_message() -> Message:
-    return Message.model_validate(
-        {
-            "message_id": 10,
-            "date": int(datetime.now(UTC).timestamp()),
-            "chat": {"id": 201, "type": "private"},
-            "from": {"id": 123, "is_bot": True, "first_name": "Bot"},
-            "text": "draft panel",
         }
     )
 
