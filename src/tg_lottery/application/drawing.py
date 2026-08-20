@@ -1,4 +1,3 @@
-import secrets
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -9,6 +8,7 @@ from tg_lottery.application.campaign_targets import (
     participation_chat_ids,
     release_participation_groups,
 )
+from tg_lottery.application.draw_commitments import campaign_commitment, draw_seed
 from tg_lottery.application.operational_blocks import has_active_campaign_block
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
@@ -82,10 +82,11 @@ class DrawingService:
                 raise UserFacingError("活动存在群权限阻断, 恢复并重新核验后才能开奖")
             require_campaign_transition(campaign.state, CampaignState.DRAWING)
             campaign.state = CampaignState.DRAWING
+            now = utcnow()
             draw_run = DrawRun(
                 snapshot_id=snapshot.id,
                 algorithm_version=ALGORITHM_VERSION,
-                random_input=secrets.token_hex(32),
+                random_input=await draw_seed(uow.session, campaign, now),
                 started_by=actor_user_id,
             )
             uow.session.add(draw_run)
@@ -103,7 +104,7 @@ class DrawingService:
                 draw_run=draw_run,
                 outcome=outcome,
             )
-            draw_run.completed_at = utcnow()
+            draw_run.completed_at = now
             campaign.state = CampaignState.DRAWN
             await release_participation_groups(uow.session, campaign, utcnow())
             return draw_run
@@ -322,6 +323,30 @@ class DrawingService:
         chat_id: int,
         extended_tips: bool,
     ) -> None:
+        commitment = await campaign_commitment(session, campaign.id)
+        payload = {
+            "campaign_name": campaign.name,
+            "snapshot_hash": (await self._snapshot(session, campaign.id)).snapshot_hash,
+            "winners": [self._winner_payload(item) for item in outcome.awards],
+            "undistributed": [
+                {
+                    "prize_position": item.prize.position,
+                    "prize_name": item.prize.name,
+                    "count": item.count,
+                }
+                for item in outcome.undistributed
+            ],
+            "extended_tips": extended_tips,
+        }
+        if commitment is not None:
+            payload.update(
+                {
+                    "commitment_algorithm": commitment.algorithm_version,
+                    "commitment_hash": commitment.commitment_hash,
+                    "revealed_seed": draw_run.random_input,
+                    "campaign_id": str(campaign.id),
+                }
+            )
         add_outbox(
             session,
             operation="send_draw_result",
@@ -329,20 +354,7 @@ class DrawingService:
             aggregate_id=str(draw_run.id),
             recipient_chat_id=chat_id,
             business_key=f"draw_result_group:{draw_run.id}:{chat_id}",
-            payload={
-                "campaign_name": campaign.name,
-                "snapshot_hash": (await self._snapshot(session, campaign.id)).snapshot_hash,
-                "winners": [self._winner_payload(item) for item in outcome.awards],
-                "undistributed": [
-                    {
-                        "prize_position": item.prize.position,
-                        "prize_name": item.prize.name,
-                        "count": item.count,
-                    }
-                    for item in outcome.undistributed
-                ],
-                "extended_tips": extended_tips,
-            },
+            payload=payload,
         )
 
     def _queue_winner_notices(

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import QualificationState
@@ -112,23 +112,7 @@ async def bonus_callback(
         await flow._bot.send_message(query.from_user.id, text, reply_markup=markup)
         await safe_answer(query, "加成进度已私聊发送给你", alert=False)
     except TelegramAPIError:
-        await query.message.answer(
-            "查看加成需要先和机器人建立私聊，请点击下方按钮：",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="私聊机器人",
-                            url=(
-                                f"https://t.me/{flow._bot_username}"
-                                f"?start=bonus_{campaign.public_ref}"
-                            ),
-                        )
-                    ]
-                ]
-            ),
-        )
-        await safe_answer(query, "请先私聊机器人一次", alert=True)
+        await safe_answer(query, "请先私聊机器人，再查看加成详情", alert=True)
 
 
 async def show_bonus_message(
@@ -271,8 +255,7 @@ async def bonus_navigation_callback(flow: "MemberFlow", query: CallbackQuery, da
 async def rules_callback(
     flow: "MemberFlow", query: CallbackQuery, campaign_reference: str | UUID
 ) -> None:
-    await flow.show_rules(query.message, campaign_reference)
-    await safe_answer(query, "活动规则已发送", alert=False)
+    await safe_answer(query, "请点击新版卡片的规则按钮，在私聊中查看完整规则", alert=True)
 
 
 async def safe_answer(query: CallbackQuery, text: str, *, alert: bool) -> None:

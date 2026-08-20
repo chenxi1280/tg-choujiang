@@ -59,6 +59,9 @@ class AdminFlow:
     async def start_create_message(self, message: Message) -> None:
         await self._creator.start_message(message)
 
+    async def recover_draft_callback(self, query: CallbackQuery) -> bool:
+        return await self._creator.recover_expired_panel(query)
+
     async def show_campaigns(self, query: CallbackQuery) -> None:
         message = _message(query)
         campaigns = await self._queries.admin_campaigns(query.from_user.id)
@@ -92,7 +95,7 @@ class AdminFlow:
         if campaign is None:
             raise ValueError("活动不存在")
         await self._verify_admin(campaign.id, query.from_user.id)
-        await self._show_campaign(_message(query), campaign.id, query.from_user.id)
+        await self._show_campaign(_message(query), campaign.id, user_id=query.from_user.id)
 
     async def handle_text(self, message: Message) -> bool:
         return await self._creator.handle_message(message)
@@ -112,6 +115,9 @@ class AdminFlow:
             "refresh_publication": self._refresh_publication,
             "publication_issues": self._publication_issues,
             "retry_publication": self._retry_publication,
+            "retry_qualification": self._retry_qualification,
+            "commitment_issues": self._commitment_issues,
+            "retry_commitment": self._retry_commitment,
         }
         handler = handlers.get(grant.action)
         if handler is None:
@@ -121,7 +127,7 @@ class AdminFlow:
     async def _view_campaign(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         campaign_id = _campaign_id(grant)
         await self._verify_admin(campaign_id, query.from_user.id)
-        await self._show_campaign(_message(query), campaign_id, query.from_user.id)
+        await self._show_campaign(_message(query), campaign_id, user_id=query.from_user.id)
 
     async def _pause(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         await self._state_action(
@@ -182,14 +188,14 @@ class AdminFlow:
     async def _refresh_publication(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         campaign_id = _campaign_id(grant)
         await self._verify_admin(campaign_id, query.from_user.id)
-        await self._show_campaign(_message(query), campaign_id, query.from_user.id)
+        await self._show_campaign(_message(query), campaign_id, user_id=query.from_user.id)
 
     async def _retry_publication(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         campaign_id = _campaign_id(grant)
         await self._verify_admin(campaign_id, query.from_user.id)
         count = await self._campaigns.retry_failed_publication(campaign_id, query.from_user.id)
         await _message(query).answer(f"已将 {count} 个明确失败群重新排队。")
-        await self._show_campaign(_message(query), campaign_id, query.from_user.id)
+        await self._show_campaign(_message(query), campaign_id, user_id=query.from_user.id)
 
     async def _publication_issues(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         campaign_id = _campaign_id(grant)
@@ -198,18 +204,36 @@ class AdminFlow:
         if not issues:
             await _message(query).answer("当前没有明确失败或远端结果未知的参与群。")
             return
-        lines = ["发布异常群："]
-        for issue in issues:
-            state = _publication_issue_state(issue.state)
-            lines.append(f"• {issue.title}（{issue.chat_id}）\n  {state}：{issue.error[:160]}")
-        await _message(query).answer("\n".join(lines))
+        await _message(query).answer(_issues_text("发布异常群：", issues))
 
-    async def _show_campaign(self, message: Message, campaign_id: UUID, user_id: int) -> None:
+    async def _retry_qualification(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        campaign_id = _campaign_id(grant)
+        await self._verify_admin(campaign_id, query.from_user.id)
+        await self._campaigns.retry_qualification_review(campaign_id, query.from_user.id)
+        await _message(query).answer("资格复核已重新排队；阻断会在全部目标恢复后自动解除。")
+
+    async def _commitment_issues(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        campaign_id = _campaign_id(grant)
+        await self._verify_admin(campaign_id, query.from_user.id)
+        issues = await self._queries.draw_commitment_issues(campaign_id)
+        await _message(query).answer(_issues_text("随机承诺发送异常群：", issues))
+
+    async def _retry_commitment(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        campaign_id = _campaign_id(grant)
+        await self._verify_admin(campaign_id, query.from_user.id)
+        count = await self._campaigns.retry_failed_draw_commitments(campaign_id, query.from_user.id)
+        await _message(query).answer(f"已将 {count} 条失败或结果未知的随机承诺消息重新排队。")
+
+    async def _show_campaign(self, message: Message, campaign_id: UUID, *, user_id: int) -> None:
         campaign = await self._required_campaign(campaign_id)
         stats = await self._queries.campaign_stats(campaign_id)
         deliveries = await self._queries.delivery_summary(campaign_id)
         issues = await self._load_publication_issues(campaign.id, campaign.state)
         actions = _campaign_actions(campaign.state) + _publication_actions(campaign.state, issues)
+        commitment_issues = await self._load_commitment_issues(campaign.id, campaign.state)
+        actions += _commitment_actions(campaign.state, commitment_issues)
+        if await self._queries.qualification_review_blocked(campaign.id):
+            actions += ("retry_qualification",)
         requests = tuple(CallbackRequest(action, campaign_id=campaign_id) for action in actions)
         labels = {
             "pause": "暂停",
@@ -220,6 +244,9 @@ class AdminFlow:
             "refresh_publication": "🔄 刷新发布状态",
             "publication_issues": "查看失败/未知群",
             "retry_publication": "重试明确失败群",
+            "retry_qualification": "重新复核资格",
+            "commitment_issues": "查看随机承诺发送异常",
+            "retry_commitment": "重发失败/未知的随机承诺",
         }
         tokens = await self._tokens.create_many(
             owner_user_id=user_id,
@@ -231,7 +258,7 @@ class AdminFlow:
             for action, token in zip(actions, tokens, strict=True)
         ]
         if campaign.state is CampaignState.DRAWN:
-            buttons.extend(await self._claim_buttons(message, campaign_id, user_id))
+            buttons.extend(await self._claim_buttons(message, campaign_id, user_id=user_id))
         text = (
             f"{campaign.name}\n状态: {campaign_state_text(campaign.state)}\n"
             f"报名: {stats.participants}\n有效邀请: {stats.valid_invitations}\n"
@@ -249,8 +276,15 @@ class AdminFlow:
             return ()
         return await self._queries.publication_issues(campaign_id)
 
+    async def _load_commitment_issues(
+        self, campaign_id: UUID, state: CampaignState
+    ) -> tuple[PublicationIssue, ...]:
+        if state is not CampaignState.SETTLING:
+            return ()
+        return await self._queries.draw_commitment_issues(campaign_id)
+
     async def _claim_buttons(
-        self, message: Message, campaign_id: UUID, user_id: int
+        self, message: Message, campaign_id: UUID, *, user_id: int
     ) -> list[list[InlineKeyboardButton]]:
         rows = await self._queries.winners(campaign_id)
         pending = [row for row in rows if row.winner.claim_state is PrizeClaimState.PENDING]
@@ -337,6 +371,24 @@ def _publication_actions(
     if any(issue.state is OutboxState.PRE_ACCEPT_FAILED for issue in issues):
         actions.append("retry_publication")
     return tuple(actions)
+
+
+def _commitment_actions(
+    state: CampaignState, issues: tuple[PublicationIssue, ...]
+) -> tuple[str, ...]:
+    if state is not CampaignState.SETTLING or not issues:
+        return ()
+    return "commitment_issues", "retry_commitment"
+
+
+def _issues_text(title: str, issues: tuple[PublicationIssue, ...]) -> str:
+    if not issues:
+        return f"{title}\n当前没有异常记录。"
+    lines = [title]
+    for issue in issues:
+        state = _publication_issue_state(issue.state)
+        lines.append(f"• {issue.title}（{issue.chat_id}）\n  {state}：{issue.error[:160]}")
+    return "\n".join(lines)
 
 
 def _publication_issue_state(state: OutboxState) -> str:

@@ -80,7 +80,7 @@ async def confirm_full_draw_candidate(
         raise SettlementBlocked(
             f"full_draw_candidate_below_target:{eligible}/{rules.participant_target}"
         )
-    changed = request_early_cutoff(
+    changed = await request_early_cutoff(
         session,
         campaign=campaign,
         cutoff_at=candidate_at,

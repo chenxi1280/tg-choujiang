@@ -16,10 +16,17 @@ from tg_lottery.application.campaign_targets import (
     require_campaign_admin,
     resolve_draft_groups,
 )
+from tg_lottery.application.draw_commitments import ensure_draw_commitment
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.application.publication import add_publication_outboxes
-from tg_lottery.application.publication_recovery import retry_failed_publication
+from tg_lottery.application.publication_recovery import (
+    retry_failed_draw_commitments,
+    retry_failed_publication,
+)
+from tg_lottery.application.qualification_recovery import (
+    retry_qualification_review,
+)
 from tg_lottery.application.records import add_audit, add_job, utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignDraft, CampaignRules, canonical_hash
@@ -43,7 +50,7 @@ class DraftSource:
     revision: int
 
 
-def request_early_cutoff(
+async def request_early_cutoff(
     session: object,
     *,
     campaign: Campaign,
@@ -60,6 +67,7 @@ def request_early_cutoff(
         seconds=rules.settlement_drain_seconds + _EARLY_DRAW_DELAY_SECONDS
     )
     campaign.state = CampaignState.SETTLING
+    await ensure_draw_commitment(session, campaign, cutoff_at)
     _schedule_early_cutoff_jobs(session, campaign=campaign, cutoff_at=cutoff_at, rules=rules)
     add_audit(
         session,
@@ -165,6 +173,7 @@ class CampaignService:
             campaign.state = target
             await release_participation_groups(uow.session, campaign, utcnow())
             if target is CampaignState.SETTLING:
+                await ensure_draw_commitment(uow.session, campaign, utcnow())
                 self._add_settlement_job(uow.session, campaign)
             if target is CampaignState.CANCELLED:
                 self._add_revoke_job(uow.session, campaign)
@@ -181,6 +190,12 @@ class CampaignService:
     async def retry_failed_publication(self, campaign_id: UUID, actor_user_id: int) -> int:
         return await retry_failed_publication(self._uow_factory, campaign_id, actor_user_id)
 
+    async def retry_failed_draw_commitments(self, campaign_id: UUID, actor_user_id: int) -> int:
+        return await retry_failed_draw_commitments(self._uow_factory, campaign_id, actor_user_id)
+
+    async def retry_qualification_review(self, campaign_id: UUID, actor_user_id: int) -> None:
+        await retry_qualification_review(self._uow_factory, campaign_id, actor_user_id)
+
     async def early_cutoff(
         self,
         campaign_id: UUID,
@@ -194,7 +209,7 @@ class CampaignService:
             await require_campaign_admin(
                 uow.session, campaign_id=campaign.id, user_id=actor_user_id
             )
-            changed = request_early_cutoff(
+            changed = await request_early_cutoff(
                 uow.session,
                 campaign=campaign,
                 cutoff_at=cutoff_at,

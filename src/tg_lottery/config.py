@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     poll_timeout_seconds: int = Field(default=30, ge=1, le=50)
     poll_lease_seconds: int = Field(default=60, ge=20, le=300)
     worker_poll_seconds: float = Field(default=2, ge=0.2, le=30)
+    qualification_requests_per_second: float = Field(default=20, ge=1, le=30)
     release_sha: str = "unknown"
     release_id: str = "unknown"
 

@@ -1,3 +1,5 @@
+from zoneinfo import ZoneInfo
+
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from tg_lottery.application.queries import QueryService
@@ -59,10 +61,12 @@ class PersonalFlow:
         profiles: UserProfileService,
         queries: QueryService,
         bot_username: str,
+        default_timezone: str = "Asia/Shanghai",
     ) -> None:
         self._profiles = profiles
         self._queries = queries
         self._bot_username = bot_username
+        self._default_timezone = default_timezone
 
     async def show_guide(self, message: Message) -> None:
         await message.answer(
@@ -208,7 +212,9 @@ class PersonalFlow:
         if not isinstance(message, Message) or message.chat.id != query.from_user.id:
             raise ValueError("地区只能在本人私聊中设置")
         profile = await self._profiles.set_region(query.from_user.id, region, utcnow())
-        await message.edit_text(f"✅ 归属地区已设置为：{profile.region}")
+        if profile.region_editable_until is None or profile.region_locked_until is None:
+            raise RuntimeError("region lock deadlines are missing")
+        await message.edit_text(_region_success_text(profile, self._default_timezone))
 
 
 def _index_keyboard(bot_username: str) -> InlineKeyboardMarkup:
@@ -244,6 +250,13 @@ def _region_keyboard() -> InlineKeyboardMarkup:
         for index in range(0, len(buttons), _REGION_COLUMNS)
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _region_success_text(profile: object, timezone: str) -> str:
+    zone = ZoneInfo(timezone)
+    editable = profile.region_editable_until.astimezone(zone).strftime("%Y年%m月%d日 %H:%M")
+    locked = profile.region_locked_until.astimezone(zone).strftime("%Y年%m月%d日 %H:%M")
+    return f"✅ 已设定为【{profile.region}】\n你仍可在 {editable} 前修改，之后将锁定至 {locked}。"
 
 
 def _user(message: Message):

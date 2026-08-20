@@ -138,7 +138,14 @@ class CampaignOperationalBlock(Base, UuidPkMixin, TimestampMixin):
     target_kind: Mapped[str] = mapped_column(String(32), nullable=False)
     chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     error_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(32), default="telegram_outbox", server_default="telegram_outbox", nullable=False
+    )
+    failure_count: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False
+    )
     details: Mapped[str | None] = mapped_column(Text)
     first_detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retry_exhausted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

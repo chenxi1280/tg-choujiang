@@ -21,6 +21,20 @@ class PublicationIssue:
 async def load_publication_issues(
     session_factory: async_sessionmaker[AsyncSession], campaign_id: UUID
 ) -> tuple[PublicationIssue, ...]:
+    return await _load_target_issues(session_factory, campaign_id, "send_campaign_card")
+
+
+async def load_draw_commitment_issues(
+    session_factory: async_sessionmaker[AsyncSession], campaign_id: UUID
+) -> tuple[PublicationIssue, ...]:
+    return await _load_target_issues(session_factory, campaign_id, "send_draw_commitment")
+
+
+async def _load_target_issues(
+    session_factory: async_sessionmaker[AsyncSession],
+    campaign_id: UUID,
+    operation: str,
+) -> tuple[PublicationIssue, ...]:
     async with session_factory() as session:
         rows = await session.execute(
             select(
@@ -44,7 +58,7 @@ async def load_publication_issues(
             .where(
                 TelegramOutbox.aggregate_type == "campaign",
                 TelegramOutbox.aggregate_id == str(campaign_id),
-                TelegramOutbox.operation == "send_campaign_card",
+                TelegramOutbox.operation == operation,
                 TelegramOutbox.state.in_((OutboxState.PRE_ACCEPT_FAILED, OutboxState.UNKNOWN_HOLD)),
             )
             .order_by(TelegramOutbox.recipient_chat_id)

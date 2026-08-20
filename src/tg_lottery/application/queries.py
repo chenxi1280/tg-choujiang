@@ -36,6 +36,7 @@ from tg_lottery.application.participant_records import (
 )
 from tg_lottery.application.publication_queries import (
     PublicationIssue,
+    load_draw_commitment_issues,
     load_publication_issues,
 )
 from tg_lottery.application.query_invites import (
@@ -71,6 +72,7 @@ from tg_lottery.domain.enums import (
 )
 from tg_lottery.infrastructure.db import (
     Campaign,
+    CampaignOperationalBlock,
     DrawRun,
     DrawSnapshot,
     Group,
@@ -212,6 +214,20 @@ class QueryService:
             if row:
                 session.expunge(row)
             return row
+
+    async def qualification_review_blocked(self, campaign_id: UUID) -> bool:
+        async with self._session_factory() as session:
+            block_id = await session.scalar(
+                select(CampaignOperationalBlock.id).where(
+                    CampaignOperationalBlock.campaign_id == campaign_id,
+                    CampaignOperationalBlock.source == "qualification_review",
+                    CampaignOperationalBlock.resolved_at.is_(None),
+                )
+            )
+            return block_id is not None
+
+    async def draw_commitment_issues(self, campaign_id: UUID) -> tuple[PublicationIssue, ...]:
+        return await load_draw_commitment_issues(self._session_factory, campaign_id)
 
     async def campaign_by_reference(self, reference: str | UUID) -> Campaign | None:
         async with self._session_factory() as session:

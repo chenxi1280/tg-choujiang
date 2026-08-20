@@ -1,3 +1,4 @@
+from datetime import timedelta
 from functools import partial
 
 import pytest
@@ -6,7 +7,7 @@ from sqlalchemy import select
 from tg_lottery.application.admin_sessions import AdminSessionService
 from tg_lottery.application.callback_tokens import CallbackRequest, CallbackTokenService
 from tg_lottery.application.request_context import bind_update_context
-from tg_lottery.domain.errors import AuthorizationDenied
+from tg_lottery.domain.errors import AuthorizationDenied, RecoverableDraftCallback
 from tg_lottery.infrastructure.db import CallbackToken
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 
@@ -118,3 +119,31 @@ async def test_same_update_replays_draft_callback_after_session_is_cleared(
         replay = await tokens.consume(token, owner_user_id=201, chat_id=201)
 
     assert replay == first
+
+
+async def test_expired_draft_token_is_typed_as_recoverable(session_factory) -> None:
+    sessions = AdminSessionService(partial(UnitOfWork, session_factory))
+    tokens = CallbackTokenService(partial(UnitOfWork, session_factory))
+    await sessions.set(
+        201,
+        "draft:idle",
+        {"draft_id": "draft-a", "draft_revision": 1, "panel_message_id": 301},
+    )
+    (token,) = await tokens.create_many(
+        owner_user_id=201,
+        chat_id=201,
+        requests=(
+            CallbackRequest(
+                "draft_publish",
+                payload={
+                    "draft_id": "draft-a",
+                    "draft_revision": 1,
+                    "panel_message_id": 301,
+                },
+            ),
+        ),
+        expires_in=timedelta(seconds=-1),
+    )
+
+    with pytest.raises(RecoverableDraftCallback, match="expired"):
+        await tokens.consume(token, owner_user_id=201, chat_id=201)

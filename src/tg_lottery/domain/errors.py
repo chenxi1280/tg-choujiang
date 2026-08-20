@@ -27,6 +27,10 @@ class AuthorizationDenied(DomainError):
     pass
 
 
+class RecoverableDraftCallback(AuthorizationDenied):
+    pass
+
+
 class SettlementBlocked(DomainError):
     pass
 

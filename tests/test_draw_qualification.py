@@ -3,6 +3,9 @@ from functools import partial
 from hashlib import sha256
 from types import SimpleNamespace
 
+import pytest
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.methods import GetChatMember
 from sqlalchemy import select
 
 from tests.helpers import seed_campaign
@@ -14,7 +17,9 @@ from tg_lottery.application.settlement import SettlementService
 from tg_lottery.domain.enums import CampaignState, InvitationState, JobState, QualificationState
 from tg_lottery.domain.rules import CampaignRules, InviteRewardTier, InviteRule
 from tg_lottery.infrastructure.db import (
+    AuditLog,
     Campaign,
+    CampaignOperationalBlock,
     Invitation,
     InviteLink,
     PollingOffset,
@@ -23,18 +28,35 @@ from tg_lottery.infrastructure.db import (
     TicketLedger,
 )
 from tg_lottery.infrastructure.db.uow import UnitOfWork
+from tg_lottery.jobs.errors import JobRetry
 from tg_lottery.jobs.handlers import JobHandlers
 
 
 class QualificationBot:
+    id = 999
+
     def __init__(self, statuses: dict[int | tuple[int, int], str]) -> None:
         self.statuses = statuses
         self.calls: list[int] = []
 
     async def get_chat_member(self, chat_id: int, user_id: int):
         self.calls.append(chat_id)
+        if user_id == self.id:
+            return SimpleNamespace(status="administrator", is_member=True)
         status = self.statuses.get((chat_id, user_id), self.statuses.get(chat_id))
         return SimpleNamespace(status=status, is_member=False)
+
+
+class UnavailableTargetBot(QualificationBot):
+    def __init__(self) -> None:
+        super().__init__({})
+
+    async def get_chat_member(self, chat_id: int, user_id: int):
+        self.calls.append(chat_id)
+        raise TelegramBadRequest(
+            GetChatMember(chat_id=chat_id, user_id=user_id),
+            "Bad Request: chat not found",
+        )
 
 
 async def test_draw_review_rechecks_main_legacy_and_all_extra_chats(session_factory) -> None:
@@ -68,7 +90,16 @@ async def test_draw_review_rechecks_main_legacy_and_all_extra_chats(session_fact
             -1003,
             -1004,
         ]
-    assert bot.calls == [main_chat_id, -1002, -1003, -1004]
+    assert bot.calls == [
+        main_chat_id,
+        -1002,
+        -1003,
+        -1004,
+        main_chat_id,
+        -1002,
+        -1003,
+        -1004,
+    ]
 
 
 async def test_draw_review_does_not_backdate_a_post_cutoff_membership_snapshot(
@@ -116,7 +147,7 @@ async def test_draw_review_does_not_backdate_a_post_cutoff_membership_snapshot(
     assert current.state is InvitationState.VALID
     assert current.left_at is None
     assert rewards == (1,)
-    assert bot.calls == [chat_id]
+    assert bot.calls == [chat_id, chat_id]
 
 
 def _single_invite_bonus_rule() -> CampaignRules:
@@ -174,6 +205,7 @@ async def test_draw_review_marks_ineligible_on_message_threshold_shortfall(
         assert shortfall["state"] == "ineligible"
         assert shortfall["observed_status"] == "messages 3/10"
     assert stats.calls == [(participant_user_id, (main_chat_id,))]
+    assert bot.calls == [main_chat_id, main_chat_id]
 
 
 async def test_draw_review_keeps_eligible_when_message_threshold_met(
@@ -203,6 +235,7 @@ async def test_draw_review_keeps_eligible_when_message_threshold_met(
         assert check.state is QualificationState.ELIGIBLE
         assert [item for item in check.observations["chats"] if item.get("error_code")] == []
     assert stats.calls == [(participant_user_id, (main_chat_id,))]
+    assert bot.calls == [main_chat_id, main_chat_id]
 
 
 async def test_full_draw_candidate_requalifies_and_then_enters_settlement(
@@ -250,6 +283,54 @@ async def test_full_draw_candidate_requalifies_and_then_enters_settlement(
     }
 
 
+@pytest.mark.parametrize(
+    ("persisted_state", "expected_state"),
+    [
+        (QualificationState.ELIGIBLE, QualificationState.ELIGIBLE),
+        (QualificationState.UNKNOWN, QualificationState.INELIGIBLE),
+    ],
+)
+async def test_target_failure_degrades_after_three_attempts_and_releases_block(
+    session_factory, persisted_state, expected_state
+) -> None:
+    async with session_factory() as session, session.begin():
+        _, campaign, participant = await seed_campaign(session, state=CampaignState.SETTLING)
+        participant.qualification_state = persisted_state
+        campaign_id = campaign.id
+        participant_id = participant.id
+    handlers = _handlers(UnavailableTargetBot(), session_factory)
+
+    with pytest.raises(JobRetry):
+        await handlers.handle(_job(str(campaign_id), attempts=1))
+    with pytest.raises(JobRetry):
+        await handlers.handle(_job(str(campaign_id), attempts=2))
+    await handlers.handle(_job(str(campaign_id), attempts=3))
+
+    async with session_factory() as session:
+        block = await session.scalar(
+            select(CampaignOperationalBlock).where(
+                CampaignOperationalBlock.campaign_id == campaign_id
+            )
+        )
+        check = await session.scalar(
+            select(QualificationCheck).where(
+                QualificationCheck.participant_id == participant_id,
+                QualificationCheck.phase == "draw",
+            )
+        )
+        audit = await session.scalar(
+            select(AuditLog).where(AuditLog.action == "qualification.review_degraded")
+        )
+    assert block is not None
+    assert block.failure_count == 3
+    assert block.retry_exhausted_at is not None
+    assert block.resolved_at is not None
+    assert check is not None and check.state is expected_state
+    assert check.error_code == "qualification_target_retry_exhausted"
+    assert audit is not None
+    assert audit.details["policy"] == "last_persisted_final_else_ineligible"
+
+
 def _handlers(
     bot: QualificationBot, session_factory, stats: FakeStats | None = None
 ) -> JobHandlers:
@@ -265,7 +346,7 @@ def _handlers(
     )
 
 
-def _job(campaign_id: str) -> ScheduledJob:
+def _job(campaign_id: str, *, attempts: int = 1) -> ScheduledJob:
     return ScheduledJob(
         job_type="qualification_review",
         aggregate_id=campaign_id,
@@ -273,5 +354,5 @@ def _job(campaign_id: str) -> ScheduledJob:
         payload={},
         run_at=datetime.now(UTC),
         state=JobState.CLAIMED,
-        attempts=1,
+        attempts=attempts,
     )

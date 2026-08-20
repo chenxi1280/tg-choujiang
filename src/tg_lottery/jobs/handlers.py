@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 from aiogram import Bot
@@ -7,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tg_lottery.application.campaign_notifications import add_campaign_card_state_fanout
-from tg_lottery.application.campaign_targets import QualificationTarget, qualification_targets
+from tg_lottery.application.draw_commitments import ensure_draw_commitment
 from tg_lottery.application.drawing import DrawingService
 from tg_lottery.application.full_draw import (
     FULL_DRAW_VERIFY_JOB,
@@ -24,15 +23,12 @@ from tg_lottery.domain.enums import (
     QualificationState,
 )
 from tg_lottery.domain.errors import InvitationValidationDeferred, SettlementBlocked
-from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.domain.transitions import require_campaign_transition
 from tg_lottery.infrastructure.db import (
     Campaign,
     CampaignParticipationGroup,
     Group,
     InviteLink,
-    Participant,
-    QualificationCheck,
     ScheduledJob,
     TelegramOutbox,
 )
@@ -50,8 +46,11 @@ from tg_lottery.jobs.maintenance import (
     schedule_ticket_reconcile,
     schedule_update_retention,
 )
+from tg_lottery.jobs.qualification_review import QualificationReviewService
 from tg_lottery.telegram.qualification import (
-    QualificationObservationResult,
+    QualificationRateLimited,
+    QualificationRetryable,
+    SmoothRateLimiter,
     observe_memberships,
 )
 
@@ -66,6 +65,7 @@ _START_NOOP_STATES = frozenset(
     }
 )
 _TERMINAL_STATES = frozenset({CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED})
+_DEFAULT_QUALIFICATION_REQUESTS_PER_SECOND = 20.0
 
 
 class JobHandlers:
@@ -79,14 +79,21 @@ class JobHandlers:
         settlement: SettlementService,
         drawing: DrawingService,
         message_stats: MessageStatsService | None = None,
+        qualification_requests_per_second: float = _DEFAULT_QUALIFICATION_REQUESTS_PER_SECOND,
     ) -> None:
         self._bot = bot
         self._session_factory = session_factory
-        self._participants = participants
         self._invitations = invitations
         self._settlement = settlement
         self._drawing = drawing
-        self._message_stats = message_stats
+        self._qualification_requests_per_second = qualification_requests_per_second
+        self._qualification_review_service = QualificationReviewService(
+            bot=bot,
+            session_factory=session_factory,
+            participants=participants,
+            message_stats=message_stats,
+            requests_per_second=qualification_requests_per_second,
+        )
 
     async def handle(self, job: ScheduledJob) -> None:
         handlers = {
@@ -141,81 +148,11 @@ class JobHandlers:
                 raise JobRetry(f"campaign cannot settle from {campaign.state}")
             require_campaign_transition(campaign.state, CampaignState.SETTLING)
             campaign.state = CampaignState.SETTLING
+            await ensure_draw_commitment(session, campaign, utcnow())
             await add_campaign_card_state_fanout(session, campaign, state="settling")
 
     async def _qualification_review(self, job: ScheduledJob, *, force: bool = False) -> None:
-        campaign_id = UUID(job.aggregate_id)
-        campaign, targets, participants = await self._campaign_and_participants(campaign_id)
-        if campaign.state in _TERMINAL_STATES:
-            return
-        rules = CampaignRules.model_validate(campaign.rules)
-        chat_ids = await _target_chat_ids(self._session_factory, campaign, rules, targets=targets)
-        unresolved = False
-        for participant in participants:
-            if not force and await self._has_final_draw_check(participant.id):
-                continue
-            observed_at = utcnow()
-            result = await observe_memberships(
-                self._bot,
-                chat_ids=chat_ids,
-                user_id=participant.user_id,
-                observed_at=observed_at,
-            )
-            state, observations = await self._merge_message_thresholds(
-                user_id=participant.user_id,
-                rules=rules,
-                result=result,
-                observed_at=observed_at,
-            )
-            observations = _tag_target_kinds(observations, targets)
-            await self._participants.record_draw_qualification(
-                participant_id=participant.id,
-                state=state,
-                observed_at=observed_at,
-                observed_status=result.observed_status,
-                error_code=result.error_code,
-                observations=observations,
-            )
-            unresolved = unresolved or result.state is QualificationState.UNKNOWN
-        if unresolved:
-            raise JobRetry("one or more channel qualifications remain unknown")
-
-    async def _merge_message_thresholds(
-        self,
-        *,
-        user_id: int,
-        rules: CampaignRules,
-        result: QualificationObservationResult,
-        observed_at: datetime,
-    ) -> tuple[QualificationState, tuple[dict[str, Any], ...]]:
-        thresholds = {
-            int(key): int(value) for key, value in (rules.message_thresholds or {}).items()
-        }
-        state = result.state
-        observations = tuple(result.observations)
-        if not thresholds:
-            return state, observations
-        member_ok = {
-            int(item["chat_id"])
-            for item in observations
-            if item["state"] == QualificationState.ELIGIBLE.value
-        }
-        totals = await self._message_stats.totals(user_id, tuple(thresholds))
-        shortfalls = tuple(
-            {
-                "chat_id": chat_id,
-                "state": "ineligible",
-                "observed_status": f"messages {totals.get(chat_id, 0)}/{need}",
-                "error_code": "message_threshold",
-                "observed_at": observed_at.isoformat(),
-            }
-            for chat_id, need in thresholds.items()
-            if chat_id in member_ok and totals.get(chat_id, 0) < need
-        )
-        if shortfalls:
-            state = QualificationState.INELIGIBLE
-            observations = observations + shortfalls
-        return state, observations
+        await self._qualification_review_service.run(job, force=force)
 
     async def _validate_invitation(self, job: ScheduledJob) -> None:
         invitation_id = UUID(job.aggregate_id)
@@ -226,12 +163,18 @@ class JobHandlers:
         if not attempt.requires_observation or not attempt.chat_ids:
             return
         observed_at = utcnow()
-        result = await observe_memberships(
-            self._bot,
-            chat_ids=attempt.chat_ids,
-            user_id=attempt.invitee_user_id,
-            observed_at=observed_at,
-        )
+        try:
+            result = await observe_memberships(
+                self._bot,
+                chat_ids=attempt.chat_ids,
+                user_id=attempt.invitee_user_id,
+                observed_at=observed_at,
+                limiter=SmoothRateLimiter(self._qualification_requests_per_second),
+            )
+        except QualificationRateLimited as exc:
+            raise JobRetry(str(exc), delay_seconds=exc.retry_after) from exc
+        except QualificationRetryable as exc:
+            raise JobRetry(str(exc)) from exc
         try:
             await self._invitations.complete_validation(
                 invitation_id,
@@ -368,34 +311,6 @@ class JobHandlers:
                 payload={"message_id": message_id},
             )
 
-    async def _campaign_and_participants(
-        self, campaign_id: UUID
-    ) -> tuple[Campaign, tuple[QualificationTarget, ...], list[Participant]]:
-        async with self._session_factory() as session:
-            campaign = await session.get(Campaign, campaign_id)
-            if campaign is None:
-                raise ValueError("campaign not found")
-            targets = await qualification_targets(session, campaign)
-            participants = (
-                await session.scalars(
-                    select(Participant).where(Participant.campaign_id == campaign_id)
-                )
-            ).all()
-            return campaign, targets, list(participants)
-
-    async def _has_final_draw_check(self, participant_id: UUID) -> bool:
-        async with self._session_factory() as session:
-            state = await session.scalar(
-                select(QualificationCheck.state)
-                .where(
-                    QualificationCheck.participant_id == participant_id,
-                    QualificationCheck.phase == "draw",
-                )
-                .order_by(QualificationCheck.observed_at.desc())
-                .limit(1)
-            )
-            return state in {QualificationState.ELIGIBLE, QualificationState.INELIGIBLE}
-
     async def _campaign_state(self, campaign_id: UUID) -> CampaignState:
         async with self._session_factory() as session:
             state = await session.scalar(select(Campaign.state).where(Campaign.id == campaign_id))
@@ -416,41 +331,3 @@ def _membership_value(state: QualificationState) -> bool | None:
     if state is QualificationState.INELIGIBLE:
         return False
     return None
-
-
-def _required_chat_ids(main_chat_id: int, rules: CampaignRules) -> tuple[int, ...]:
-    values = [main_chat_id]
-    if rules.required_channel_id is not None:
-        values.append(rules.required_channel_id)
-    values.extend(rules.required_chat_ids)
-    return tuple(dict.fromkeys(values))
-
-
-async def _target_chat_ids(
-    session_factory: async_sessionmaker[AsyncSession],
-    campaign: Campaign,
-    rules: CampaignRules,
-    *,
-    targets: tuple[QualificationTarget, ...],
-) -> tuple[int, ...]:
-    if targets:
-        return tuple(target.chat_id for target in targets)
-    main = campaign.presentation.get("main_chat") or {}
-    if main.get("id") is not None:
-        return _required_chat_ids(int(main["id"]), rules)
-    async with session_factory() as session:
-        group = await session.get(Group, campaign.group_id)
-    if group is None:
-        raise ValueError("campaign group not found")
-    return _required_chat_ids(group.chat_id, rules)
-
-
-def _tag_target_kinds(
-    observations: tuple[dict[str, Any], ...],
-    targets: tuple[QualificationTarget, ...],
-) -> tuple[dict[str, Any], ...]:
-    kinds = {target.chat_id: target.kind for target in targets}
-    return tuple(
-        dict(item) | {"target_kind": kinds.get(int(item["chat_id"]), "requirement")}
-        for item in observations
-    )

@@ -50,6 +50,19 @@ class DrawSnapshot(Base, UuidPkMixin, CreatedAtMixin):
     total_weight: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
 
+class DrawCommitment(Base, UuidPkMixin, CreatedAtMixin):
+    __tablename__ = "draw_commitments"
+
+    campaign_id: Mapped[UUID] = mapped_column(
+        ForeignKey("campaigns.id", ondelete="CASCADE"), unique=True
+    )
+    algorithm_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    seed: Mapped[str] = mapped_column(String(128), nullable=False)
+    commitment_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    committed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class DrawEntry(Base, UuidPkMixin):
     __tablename__ = "draw_entries"
     __table_args__ = (UniqueConstraint("snapshot_id", "participant_id"),)

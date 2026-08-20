@@ -56,6 +56,47 @@ async def retry_failed_publication(
         return len(rows)
 
 
+async def retry_failed_draw_commitments(
+    uow_factory: UnitOfWorkFactory, campaign_id: UUID, actor_user_id: int
+) -> int:
+    async with uow_factory() as uow:
+        campaign = await uow.session.get(Campaign, campaign_id, with_for_update=True)
+        if campaign is None:
+            raise UserFacingError("活动不存在或已经失效")
+        await require_campaign_admin(uow.session, campaign_id=campaign_id, user_id=actor_user_id)
+        if campaign.state is not CampaignState.SETTLING:
+            raise UserFacingError("仅结算中的活动可以重试随机承诺发送")
+        rows = await _failed_commitment_rows(uow.session, campaign_id)
+        if not rows:
+            raise UserFacingError("当前没有可重发的失败或结果未知承诺消息")
+        for row in rows:
+            _reset_failed_outbox(row)
+        add_audit(
+            uow.session,
+            actor_user_id=actor_user_id,
+            action="draw.commitment_delivery_retry",
+            aggregate_type="campaign",
+            aggregate_id=str(campaign_id),
+            reason=f"retry_count={len(rows)}",
+        )
+        return len(rows)
+
+
+async def _failed_commitment_rows(session: AsyncSession, campaign_id: UUID) -> list[TelegramOutbox]:
+    return list(
+        await session.scalars(
+            select(TelegramOutbox)
+            .where(
+                TelegramOutbox.aggregate_type == "campaign",
+                TelegramOutbox.aggregate_id == str(campaign_id),
+                TelegramOutbox.operation == "send_draw_commitment",
+                TelegramOutbox.state.in_((OutboxState.PRE_ACCEPT_FAILED, OutboxState.UNKNOWN_HOLD)),
+            )
+            .with_for_update()
+        )
+    )
+
+
 def _reset_failed_outbox(row: TelegramOutbox) -> None:
     row.state = OutboxState.PENDING
     row.run_at = utcnow()

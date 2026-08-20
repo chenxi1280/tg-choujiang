@@ -188,11 +188,12 @@ def _target_observation(
     *,
     item: dict[str, Any],
 ) -> QualificationTargetObservation:
+    attempt_number = int(item.get("attempt_number", 1))
     request = {
         "check_id": str(check.id),
         "target_kind": target_kind,
         "chat_id": chat_id,
-        "attempt_number": 1,
+        "attempt_number": attempt_number,
     }
     return QualificationTargetObservation(
         check_id=check.id,
@@ -203,7 +204,7 @@ def _target_observation(
         observed_status=str(item.get("observed_status") or "") or None,
         error_code=str(item.get("error_code") or "") or None,
         observed_at=datetime.fromisoformat(str(item["observed_at"])),
-        attempt_number=1,
+        attempt_number=attempt_number,
         request_hash=canonical_hash(request),
     )
 

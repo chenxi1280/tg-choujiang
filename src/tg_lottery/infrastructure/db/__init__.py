@@ -24,6 +24,7 @@ from tg_lottery.infrastructure.db.models_core import (
 )
 from tg_lottery.infrastructure.db.models_draw import (
     DeliveryAttempt,
+    DrawCommitment,
     DrawEntry,
     DrawRound,
     DrawRun,
@@ -59,6 +60,7 @@ __all__ = [
     "CampaignRequirement",
     "DailyProgress",
     "DeliveryAttempt",
+    "DrawCommitment",
     "DrawEntry",
     "DrawRound",
     "DrawRun",

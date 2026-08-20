@@ -367,7 +367,6 @@ class ActivityService:
                 ),
             )
             .order_by(Campaign.id)
-            .with_for_update(of=Campaign)
         )
         return tuple(
             (campaign, main_chat_id)
@@ -379,11 +378,13 @@ class ActivityService:
         self, session: object, campaign_id: UUID, user_id: int
     ) -> Participant | None:
         return await session.scalar(
-            select(Participant).where(
+            select(Participant)
+            .where(
                 Participant.campaign_id == campaign_id,
                 Participant.user_id == user_id,
                 Participant.qualification_state == QualificationState.ELIGIBLE,
             )
+            .with_for_update()
         )
 
     async def _duplicate_reason(

@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 from aiogram.types import CallbackQuery, Message
 
-from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.domain.errors import RecoverableDraftCallback, UserFacingError
 from tg_lottery.telegram.update_handler import LotteryUpdateHandler, _public_chat_title
 
 
@@ -57,6 +57,7 @@ class RecordingAdminFlow:
     def __init__(self) -> None:
         self.started = False
         self.campaign_reference = None
+        self.recovered = False
 
     async def start_create_message(self, message) -> None:
         self.started = True
@@ -64,10 +65,28 @@ class RecordingAdminFlow:
     async def show_campaign_reference(self, query, reference) -> None:
         self.campaign_reference = reference
 
+    async def recover_draft_callback(self, query) -> bool:
+        self.recovered = True
+        return True
+
+
+class ExpiredDraftTokens:
+    async def consume(self, token: str, *, owner_user_id: int, chat_id: int):
+        raise RecoverableDraftCallback("callback token is expired")
+
 
 class PassthroughPersonalFlow:
+    def __init__(self) -> None:
+        self.index_shown = 0
+
     async def handle_callback(self, query, data) -> bool:
         return False
+
+    async def handle_command(self, message, text) -> bool:
+        return False
+
+    async def show_index(self, message) -> None:
+        self.index_shown += 1
 
 
 class RecordingMessage:
@@ -246,6 +265,40 @@ async def test_new_command_enters_creation_directly() -> None:
     assert admin_flow.started is True
 
 
+async def test_menu_command_redirects_to_unified_index() -> None:
+    personal = PassthroughPersonalFlow()
+    handler = LotteryUpdateHandler(
+        bot=object(),
+        default_timezone="Asia/Shanghai",
+        admin_flow=RecordingAdminFlow(),
+        member_flow=object(),
+        personal_flow=personal,
+        tokens=object(),
+        groups=object(),
+        activity=object(),
+        invitations=object(),
+        queries=object(),
+        stats=FakeStats(),
+    )
+
+    await handler._private_message(type("PrivateMessage", (), {"text": "/menu"})())
+
+    assert personal.index_shown == 1
+
+
+async def test_expired_draft_callback_refreshes_active_panel() -> None:
+    admin = RecordingAdminFlow()
+    handler = _handler_with_admin(admin)
+    handler._tokens = ExpiredDraftTokens()
+    query = _RecordingCallbackQuery("secure:expired", _private_bot_message())
+
+    await handler._dispatch_secure_callback(query, query.data)
+
+    assert admin.recovered is True
+    assert "草稿面板已刷新" in query.answers[0][0]
+    assert query.answers[0][1] is True
+
+
 async def test_campaign_list_item_opens_authorized_campaign_detail() -> None:
     admin_flow = RecordingAdminFlow()
     handler = _handler_with_admin(admin_flow)
@@ -272,6 +325,7 @@ class _RecordingCallbackQuery:
     def __init__(self, data: str, message: Message) -> None:
         self.data = data
         self.message = message
+        self.from_user = SimpleNamespace(id=201)
         self.answers: list[tuple[str | None, bool]] = []
 
     async def answer(self, text: str | None = None, show_alert: bool = False) -> None:
@@ -295,7 +349,19 @@ def _group_card_message() -> Message:
     )
 
 
-async def test_callback_error_answers_callback_then_sends_group_message() -> None:
+def _private_bot_message() -> Message:
+    return Message.model_validate(
+        {
+            "message_id": 10,
+            "date": int(datetime.now(UTC).timestamp()),
+            "chat": {"id": 201, "type": "private"},
+            "from": {"id": 123, "is_bot": True, "first_name": "Bot"},
+            "text": "draft panel",
+        }
+    )
+
+
+async def test_callback_error_answers_alert_without_group_message() -> None:
     handler = _handler(member_flow=RaisingMemberFlow())
     message = _group_card_message()
     query = _RecordingCallbackQuery("member:join:AbCdEfGhIjKlMnOpQrSt-_", message)
@@ -308,10 +374,8 @@ async def test_callback_error_answers_callback_then_sends_group_message() -> Non
 
     await handler._callback(query)
 
-    assert query.answers == [("活动不存在或已经失效", False)]
-    assert len(reported) == 1
-    assert reported[0][0] is message
-    assert isinstance(reported[0][1], UserFacingError)
+    assert query.answers == [("活动不存在或已经失效", True)]
+    assert reported == []
 
 
 async def test_reviewed_validation_message_remains_actionable() -> None:

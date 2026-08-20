@@ -14,7 +14,9 @@ async def add_invite_bonus(
     business_key: str,
     occurred_at: datetime | None,
 ) -> None:
-    participant = await session.get(Participant, invitation.inviter_participant_id)
+    participant = await session.get(
+        Participant, invitation.inviter_participant_id, with_for_update=True
+    )
     if participant is None:
         raise ValueError("inviter participant is missing")
     session.add(

@@ -18,7 +18,7 @@ from tg_lottery.application.invitations import InvitationService, JoinObservatio
 from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
-from tg_lottery.domain.errors import DomainError
+from tg_lottery.domain.errors import DomainError, RecoverableDraftCallback
 from tg_lottery.telegram import member_callbacks
 from tg_lottery.telegram.admin_flow import AdminFlow
 from tg_lottery.telegram.bot_permission_reminders import send_bot_permission_reminder
@@ -138,7 +138,7 @@ class LotteryUpdateHandler:
                     await self._personal_flow.show_guide(message)
                 return
             if text == "/menu":
-                await self._admin_flow.show_main(message)
+                await self._personal_flow.show_index(message)
                 return
             if text == "/new":
                 await self._admin_flow.start_create_message(message)
@@ -146,7 +146,7 @@ class LotteryUpdateHandler:
             if await self._personal_flow.handle_command(message, text):
                 return
             if not await self._admin_flow.handle_text(message):
-                await self._admin_flow.show_main(message)
+                await self._personal_flow.show_index(message)
         except (DomainError, ValueError) as exc:
             await self._send_operation_error(message, exc)
 
@@ -190,8 +190,9 @@ class LotteryUpdateHandler:
         try:
             await self._dispatch_callback(query, data)
         except (DomainError, ValueError) as exc:
-            await member_callbacks.safe_answer(query, str(exc)[:200], alert=False)
-            await self._send_operation_error(query.message, exc)
+            await member_callbacks.safe_answer(
+                query, public_error_text(exc, self._default_timezone), alert=True
+            )
 
     async def _send_operation_error(self, message: Message, exc: Exception) -> None:
         self._logger.warning(
@@ -309,11 +310,21 @@ class LotteryUpdateHandler:
         message = query.message
         if not isinstance(message, Message):
             return
-        grant = await self._tokens.consume(
-            data.removeprefix("secure:"),
-            owner_user_id=query.from_user.id,
-            chat_id=message.chat.id,
-        )
+        try:
+            grant = await self._tokens.consume(
+                data.removeprefix("secure:"),
+                owner_user_id=query.from_user.id,
+                chat_id=message.chat.id,
+            )
+        except RecoverableDraftCallback:
+            recovered = await self._admin_flow.recover_draft_callback(query)
+            text = (
+                "草稿面板已刷新，请使用新按钮"
+                if recovered
+                else "草稿已超过 7 天，请发送 /new 重新创建"
+            )
+            await member_callbacks.safe_answer(query, text, alert=True)
+            return
         await self._admin_flow.handle_grant(query, grant)
 
     async def _answer_callback(self, query: CallbackQuery) -> None:

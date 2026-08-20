@@ -113,8 +113,12 @@ def test_campaign_card_separates_rules_registration_and_join_links() -> None:
     urls = [b.url for row in keyboard.inline_keyboard for b in row if b.url]
 
     assert "member:join:AbCdEfGhIjKlMnOpQrSt-_" in datas
-    assert "member:rules:AbCdEfGhIjKlMnOpQrSt-_" in datas
-    assert urls == ["https://t.me/lottery_test_bot?start=join_AbCdEfGhIjKlMnOpQrSt-_"]
+    assert "member:rules:AbCdEfGhIjKlMnOpQrSt-_" not in datas
+    assert "https://t.me/lottery_test_bot?start=rules_AbCdEfGhIjKlMnOpQrSt-_" in urls
+    assert urls == [
+        "https://t.me/lottery_test_bot?start=rules_AbCdEfGhIjKlMnOpQrSt-_",
+        "https://t.me/lottery_test_bot?start=join_AbCdEfGhIjKlMnOpQrSt-_",
+    ]
 
 
 def test_campaign_card_explains_per_group_messages_and_channel_following() -> None:
@@ -378,9 +382,10 @@ async def test_campaign_keyboard_uses_callback_buttons() -> None:
 
     assert any(d.startswith("member:join:") for d in datas)
     assert any(d.startswith("member:bonus:") for d in datas)
-    assert any(d.startswith("member:rules:") for d in datas)
-    assert sum(d is None for d in datas) == 1
-    assert len(urls) == 1
+    assert not any(d and d.startswith("member:rules:") for d in datas)
+    assert any("?start=rules_" in url for url in urls)
+    assert sum(d is None for d in datas) == 2
+    assert len(urls) == 2
 
 
 async def test_pin_failure_does_not_fail_delivery() -> None:

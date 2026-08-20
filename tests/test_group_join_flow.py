@@ -18,8 +18,15 @@ THRESHOLD_CHAT_ID = -100999
 
 
 class FakeBot:
+    def __init__(self):
+        self.sent = []
+
     async def get_chat_member(self, chat_id, user_id):
         return SimpleNamespace(status="member")
+
+    async def send_message(self, chat_id, text, *, reply_markup=None):
+        self.sent.append((chat_id, text, reply_markup))
+        return SimpleNamespace(chat=SimpleNamespace(id=chat_id), message_id=99)
 
 
 class FakeStats:
@@ -99,9 +106,9 @@ def _campaign(message_thresholds):
     )
 
 
-def _flow(participants, campaign, totals):
+def _flow(participants, campaign, totals, *, bot=None):
     return MemberFlow(
-        bot=FakeBot(),
+        bot=bot or FakeBot(),
         participants=participants,
         queries=CampaignQueries(campaign),
         cipher=object(),
@@ -148,6 +155,7 @@ async def test_callback_success_popup_answers_participation_success():
     campaign = _campaign({str(THRESHOLD_CHAT_ID): 10})
     callback = RecordingCallback()
     message = RecordingMessage()
+    message.chat = SimpleNamespace(id=MAIN_CHAT_ID, type="supergroup")
     flow = _flow(ObservingParticipants(), campaign, {THRESHOLD_CHAT_ID: 12})
 
     await flow.register(
@@ -169,10 +177,12 @@ async def test_callback_success_popup_answers_participation_success():
 async def test_callback_failure_popup_alerts_threshold_gap():
     campaign = _campaign({str(THRESHOLD_CHAT_ID): 10})
     callback = RecordingCallback()
+    message = RecordingMessage()
+    message.chat = SimpleNamespace(id=MAIN_CHAT_ID, type="supergroup")
     flow = _flow(ObservingParticipants(), campaign, {THRESHOLD_CHAT_ID: 3})
 
     await flow.register(
-        RecordingMessage(),
+        message,
         PUBLIC_REF,
         user=_user(),
         observed_at=datetime.now(UTC),
@@ -182,8 +192,36 @@ async def test_callback_failure_popup_alerts_threshold_gap():
     assert len(callback.answers) == 1
     text, show_alert = callback.answers[0]
     assert show_alert is True
-    assert "「发言群」发言 3/10 条" in text
-    assert "还差 7 条" in text
+    assert text == "尚未满足参与条件，请私聊机器人查看详情"  # noqa: RUF001
+    assert message.texts == []
+
+
+async def test_callback_failure_with_unreachable_private_chat_never_posts_to_group():
+    error = TelegramForbiddenError(
+        method=SendMessage(chat_id=201, text="x"), message="Forbidden: bot blocked"
+    )
+    message = RecordingMessage()
+    message.chat = SimpleNamespace(id=MAIN_CHAT_ID, type="supergroup")
+    callback = RecordingCallback()
+    flow = _flow(
+        ObservingParticipants(),
+        _campaign({str(THRESHOLD_CHAT_ID): 10}),
+        {THRESHOLD_CHAT_ID: 3},
+        bot=SendingBot(error=error),
+    )
+
+    await flow.register(
+        message,
+        PUBLIC_REF,
+        user=_user(),
+        observed_at=datetime.now(UTC),
+        callback=callback,
+    )
+
+    assert message.texts == []
+    assert callback.answers == [
+        ("尚未满足参与条件，请私聊机器人查看详情", True)  # noqa: RUF001
+    ]
 
 
 class SendingBot:
@@ -388,10 +426,9 @@ async def test_bonus_callback_private_failure_guides_user_to_dm():
 
     await flow.bonus_callback(query, PUBLIC_REF)
 
-    assert "查看加成需要先和机器人建立私聊" in message.texts[0]
-    button = message.markups[0].inline_keyboard[0][0]
-    assert button.url == f"https://t.me/tgccjbot?start=bonus_{PUBLIC_REF}"
-    assert query.answers[-1] == ("请先私聊机器人一次", True)
+    assert message.texts == []
+    assert "请先私聊机器人" in query.answers[-1][0]
+    assert query.answers[-1][1] is True
 
 
 async def test_start_invite_payload_delegates_to_show_invite_link():

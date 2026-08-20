@@ -4,6 +4,10 @@ from uuid import UUID
 from sqlalchemy import exists, func, or_, select
 
 from tg_lottery.application.campaign_targets import qualification_targets
+from tg_lottery.application.draw_commitments import (
+    ensure_draw_commitment,
+    require_commitment_confirmed,
+)
 from tg_lottery.application.operational_blocks import has_active_campaign_block
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
@@ -59,6 +63,7 @@ class SettlementService:
             if existing:
                 return existing
             self._enter_settling(campaign)
+            await ensure_draw_commitment(uow.session, campaign, now)
             await self._expire_unqualified_invitations(uow.session, campaign)
             await self._require_drain_complete(uow.session, campaign, now)
             entries = await self._eligible_entries(uow.session, campaign.id)
@@ -116,6 +121,10 @@ class SettlementService:
             blockers.append("qualification_review_pending")
         if await has_active_campaign_block(session, campaign.id):
             blockers.append("campaign_operational_blocked")
+        try:
+            await require_commitment_confirmed(session, campaign)
+        except SettlementBlocked as exc:
+            blockers.append(str(exc))
         if not await self._polling_fresh_after_cutoff(session, campaign.cutoff_at):
             blockers.append("polling_not_fresh_after_cutoff")
         if blockers:

@@ -77,6 +77,20 @@ class CampaignCreator:
         panel = await message.answer("正在准备抽奖草稿…")
         await self._open(user, panel)
 
+    async def recover_expired_panel(self, query: CallbackQuery) -> bool:
+        message = _message(query)
+        if message.chat.type != "private" or message.chat.id != query.from_user.id:
+            return False
+        existing = await self._sessions.get(query.from_user.id)
+        if existing is None or not existing.state.startswith("draft:"):
+            return False
+        data = ensure_draft_identity(dict(existing.data)) | {
+            "panel_message_id": message.message_id,
+            "creator_name": query.from_user.full_name,
+        }
+        await self._render_dashboard(query.from_user.id, message, data)
+        return True
+
     async def _open(self, user: User, message: Message) -> None:
         existing = await self._sessions.get(user.id)
         if existing is not None and existing.state.startswith("draft:"):

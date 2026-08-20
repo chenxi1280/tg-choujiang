@@ -109,6 +109,7 @@ def build_update_handler(container: Container, bot_username: str) -> LotteryUpda
         profiles=services.profiles,
         queries=services.queries,
         bot_username=bot_username,
+        default_timezone=container.settings.timezone,
     )
     return LotteryUpdateHandler(
         bot=container.bot,

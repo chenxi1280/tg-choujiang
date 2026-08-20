@@ -18,7 +18,6 @@ from tg_lottery.application.participants import (
     ParticipantService,
     QualificationResult,
     RegistrationAttempt,
-    RegistrationRequest,
 )
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
@@ -38,8 +37,17 @@ from tg_lottery.telegram.member_records import (
     show_ticket_record,
 )
 from tg_lottery.telegram.member_referral_landing import show_referral_landing
+from tg_lottery.telegram.member_registration import (
+    registration_request,
+    registration_request_from_message,
+    required_user,
+)
 from tg_lottery.telegram.public_projection import campaign_state_text, format_public_time
-from tg_lottery.telegram.qualification import observe_memberships, with_pending_approvals
+from tg_lottery.telegram.qualification import (
+    QualificationRetryable,
+    observe_memberships,
+    with_pending_approvals,
+)
 
 
 class MemberFlow:
@@ -86,7 +94,7 @@ class MemberFlow:
         if campaign is None:
             return
         attempt = await self._participants.begin_registration(
-            _registration_request(campaign.id, user, observed_at)
+            registration_request(campaign.id, user, observed_at)
         )
         if not attempt.requires_observation:
             return
@@ -119,25 +127,26 @@ class MemberFlow:
         campaign = await self._queries.campaign_by_reference(campaign_reference)
         if campaign is None:
             raise UserFacingError("活动不存在或已经失效")
-        user = user or _required_user(message)
+        user = user or required_user(message)
         existing = await self._participants.eligible_participant(campaign.id, user.id)
         if existing is not None:
             await member_callbacks.already_reply(callback, message, existing.ticket_total_cache)
             return
         attempt = await self._participants.begin_registration(
-            _registration_request(
+            registration_request_from_message(
                 campaign.id,
                 user,
-                observed_at or message.date,
-                source_chat_id=_source_chat_id(message),
+                message,
+                observed_at=observed_at,
             )
         )
-        state, observations, total = attempt.state, (), 0
-        if attempt.requires_observation:
-            group = await self._queries.campaign_group(campaign.id)
-            state, observations, total = await self._complete_observation(
-                attempt, user_id=user.id, main_chat_id=group.chat_id, campaign=campaign
+        try:
+            state, observations, total = await self._registration_result(
+                attempt, user_id=user.id, campaign=campaign
             )
+        except QualificationRetryable:
+            await self._qualification_retry_reply(message, callback)
+            return
         if state is QualificationState.ELIGIBLE:
             if total == 0:
                 replay = await self._participants.eligible_participant(campaign.id, user.id)
@@ -153,6 +162,25 @@ class MemberFlow:
             page=missing_page,
             callback=callback,
         )
+
+    async def _registration_result(
+        self, attempt: RegistrationAttempt, *, user_id: int, campaign: object
+    ) -> tuple[QualificationState, tuple[dict[str, object], ...], int]:
+        if not attempt.requires_observation:
+            return attempt.state, (), 0
+        group = await self._queries.campaign_group(campaign.id)
+        return await self._complete_observation(
+            attempt, user_id=user_id, main_chat_id=group.chat_id, campaign=campaign
+        )
+
+    async def _qualification_retry_reply(
+        self, message: Message, callback: CallbackQuery | None
+    ) -> None:
+        text = "当前无法核验群/频道资格，请稍后再试"
+        if callback is not None:
+            await member_callbacks.safe_answer(callback, text, alert=True)
+            return
+        await message.answer(text)
 
     async def _registration_success_reply(
         self, message: Message, campaign: object, total: int, *, callback: CallbackQuery | None
@@ -326,11 +354,18 @@ class MemberFlow:
         callback: CallbackQuery | None,
     ) -> None:
         text, keyboard = await self._qualification_reply(campaign, state, observations, page=page)
-        if callback is not None:
-            await member_callbacks.alert_failure(
-                callback, campaign, state, observations=observations
-            )
         chat_type = getattr(getattr(message, "chat", None), "type", None)
+        if callback is not None:
+            if chat_type == "private":
+                await member_callbacks.alert_failure(
+                    callback, campaign, state, observations=observations
+                )
+            else:
+                await member_callbacks.safe_answer(
+                    callback,
+                    "尚未满足参与条件，请私聊机器人查看详情",
+                    alert=True,
+                )
         if callback is not None and chat_type == "private":
             await message.edit_text(text, reply_markup=keyboard)
             return
@@ -340,19 +375,7 @@ class MemberFlow:
         try:
             await self._bot.send_message(user_id, text, reply_markup=keyboard)
         except TelegramAPIError:
-            await message.answer(
-                "请先私聊机器人查看尚未满足的加入条件。",
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(
-                                text="打开加入条件",
-                                url=f"https://t.me/{self._bot_username}?start=join_{campaign.public_ref}",
-                            )
-                        ]
-                    ]
-                ),
-            )
+            return
 
     async def _qualification_reply(
         self,
@@ -463,33 +486,3 @@ class MemberFlow:
     async def _send_invite_link_to(self, user_id: int, campaign: object) -> None:
         text, markup = await self._invite_link_payload(campaign, user_id)
         await self._bot.send_message(user_id, text, reply_markup=markup)
-
-
-def _required_user(message: Message) -> User:
-    if message.from_user is None:
-        raise ValueError("Telegram message has no sender")
-    return message.from_user
-
-
-def _source_chat_id(message: Message) -> int | None:
-    chat = getattr(message, "chat", None)
-    if chat is None or getattr(chat, "type", None) == "private":
-        return None
-    return int(chat.id)
-
-
-def _registration_request(
-    campaign_id: UUID,
-    user: User,
-    observed_at: datetime,
-    *,
-    source_chat_id: int | None = None,
-) -> RegistrationRequest:
-    return RegistrationRequest(
-        campaign_id=campaign_id,
-        user_id=user.id,
-        username=user.username,
-        display_name=user.full_name,
-        observed_at=observed_at,
-        source_chat_id=source_chat_id,
-    )

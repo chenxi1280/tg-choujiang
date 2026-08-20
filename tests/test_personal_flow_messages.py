@@ -7,7 +7,7 @@ from tg_lottery.application.queries import ParticipatedCampaign, QueryService
 from tg_lottery.domain.enums import CampaignState, QualificationState
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import Campaign, Participant
-from tg_lottery.telegram.personal_flow import PersonalFlow
+from tg_lottery.telegram.personal_flow import PersonalFlow, _region_success_text
 
 
 class RecordingMessage:
@@ -93,6 +93,19 @@ async def test_personal_lists_render_business_states_and_local_time() -> None:
         "nav:join:pending:0",
         "nav:join:ended:0",
     }
+
+
+def test_region_success_text_shows_exact_edit_and_lock_deadlines() -> None:
+    profile = SimpleNamespace(
+        region="北京",
+        region_editable_until=datetime(2026, 8, 20, 4, 35, tzinfo=UTC),
+        region_locked_until=datetime(2026, 9, 19, 4, 30, tzinfo=UTC),
+    )
+
+    text = _region_success_text(profile, "Asia/Shanghai")
+
+    assert "2026年08月20日 12:35 前修改" in text
+    assert "锁定至 2026年09月19日 12:30" in text
 
 
 async def test_participated_query_carries_frozen_campaign_timezone(session_factory) -> None:

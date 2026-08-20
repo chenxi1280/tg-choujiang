@@ -12,6 +12,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.infrastructure.db import InviteLink
 from tg_lottery.telegram.crypto import SecretCipher
+from tg_lottery.telegram.gateway_draw_messages import draw_commitment_text
 from tg_lottery.telegram.gateway_requests import GatewayRequest
 from tg_lottery.telegram.public_projection import public_timezone_label
 
@@ -45,6 +46,7 @@ class TelegramGateway:
             "revoke_invite_link": self._revoke_invite_link,
             "revoke_required_chat_invite": self._revoke_required_chat_invite,
             "send_draw_result": self._send_draw_result,
+            "send_draw_commitment": self._send_draw_commitment,
             "send_winner_notice": self._send_winner_notice,
             "delete_message": self._delete_message,
         }
@@ -237,6 +239,19 @@ class TelegramGateway:
             remote_message_id=message.message_id,
         )
 
+    async def _send_draw_commitment(
+        self, outbox: GatewayRequest, _: InviteLink | None
+    ) -> GatewayResult:
+        message = await self._bot.send_message(
+            outbox.recipient_chat_id,
+            draw_commitment_text(outbox.payload),
+            disable_web_page_preview=True,
+        )
+        return GatewayResult(
+            remote_result=message.model_dump(mode="json", exclude_none=True),
+            remote_message_id=message.message_id,
+        )
+
     async def _send_winner_notice(
         self, outbox: GatewayRequest, _: InviteLink | None
     ) -> GatewayResult:
@@ -273,7 +288,9 @@ def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text="🎫 立即参与", callback_data=f"member:join:{ref}")]]
     if _bonus_enabled(rules):
         rows.append([InlineKeyboardButton(text="🔋 我的加成", callback_data=f"member:bonus:{ref}")])
-    rows.append([InlineKeyboardButton(text="📜 活动规则", callback_data=f"member:rules:{ref}")])
+    rows.append(
+        [InlineKeyboardButton(text="📜 活动规则", url=_campaign_deep_link(payload, "rules"))]
+    )
     rows.append(
         [InlineKeyboardButton(text="查看加入入口", url=_campaign_deep_link(payload, "join"))]
     )
@@ -405,6 +422,18 @@ def _draw_result_text(payload: dict[str, Any]) -> str:
     _append_undistributed(lines, payload.get("undistributed", []))
     if payload.get("extended_tips"):
         lines.append("本次结果按开奖时冻结的报名资格和抽奖次数权重计算。")
+    if payload.get("revealed_seed"):
+        lines.extend(
+            [
+                "",
+                "🔐 随机种子已揭示",
+                f"承诺哈希: {payload['commitment_hash']}",
+                f"随机种子: {payload['revealed_seed']}",
+                f"快照哈希: {payload['snapshot_hash']}",
+                "校验: SHA256(tg-lottery:sha256-commit-v1:活动ID:随机种子)",
+                f"活动ID: {payload['campaign_id']}",
+            ]
+        )
     return "\n".join(lines)
 
 
