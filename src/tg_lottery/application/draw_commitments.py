@@ -5,17 +5,15 @@ from datetime import datetime
 from hashlib import sha256
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from tg_lottery.application.campaign_targets import (
-    participation_chat_ids,
     requires_draw_commitment,
     restore_confirmed_participation_targets,
 )
-from tg_lottery.application.records import add_audit, add_outbox
-from tg_lottery.domain.enums import OutboxState
+from tg_lottery.application.records import add_audit
 from tg_lottery.domain.errors import SettlementBlocked
-from tg_lottery.infrastructure.db import Campaign, DrawCommitment, TelegramOutbox
+from tg_lottery.infrastructure.db import Campaign, DrawCommitment
 
 COMMITMENT_ALGORITHM_VERSION = "sha256-commit-v1"
 _COMMITMENT_DOMAIN = "tg-lottery"
@@ -48,7 +46,6 @@ async def ensure_draw_commitment(
     )
     session.add(commitment)
     await session.flush()
-    await _queue_commitment_messages(session, campaign, commitment)
     add_audit(
         session,
         actor_user_id=None,
@@ -70,19 +67,6 @@ async def require_commitment_confirmed(session: object, campaign: Campaign) -> N
     if commitment is None:
         raise SettlementBlocked("draw_commitment_missing")
     _validate_commitment(commitment)
-    expected = len(await participation_chat_ids(session, campaign.id, confirmed_only=True))
-    if expected == 0:
-        raise SettlementBlocked("draw_commitment_targets_missing")
-    confirmed = await session.scalar(
-        select(func.count(TelegramOutbox.id)).where(
-            TelegramOutbox.aggregate_type == "campaign",
-            TelegramOutbox.aggregate_id == str(campaign.id),
-            TelegramOutbox.operation == "send_draw_commitment",
-            TelegramOutbox.state == OutboxState.CONFIRMED,
-        )
-    )
-    if int(confirmed or 0) != expected:
-        raise SettlementBlocked("draw_commitment_delivery_pending")
 
 
 async def draw_seed(session: object, campaign: Campaign, revealed_at: datetime) -> str:
@@ -96,36 +80,6 @@ async def draw_seed(session: object, campaign: Campaign, revealed_at: datetime) 
     _validate_commitment(commitment)
     commitment.revealed_at = commitment.revealed_at or revealed_at
     return commitment.seed
-
-
-async def campaign_commitment(session: object, campaign_id: UUID) -> DrawCommitment | None:
-    return await session.scalar(
-        select(DrawCommitment).where(DrawCommitment.campaign_id == campaign_id)
-    )
-
-
-async def _queue_commitment_messages(
-    session: object, campaign: Campaign, commitment: DrawCommitment
-) -> None:
-    chat_ids = await participation_chat_ids(session, campaign.id, confirmed_only=True)
-    if not chat_ids:
-        raise ValueError("draw commitment requires confirmed participation groups")
-    for chat_id in chat_ids:
-        add_outbox(
-            session,
-            operation="send_draw_commitment",
-            aggregate_type="campaign",
-            aggregate_id=str(campaign.id),
-            recipient_chat_id=chat_id,
-            business_key=f"draw_commitment:{campaign.id}:{chat_id}",
-            payload={
-                "campaign_name": campaign.name,
-                "campaign_ref": campaign.public_ref,
-                "algorithm_version": commitment.algorithm_version,
-                "commitment_hash": commitment.commitment_hash,
-                "committed_at": commitment.committed_at.isoformat(),
-            },
-        )
 
 
 def _validate_commitment(commitment: DrawCommitment) -> None:

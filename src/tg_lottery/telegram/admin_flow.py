@@ -16,6 +16,10 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.application.winners import WinnerService
 from tg_lottery.domain.enums import CampaignState, OutboxState, PrizeClaimState
 from tg_lottery.telegram.admin_authorization import verify_chat_admin
+from tg_lottery.telegram.admin_winner_designations import (
+    ACTION as DESIGNATE_WINNER_ACTION,
+)
+from tg_lottery.telegram.admin_winner_designations import AdminWinnerDesignationFlow
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.public_projection import campaign_state_text
 
@@ -33,6 +37,7 @@ class AdminFlow:
         drawing: DrawingService,
         winners: WinnerService,
         queries: QueryService,
+        designations: AdminWinnerDesignationFlow | None = None,
     ) -> None:
         self._bot = bot
         self._creator = creator
@@ -41,6 +46,7 @@ class AdminFlow:
         self._drawing = drawing
         self._winners = winners
         self._queries = queries
+        self._designations = designations
 
     async def show_main(self, message: Message) -> None:
         keyboard = InlineKeyboardMarkup(
@@ -98,9 +104,14 @@ class AdminFlow:
         await self._show_campaign(_message(query), campaign.id, user_id=query.from_user.id)
 
     async def handle_text(self, message: Message) -> bool:
+        if self._designations is not None and await self._designations.handle_text(message):
+            return True
         return await self._creator.handle_message(message)
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        if self._designations is not None and grant.action == DESIGNATE_WINNER_ACTION:
+            await self._designations.begin(query, grant)
+            return
         if self._creator.handles_action(grant.action):
             await self._creator.handle_grant(query, grant)
             return
@@ -116,8 +127,6 @@ class AdminFlow:
             "publication_issues": self._publication_issues,
             "retry_publication": self._retry_publication,
             "retry_qualification": self._retry_qualification,
-            "commitment_issues": self._commitment_issues,
-            "retry_commitment": self._retry_commitment,
         }
         handler = handlers.get(grant.action)
         if handler is None:
@@ -212,26 +221,14 @@ class AdminFlow:
         await self._campaigns.retry_qualification_review(campaign_id, query.from_user.id)
         await _message(query).answer("资格复核已重新排队；阻断会在全部目标恢复后自动解除。")
 
-    async def _commitment_issues(self, query: CallbackQuery, grant: CallbackGrant) -> None:
-        campaign_id = _campaign_id(grant)
-        await self._verify_admin(campaign_id, query.from_user.id)
-        issues = await self._queries.draw_commitment_issues(campaign_id)
-        await _message(query).answer(_issues_text("随机承诺发送异常群：", issues))
-
-    async def _retry_commitment(self, query: CallbackQuery, grant: CallbackGrant) -> None:
-        campaign_id = _campaign_id(grant)
-        await self._verify_admin(campaign_id, query.from_user.id)
-        count = await self._campaigns.retry_failed_draw_commitments(campaign_id, query.from_user.id)
-        await _message(query).answer(f"已将 {count} 条失败或结果未知的随机承诺消息重新排队。")
-
     async def _show_campaign(self, message: Message, campaign_id: UUID, *, user_id: int) -> None:
         campaign = await self._required_campaign(campaign_id)
         stats = await self._queries.campaign_stats(campaign_id)
         deliveries = await self._queries.delivery_summary(campaign_id)
         issues = await self._load_publication_issues(campaign.id, campaign.state)
         actions = _campaign_actions(campaign.state) + _publication_actions(campaign.state, issues)
-        commitment_issues = await self._load_commitment_issues(campaign.id, campaign.state)
-        actions += _commitment_actions(campaign.state, commitment_issues)
+        if self._designations is not None:
+            actions += _designation_actions(campaign.state)
         if await self._queries.qualification_review_blocked(campaign.id):
             actions += ("retry_qualification",)
         requests = tuple(CallbackRequest(action, campaign_id=campaign_id) for action in actions)
@@ -245,8 +242,7 @@ class AdminFlow:
             "publication_issues": "查看失败/未知群",
             "retry_publication": "重试明确失败群",
             "retry_qualification": "重新复核资格",
-            "commitment_issues": "查看随机承诺发送异常",
-            "retry_commitment": "重发失败/未知的随机承诺",
+            DESIGNATE_WINNER_ACTION: "🎯 指定中奖人",
         }
         tokens = await self._tokens.create_many(
             owner_user_id=user_id,
@@ -275,13 +271,6 @@ class AdminFlow:
         if state is not CampaignState.PUBLISHING:
             return ()
         return await self._queries.publication_issues(campaign_id)
-
-    async def _load_commitment_issues(
-        self, campaign_id: UUID, state: CampaignState
-    ) -> tuple[PublicationIssue, ...]:
-        if state is not CampaignState.SETTLING:
-            return ()
-        return await self._queries.draw_commitment_issues(campaign_id)
 
     async def _claim_buttons(
         self, message: Message, campaign_id: UUID, *, user_id: int
@@ -373,12 +362,16 @@ def _publication_actions(
     return tuple(actions)
 
 
-def _commitment_actions(
-    state: CampaignState, issues: tuple[PublicationIssue, ...]
-) -> tuple[str, ...]:
-    if state is not CampaignState.SETTLING or not issues:
-        return ()
-    return "commitment_issues", "retry_commitment"
+def _designation_actions(state: CampaignState) -> tuple[str, ...]:
+    if state in {
+        CampaignState.SCHEDULED,
+        CampaignState.RUNNING,
+        CampaignState.PAUSED,
+        CampaignState.SETTLING,
+        CampaignState.READY_TO_DRAW,
+    }:
+        return (DESIGNATE_WINNER_ACTION,)
+    return ()
 
 
 def _issues_text(title: str, issues: tuple[PublicationIssue, ...]) -> str:

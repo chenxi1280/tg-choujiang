@@ -154,6 +154,9 @@ def test_draw_result_keeps_internal_hash_out_of_public_message() -> None:
         {
             "campaign_name": "123",
             "snapshot_hash": SNAPSHOT_HASH,
+            "commitment_hash": "a" * 64,
+            "revealed_seed": "b" * 64,
+            "campaign_id": "060fda6f-280e-4012-8e2a-32dda7b73580",
             "winners": [],
             "undistributed": [{"prize_position": 1, "prize_name": "一等奖", "count": 1}],
             "extended_tips": True,
@@ -164,6 +167,8 @@ def test_draw_result_keeps_internal_hash_out_of_public_message() -> None:
     assert "未分配名额:" in text
     assert "冻结的报名资格和抽奖次数权重" in text
     assert "快照:" not in text
+    assert "承诺哈希" not in text
+    assert "随机种子" not in text
     assert SNAPSHOT_HASH not in text
 
 

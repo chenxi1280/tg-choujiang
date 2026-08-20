@@ -13,7 +13,6 @@ from tg_lottery.domain.errors import SettlementBlocked, UserFacingError
 from tg_lottery.infrastructure.db import (
     CampaignOperationalBlock,
     DrawRound,
-    DrawSnapshot,
     Participant,
     PollingOffset,
     Prize,
@@ -37,7 +36,6 @@ async def test_multiple_prizes_draw_unique_winners_and_report_unfilled_slots(
     async with session_factory() as session:
         winners = (await session.scalars(select(Winner))).all()
         rounds = (await session.scalars(select(DrawRound).order_by(DrawRound.round_number))).all()
-        snapshot_hash = await session.scalar(select(DrawSnapshot.snapshot_hash))
         outboxes = (await session.scalars(select(TelegramOutbox))).all()
 
     assert len(winners) == 3
@@ -49,7 +47,7 @@ async def test_multiple_prizes_draw_unique_winners_and_report_unfilled_slots(
         (2, True),
     ]
     group_payload = next(row.payload for row in outboxes if row.operation == "send_draw_result")
-    assert group_payload["snapshot_hash"] == snapshot_hash
+    assert "snapshot_hash" not in group_payload
     assert group_payload["undistributed"] == [
         {"prize_position": 2, "prize_name": "二等奖", "count": 1}
     ]

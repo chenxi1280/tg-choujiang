@@ -17,7 +17,6 @@ from tg_lottery.infrastructure.db import (
 _TARGET_OPERATIONS = frozenset(
     {
         "send_campaign_card",
-        "send_draw_commitment",
         "create_required_chat_invite",
         "revoke_required_chat_invite",
     }

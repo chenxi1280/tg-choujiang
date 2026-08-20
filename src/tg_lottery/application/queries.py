@@ -36,7 +36,6 @@ from tg_lottery.application.participant_records import (
 )
 from tg_lottery.application.publication_queries import (
     PublicationIssue,
-    load_draw_commitment_issues,
     load_publication_issues,
 )
 from tg_lottery.application.query_invites import (
@@ -225,9 +224,6 @@ class QueryService:
                 )
             )
             return block_id is not None
-
-    async def draw_commitment_issues(self, campaign_id: UUID) -> tuple[PublicationIssue, ...]:
-        return await load_draw_commitment_issues(self._session_factory, campaign_id)
 
     async def campaign_by_reference(self, reference: str | UUID) -> Campaign | None:
         async with self._session_factory() as session:

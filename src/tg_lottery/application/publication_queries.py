@@ -24,12 +24,6 @@ async def load_publication_issues(
     return await _load_target_issues(session_factory, campaign_id, "send_campaign_card")
 
 
-async def load_draw_commitment_issues(
-    session_factory: async_sessionmaker[AsyncSession], campaign_id: UUID
-) -> tuple[PublicationIssue, ...]:
-    return await _load_target_issues(session_factory, campaign_id, "send_draw_commitment")
-
-
 async def _load_target_issues(
     session_factory: async_sessionmaker[AsyncSession],
     campaign_id: UUID,

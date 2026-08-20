@@ -32,6 +32,7 @@ from tg_lottery.infrastructure.db.models_draw import (
     ScheduledJob,
     TelegramOutbox,
     Winner,
+    WinnerDesignation,
     WorkerHeartbeat,
 )
 from tg_lottery.infrastructure.db.models_engagement import (
@@ -85,5 +86,6 @@ __all__ = [
     "UserProfile",
     "UserRegionChange",
     "Winner",
+    "WinnerDesignation",
     "WorkerHeartbeat",
 ]

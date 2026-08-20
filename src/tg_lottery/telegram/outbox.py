@@ -44,7 +44,6 @@ _UNKNOWN_ERRORS = (TelegramNetworkError, TelegramServerError, TimeoutError, Conn
 _PROJECTED_OPERATIONS = frozenset(
     {
         "send_campaign_card",
-        "send_draw_commitment",
         "create_invite_link",
         "revoke_invite_link",
         "create_required_chat_invite",

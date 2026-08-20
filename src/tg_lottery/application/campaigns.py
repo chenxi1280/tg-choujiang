@@ -20,10 +20,7 @@ from tg_lottery.application.draw_commitments import ensure_draw_commitment
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.application.publication import add_publication_outboxes
-from tg_lottery.application.publication_recovery import (
-    retry_failed_draw_commitments,
-    retry_failed_publication,
-)
+from tg_lottery.application.publication_recovery import retry_failed_publication
 from tg_lottery.application.qualification_recovery import (
     retry_qualification_review,
 )
@@ -189,9 +186,6 @@ class CampaignService:
 
     async def retry_failed_publication(self, campaign_id: UUID, actor_user_id: int) -> int:
         return await retry_failed_publication(self._uow_factory, campaign_id, actor_user_id)
-
-    async def retry_failed_draw_commitments(self, campaign_id: UUID, actor_user_id: int) -> int:
-        return await retry_failed_draw_commitments(self._uow_factory, campaign_id, actor_user_id)
 
     async def retry_qualification_review(self, campaign_id: UUID, actor_user_id: int) -> None:
         await retry_qualification_review(self._uow_factory, campaign_id, actor_user_id)

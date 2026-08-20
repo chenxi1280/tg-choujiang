@@ -87,6 +87,32 @@ class DrawRun(Base, UuidPkMixin, TimestampMixin):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class WinnerDesignation(Base, UuidPkMixin, TimestampMixin):
+    __tablename__ = "winner_designations"
+    __table_args__ = (
+        CheckConstraint("prize_slot_no > 0", name="prize_slot_positive"),
+        UniqueConstraint(
+            "campaign_id",
+            "prize_id",
+            "prize_slot_no",
+            name="uq_winner_designations_prize_slot",
+        ),
+    )
+
+    campaign_id: Mapped[UUID] = mapped_column(
+        ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False
+    )
+    prize_id: Mapped[UUID] = mapped_column(
+        ForeignKey("prizes.id", ondelete="RESTRICT"), nullable=False
+    )
+    prize_slot_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    participant_id: Mapped[UUID] = mapped_column(
+        ForeignKey("participants.id", ondelete="RESTRICT"), nullable=False
+    )
+    designated_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    designated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class DrawRound(Base, UuidPkMixin, CreatedAtMixin):
     __tablename__ = "draw_rounds"
     __table_args__ = (
@@ -94,6 +120,10 @@ class DrawRound(Base, UuidPkMixin, CreatedAtMixin):
         UniqueConstraint("draw_run_id", "round_number"),
         UniqueConstraint(
             "draw_run_id", "prize_id", "prize_slot_no", name="uq_draw_rounds_prize_slot"
+        ),
+        CheckConstraint(
+            "selection_mode IN ('random', 'designated')",
+            name="ck_draw_rounds_selection_mode",
         ),
     )
 
@@ -106,6 +136,12 @@ class DrawRound(Base, UuidPkMixin, CreatedAtMixin):
     selected_value: Mapped[int | None] = mapped_column(BigInteger)
     selected_participant_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("participants.id", ondelete="RESTRICT")
+    )
+    selection_mode: Mapped[str] = mapped_column(
+        String(16), default="random", server_default="random", nullable=False
+    )
+    designation_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("winner_designations.id", ondelete="RESTRICT")
     )
     undistributed: Mapped[bool] = mapped_column(default=False, nullable=False)
 

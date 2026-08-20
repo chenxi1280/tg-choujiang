@@ -8,7 +8,7 @@ from tg_lottery.application.campaign_targets import (
     participation_chat_ids,
     release_participation_groups,
 )
-from tg_lottery.application.draw_commitments import campaign_commitment, draw_seed
+from tg_lottery.application.draw_commitments import draw_seed
 from tg_lottery.application.operational_blocks import has_active_campaign_block
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
@@ -27,6 +27,7 @@ from tg_lottery.infrastructure.db import (
     Participant,
     Prize,
     Winner,
+    WinnerDesignation,
 )
 
 
@@ -42,6 +43,7 @@ class Award:
     participant: Participant
     prize: Prize
     prize_slot_no: int
+    selection_mode: str
 
 
 @dataclass(frozen=True)
@@ -119,6 +121,7 @@ class DrawingService:
         unique_winner: bool,
     ) -> DrawOutcome:
         candidates = await self._candidates(session, snapshot.id)
+        designations = await self._designations(session, snapshot.campaign_id, prizes)
         awards: list[Award] = []
         undistributed: list[Undistributed] = []
         round_number = 0
@@ -126,19 +129,27 @@ class DrawingService:
             missing = 0
             for prize_slot_no in range(1, prize.winner_count + 1):
                 round_number += 1
+                designation = designations.pop((prize.id, prize_slot_no), None)
+                round_candidates = _available_candidates(
+                    candidates,
+                    designations=designations,
+                    reserve_designated=unique_winner and designation is None,
+                )
                 result = await self._draw_round(
                     session,
                     draw_run=draw_run,
                     prize=prize,
-                    candidates=candidates,
+                    candidates=round_candidates,
                     round_number=round_number,
                     prize_slot_no=prize_slot_no,
+                    designation=designation,
                 )
                 if result is None:
                     missing += 1
                     continue
                 winner, participant = result
-                awards.append(Award(winner, participant, prize, prize_slot_no))
+                mode = "designated" if designation else "random"
+                awards.append(Award(winner, participant, prize, prize_slot_no, mode))
                 if unique_winner:
                     candidates = [
                         item for item in candidates if item.participant.id != participant.id
@@ -156,7 +167,21 @@ class DrawingService:
         candidates: list[DrawCandidate],
         round_number: int,
         prize_slot_no: int,
+        designation: WinnerDesignation | None,
     ) -> tuple[Winner, Participant] | None:
+        if designation is not None:
+            participant = _designated_participant(candidates, designation)
+            winner = await self._record_winner(
+                session,
+                draw_run=draw_run,
+                prize=prize,
+                participant=participant,
+                round_number=round_number,
+                prize_slot_no=prize_slot_no,
+                selection=None,
+                designation=designation,
+            )
+            return winner, participant
         if not candidates:
             session.add(
                 self._undistributed_round(
@@ -167,16 +192,7 @@ class DrawingService:
                 )
             )
             return None
-        weighted = tuple(
-            WeightedEntry(str(candidate.participant.id), candidate.entry.weight)
-            for candidate in candidates
-        )
-        selection = select_weighted(weighted, draw_run.random_input, round_number)
-        participant = next(
-            item.participant
-            for item in candidates
-            if str(item.participant.id) == selection.participant_id
-        )
+        selection, participant = _random_selection(candidates, draw_run.random_input, round_number)
         winner = await self._record_winner(
             session,
             draw_run=draw_run,
@@ -185,6 +201,7 @@ class DrawingService:
             round_number=round_number,
             prize_slot_no=prize_slot_no,
             selection=selection,
+            designation=None,
         )
         return winner, participant
 
@@ -197,17 +214,21 @@ class DrawingService:
         participant: Participant,
         round_number: int,
         prize_slot_no: int,
-        selection: Selection,
+        selection: Selection | None,
+        designation: WinnerDesignation | None,
     ) -> Winner:
+        range_start, range_end, selected_value = _selection_values(selection)
         draw_round = DrawRound(
             draw_run_id=draw_run.id,
             round_number=round_number,
             prize_id=prize.id,
             prize_slot_no=prize_slot_no,
-            range_start=selection.range_start,
-            range_end=selection.range_end,
-            selected_value=selection.selected_value,
+            range_start=range_start,
+            range_end=range_end,
+            selected_value=selected_value,
             selected_participant_id=participant.id,
+            selection_mode="designated" if designation else "random",
+            designation_id=designation.id if designation else None,
             undistributed=False,
         )
         session.add(draw_round)
@@ -257,6 +278,24 @@ class DrawingService:
         )
         return tuple(rows)
 
+    async def _designations(
+        self,
+        session: object,
+        campaign_id: UUID,
+        prizes: tuple[Prize, ...],
+    ) -> dict[tuple[UUID, int], WinnerDesignation]:
+        rows = tuple(
+            await session.scalars(
+                select(WinnerDesignation)
+                .where(WinnerDesignation.campaign_id == campaign_id)
+                .order_by(WinnerDesignation.prize_id, WinnerDesignation.prize_slot_no)
+            )
+        )
+        slots = {(prize.id, slot) for prize in prizes for slot in range(1, prize.winner_count + 1)}
+        if any((row.prize_id, row.prize_slot_no) not in slots for row in rows):
+            raise UserFacingError("指定中奖记录与当前奖品名额不一致")
+        return {(row.prize_id, row.prize_slot_no): row for row in rows}
+
     def _validate_prize_plan(
         self,
         campaign: Campaign,
@@ -295,6 +334,9 @@ class DrawingService:
         )
         presentation = campaign.presentation or {}
         extended_tips = bool(presentation.get("message_tips", True))
+        group_extended_tips = extended_tips and all(
+            item.selection_mode == "random" for item in outcome.awards
+        )
         chat_ids = await participation_chat_ids(session, campaign.id, confirmed_only=True)
         for chat_id in chat_ids:
             await self._queue_group_result(
@@ -303,7 +345,7 @@ class DrawingService:
                 draw_run=draw_run,
                 outcome=outcome,
                 chat_id=chat_id,
-                extended_tips=extended_tips,
+                extended_tips=group_extended_tips,
             )
         self._queue_winner_notices(
             session,
@@ -323,10 +365,8 @@ class DrawingService:
         chat_id: int,
         extended_tips: bool,
     ) -> None:
-        commitment = await campaign_commitment(session, campaign.id)
         payload = {
             "campaign_name": campaign.name,
-            "snapshot_hash": (await self._snapshot(session, campaign.id)).snapshot_hash,
             "winners": [self._winner_payload(item) for item in outcome.awards],
             "undistributed": [
                 {
@@ -338,15 +378,6 @@ class DrawingService:
             ],
             "extended_tips": extended_tips,
         }
-        if commitment is not None:
-            payload.update(
-                {
-                    "commitment_algorithm": commitment.algorithm_version,
-                    "commitment_hash": commitment.commitment_hash,
-                    "revealed_seed": draw_run.random_input,
-                    "campaign_id": str(campaign.id),
-                }
-            )
         add_outbox(
             session,
             operation="send_draw_result",
@@ -392,3 +423,49 @@ class DrawingService:
             "prize_name": item.prize.name,
             "prize_slot_no": item.prize_slot_no,
         }
+
+
+def _available_candidates(
+    candidates: list[DrawCandidate],
+    *,
+    designations: dict[tuple[UUID, int], WinnerDesignation],
+    reserve_designated: bool,
+) -> list[DrawCandidate]:
+    if not reserve_designated:
+        return candidates
+    reserved = {row.participant_id for row in designations.values()}
+    return [row for row in candidates if row.participant.id not in reserved]
+
+
+def _random_selection(
+    candidates: list[DrawCandidate], random_input: str, round_number: int
+) -> tuple[Selection, Participant]:
+    weighted = tuple(
+        WeightedEntry(str(candidate.participant.id), candidate.entry.weight)
+        for candidate in candidates
+    )
+    selection = select_weighted(weighted, random_input, round_number)
+    participant = next(
+        item.participant
+        for item in candidates
+        if str(item.participant.id) == selection.participant_id
+    )
+    return selection, participant
+
+
+def _designated_participant(
+    candidates: list[DrawCandidate], designation: WinnerDesignation
+) -> Participant:
+    participant = next(
+        (row.participant for row in candidates if row.participant.id == designation.participant_id),
+        None,
+    )
+    if participant is None:
+        raise UserFacingError("指定中奖人未通过最终资格复核, 请重新指定或删除该名额")
+    return participant
+
+
+def _selection_values(selection: Selection | None) -> tuple[int, int, int | None]:
+    if selection is None:
+        return 0, 0, None
+    return selection.range_start, selection.range_end, selection.selected_value
