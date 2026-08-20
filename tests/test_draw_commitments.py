@@ -6,6 +6,9 @@ from sqlalchemy import func, select
 from tests.helpers import seed_campaign
 from tg_lottery.application.draw_commitments import commitment_hash, ensure_draw_commitment
 from tg_lottery.application.drawing import DrawingService
+from tg_lottery.application.legacy_commitment_cleanup import (
+    queue_legacy_commitment_notice_cleanup,
+)
 from tg_lottery.application.operational_blocks import resolve_outbox_target_block
 from tg_lottery.application.settlement import SettlementService
 from tg_lottery.domain.enums import CampaignState, OutboxState, QualificationState, TicketSource
@@ -71,6 +74,42 @@ async def test_draw_commitment_creation_is_idempotent_per_campaign(session_facto
     assert first is not None and second is not None
     assert first.id == second.id
     assert count == 1
+
+
+async def test_confirmed_legacy_commitment_notice_is_queued_for_deletion(
+    session_factory,
+) -> None:
+    now = datetime.now(UTC)
+    async with session_factory() as session, session.begin():
+        source = _legacy_commitment_notice(now)
+        session.add(source)
+
+    first = await queue_legacy_commitment_notice_cleanup(session_factory)
+    second = await queue_legacy_commitment_notice_cleanup(session_factory)
+
+    async with session_factory() as session:
+        deletes = tuple(
+            await session.scalars(
+                select(TelegramOutbox).where(TelegramOutbox.operation == "delete_message")
+            )
+        )
+    assert first == 1
+    assert second == 0
+    assert len(deletes) == 1
+    assert deletes[0].recipient_chat_id == -100820
+    assert deletes[0].payload == {"message_id": 820}
+
+
+async def test_unconfirmed_legacy_commitment_notice_is_not_deleted(session_factory) -> None:
+    now = datetime.now(UTC)
+    async with session_factory() as session, session.begin():
+        source = _legacy_commitment_notice(now)
+        source.state = OutboxState.CANCELLED
+        session.add(source)
+
+    queued = await queue_legacy_commitment_notice_cleanup(session_factory)
+
+    assert queued == 0
 
 
 async def test_commitment_restores_target_from_confirmed_card_fact(session_factory) -> None:
@@ -189,5 +228,21 @@ def _confirmed_campaign_card(campaign_id, chat_id: int, now: datetime) -> Telegr
         run_at=now,
         state=OutboxState.CONFIRMED,
         remote_message_id=9902,
+        updated_at=now,
+    )
+
+
+def _legacy_commitment_notice(now: datetime) -> TelegramOutbox:
+    return TelegramOutbox(
+        operation="send_draw_commitment",
+        aggregate_type="campaign",
+        aggregate_id="82000000-0000-0000-0000-000000000001",
+        recipient_chat_id=-100820,
+        business_key="legacy-commitment-notice",
+        request_hash="d" * 64,
+        payload={},
+        run_at=now,
+        state=OutboxState.CONFIRMED,
+        remote_message_id=820,
         updated_at=now,
     )

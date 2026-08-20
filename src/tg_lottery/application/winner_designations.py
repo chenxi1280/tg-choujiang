@@ -33,9 +33,29 @@ class WinnerDesignationView:
     participant_display_name: str
 
 
+@dataclass(frozen=True)
+class DesignationCampaignView:
+    campaign_id: UUID
+    public_ref: str
+    name: str
+    state: CampaignState
+
+
 class WinnerDesignationService:
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
+
+    async def editable_campaigns(self) -> tuple[DesignationCampaignView, ...]:
+        async with self._uow_factory() as uow:
+            rows = await uow.session.scalars(
+                select(Campaign)
+                .where(Campaign.state.in_(_EDITABLE_STATES))
+                .order_by(Campaign.created_at.desc())
+                .limit(20)
+            )
+            return tuple(
+                DesignationCampaignView(row.id, row.public_ref, row.name, row.state) for row in rows
+            )
 
     async def list(self, campaign_id: UUID) -> tuple[WinnerDesignationView, ...]:
         async with self._uow_factory() as uow:
@@ -56,6 +76,7 @@ class WinnerDesignationService:
         prize_slot_no: int,
         participant_reference: str,
         actor_user_id: int,
+        source_bot_id: int,
     ) -> WinnerDesignationView:
         async with self._uow_factory() as uow:
             campaign = await _editable_campaign(uow.session, campaign_id)
@@ -83,19 +104,14 @@ class WinnerDesignationService:
                 participant=participant,
                 actor_user_id=actor_user_id,
             )
-            add_audit(
+            _add_designation_audit(
                 uow.session,
                 actor_user_id=actor_user_id,
-                action="winner.designated",
-                aggregate_type="winner_designation",
-                aggregate_id=str(designation.id),
-                details={
-                    "campaign_id": str(campaign_id),
-                    "prize_id": str(prize.id),
-                    "prize_slot_no": prize_slot_no,
-                    "before_participant_id": before,
-                    "participant_id": str(participant.id),
-                },
+                source_bot_id=source_bot_id,
+                designation=designation,
+                prize=prize,
+                participant=participant,
+                before=before,
             )
             return _view(designation, prize, participant)
 
@@ -106,6 +122,7 @@ class WinnerDesignationService:
         prize_position: int,
         prize_slot_no: int,
         actor_user_id: int,
+        source_bot_id: int,
     ) -> bool:
         async with self._uow_factory() as uow:
             await _editable_campaign(uow.session, campaign_id)
@@ -130,6 +147,8 @@ class WinnerDesignationService:
                     "prize_id": str(prize.id),
                     "prize_slot_no": prize_slot_no,
                     "participant_id": str(designation.participant_id),
+                    "source": "offline_ops_bot",
+                    "source_bot_id": source_bot_id,
                 },
             )
             await uow.session.delete(designation)
@@ -145,6 +164,34 @@ async def _editable_campaign(session: object, campaign_id: UUID) -> Campaign:
     if campaign.state not in _EDITABLE_STATES:
         raise UserFacingError("当前活动状态不能修改指定中奖人")
     return campaign
+
+
+def _add_designation_audit(
+    session: object,
+    *,
+    actor_user_id: int,
+    source_bot_id: int,
+    designation: WinnerDesignation,
+    prize: Prize,
+    participant: Participant,
+    before: str | None,
+) -> None:
+    add_audit(
+        session,
+        actor_user_id=actor_user_id,
+        action="winner.designated",
+        aggregate_type="winner_designation",
+        aggregate_id=str(designation.id),
+        details={
+            "campaign_id": str(designation.campaign_id),
+            "prize_id": str(prize.id),
+            "prize_slot_no": designation.prize_slot_no,
+            "before_participant_id": before,
+            "participant_id": str(participant.id),
+            "source": "offline_ops_bot",
+            "source_bot_id": source_bot_id,
+        },
+    )
 
 
 async def _prize(session: object, campaign_id: UUID, position: int) -> Prize:

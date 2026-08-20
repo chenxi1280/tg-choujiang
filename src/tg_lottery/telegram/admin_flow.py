@@ -16,10 +16,6 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.application.winners import WinnerService
 from tg_lottery.domain.enums import CampaignState, OutboxState, PrizeClaimState
 from tg_lottery.telegram.admin_authorization import verify_chat_admin
-from tg_lottery.telegram.admin_winner_designations import (
-    ACTION as DESIGNATE_WINNER_ACTION,
-)
-from tg_lottery.telegram.admin_winner_designations import AdminWinnerDesignationFlow
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.public_projection import campaign_state_text
 
@@ -37,7 +33,6 @@ class AdminFlow:
         drawing: DrawingService,
         winners: WinnerService,
         queries: QueryService,
-        designations: AdminWinnerDesignationFlow | None = None,
     ) -> None:
         self._bot = bot
         self._creator = creator
@@ -46,7 +41,6 @@ class AdminFlow:
         self._drawing = drawing
         self._winners = winners
         self._queries = queries
-        self._designations = designations
 
     async def show_main(self, message: Message) -> None:
         keyboard = InlineKeyboardMarkup(
@@ -104,14 +98,9 @@ class AdminFlow:
         await self._show_campaign(_message(query), campaign.id, user_id=query.from_user.id)
 
     async def handle_text(self, message: Message) -> bool:
-        if self._designations is not None and await self._designations.handle_text(message):
-            return True
         return await self._creator.handle_message(message)
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> None:
-        if self._designations is not None and grant.action == DESIGNATE_WINNER_ACTION:
-            await self._designations.begin(query, grant)
-            return
         if self._creator.handles_action(grant.action):
             await self._creator.handle_grant(query, grant)
             return
@@ -227,8 +216,6 @@ class AdminFlow:
         deliveries = await self._queries.delivery_summary(campaign_id)
         issues = await self._load_publication_issues(campaign.id, campaign.state)
         actions = _campaign_actions(campaign.state) + _publication_actions(campaign.state, issues)
-        if self._designations is not None:
-            actions += _designation_actions(campaign.state)
         if await self._queries.qualification_review_blocked(campaign.id):
             actions += ("retry_qualification",)
         requests = tuple(CallbackRequest(action, campaign_id=campaign_id) for action in actions)
@@ -242,7 +229,6 @@ class AdminFlow:
             "publication_issues": "查看失败/未知群",
             "retry_publication": "重试明确失败群",
             "retry_qualification": "重新复核资格",
-            DESIGNATE_WINNER_ACTION: "🎯 指定中奖人",
         }
         tokens = await self._tokens.create_many(
             owner_user_id=user_id,
@@ -360,18 +346,6 @@ def _publication_actions(
     if any(issue.state is OutboxState.PRE_ACCEPT_FAILED for issue in issues):
         actions.append("retry_publication")
     return tuple(actions)
-
-
-def _designation_actions(state: CampaignState) -> tuple[str, ...]:
-    if state in {
-        CampaignState.SCHEDULED,
-        CampaignState.RUNNING,
-        CampaignState.PAUSED,
-        CampaignState.SETTLING,
-        CampaignState.READY_TO_DRAW,
-    }:
-        return (DESIGNATE_WINNER_ACTION,)
-    return ()
 
 
 def _issues_text(title: str, issues: tuple[PublicationIssue, ...]) -> str:

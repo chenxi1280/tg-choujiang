@@ -11,16 +11,14 @@ from tg_lottery.application.publication_queries import PublicationIssue
 from tg_lottery.application.queries import QueryService
 from tg_lottery.domain.enums import CampaignState, OutboxState
 from tg_lottery.domain.errors import AuthorizationDenied
-from tg_lottery.infrastructure.db import Group, Prize
+from tg_lottery.infrastructure.db import Group
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.telegram.admin_flow import (
     DRAW_CONFIRMATION_TEXT,
     AdminFlow,
-    _designation_actions,
     _publication_actions,
     _publication_issue_state,
 )
-from tg_lottery.telegram.admin_winner_designations import _positions, _prompt
 
 
 class FakeAdminBot:
@@ -127,25 +125,6 @@ def test_draw_confirmation_uses_business_language_only() -> None:
     assert DRAW_CONFIRMATION_TEXT == "开奖结果已生成, 群公告和中奖通知正在发送。"
     assert "数据库" not in DRAW_CONFIRMATION_TEXT
     assert "独立送达" not in DRAW_CONFIRMATION_TEXT
-
-
-def test_designation_action_is_available_only_before_drawing() -> None:
-    assert _designation_actions(CampaignState.RUNNING) == ("designate_winner",)
-    assert _designation_actions(CampaignState.READY_TO_DRAW) == ("designate_winner",)
-    assert _designation_actions(CampaignState.DRAWING) == ()
-    assert _designation_actions(CampaignState.DRAWN) == ()
-
-
-async def test_designation_prompt_lists_available_prize_slots(session_factory) -> None:
-    async with session_factory() as session, session.begin():
-        _, _, _ = await seed_campaign(session)
-        prize = await session.scalar(select(Prize))
-        assert prize is not None
-        text = _prompt((prize,), ())
-
-    assert f"第{prize.position}顺位 {prize.name}" in text
-    assert f"名额 1-{prize.winner_count}" in text
-    assert _positions("1", "2") == (1, 2)
 
 
 def test_publication_buttons_never_retry_unknown_delivery() -> None:

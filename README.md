@@ -16,3 +16,24 @@ pytest
 ```
 
 运行时配置见 `.env.docker.example`，生产发布和证据要求见 [部署文档](docs/deployment/DEPLOYMENT.md)。
+
+## 隔离运维 Bot
+
+人工指定中奖不接入正式 Bot。需要操作时，为独立 Bot 配置 `OPS_BOT_TOKEN` 与非空
+`OPS_ADMIN_IDS`，再按需启动隔离进程：
+
+```bash
+docker compose --profile ops run --rm ops-bot
+```
+
+该进程只接受白名单用户的私聊命令，不加入活动群，也不会触发截止、资格复核、结算或开奖：
+
+```text
+/campaigns
+/winner_list <活动编号>
+/winner_set <活动编号> <奖品顺位> <名额> <@用户名或用户ID>
+/winner_del <活动编号> <奖品顺位> <名额>
+```
+
+正常部署只启动 `app` 与 `worker`，不会启动此运维 Bot。运维 Bot token 若复用正式 Bot 身份，
+启动时会因数据库中已存在正式 polling 身份而拒绝运行。

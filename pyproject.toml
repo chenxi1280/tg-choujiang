@@ -27,6 +27,7 @@ dev = [
 [project.scripts]
 tg-lottery-app = "tg_lottery.app:main"
 tg-lottery-worker = "tg_lottery.worker:main"
+tg-lottery-ops-bot = "tg_lottery.ops_bot:main"
 tg-lottery-healthcheck = "tg_lottery.healthcheck:main"
 
 [tool.setuptools.packages.find]

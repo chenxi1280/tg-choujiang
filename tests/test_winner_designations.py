@@ -39,6 +39,7 @@ async def test_designated_slot_uses_selected_participant_and_records_audit(
         prize_slot_no=1,
         participant_reference="@chosen",
         actor_user_id=101,
+        source_bot_id=9001,
     )
     await _settle_and_draw(session_factory, campaign_id, now)
 
@@ -54,7 +55,9 @@ async def test_designated_slot_uses_selected_participant_and_records_audit(
     assert draw_round is not None and draw_round.selection_mode == "designated"
     assert draw_round.designation_id is not None
     assert audit is not None and audit.actor_user_id == 101
-    assert group_result is not None and group_result.payload["extended_tips"] is False
+    assert audit.details["source"] == "offline_ops_bot"
+    assert audit.details["source_bot_id"] == 9001
+    assert group_result is not None and group_result.payload["extended_tips"] is True
     assert "selection_mode" not in group_result.payload
     assert "designation_id" not in group_result.payload
 
@@ -71,6 +74,7 @@ async def test_random_slots_reserve_participants_designated_for_later_slots(
         prize_slot_no=2,
         participant_reference=str(202),
         actor_user_id=101,
+        source_bot_id=9001,
     )
 
     await _settle_and_draw(session_factory, campaign_id, now)
@@ -98,6 +102,7 @@ async def test_ineligible_designated_participant_blocks_draw_without_silent_repl
         prize_slot_no=1,
         participant_reference="@chosen",
         actor_user_id=101,
+        source_bot_id=9001,
     )
     uow_factory = partial(UnitOfWork, session_factory)
     await SettlementService(uow_factory).settle(campaign_id, now)
@@ -121,6 +126,7 @@ async def test_designation_can_be_removed_before_draw(session_factory) -> None:
         prize_slot_no=1,
         participant_reference="@chosen",
         actor_user_id=101,
+        source_bot_id=9001,
     )
 
     removed = await service.remove(
@@ -128,6 +134,7 @@ async def test_designation_can_be_removed_before_draw(session_factory) -> None:
         prize_position=1,
         prize_slot_no=1,
         actor_user_id=101,
+        source_bot_id=9001,
     )
 
     assert removed is True

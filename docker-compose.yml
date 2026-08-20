@@ -45,6 +45,22 @@ services:
       retries: 6
       start_period: 40s
 
+  ops-bot:
+    image: ${TG_LOTTERY_APP_IMAGE:-tg-lottery-app:latest}
+    profiles: ["ops"]
+    restart: "no"
+    environment:
+      OPS_BOT_TOKEN: ${OPS_BOT_TOKEN:-}
+      OPS_BOT_ID: ${OPS_BOT_ID:-}
+      OPS_ADMIN_IDS: ${OPS_ADMIN_IDS:-}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      RELEASE_SHA: ${RELEASE_SHA:-unknown}
+      RELEASE_ID: ${RELEASE_ID:-unknown}
+    command: ["python", "-m", "tg_lottery.ops_bot"]
+    networks:
+      - infra_default
+
   migrate:
     image: ${TG_LOTTERY_APP_IMAGE:-tg-lottery-app:latest}
     profiles: ["tools"]

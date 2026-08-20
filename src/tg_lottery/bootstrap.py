@@ -16,13 +16,11 @@ from tg_lottery.application.participants import ParticipantService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.settlement import SettlementService
 from tg_lottery.application.user_profiles import UserProfileService
-from tg_lottery.application.winner_designations import WinnerDesignationService
 from tg_lottery.application.winners import WinnerService
 from tg_lottery.config import Settings
 from tg_lottery.infrastructure.db.session import create_engine, create_session_factory
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.telegram.admin_flow import AdminFlow
-from tg_lottery.telegram.admin_winner_designations import AdminWinnerDesignationFlow
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_renderer import CreatorRenderer
 from tg_lottery.telegram.creator_settings import CreatorSettings
@@ -43,7 +41,6 @@ class Services:
     settlement: SettlementService
     drawing: DrawingService
     winners: WinnerService
-    winner_designations: WinnerDesignationService
     tokens: CallbackTokenService
     sessions: AdminSessionService
     queries: QueryService
@@ -73,7 +70,6 @@ def build_container(settings: Settings) -> Container:
         settlement=SettlementService(uow_factory),
         drawing=DrawingService(uow_factory),
         winners=WinnerService(uow_factory),
-        winner_designations=WinnerDesignationService(uow_factory),
         tokens=CallbackTokenService(uow_factory),
         sessions=AdminSessionService(uow_factory),
         queries=QueryService(session_factory),
@@ -99,12 +95,6 @@ def build_update_handler(container: Container, bot_username: str) -> LotteryUpda
         drawing=services.drawing,
         winners=services.winners,
         queries=services.queries,
-        designations=AdminWinnerDesignationFlow(
-            bot=container.bot,
-            sessions=services.sessions,
-            service=services.winner_designations,
-            queries=services.queries,
-        ),
     )
     member_flow = MemberFlow(
         bot=container.bot,

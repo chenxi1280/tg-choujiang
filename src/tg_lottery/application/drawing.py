@@ -43,7 +43,6 @@ class Award:
     participant: Participant
     prize: Prize
     prize_slot_no: int
-    selection_mode: str
 
 
 @dataclass(frozen=True)
@@ -148,8 +147,7 @@ class DrawingService:
                     missing += 1
                     continue
                 winner, participant = result
-                mode = "designated" if designation else "random"
-                awards.append(Award(winner, participant, prize, prize_slot_no, mode))
+                awards.append(Award(winner, participant, prize, prize_slot_no))
                 if unique_winner:
                     candidates = [
                         item for item in candidates if item.participant.id != participant.id
@@ -334,9 +332,6 @@ class DrawingService:
         )
         presentation = campaign.presentation or {}
         extended_tips = bool(presentation.get("message_tips", True))
-        group_extended_tips = extended_tips and all(
-            item.selection_mode == "random" for item in outcome.awards
-        )
         chat_ids = await participation_chat_ids(session, campaign.id, confirmed_only=True)
         for chat_id in chat_ids:
             await self._queue_group_result(
@@ -345,7 +340,7 @@ class DrawingService:
                 draw_run=draw_run,
                 outcome=outcome,
                 chat_id=chat_id,
-                extended_tips=group_extended_tips,
+                extended_tips=extended_tips,
             )
         self._queue_winner_notices(
             session,

@@ -1,5 +1,8 @@
 import asyncio
 
+from tg_lottery.application.legacy_commitment_cleanup import (
+    queue_legacy_commitment_notice_cleanup,
+)
 from tg_lottery.application.records import utcnow
 from tg_lottery.bootstrap import build_container
 from tg_lottery.config import get_settings
@@ -21,6 +24,7 @@ async def run() -> None:
     try:
         await validate_bot(container.bot, settings.bot_id)
         await ensure_maintenance_jobs(container.session_factory, utcnow())
+        await queue_legacy_commitment_notice_cleanup(container.session_factory)
         handlers = JobHandlers(
             bot=container.bot,
             session_factory=container.session_factory,
