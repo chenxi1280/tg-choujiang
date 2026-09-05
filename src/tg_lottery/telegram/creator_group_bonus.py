@@ -350,7 +350,7 @@ def _page(data: dict[str, Any], kind: str, count: int) -> int:
 
 def _group_row_label(data: dict[str, Any], kind: str, group: dict[str, Any]) -> str:
     rule = (data.get(f"group_{kind}_rules") or {}).get(str(group["id"]))
-    title = str(group.get("title") or group["id"])
+    title = chat_title(group)
     if not rule or not rule.get("enabled"):
         return f"⬜ {title}｜关闭"
     return f"✅ {title}｜{_rule_row_summary(kind, rule)}"

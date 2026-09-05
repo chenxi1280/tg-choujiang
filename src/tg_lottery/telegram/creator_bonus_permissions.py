@@ -6,6 +6,7 @@ from aiogram import Bot
 
 from tg_lottery.domain.errors import AuthorizationDenied, UserFacingError
 from tg_lottery.telegram.admin_authorization import verify_chat_admin
+from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.creator_group_selection import validate_activity_target
 from tg_lottery.telegram.required_chats import resolve_required_chat
 
@@ -16,7 +17,7 @@ async def verify_bonus_action(bot: Bot, user_id: int, data: dict[str, Any], *, a
     targets = _action_targets(data, action)
     if not targets:
         return
-    errors = await _permission_errors(bot, user_id, targets)
+    errors = await _permission_errors(bot, user_id, targets, data=data)
     if errors:
         raise UserFacingError("以下群的加成权限需要修复：\n" + "\n".join(errors))
 
@@ -34,7 +35,7 @@ async def verify_publication_bonus_permissions(
         for chat_id, rule in (data.get("group_activity_rules") or {}).items()
         if rule.get("enabled")
     )
-    errors = await _permission_errors(bot, user_id, targets)
+    errors = await _permission_errors(bot, user_id, targets, data=data)
     if errors:
         raise UserFacingError("以下群的加成权限需要修复：\n" + "\n".join(errors))
 
@@ -89,13 +90,19 @@ def _copy_confirm_targets(data: dict[str, Any]) -> list[tuple[int, str]]:
     return [(int(chat_id), kind) for chat_id in copy_state.get("targets", [])]
 
 
-async def _permission_errors(bot: Bot, user_id: int, targets: list[tuple[int, str]]) -> list[str]:
+async def _permission_errors(
+    bot: Bot, user_id: int, targets: list[tuple[int, str]], *, data: dict[str, Any]
+) -> list[str]:
     errors = []
-    for chat_id, kind in dict.fromkeys(targets):
+    names = {
+        int(group["id"]): chat_title(group) for group in data.get("participation_groups") or []
+    }
+    for position, (chat_id, kind) in enumerate(dict.fromkeys(targets), start=1):
         try:
             await _verify_target(bot, user_id, chat_id, kind=kind)
         except (AuthorizationDenied, UserFacingError) as exc:
-            errors.append(f"· {chat_id}：{exc}")
+            name = names.get(chat_id, f"第 {position} 个参与群")
+            errors.append(f"· {name}：{exc}")
     return errors
 
 

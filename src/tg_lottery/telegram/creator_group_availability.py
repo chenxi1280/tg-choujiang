@@ -42,4 +42,16 @@ async def inspect_group_availability(bot: Bot, chat_id: int, user_id: int) -> Gr
             "机器人不是管理员",
             "请在群设置中把机器人提升为管理员，然后点击重新检测。",
         )
+    return await _chat_type_availability(bot, chat_id)
+
+
+async def _chat_type_availability(bot: Bot, chat_id: int) -> GroupAvailability:
+    try:
+        chat = await bot.get_chat(chat_id)
+    except TelegramAPIError:
+        return GroupAvailability(False, "核验失败", "无法核验目标类型，请点击重新检测。")
+    if str(chat.type) not in {"group", "supergroup"}:
+        return GroupAvailability(
+            False, "频道请设为准入条件", "频道不能作为参与活动的群，请在“准入条件”中添加该频道。"
+        )
     return GroupAvailability(True, "可选择", "")

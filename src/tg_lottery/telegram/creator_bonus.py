@@ -54,6 +54,8 @@ def bonus_text(data: dict[str, Any]) -> str:
 
 
 def bonus_summary(data: dict[str, Any]) -> str:
+    if data.get("participation_groups") and data.get("bonus_types"):
+        return _configured_group_summary(data)
     if data.get("group_invite_rules") or data.get("group_activity_rules"):
         return group_bonus.summary(data)
     types = set(data.get("bonus_types", []))
@@ -68,6 +70,18 @@ def bonus_summary(data: dict[str, Any]) -> str:
             f"全部达标+{data['activity_reward_tickets']}次)"
         )
     return "；".join(summaries)
+
+
+def _configured_group_summary(data: dict[str, Any]) -> str:
+    pending = []
+    for kind, label in (("invite", "邀请"), ("activity", "发言")):
+        configured = data.get(f"group_{kind}_rules") or {}
+        if kind in data["bonus_types"] and not any(
+            rule.get("enabled") for rule in configured.values()
+        ):
+            pending.append(f"{label}加成待逐群设置")
+    active = group_bonus.summary(data)
+    return "；".join(([active] if active != "关闭" else []) + pending)
 
 
 def bonus_rows(data: dict[str, Any]) -> ButtonRows:
@@ -189,9 +203,9 @@ def bonus_view(data: dict[str, Any], action: str) -> tuple[str, ButtonRows]:
     if action == "draft_bonus_copy_confirm":
         kind = str(data.get("bonus_copy_result_kind") or "invite")
         return group_bonus.list_view(data, kind)
-    if action == "draft_bonus_invite":
+    if action in {"draft_bonus_invite", "draft_bonus_invite_save"}:
         return group_bonus.list_view(data, "invite")
-    if action == "draft_bonus_activity":
+    if action in {"draft_bonus_activity", "draft_bonus_activity_save"}:
         return group_bonus.list_view(data, "activity")
     if action.startswith("draft_bonus_group_page:"):
         return group_bonus.list_view(data, group_bonus.page_kind(action))

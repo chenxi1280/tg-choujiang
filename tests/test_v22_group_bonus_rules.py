@@ -406,7 +406,7 @@ async def test_publication_review_reports_all_group_permission_failures() -> Non
 
     message = captured.value.public_message
     assert "-1001" in message and "设为管理员" in message
-    assert "-1002" in message and "邀请" in message
+    assert "B群" in message and "邀请" in message
 
 
 async def test_removing_configured_group_requires_confirmation() -> None:
