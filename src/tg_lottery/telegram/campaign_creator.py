@@ -14,11 +14,13 @@ from tg_lottery.application.queries import QueryService
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import creator_group_bonus as group_bonus
+from tg_lottery.telegram.creator_folder_link import CreatorFolderLink
 from tg_lottery.telegram.creator_group_picker import CreatorGroupPicker
 from tg_lottery.telegram.creator_group_selection import (
     bind_initial_group,
     selected_chat_ids,
 )
+from tg_lottery.telegram.creator_participation import parse_positions
 from tg_lottery.telegram.creator_publication import CreatorPublisher
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
 from tg_lottery.telegram.creator_schedule import positive_int
@@ -53,6 +55,7 @@ class CampaignCreator:
         self._queries = queries
         self._renderer = renderer
         self._settings = settings
+        self._folder_link = CreatorFolderLink(sessions=sessions, renderer=renderer)
         self._group_picker = CreatorGroupPicker(
             bot=bot,
             sessions=sessions,
@@ -128,12 +131,16 @@ class CampaignCreator:
         return await self.handle_text(message, session.state, dict(session.data))
 
     async def handle_text(self, message: Message, state: str, data: dict[str, Any]) -> bool:
+        if state == "draft:folder_link":
+            await self._folder_link.receive(message, data)
+            return True
         if await self._settings.handle_message(message, state, data):
             return True
         handlers = {
             "draft:title": self._receive_title,
             "draft:prize_name": self._receive_prize_name,
             "draft:prize_count": self._receive_prize_count,
+            "draft:prize_delete": self._receive_prize_delete,
         }
         handler = handlers.get(state)
         if handler is not None:
@@ -157,6 +164,8 @@ class CampaignCreator:
 
     def _grant_handlers(self):
         return {
+            "draft_folder_link": self._folder_link.show,
+            "draft_folder_clear": self._folder_link.clear,
             "draft_group": self._group_picker.show,
             "draft_group_problem": self._group_picker.problem,
             "draft_toggle_group": self._group_picker.toggle,
@@ -193,12 +202,18 @@ class CampaignCreator:
 
     async def _show_prize_prompt(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:prize_name", guided=False)
+        rows = _back_rows()
+        if data.get("prizes"):
+            rows = [
+                [("删除指定奖品", "draft_delete_prize"), ("清空奖品", "draft_clear_prizes")],
+                *rows,
+            ]
         await self._render_text(
             query.from_user.id,
             _message(query),
             data=data,
             text=prize_prompt_text(data),
-            rows=_back_rows(),
+            rows=rows,
         )
 
     async def _receive_prize_name(self, message: Message, data: dict[str, Any]) -> None:
@@ -246,11 +261,27 @@ class CampaignCreator:
         await self._render_dashboard_from_text(message, updated | {"guided": False})
 
     async def _delete_prize(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._required_session(query.from_user.id)
-        prizes = list(data.get("prizes", []))
-        if prizes:
-            prizes.pop()
-        await self._update_and_prizes(query, {"prizes": prizes})
+        data = await self._set_state(query, "draft:prize_delete", guided=False)
+        lines = ["🎁 删除指定奖品", ""]
+        lines.extend(
+            f"{index}. {prize['name']} × {prize['winner_count']} 人"
+            for index, prize in enumerate(data.get("prizes", []), start=1)
+        )
+        lines.append("\n请回复要删除的编号，多个编号用逗号分隔。")
+        await self._render_text(
+            query.from_user.id, _message(query), data=data, text="\n".join(lines), rows=_back_rows()
+        )
+
+    async def _receive_prize_delete(self, message: Message, data: dict[str, Any]) -> None:
+        prizes = data.get("prizes", [])
+        positions = parse_positions(message.text or "", len(prizes))
+        updated = data | {
+            "prizes": [
+                prize for index, prize in enumerate(prizes, start=1) if index not in positions
+            ]
+        }
+        await self._sessions.set(_user(message).id, "draft:idle", updated)
+        await self._render_prizes_from_text(message, updated)
 
     async def _clear_prizes(self, query: CallbackQuery, _: CallbackGrant) -> None:
         await self._update_and_prizes(query, {"prizes": []})
@@ -308,7 +339,7 @@ class CampaignCreator:
     async def _render_prizes_from_text(self, message: Message, data: dict[str, Any]) -> None:
         rows = [
             [("继续添加", "draft_add_prize")],
-            [("删除最后一个", "draft_delete_prize"), ("清空奖品", "draft_clear_prizes")],
+            [("删除指定奖品", "draft_delete_prize"), ("清空奖品", "draft_clear_prizes")],
             *_back_rows(),
         ]
         await self._edit_from_text(message, data=data, text=prizes_text(data), rows=rows)
@@ -351,7 +382,7 @@ class CampaignCreator:
         await self._sessions.set(query.from_user.id, "draft:idle", data)
         rows = [
             [("继续添加", "draft_add_prize")],
-            [("删除最后一个", "draft_delete_prize"), ("清空奖品", "draft_clear_prizes")],
+            [("删除指定奖品", "draft_delete_prize"), ("清空奖品", "draft_clear_prizes")],
             *_back_rows(),
         ]
         await self._render_text(

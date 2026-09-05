@@ -4,6 +4,7 @@ from typing import Any
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.creator_bonus import bonus_summary
 from tg_lottery.telegram.creator_messages import message_policy_summary
 from tg_lottery.telegram.draft_config import missing_fields
@@ -19,7 +20,7 @@ def main_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="创建/继续抽奖", callback_data="nav:create")],
             [InlineKeyboardButton(text="我参加的抽奖", callback_data="nav:join")],
             [InlineKeyboardButton(text="设置归属地区", callback_data="nav:region")],
-            [InlineKeyboardButton(text="查看我的 ID", callback_data="nav:myid")],
+            [InlineKeyboardButton(text="📖 使用指南", callback_data="nav:help")],
         ]
     )
 
@@ -121,6 +122,12 @@ def _region_limits(data: dict[str, Any]) -> str:
 
 
 def _requirements(data: dict[str, Any]) -> str:
+    chats = data.get("required_chats") or []
+    if chats:
+        return "必须全部满足\n" + "\n".join(
+            f"  {'关注' if chat.get('type') == 'channel' else '加入'}「{chat_title(chat)}」"
+            for chat in chats
+        )
     count = len(data.get("required_chat_refs") or data.get("required_chat_ids", []))
     return f"{count} 项（必须全部满足）" if count else "无额外条件"
 
@@ -129,7 +136,8 @@ def _participation_groups(data: dict[str, Any]) -> str:
     groups = data.get("participation_groups") or []
     if not groups:
         return "【等待设置】"
-    return f"{len(groups)} 个（必须全部加入）"
+    names = "、".join(chat_title(group) for group in groups)
+    return f"{len(groups)} 个（必须全部加入）：{names}"
 
 
 def _prize_lines(prizes: list[dict[str, Any]]) -> str:

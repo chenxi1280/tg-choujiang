@@ -1,6 +1,7 @@
 """成员流程弹窗文案: 报名失败原因的用户提示。"""
 
 from tg_lottery.domain.enums import QualificationState
+from tg_lottery.telegram.bonus_rule_text import chat_title
 
 
 def failure_reply_text(campaign: object, state: QualificationState) -> str:
@@ -43,12 +44,12 @@ def popup_failure(
 
 
 def _condition_titles(presentation: dict[str, object]) -> dict[int, str]:
-    chats = [presentation.get("main_chat"), *(presentation.get("required_chats") or [])]
-    return {
-        int(chat["id"]): str(chat.get("title") or "群聊")
-        for chat in chats
-        if isinstance(chat, dict)
-    }
+    chats = [
+        presentation.get("main_chat"),
+        *(presentation.get("participation_groups") or []),
+        *(presentation.get("required_chats") or []),
+    ]
+    return {int(chat["id"]): chat_title(chat) for chat in chats if isinstance(chat, dict)}
 
 
 def _threshold_shortfall_text(
@@ -67,5 +68,5 @@ def _threshold_shortfall_text(
 def _missing_groups_text(missing: list[str]) -> str:
     names = "、".join(missing[:2])
     if len(missing) > 2:
-        names += f"等 {len(missing)} 个群"
-    return f"请先加入：{names}"
+        names += f"等 {len(missing)} 个群/频道"
+    return f"请先加入群聊或关注频道：{names}"

@@ -11,6 +11,7 @@ from tg_lottery.application.query_invites import GroupInviteLinkStatus
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import OutboxState
 from tg_lottery.domain.rules import CampaignRules, GroupInviteRule
+from tg_lottery.telegram.bonus_rule_text import chat_title
 
 PAGE_SIZE = 6
 
@@ -133,14 +134,14 @@ def _configured_groups(campaign: object, rules: CampaignRules) -> list[dict[str,
     groups = [
         {
             "id": int(item["id"]),
-            "title": str(item.get("title") or item["id"]),
+            "title": chat_title(item),
             "join_url": item.get("join_url"),
         }
         for item in records
         if item.get("id") is not None and int(item["id"]) in enabled
     ]
     known = {int(item["id"]) for item in groups}
-    groups.extend({"id": chat_id, "title": str(chat_id)} for chat_id in enabled - known)
+    groups.extend({"id": chat_id, "title": "群聊（名称待更新）"} for chat_id in enabled - known)
     return groups
 
 
@@ -159,6 +160,8 @@ def _group_rows(
         return _missing_link_row(campaign, group, status, bonus_deadline=bonus_deadline)
     if getattr(stored, "revoked_at", None) is not None:
         return _revoked_link_row(campaign, group, bonus_deadline=bonus_deadline)
+    if _link_expired(stored):
+        return _missing_link_row(campaign, group, None, bonus_deadline=bonus_deadline)
     link = cipher.decrypt(stored.encrypted_url, context=f"invite-link:{stored.id}")
     route = status.route if status is not None else None
     referral = _referral_url(bot_username, route)
@@ -275,12 +278,9 @@ def _invite_link_note(
     *,
     bonus_deadline: datetime | None = None,
 ) -> str:
-    if (
-        status is not None
-        and status.link is not None
-        and getattr(status.link, "revoked_at", None) is not None
-    ):
-        return "；个人链接已撤销"
+    link_note = _unavailable_link_note(status)
+    if link_note:
+        return link_note
     if not campaign_link_active(campaign):
         return "；活动已截止，不再计算新增邀请加成"
     if bonus_deadline is not None and utcnow() > bonus_deadline:
@@ -333,7 +333,7 @@ def _activity_progress_lines(
     lines = ["", f"今日发言加成：{total} 次"]
     for item in activities:
         rule = rules.activity_rule_for(item.chat_id)
-        title = titles.get(item.chat_id, str(item.chat_id))
+        title = titles.get(item.chat_id, "群聊（名称待更新）")
         if item.chat_id in unavailable:
             lines.append(f"· {title}：⚠ {unavailable[item.chat_id]}")
         elif rule is not None:
@@ -361,7 +361,7 @@ def _activity_progress_line(title: str, rule: object, progress: object) -> str:
 def _group_titles(campaign: object) -> dict[int, str]:
     presentation = getattr(campaign, "presentation", {}) or {}
     return {
-        int(item["id"]): str(item.get("title") or item["id"])
+        int(item["id"]): chat_title(item)
         for item in presentation.get("participation_groups") or []
         if item.get("id") is not None
     }
@@ -378,3 +378,18 @@ def campaign_link_active(campaign: object) -> bool:
 
 def _link_creation_active(campaign: object, bonus_deadline: datetime | None) -> bool:
     return campaign_link_active(campaign) and (bonus_deadline is None or utcnow() <= bonus_deadline)
+
+
+def _link_expired(link: object) -> bool:
+    expires = getattr(link, "expire_at", None)
+    return expires is not None and expires <= utcnow()
+
+
+def _unavailable_link_note(status: GroupInviteLinkStatus | None) -> str:
+    if status is None or status.link is None:
+        return ""
+    if getattr(status.link, "revoked_at", None) is not None:
+        return "；个人链接已撤销"
+    if _link_expired(status.link):
+        return "；旧版邀请链接已过期，请使用可用的普通入群入口"
+    return ""

@@ -61,6 +61,7 @@ def new_draft(
         "required_chat_ids": [],
         "required_chat_refs": [],
         "required_chats": [],
+        "folder_link": "",
         "chat_message_thresholds": {},
         "cover_file_id": None,
         "description": "",
@@ -209,6 +210,7 @@ def _has_enabled_group_rule(data: dict[str, Any], kind: str) -> bool:
 
 def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
     keys = (
+        "folder_link",
         "cover_file_id",
         "description",
         "username_required",

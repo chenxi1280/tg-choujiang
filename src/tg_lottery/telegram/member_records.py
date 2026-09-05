@@ -8,6 +8,7 @@ from tg_lottery.application.participant_records import (
 from tg_lottery.domain.enums import InvitationState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.public_projection import (
     campaign_state_text,
     format_public_time,
@@ -52,7 +53,7 @@ async def show_ticket_record(
     if detail is None:
         raise UserFacingError("未找到你在该活动中的参与记录")
     await message.answer(
-        f"🎟 {detail.campaign_name} #{detail.public_ref[:6]}\n"
+        f"🎟 {detail.campaign_name}\n"
         f"活动状态: {campaign_state_text(detail.state)}\n"
         f"参与资格: {qualification_state_text(detail.qualification)}\n"
         f"开奖时间: {format_public_time(detail.draw_at, detail.timezone)}\n\n"
@@ -92,7 +93,7 @@ async def show_invitation_records(
     lines = [_record_line(row, records.timezone) for row in records.rows]
     body = "\n\n".join(lines) if lines else "本活动暂无邀请记录"
     await message.answer(
-        f"👥 {records.campaign_name} #{records.public_ref[:6]}｜{records.group_title}邀请记录\n"
+        f"👥 {records.campaign_name}｜{records.group_title}邀请记录\n"
         f"开奖：{format_public_time(records.draw_at, records.timezone)}\n"
         f"已生效 {records.valid}｜待验证 {records.pending}｜未生效 {records.invalid}\n\n"
         f"{body}",
@@ -128,7 +129,7 @@ async def show_invitation_groups(
     progress_by_chat = {item.chat_id: item for item in progress.invitations}
     selected, total_pages, visible = _group_page(groups, page)
     lines = [
-        f"👥 {campaign.name} #{campaign.public_ref[:6]}｜我的邀请记录",
+        f"👥 {campaign.name}｜我的邀请记录",
         f"开奖：{format_public_time(campaign.draw_at, campaign.timezone)}",
         "",
         "请选择一个群查看状态和未计入原因：",
@@ -246,7 +247,7 @@ def _record_page_callback(records: CampaignInvitationRecords, page: int) -> str:
 def _invite_groups(campaign: object, rules: CampaignRules) -> tuple[dict[str, object], ...]:
     presentation = getattr(campaign, "presentation", {}) or {}
     return tuple(
-        {"id": int(item["id"]), "title": str(item.get("title") or item["id"])}
+        {"id": int(item["id"]), "title": chat_title(item)}
         for item in presentation.get("participation_groups") or []
         if item.get("id") is not None and rules.invite_rule_for(int(item["id"])) is not None
     )

@@ -106,7 +106,7 @@ async def test_ops_bot_lists_campaigns_without_exposing_command_in_online_bot() 
 
     await _handler().handle(message)
 
-    assert "隔离测试 · ABC123XYZ0 · running" in message.answers[0]
+    assert "隔离测试 · ABC123XYZ0 · 进行中" in message.answers[0]
 
 
 async def test_ops_bot_identity_cannot_reuse_online_polling_bot(session_factory) -> None:

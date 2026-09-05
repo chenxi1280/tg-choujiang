@@ -10,6 +10,7 @@ from tg_lottery.application.query_invites import ReferralLanding
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram.public_projection import format_public_time
 
 if TYPE_CHECKING:
     from tg_lottery.telegram.member_flow import MemberFlow
@@ -33,6 +34,8 @@ async def show_referral_landing(flow: MemberFlow, message: Message, public_ref: 
             display_name=user.full_name,
         )
     text = _landing_text(landing, membership, now=utcnow())
+    if _group_url(flow, landing) is None:
+        text += "\n\n⚠ 入群入口当前不可用，请联系群管理员更新链接。"
     markup = _landing_keyboard(flow, landing, membership)
     await message.answer(text, reply_markup=markup)
 
@@ -55,7 +58,7 @@ async def _membership_state(
 
 
 def _landing_text(landing: ReferralLanding, membership: bool | None, *, now: datetime) -> str:
-    identity = f"{landing.campaign.name} #{landing.campaign.public_ref[:6]}"
+    identity = f"{landing.campaign.name}"
     if landing.campaign.state is CampaignState.CANCELLED:
         state = (
             "本次抽奖已经取消。\n"
@@ -77,7 +80,16 @@ def _landing_text(landing: ReferralLanding, membership: bool | None, *, now: dat
             f"你仍可加入「{landing.target.title_snapshot}」，"
             "但不会再给邀请人增加本期抽奖次数。"
         )
-    return f"👥 {identity}\n\n{state}\n\n加入该群不等于自动报名本次抽奖。"
+    timezone = landing.campaign.timezone
+    deadline = format_public_time(landing.route.bonus_join_deadline, timezone)
+    draw_at = format_public_time(landing.campaign.draw_at, timezone)
+    verification = "\n⚠ 暂时无法核验你是否已在群内，入群后仍需核验。" if membership is None else ""
+    return (
+        f"👥 {identity}\n\n{state}{verification}\n\n"
+        f"最晚计奖入群时间：{deadline}\n开奖时间：{draw_at}\n\n"
+        "加入该群不等于自动报名本次抽奖。\n"
+        "此邀请入口仅属于本次抽奖，结束后仍可入群，不计入下次抽奖。"
+    )
 
 
 def _bonus_active(landing: ReferralLanding, now: datetime) -> bool:
@@ -97,7 +109,7 @@ def _landing_keyboard(
     if group_url:
         label = "打开群聊" if membership is True else f"加入 {landing.target.title_snapshot}"
         rows.append([InlineKeyboardButton(text=label, url=group_url)])
-    if landing.campaign.state is CampaignState.CANCELLED:
+    if not _registration_open(landing, utcnow()):
         rows.append([InlineKeyboardButton(text="查看我的参与记录", callback_data="nav:join")])
         return InlineKeyboardMarkup(inline_keyboard=rows)
     ref = landing.campaign.public_ref
@@ -118,8 +130,18 @@ def _landing_keyboard(
 
 def _group_url(flow: MemberFlow, landing: ReferralLanding) -> str | None:
     link = landing.link
-    if link is not None and link.encrypted_url is not None and link.revoked_at is None:
+    expires = getattr(link, "expire_at", None)
+    usable = expires is None or expires > utcnow()
+    if link is not None and link.encrypted_url is not None and link.revoked_at is None and usable:
         return flow._cipher.decrypt(link.encrypted_url, context=f"invite-link:{link.id}")
     if landing.target.public_join_url:
         return landing.target.public_join_url
     return None
+
+
+def _registration_open(landing: ReferralLanding, now: datetime) -> bool:
+    return (
+        landing.campaign.state
+        in {CampaignState.SCHEDULED, CampaignState.RUNNING, CampaignState.PAUSED}
+        and now <= landing.campaign.cutoff_at
+    )

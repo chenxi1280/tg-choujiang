@@ -8,6 +8,7 @@ from tg_lottery.application.campaign_targets import QualificationTarget
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import QualificationState
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
 from tg_lottery.telegram.member_popups import failure_reply_text
 
 
@@ -29,9 +30,12 @@ def draw_rule(rules: CampaignRules) -> str:
     return "开奖方式: 定时开奖"
 
 
-def human_rule(rules: CampaignRules) -> str:
+def human_rule(rules: CampaignRules, chats: tuple[dict[str, object], ...] = ()) -> str:
     if not rules.bonus_types:
         return "抽奖加成: 关闭，仅计算基础抽奖次数"
+    if rules.group_invite_rules or rules.group_activity_rules:
+        lines = per_group_bonus_lines(rules, chats)
+        return "抽奖加成（各群独立累计）:\n" + "\n".join(lines)
     parts = []
     if rules.invite_bonus_enabled:
         parts.append(invite_rule_text(rules))
@@ -86,9 +90,10 @@ def condition_action(chat: dict[str, object]) -> str:
 
 
 def condition_instruction(chat: dict[str, object], rules: CampaignRules) -> str:
-    instruction = f"请{condition_action(chat)}「{chat['title']}」"
-    if rules.activity_bonus_enabled and chat.get("type") != "channel":
-        instruction += f"；本群每天需发送 {rules.activity.message_threshold} 条有效消息"
+    instruction = f"请{condition_action(chat)}「{chat_title(chat)}」"
+    threshold = rules.message_thresholds.get(str(chat["id"]))
+    if threshold and chat.get("type") != "channel":
+        instruction += f"；报名需在本群累计发言至少 {threshold} 条"
     return instruction + "，完成加入后点击验证资格。"
 
 

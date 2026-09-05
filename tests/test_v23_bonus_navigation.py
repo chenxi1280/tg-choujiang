@@ -55,7 +55,8 @@ async def test_v23_bonus_navigation_separates_categories_and_group_details() -> 
     )
 
     callbacks = [row[0].callback_data for row in overview_keyboard.inline_keyboard]
-    assert "双加成活动 #AbCdEf" in overview
+    assert "双加成活动" in overview
+    assert "AbCdEf" not in overview
     assert callbacks[:2] == [
         "member:bonus_invites:AbCdEfGhIjKlMnOpQrSt-_:0",
         "member:bonus_activity:AbCdEfGhIjKlMnOpQrSt-_:0",

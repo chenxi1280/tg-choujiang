@@ -14,6 +14,7 @@ from tg_lottery.application.winner_designations import (
 )
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.infrastructure.db import Campaign, Prize
+from tg_lottery.telegram.public_projection import campaign_state_text
 
 _HELP_TEXT = """隔离开奖运维入口
 
@@ -32,7 +33,7 @@ class OpsWinnerDesignationHandler:
         service: WinnerDesignationService,
         queries: QueryService,
         allowed_user_ids: frozenset[int],
-        source_bot_id: int,
+        source_bot_id: int | None,
     ) -> None:
         self._service = service
         self._queries = queries
@@ -55,6 +56,11 @@ class OpsWinnerDesignationHandler:
             await message.answer(f"操作失败：{exc.public_message}")
             return
         await message.answer(result)
+
+    async def execute(self, text: str, *, actor_user_id: int) -> str:
+        if actor_user_id not in self._allowed_user_ids:
+            raise UserFacingError("无权访问此运维入口")
+        return await self._dispatch(text, actor_user_id=actor_user_id)
 
     async def _dispatch(self, text: str, *, actor_user_id: int) -> str:
         command, arguments = _command(text)
@@ -138,7 +144,9 @@ def _campaigns_text(rows: tuple[DesignationCampaignView, ...]) -> str:
     if not rows:
         return "当前没有可设置的活动。"
     lines = ["可设置活动："]
-    lines.extend(f"• {row.name} · {row.public_ref} · {row.state.value}" for row in rows)
+    lines.extend(
+        f"• {row.name} · {row.public_ref} · {campaign_state_text(row.state)}" for row in rows
+    )
     return "\n".join(lines)
 
 

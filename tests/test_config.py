@@ -69,3 +69,13 @@ def test_ops_bot_explicit_id_must_match_token() -> None:
             ops_admin_ids="101",
             database_url="postgresql+asyncpg://user:password@db/app",
         )
+
+
+@pytest.mark.parametrize(
+    "field", ["guide_channel_url", "navigation_channel_url", "featured_channel_url"]
+)
+def test_channel_links_accept_telegram_channel_or_help_post(field) -> None:
+    assert getattr(_settings(**{field: "https://t.me/lottery_test/3"}), field).endswith("/3")
+    assert getattr(_settings(**{field: ""}), field) == ""
+    with pytest.raises(ValidationError, match="channel URL"):
+        _settings(**{field: "https://example.com/fake-channel"})

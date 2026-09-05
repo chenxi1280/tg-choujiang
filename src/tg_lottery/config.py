@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Annotated
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from pydantic import Field, field_validator, model_validator
@@ -24,6 +25,27 @@ class Settings(BaseSettings):
     qualification_requests_per_second: float = Field(default=20, ge=1, le=30)
     release_sha: str = "unknown"
     release_id: str = "unknown"
+    guide_channel_url: str = ""
+    navigation_channel_url: str = ""
+    featured_channel_url: str = ""
+
+    @field_validator("guide_channel_url", "navigation_channel_url", "featured_channel_url")
+    @classmethod
+    def valid_channel_url(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            return value
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme != "https"
+            or parsed.netloc != "t.me"
+            or not parsed.path.strip("/")
+            or parsed.query
+            or parsed.fragment
+            or any(char.isspace() for char in value)
+        ):
+            raise ValueError("channel URL must be an https://t.me/ channel or message link")
+        return value
 
     @field_validator("admin_ids", mode="before")
     @classmethod

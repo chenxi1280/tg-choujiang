@@ -11,6 +11,7 @@ _PRIVATE_COMMANDS = (
     BotCommand(command="new", description="创建抽奖"),
     BotCommand(command="index", description="抽奖管理"),
     BotCommand(command="join", description="我参加的抽奖"),
+    BotCommand(command="help", description="使用指南与频道入口"),
     BotCommand(command="region", description="设置归属地区"),
     BotCommand(command="myid", description="查看我的用户ID"),
 )

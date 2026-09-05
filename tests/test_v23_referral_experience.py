@@ -189,16 +189,21 @@ async def test_personal_route_is_stable_and_underlying_link_stays_persistent(
     )
 
 
-async def test_revoked_underlying_link_rotates_without_changing_public_route(
+@pytest.mark.parametrize("unusable", ["revoked", "expired"])
+async def test_unusable_underlying_link_rotates_without_changing_public_route(
     session_factory,
+    unusable,
 ) -> None:
     service, campaign_id, _ = await _requested_route(session_factory)
     cipher = _cipher()
     await _project_latest_link(session_factory, cipher, "https://t.me/+version-one")
     async with session_factory() as session, session.begin():
         current = await session.scalar(select(InviteLink).where(InviteLink.is_current.is_(True)))
-        current.revoked_at = datetime.now(UTC)
-        current.revoked_reason = "explicit_remote_revoke"
+        if unusable == "revoked":
+            current.revoked_at = datetime.now(UTC)
+            current.revoked_reason = "explicit_remote_revoke"
+        else:
+            current.expire_at = datetime.now(UTC) - timedelta(seconds=1)
 
     await service.request_group_invite_link(campaign_id, 201, -100123, bot_username=BOT_USERNAME)
     await _project_latest_link(session_factory, cipher, "https://t.me/+version-two")

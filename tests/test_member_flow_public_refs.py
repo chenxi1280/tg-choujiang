@@ -216,7 +216,8 @@ async def test_condition_page_distinguishes_channel_and_supports_navigation() ->
 
     await flow.show_condition(message, PUBLIC_REF, 2)
 
-    assert "本群每天需发送 10 条有效消息" in message.texts[-1]
+    assert "请加入群聊" in message.texts[-1]
+    assert "每天需发送" not in message.texts[-1]
 
 
 async def test_missing_target_page_lists_multiple_join_links_and_unknown_separately() -> None:

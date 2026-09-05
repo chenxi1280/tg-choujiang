@@ -155,15 +155,19 @@ async def _ensure_campaign_card(
         for item in _conditions(campaign.presentation)
     ):
         return
-    business_key = f"publish:{campaign.id}:{campaign.config_revision}"
-    existing = await session.scalar(
-        select(TelegramOutbox.id).where(TelegramOutbox.business_key == business_key)
-    )
-    if existing:
-        return
     group = await session.get(Group, campaign.group_id)
     if group is None:
         raise RuntimeError("campaign group disappeared before publication")
+    business_key = f"publish:{campaign.id}:{campaign.config_revision}:{group.chat_id}"
+    existing = await session.scalar(
+        select(TelegramOutbox.id).where(
+            TelegramOutbox.business_key.in_(
+                (business_key, f"publish:{campaign.id}:{campaign.config_revision}")
+            )
+        )
+    )
+    if existing:
+        return
     prizes = tuple(
         await session.scalars(
             select(Prize).where(Prize.campaign_id == campaign.id).order_by(Prize.position)
@@ -298,6 +302,14 @@ async def _ensure_multi_group_cards(
     if not rows:
         raise RuntimeError("campaign has no participation groups")
     for _, chat_id in rows:
+        existing = await session.scalar(
+            select(TelegramOutbox.id).where(
+                TelegramOutbox.business_key
+                == f"publish:{campaign.id}:{campaign.config_revision}:{chat_id}"
+            )
+        )
+        if existing is not None:
+            continue
         add_campaign_card_outbox(
             session,
             campaign=campaign,

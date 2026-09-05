@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
-from tg_lottery.telegram.creator_views import main_keyboard
+from tg_lottery.telegram.help_views import GUIDE_TEXT, HelpLinks, guide_keyboard
 from tg_lottery.telegram.member_records import show_ticket_record
 from tg_lottery.telegram.participant_list_views import (
     build_participated_campaign_list,
@@ -52,6 +52,7 @@ REGIONS = (
     "台湾",
 )
 _REGION_COLUMNS = 3
+_DEFAULT_HELP_LINKS = HelpLinks()
 
 
 class PersonalFlow:
@@ -62,21 +63,18 @@ class PersonalFlow:
         queries: QueryService,
         bot_username: str,
         default_timezone: str = "Asia/Shanghai",
+        help_links: HelpLinks = _DEFAULT_HELP_LINKS,
     ) -> None:
         self._profiles = profiles
         self._queries = queries
         self._bot_username = bot_username
         self._default_timezone = default_timezone
+        self._help_links = help_links
 
     async def show_guide(self, message: Message) -> None:
         await message.answer(
-            "📖 抽奖机器人使用指南\n\n"
-            "/index  抽奖管理主菜单\n"
-            "/new    创建一个抽奖活动\n"
-            "/join   查看我参加的抽奖\n"
-            "/region 设置我的归属地区\n"
-            "/myid   查看我自己的用户ID",
-            reply_markup=main_keyboard(),
+            GUIDE_TEXT,
+            reply_markup=guide_keyboard(self._help_links),
         )
 
     async def handle_command(self, message: Message, text: str) -> bool:
@@ -84,6 +82,7 @@ class PersonalFlow:
             return False
         command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]
         handlers = {
+            "/help": self.show_guide,
             "/index": self.show_index,
             "/join": self.show_joined,
             "/region": self.show_regions,
@@ -96,8 +95,8 @@ class PersonalFlow:
         return True
 
     async def handle_callback(self, query: CallbackQuery, data: str) -> bool:
-        message = query.message
-        if not isinstance(message, Message):
+        message = _personal_callback_message(query, data)
+        if message is None:
             return False
         if data.startswith("nav:created:"):
             await self._show_created(message, data.removeprefix("nav:created:"))
@@ -122,6 +121,7 @@ class PersonalFlow:
             await self._set_region(query, data.removeprefix("profile:region:"))
             return True
         handlers = {
+            "nav:help": self.show_guide,
             "nav:index": self.show_index,
             "nav:join": self.show_joined,
             "nav:invites": self.show_invitation_campaigns,
@@ -139,12 +139,11 @@ class PersonalFlow:
         summary = await self._queries.admin_campaign_summary(user.id)
         await message.answer(
             "🎁 抽奖管理\n\n"
-            "客户等级：尚未配置等级规则\n"
             f"累计创建：{summary.total}\n"
             f"进行中：{summary.active}\n"
             f"已开奖：{summary.drawn}\n"
             f"已取消：{summary.cancelled}",
-            reply_markup=_index_keyboard(self._bot_username),
+            reply_markup=_index_keyboard(self._bot_username, self._help_links),
         )
 
     async def show_joined(
@@ -217,7 +216,9 @@ class PersonalFlow:
         await message.edit_text(_region_success_text(profile, self._default_timezone))
 
 
-def _index_keyboard(bot_username: str) -> InlineKeyboardMarkup:
+def _index_keyboard(
+    bot_username: str, links: HelpLinks = _DEFAULT_HELP_LINKS
+) -> InlineKeyboardMarkup:
     group_url = f"https://t.me/{bot_username}?startgroup=lottery"
     channel_url = f"https://t.me/{bot_username}?startchannel=lottery"
     return InlineKeyboardMarkup(
@@ -236,6 +237,8 @@ def _index_keyboard(bot_username: str) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="添加到群组", url=group_url),
                 InlineKeyboardButton(text="添加到频道", url=channel_url),
             ],
+            [InlineKeyboardButton(text="📖 使用指南", callback_data="nav:help")],
+            *links.rows(),
         ]
     )
 
@@ -263,3 +266,12 @@ def _user(message: Message):
     if message.from_user is None:
         raise ValueError("Telegram message has no sender")
     return message.from_user
+
+
+def _personal_callback_message(query: CallbackQuery, data: str) -> Message | None:
+    message = query.message
+    if not isinstance(message, Message) or not data.startswith(("nav:", "profile:")):
+        return None
+    if message.chat.type != "private" or message.chat.id != query.from_user.id:
+        return None
+    return message.model_copy(update={"from_user": query.from_user})

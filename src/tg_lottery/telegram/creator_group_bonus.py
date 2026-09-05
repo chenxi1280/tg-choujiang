@@ -5,6 +5,7 @@ from typing import Any
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import GroupActivityRule, GroupInviteRule
 from tg_lottery.telegram import creator_bonus_copy as bonus_copy
+from tg_lottery.telegram.bonus_rule_text import chat_title
 
 ButtonRows = list[list[tuple[str, str]]]
 PAGE_SIZE = 6
@@ -368,8 +369,8 @@ def _rule_row_summary(kind: str, rule: dict[str, Any]) -> str:
 def _group_title(data: dict[str, Any], chat_id: int) -> str:
     for group in data.get("participation_groups") or []:
         if int(group["id"]) == chat_id:
-            return str(group.get("title") or chat_id)
-    return str(chat_id)
+            return chat_title(group)
+    return chat_title({"id": chat_id})
 
 
 def _parse_group_action(action: str) -> tuple[str, int]:

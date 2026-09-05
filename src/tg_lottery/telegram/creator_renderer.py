@@ -10,6 +10,7 @@ from tg_lottery.application.admin_sessions import AdminSessionService, DraftPane
 from tg_lottery.application.callback_tokens import CallbackRequest, CallbackTokenService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.infrastructure.db import Group
+from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.creator_group_availability import (
     GroupAvailability,
     inspect_group_availability,
@@ -217,11 +218,12 @@ def _group_button_text(
     *,
     parallel_count: int,
 ) -> str:
+    title = chat_title({"id": group.chat_id, "title": group.title})
     if not status.selectable:
-        return f"⚠ {group.title}（{group.chat_id}）｜{status.status}"
+        return f"⚠ {title}｜{status.status}"
     prefix = "✅ " if selected else "⬜ "
     parallel = f"｜另有 {parallel_count} 个进行中活动" if parallel_count else ""
-    return prefix + f"{group.title}（{group.chat_id}）" + parallel
+    return prefix + title + parallel
 
 
 def _group_page_rows(page: int, maximum: int) -> ButtonRows:

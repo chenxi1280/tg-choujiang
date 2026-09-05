@@ -413,7 +413,7 @@ def _required_group(context: BonusViewContext, chat_id: int) -> dict[str, object
 
 def _header(campaign: object, title: str) -> str:
     return (
-        f"🔋 {title}\n活动：{campaign.name} #{campaign.public_ref[:6]}\n"
+        f"🔋 {title}\n活动：{campaign.name}\n"
         f"开奖：{format_public_time(campaign.draw_at, campaign.timezone)}"
     )
 

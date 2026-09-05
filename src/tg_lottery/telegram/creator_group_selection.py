@@ -28,7 +28,7 @@ async def resolve_participation_groups(
             validate_activity_target(record, activity_enabled=enabled)
             records.append(record | {"position": position})
         except UserFacingError as exc:
-            errors.append(f"· {chat_id}：{exc.public_message}")
+            errors.append(f"· 第 {position} 个参与群：{exc.public_message}")
     if errors:
         raise UserFacingError("以下参与群需要处理：\n" + "\n".join(errors))
     return records
@@ -62,8 +62,9 @@ async def resolve_requirements(
     records: list[dict[str, Any]] = []
     seen = set(selected_chat_ids(data))
     activity_enabled = "activity" in data.get("bonus_types", [])
+    activity_chat_ids = configured_activity_chat_ids(data)
     errors = []
-    for ref in refs:
+    for position, ref in enumerate(refs, start=1):
         try:
             record = await resolve_required_chat(bot, ref, admin_user_id=creator_user_id)
             chat_id = int(record["id"])
@@ -71,11 +72,14 @@ async def resolve_requirements(
                 raise UserFacingError(
                     f"目标「{record['title']}」同时被选为参与群和准入条件，请只保留一种用途"
                 )
-            validate_activity_target(record, activity_enabled=activity_enabled)
+            enabled = activity_enabled and (
+                activity_chat_ids is None or chat_id in activity_chat_ids
+            )
+            validate_activity_target(record, activity_enabled=enabled)
             seen.add(chat_id)
             records.append(record | {"position": len(records) + 1})
         except UserFacingError as exc:
-            errors.append(f"· {ref}：{exc.public_message}")
+            errors.append(f"· 第 {position} 个准入条件：{exc.public_message}")
     if errors:
         raise UserFacingError("以下准入条件需要处理：\n" + "\n".join(errors))
     return records

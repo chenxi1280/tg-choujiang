@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram.bonus_rule_text import chat_title
 
 ButtonRows = list[list[tuple[str, str]]]
 PAGE_SIZE = 6
@@ -208,7 +209,7 @@ def _target_label(
     marker = "✅" if chat_id in targets else "⬜"
     existing = chat_id in {int(value) for value in (data.get(f"group_{kind}_rules") or {})}
     status = "将覆盖现有设置" if existing else "当前关闭"
-    return f"{marker} {group.get('title') or chat_id}｜{status}"
+    return f"{marker} {chat_title(group)}｜{status}"
 
 
 def _rule_summary(kind: str, rule: dict[str, Any]) -> str:
@@ -224,7 +225,10 @@ def _rule_summary(kind: str, rule: dict[str, Any]) -> str:
         if rule["daily_cap_mode"] == "unlimited"
         else f"每日上限 {rule['daily_max_cycles']} 次"
     )
-    return f"每 {rule['messages_per_cycle']} 条 +1、至少 {rule['min_text_length']} 字，{cap}"
+    return (
+        f"每 {rule['messages_per_cycle']} 条 +{rule.get('reward_tickets', 1)}、"
+        f"至少 {rule['min_text_length']} 字，{cap}"
+    )
 
 
 def _last_cap(kind: str, rule: dict[str, Any]) -> int:
@@ -239,8 +243,8 @@ def _kind_title(kind: str) -> str:
 def _group_title(data: dict[str, Any], chat_id: int) -> str:
     for group in data.get("participation_groups") or []:
         if int(group["id"]) == chat_id:
-            return str(group.get("title") or chat_id)
-    return str(chat_id)
+            return chat_title(group)
+    return chat_title({"id": chat_id})
 
 
 def _required_copy_state(data: dict[str, Any]) -> dict[str, Any]:

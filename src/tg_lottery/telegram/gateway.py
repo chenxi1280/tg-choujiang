@@ -10,7 +10,9 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import InviteLink
+from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway_requests import GatewayRequest
 from tg_lottery.telegram.public_projection import public_timezone_label
@@ -279,6 +281,9 @@ def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
     rows.append(
         [InlineKeyboardButton(text="查看加入入口", url=_campaign_deep_link(payload, "join"))]
     )
+    folder_link = payload.get("presentation", {}).get("folder_link")
+    if folder_link:
+        rows.append([InlineKeyboardButton(text="🗂 一键加入群和频道", url=str(folder_link))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -337,7 +342,7 @@ def _requirement_lines(payload: dict[str, Any]) -> list[str]:
 
 
 def _chat_requirement_lines(chat: dict[str, Any], thresholds: dict[int, int]) -> list[str]:
-    label = html.escape(str(chat.get("title") or "群聊/频道"))
+    label = html.escape(chat_title(chat))
     url = chat.get("join_url")
     verb = "关注" if chat.get("type") == "channel" else "加入"
     if url:
@@ -347,7 +352,7 @@ def _chat_requirement_lines(chat: dict[str, Any], thresholds: dict[int, int]) ->
         lines = [f"🎫 {verb}-{label}（入口见下方按钮）"]
     need = thresholds.get(int(chat["id"]))
     if need and chat.get("type") != "channel":
-        lines.append(f"└ 🎟️ 发言数大于 <b>{need}</b> 条")
+        lines.append(f"└ 🎟️ 累计发言至少 <b>{need}</b> 条")
     return lines
 
 
@@ -363,6 +368,11 @@ def _draw_time(payload: dict[str, Any]) -> str:
 
 def _bonus_line(payload: dict[str, Any]) -> str:
     rules = payload.get("rules", {})
+    if rules.get("group_invite_rules") or rules.get("group_activity_rules"):
+        lines = per_group_bonus_lines(
+            CampaignRules.model_validate(rules), _campaign_conditions(payload)
+        )
+        return "\n" + "\n".join(html.escape(line) for line in lines) if lines else ""
     bonus_types = rules.get("bonus_types") or ()
     parts = []
     if "invite" in bonus_types:

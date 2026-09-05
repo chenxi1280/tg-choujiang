@@ -23,16 +23,18 @@ def build_participated_campaign_list(
     empty = "当前分类没有可显示的邀请活动" if invitation_only else "当前分类没有参与记录"
     lines = [title, ""]
     if page.rows:
-        lines.extend(_campaign_line(row) for row in page.rows)
+        lines.extend(
+            _campaign_line(row, position=position) for position, row in enumerate(page.rows, 1)
+        )
     else:
         lines.append(empty)
     lines.extend(["", f"第 {page.page + 1}/{page.total_pages} 页"])
     return "\n".join(lines), _campaign_list_keyboard(page, invitation_only=invitation_only)
 
 
-def _campaign_line(row: object) -> str:
+def _campaign_line(row: object, *, position: int) -> str:
     return (
-        f"• {row.name} #{row.public_ref[:6]}｜{campaign_state_text(row.state)}｜"
+        f"{position}. {row.name}｜{campaign_state_text(row.state)}｜"
         f"{row.tickets} 次｜{qualification_state_text(row.qualification)}\n"
         f"  开奖 {format_public_time(row.draw_at, row.timezone)}"
     )
@@ -43,7 +45,10 @@ def _campaign_list_keyboard(
 ) -> InlineKeyboardMarkup:
     prefix = "nav:invites" if invitation_only else "nav:join"
     rows = [_category_row(prefix, page.category)]
-    rows.extend(_campaign_button(row, invitation_only=invitation_only) for row in page.rows)
+    rows.extend(
+        _campaign_button(row, invitation_only=invitation_only, position=position)
+        for position, row in enumerate(page.rows, 1)
+    )
     navigation = _page_row(
         prefix,
         category=page.category,
@@ -66,13 +71,15 @@ def _category_row(prefix: str, selected: str) -> list[InlineKeyboardButton]:
     ]
 
 
-def _campaign_button(row: object, *, invitation_only: bool) -> list[InlineKeyboardButton]:
+def _campaign_button(
+    row: object, *, invitation_only: bool, position: int
+) -> list[InlineKeyboardButton]:
     callback = (
         f"member:invites:{row.public_ref}:0" if invitation_only else f"nav:joined:{row.public_ref}"
     )
     return [
         InlineKeyboardButton(
-            text=f"{row.name[:24]} #{row.public_ref[:6]}｜{row.tickets} 次",
+            text=f"{position}. {row.name[:24]}｜{row.tickets} 次",
             callback_data=callback,
         )
     ]

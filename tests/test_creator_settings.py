@@ -411,3 +411,27 @@ def _message(text: str):
         from_user=SimpleNamespace(id=201),
         chat=SimpleNamespace(id=201),
     )
+
+
+async def test_per_group_activity_does_not_require_speech_in_join_only_groups() -> None:
+    bot = RequiredChatBot()
+    original_get_chat = bot.get_chat
+
+    async def get_chat(ref):
+        chat = await original_get_chat(ref)
+        chat.permissions.can_send_messages = False
+        return chat
+
+    bot.get_chat = get_chat
+    records = await resolve_requirements(
+        bot,
+        {
+            "chat_id": -1001,
+            "required_chat_refs": ["@public_group"],
+            "bonus_types": ["activity"],
+            "group_activity_rules": {"-1001": {"enabled": True}},
+        },
+        creator_user_id=201,
+    )
+    assert records[0]["id"] == -1002
+    assert records[0]["member_can_send_messages"] is False

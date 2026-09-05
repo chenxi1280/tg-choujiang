@@ -154,7 +154,7 @@ async def _next_link_version(session: object, route_id: UUID) -> int | None:
         )
         .with_for_update()
     )
-    if link is not None and link.revoked_at is None:
+    if link is not None and _link_usable(link):
         return None
     if link is not None:
         link.is_current = False
@@ -162,6 +162,10 @@ async def _next_link_version(session: object, route_id: UUID) -> int | None:
         select(func.max(InviteLink.version)).where(InviteLink.referral_route_id == route_id)
     )
     return int(latest or 0) + 1
+
+
+def _link_usable(link: InviteLink) -> bool:
+    return link.revoked_at is None and (link.expire_at is None or link.expire_at > utcnow())
 
 
 async def _existing_link_request(session: object, business_key: str) -> bool:

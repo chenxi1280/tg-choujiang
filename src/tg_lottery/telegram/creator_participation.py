@@ -86,6 +86,7 @@ def participation_rows(data: dict[str, Any]) -> ButtonRows:
         )
     start = page * PARTICIPATION_PAGE_SIZE
     rows.extend(_threshold_rows(data, chats[start : start + PARTICIPATION_PAGE_SIZE]))
+    rows.append([("🗂 组合分享链接", "draft_folder_link")])
     rows.append([("↩ 返回上一层", "draft_back")])
     return rows
 
@@ -163,6 +164,7 @@ def participation_text(data: dict[str, Any]) -> str:
         "📮 准入条件（必须全部满足）",
         "参与活动的群会另行全部校验。",
         "可一次发送一个或多个群聊/频道链接。",
+        _folder_status(data),
     ]
     main_line = _main_chat_line(data, thresholds)
     if main_line is not None:
@@ -189,6 +191,11 @@ def participation_text(data: dict[str, Any]) -> str:
 
 def participation_delete_text(data: dict[str, Any]) -> str:
     return participation_text(data) + "\n\n请回复要删除的编号，多个编号用逗号分隔。"
+
+
+def _folder_status(data: dict[str, Any]) -> str:
+    status = "已设置（仍逐项核验）" if data.get("folder_link") else "未设置（选填）"
+    return f"组合分享链接：{status}"
 
 
 def parse_positions(value: str, count: int) -> tuple[int, ...]:

@@ -144,7 +144,7 @@ def test_campaign_card_explains_per_group_messages_and_channel_following() -> No
     assert "加入-协作群" in text
     assert "关注-公告频道" in text
     assert text.count("入口见下方按钮") == 3
-    assert text.count("发言数大于 <b>10</b> 条") == 2
+    assert text.count("累计发言至少 <b>10</b> 条") == 2
     assert "🔋 <b>抽奖加成" in text
     assert "每日发言满10条+2次" in text
 
@@ -362,7 +362,7 @@ async def test_campaign_card_matches_lotterybest_format() -> None:
     assert "广东" in text
     assert "🪪 必须设置用户名" in text
     assert '🎫 加入-<a href="https://t.me/welfare_group">福利群</a>' in text
-    assert "发言数大于 <b>10</b> 条" in text
+    assert "累计发言至少 <b>10</b> 条" in text
     assert "🎁 <b>奖品内容" in text
     assert "💰️ 一等奖" in text
     assert "<b>2</b>" in text

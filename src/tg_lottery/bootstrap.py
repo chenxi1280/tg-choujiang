@@ -25,6 +25,7 @@ from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_renderer import CreatorRenderer
 from tg_lottery.telegram.creator_settings import CreatorSettings
 from tg_lottery.telegram.crypto import SecretCipher
+from tg_lottery.telegram.help_views import HelpLinks
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.personal_flow import PersonalFlow
 from tg_lottery.telegram.update_handler import LotteryUpdateHandler
@@ -110,6 +111,11 @@ def build_update_handler(container: Container, bot_username: str) -> LotteryUpda
         queries=services.queries,
         bot_username=bot_username,
         default_timezone=container.settings.timezone,
+        help_links=HelpLinks(
+            guide=container.settings.guide_channel_url,
+            navigation=container.settings.navigation_channel_url,
+            featured=container.settings.featured_channel_url,
+        ),
     )
     return LotteryUpdateHandler(
         bot=container.bot,

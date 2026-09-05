@@ -294,7 +294,7 @@ class MemberFlow:
             "奖品: " + "、".join(f"{item.name} × {item.winner_count}" for item in prizes),
             f"开奖时间: {format_public_time(campaign.draw_at, campaign.timezone)}",
             member_condition_views.draw_rule(rules),
-            member_condition_views.human_rule(rules),
+            member_condition_views.human_rule(rules, member_condition_views.conditions(campaign)),
             f"发奖人员: {member_condition_views.issuer_name(campaign)}",
             member_condition_views.deletion_rule(campaign),
             member_condition_views.condition_summary(campaign),

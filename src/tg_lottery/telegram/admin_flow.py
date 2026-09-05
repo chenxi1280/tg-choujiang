@@ -16,8 +16,10 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.application.winners import WinnerService
 from tg_lottery.domain.enums import CampaignState, OutboxState, PrizeClaimState
 from tg_lottery.telegram.admin_authorization import verify_chat_admin
+from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.public_projection import campaign_state_text
+from tg_lottery.telegram.publication_error_text import publication_error_text
 
 DRAW_CONFIRMATION_TEXT = "开奖结果已生成, 群公告和中奖通知正在发送。"
 
@@ -200,9 +202,9 @@ class AdminFlow:
         await self._verify_admin(campaign_id, query.from_user.id)
         issues = await self._queries.publication_issues(campaign_id)
         if not issues:
-            await _message(query).answer("当前没有明确失败或远端结果未知的参与群。")
+            await _message(query).answer("当前没有明确失败或远端结果未知的群或频道。")
             return
-        await _message(query).answer(_issues_text("发布异常群：", issues))
+        await _message(query).answer(_issues_text("发布异常的群或频道：", issues))
 
     async def _retry_qualification(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         campaign_id = _campaign_id(grant)
@@ -226,8 +228,8 @@ class AdminFlow:
             "draw": "立即开奖",
             "cancel": "取消",
             "refresh_publication": "🔄 刷新发布状态",
-            "publication_issues": "查看失败/未知群",
-            "retry_publication": "重试明确失败群",
+            "publication_issues": "查看发布异常",
+            "retry_publication": "重试明确失败项",
             "retry_qualification": "重新复核资格",
         }
         tokens = await self._tokens.create_many(
@@ -247,7 +249,7 @@ class AdminFlow:
             f"待验证邀请: {stats.pending_invitations}\n总抽奖次数: {stats.tickets}\n"
             f"送达: 已确认 {deliveries.confirmed} / 待处理 {deliveries.pending} / "
             f"失败 {deliveries.failed} / 未知 {deliveries.unknown}"
-        )
+        ) + _publication_status_note(campaign)
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
         await message.answer(text, reply_markup=keyboard)
 
@@ -354,7 +356,10 @@ def _issues_text(title: str, issues: tuple[PublicationIssue, ...]) -> str:
     lines = [title]
     for issue in issues:
         state = _publication_issue_state(issue.state)
-        lines.append(f"• {issue.title}（{issue.chat_id}）\n  {state}：{issue.error[:160]}")
+        name = chat_title({"id": issue.chat_id, "title": issue.title})
+        reason = publication_error_text(issue.error)
+        stage = "生成加入入口" if issue.operation == "create_required_chat_invite" else "发送活动卡"
+        lines.append(f"• {name} · {stage}\n  {state}：{reason}")
     return "\n".join(lines)
 
 
@@ -362,3 +367,11 @@ def _publication_issue_state(state: OutboxState) -> str:
     if state is OutboxState.PRE_ACCEPT_FAILED:
         return "明确失败，可安全重试"
     return "远端结果未知，不会自动重试"
+
+
+def _publication_status_note(campaign: object) -> str:
+    if campaign.state is not CampaignState.PUBLISHING:
+        return ""
+    if campaign.cutoff_at <= utcnow():
+        return "\n\n活动已过截止时间，但发布尚未完成。请取消此活动后创建新的抽奖。"
+    return "\n\n全部参与群活动卡确认送达后才正式开始；入口生成异常也会显示在发布异常中。"

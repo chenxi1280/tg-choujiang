@@ -28,13 +28,17 @@ async def retry_failed_publication(
         await require_campaign_admin(uow.session, campaign_id=campaign_id, user_id=actor_user_id)
         if campaign.state is not CampaignState.PUBLISHING:
             raise UserFacingError("活动当前不在投放中, 不能重试发布")
+        if campaign.cutoff_at <= utcnow():
+            raise UserFacingError("活动已过截止时间, 无法重新发布; 请取消此活动后创建新的抽奖")
         rows = (
             await uow.session.scalars(
                 select(TelegramOutbox)
                 .where(
                     TelegramOutbox.aggregate_type == "campaign",
                     TelegramOutbox.aggregate_id == str(campaign_id),
-                    TelegramOutbox.operation == "send_campaign_card",
+                    TelegramOutbox.operation.in_(
+                        ("send_campaign_card", "create_required_chat_invite")
+                    ),
                     TelegramOutbox.state == OutboxState.PRE_ACCEPT_FAILED,
                 )
                 .with_for_update()

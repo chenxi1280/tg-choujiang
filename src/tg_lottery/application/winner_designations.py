@@ -76,7 +76,7 @@ class WinnerDesignationService:
         prize_slot_no: int,
         participant_reference: str,
         actor_user_id: int,
-        source_bot_id: int,
+        source_bot_id: int | None,
     ) -> WinnerDesignationView:
         async with self._uow_factory() as uow:
             campaign = await _editable_campaign(uow.session, campaign_id)
@@ -122,7 +122,7 @@ class WinnerDesignationService:
         prize_position: int,
         prize_slot_no: int,
         actor_user_id: int,
-        source_bot_id: int,
+        source_bot_id: int | None,
     ) -> bool:
         async with self._uow_factory() as uow:
             await _editable_campaign(uow.session, campaign_id)
@@ -147,7 +147,7 @@ class WinnerDesignationService:
                     "prize_id": str(prize.id),
                     "prize_slot_no": prize_slot_no,
                     "participant_id": str(designation.participant_id),
-                    "source": "offline_ops_bot",
+                    "source": "offline_ops_cli" if source_bot_id is None else "offline_ops_bot",
                     "source_bot_id": source_bot_id,
                 },
             )
@@ -170,7 +170,7 @@ def _add_designation_audit(
     session: object,
     *,
     actor_user_id: int,
-    source_bot_id: int,
+    source_bot_id: int | None,
     designation: WinnerDesignation,
     prize: Prize,
     participant: Participant,
@@ -188,7 +188,7 @@ def _add_designation_audit(
             "prize_slot_no": designation.prize_slot_no,
             "before_participant_id": before,
             "participant_id": str(participant.id),
-            "source": "offline_ops_bot",
+            "source": "offline_ops_cli" if source_bot_id is None else "offline_ops_bot",
             "source_bot_id": source_bot_id,
         },
     )

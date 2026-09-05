@@ -254,7 +254,7 @@ def test_popup_failure_lists_first_two_missing_groups_with_total():
     assert "群A" in text
     assert "群B" in text
     assert "群C" not in text
-    assert text.endswith("等 3 个群")
+    assert text.endswith("等 3 个群/频道")
 
 
 def test_popup_failure_two_missing_groups_without_count_suffix():

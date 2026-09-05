@@ -37,7 +37,7 @@ async def _get_chat(bot: Bot, ref: int | str) -> Any:
     try:
         return await bot.get_chat(ref)
     except TelegramAPIError as exc:
-        label = ref if isinstance(ref, str) else f"群/频道 ID {ref}"
+        label = ref if isinstance(ref, str) and not ref.lstrip("-").isdigit() else "所选群/频道"
         raise UserFacingError(
             f"无法访问参与条件 {label}；请确认链接有效，并将机器人加入该群或频道后重试"
         ) from exc
