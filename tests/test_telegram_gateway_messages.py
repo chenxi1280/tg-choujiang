@@ -167,7 +167,8 @@ def test_draw_result_keeps_internal_hash_out_of_public_message() -> None:
 
     assert "本期没有符合条件的中奖候选人。" in text
     assert "未分配名额:" in text
-    assert "冻结的报名资格和抽奖次数权重" in text
+    assert "本次结果已保存" in text
+    assert "权重计算" not in text
     assert "快照:" not in text
     assert "承诺哈希" not in text
     assert "随机种子" not in text

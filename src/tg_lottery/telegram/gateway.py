@@ -417,7 +417,7 @@ def _draw_result_text(payload: dict[str, Any]) -> str:
     _append_winners(lines, payload.get("winners", []))
     _append_undistributed(lines, payload.get("undistributed", []))
     if payload.get("extended_tips"):
-        lines.append("本次结果按开奖时冻结的报名资格和抽奖次数权重计算。")
+        lines.append("本次结果已保存，可在「我参加的抽奖」中查看。")
     return "\n".join(lines)
 
 
