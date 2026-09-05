@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from tg_lottery.application.records import utcnow
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.creator_bonus import bonus_summary
 from tg_lottery.telegram.creator_invite_retention import summary as retention_summary
 from tg_lottery.telegram.creator_messages import message_policy_summary
-from tg_lottery.telegram.draft_config import missing_fields
+from tg_lottery.telegram.draft_config import campaign_input, missing_fields
 from tg_lottery.telegram.public_projection import format_public_time
 
 ButtonRows = list[list[tuple[str, str]]]
@@ -26,9 +29,8 @@ def main_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def preview_text(data: dict[str, Any]) -> str:
-    missing = missing_fields(data)
-    status = "可以发布" if not missing else "还需设置：" + "、".join(missing)
+def preview_text(data: dict[str, Any], *, now: datetime | None = None) -> str:
+    status = _preview_status(data, now or utcnow())
     return (
         "🎰 抽奖预览\n\n"
         f"🎰 抽奖标题：{data.get('title') or '【等待设置】'}\n\n"
@@ -46,6 +48,17 @@ def preview_text(data: dict[str, Any]) -> str:
         f"当前状态：{status}\n"
         "（本页面为预览文案，不是正式效果）"
     )
+
+
+def _preview_status(data: dict[str, Any], now: datetime) -> str:
+    missing = missing_fields(data)
+    if missing:
+        return "还需设置：" + "、".join(missing)
+    try:
+        campaign_input(data, now=now)
+    except UserFacingError as exc:
+        return "需要调整：" + exc.public_message
+    return "可以发布"
 
 
 def dashboard_rows() -> ButtonRows:

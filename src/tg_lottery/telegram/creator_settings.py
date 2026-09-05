@@ -447,7 +447,7 @@ class CreatorSettings:
             ensure_draft_identity(last_draft | protected),
             user_id=query.from_user.id,
         )
-        await self._dashboard(query, restored | {"guided": False})
+        await self._dashboard(query, restored | {"guided": False, "draw_at": ""})
 
     async def _receive_text(
         self,

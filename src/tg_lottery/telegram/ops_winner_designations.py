@@ -32,12 +32,10 @@ class OpsWinnerDesignationHandler:
         *,
         service: WinnerDesignationService,
         queries: QueryService,
-        allowed_user_ids: frozenset[int],
         source_bot_id: int | None,
     ) -> None:
         self._service = service
         self._queries = queries
-        self._allowed_user_ids = allowed_user_ids
         self._source_bot_id = source_bot_id
         self._logger = logging.getLogger(__name__)
 
@@ -46,20 +44,19 @@ class OpsWinnerDesignationHandler:
         if message.chat.type != ChatType.PRIVATE:
             self._logger.warning("ops bot rejected non-private message")
             return
-        if user is None or user.id not in self._allowed_user_ids:
+        if user is None or user.is_bot:
             self._logger.warning("ops bot rejected unauthorized user")
             await message.answer("无权访问此运维入口。")
             return
         try:
-            result = await self._dispatch((message.text or "").strip(), actor_user_id=user.id)
+            result = await self.execute((message.text or "").strip(), actor_user_id=user.id)
         except UserFacingError as exc:
             await message.answer(f"操作失败：{exc.public_message}")
             return
         await message.answer(result)
 
     async def execute(self, text: str, *, actor_user_id: int) -> str:
-        if actor_user_id not in self._allowed_user_ids:
-            raise UserFacingError("无权访问此运维入口")
+        await self._service.require_authorized(actor_user_id)
         return await self._dispatch(text, actor_user_id=actor_user_id)
 
     async def _dispatch(self, text: str, *, actor_user_id: int) -> str:
@@ -68,20 +65,22 @@ class OpsWinnerDesignationHandler:
             return _HELP_TEXT
         if command == "/campaigns":
             _require_argument_count(arguments, 0, command)
-            return _campaigns_text(await self._service.editable_campaigns())
+            return _campaigns_text(
+                await self._service.editable_campaigns(actor_user_id=actor_user_id)
+            )
         if command == "/winner_list":
-            return await self._list(arguments)
+            return await self._list(arguments, actor_user_id=actor_user_id)
         if command == "/winner_set":
             return await self._set(arguments, actor_user_id=actor_user_id)
         if command == "/winner_del":
             return await self._remove(arguments, actor_user_id=actor_user_id)
         raise UserFacingError("不支持的运维命令，请发送 /help 查看格式")
 
-    async def _list(self, arguments: Sequence[str]) -> str:
+    async def _list(self, arguments: Sequence[str], *, actor_user_id: int) -> str:
         _require_argument_count(arguments, 1, "/winner_list")
         campaign = await self._campaign(arguments[0])
         prizes = tuple(await self._queries.prizes(campaign.id))
-        rows = await self._service.list(campaign.id)
+        rows = await self._service.list(campaign.id, actor_user_id=actor_user_id)
         return _designation_text(campaign, prizes, rows)
 
     async def _set(self, arguments: Sequence[str], *, actor_user_id: int) -> str:

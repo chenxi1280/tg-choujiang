@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tg_lottery.application.queries import QueryService
+from tg_lottery.application.winner_authorization import WinnerAuthorization
 from tg_lottery.application.winner_designations import WinnerDesignationService
 from tg_lottery.infrastructure.db import PollingOffset
 from tg_lottery.infrastructure.db.session import create_engine, create_session_factory
@@ -25,9 +26,11 @@ async def run(settings: OpsBotSettings | None = None) -> None:
         await _require_isolated_bot_id(session_factory, resolved.ops_bot_id)
         await validate_bot(bot, resolved.ops_bot_id)
         handler = OpsWinnerDesignationHandler(
-            service=WinnerDesignationService(partial(UnitOfWork, session_factory)),
+            service=WinnerDesignationService(
+                partial(UnitOfWork, session_factory),
+                authorization=WinnerAuthorization(resolved.ops_admin_ids),
+            ),
             queries=QueryService(session_factory),
-            allowed_user_ids=resolved.ops_admin_ids,
             source_bot_id=resolved.ops_bot_id,
         )
         dispatcher = Dispatcher()

@@ -5,7 +5,15 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tg_lottery.infrastructure.db import Campaign, InviteLink, TelegramOutbox
+from tg_lottery.infrastructure.db import (
+    Campaign,
+    DrawRun,
+    DrawSnapshot,
+    InviteLink,
+    Participant,
+    TelegramOutbox,
+    Winner,
+)
 
 
 @dataclass(frozen=True)
@@ -45,11 +53,39 @@ async def build_gateway_request(
         campaign = await _campaign_projection(session_factory, outbox, payload)
         payload["timezone"] = _payload_timezone(payload) or campaign.timezone
         payload["campaign_ref"] = campaign.public_ref
+    if outbox.operation == "send_winner_notice" and "issuer_user_id" not in payload:
+        payload = payload | await _winner_notice_issuer(session_factory, outbox)
     return GatewayRequest(
         operation=outbox.operation,
         recipient_chat_id=outbox.recipient_chat_id,
         payload=payload,
     )
+
+
+async def _winner_notice_issuer(
+    session_factory: async_sessionmaker[AsyncSession], outbox: TelegramOutbox
+) -> dict[str, Any]:
+    if outbox.aggregate_type != "winner":
+        raise ValueError("winner notice must reference a persisted winner")
+    async with session_factory() as session:
+        campaign = await session.scalar(
+            select(Campaign)
+            .join(DrawSnapshot, DrawSnapshot.campaign_id == Campaign.id)
+            .join(DrawRun, DrawRun.snapshot_id == DrawSnapshot.id)
+            .join(Winner, Winner.draw_run_id == DrawRun.id)
+            .join(Participant, Participant.id == Winner.participant_id)
+            .where(
+                Winner.id == UUID(outbox.aggregate_id),
+                Participant.user_id == outbox.recipient_chat_id,
+            )
+        )
+        if campaign is None:
+            raise ValueError("winner notice recipient does not match a persisted winner")
+        presentation = campaign.presentation or {}
+        return {
+            "issuer_user_id": presentation.get("issuer_user_id") or campaign.created_by,
+            "issuer_username": presentation.get("issuer_username_at_publish"),
+        }
 
 
 async def _campaign_projection(

@@ -20,8 +20,6 @@ class WinnerService:
             )
             if winner is None:
                 raise ValueError("winner not found")
-            if winner.claim_state is PrizeClaimState.CLAIMED:
-                return
             campaign = await uow.session.scalar(
                 select(Campaign)
                 .join(DrawSnapshot, DrawSnapshot.campaign_id == Campaign.id)
@@ -33,6 +31,8 @@ class WinnerService:
             await require_campaign_admin(
                 uow.session, campaign_id=campaign.id, user_id=actor_user_id
             )
+            if winner.claim_state is PrizeClaimState.CLAIMED:
+                return
             winner.claim_state = PrizeClaimState.CLAIMED
             winner.claimed_at = utcnow()
             add_audit(

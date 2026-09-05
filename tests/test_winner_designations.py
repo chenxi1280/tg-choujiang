@@ -8,6 +8,7 @@ from tests.helpers import seed_campaign
 from tg_lottery.application.drawing import DrawingService
 from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.application.settlement import SettlementService
+from tg_lottery.application.winner_authorization import WinnerAuthorization
 from tg_lottery.application.winner_designations import WinnerDesignationService
 from tg_lottery.domain.enums import CampaignState, QualificationState, TicketSource
 from tg_lottery.domain.errors import UserFacingError
@@ -31,7 +32,9 @@ async def test_designated_slot_uses_selected_participant_and_records_audit(
 ) -> None:
     now = datetime.now(UTC)
     campaign_id, _, chosen_id = await _seed_case(session_factory, now, winner_count=1)
-    service = WinnerDesignationService(partial(UnitOfWork, session_factory))
+    service = WinnerDesignationService(
+        partial(UnitOfWork, session_factory), authorization=WinnerAuthorization(frozenset({101}))
+    )
 
     row = await service.set(
         campaign_id=campaign_id,
@@ -67,7 +70,9 @@ async def test_random_slots_reserve_participants_designated_for_later_slots(
 ) -> None:
     now = datetime.now(UTC)
     campaign_id, first_id, chosen_id = await _seed_case(session_factory, now, winner_count=2)
-    service = WinnerDesignationService(partial(UnitOfWork, session_factory))
+    service = WinnerDesignationService(
+        partial(UnitOfWork, session_factory), authorization=WinnerAuthorization(frozenset({101}))
+    )
     await service.set(
         campaign_id=campaign_id,
         prize_position=1,
@@ -95,7 +100,9 @@ async def test_ineligible_designated_participant_blocks_draw_without_silent_repl
         winner_count=1,
         chosen_state=QualificationState.INELIGIBLE,
     )
-    service = WinnerDesignationService(partial(UnitOfWork, session_factory))
+    service = WinnerDesignationService(
+        partial(UnitOfWork, session_factory), authorization=WinnerAuthorization(frozenset({101}))
+    )
     await service.set(
         campaign_id=campaign_id,
         prize_position=1,
@@ -119,7 +126,9 @@ async def test_ineligible_designated_participant_blocks_draw_without_silent_repl
 async def test_designation_can_be_removed_before_draw(session_factory) -> None:
     now = datetime.now(UTC)
     campaign_id, _, _ = await _seed_case(session_factory, now, winner_count=1)
-    service = WinnerDesignationService(partial(UnitOfWork, session_factory))
+    service = WinnerDesignationService(
+        partial(UnitOfWork, session_factory), authorization=WinnerAuthorization(frozenset({101}))
+    )
     await service.set(
         campaign_id=campaign_id,
         prize_position=1,
@@ -138,7 +147,7 @@ async def test_designation_can_be_removed_before_draw(session_factory) -> None:
     )
 
     assert removed is True
-    assert await service.list(campaign_id) == ()
+    assert await service.list(campaign_id, actor_user_id=101) == ()
     async with session_factory() as session:
         audit = await session.scalar(
             select(AuditLog).where(AuditLog.action == "winner.designation_removed")

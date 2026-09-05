@@ -10,6 +10,7 @@ from tg_lottery.application.winner_designations import (
     WinnerDesignationView,
 )
 from tg_lottery.domain.enums import CampaignState
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.infrastructure.db import PollingOffset
 from tg_lottery.ops_bot import _require_isolated_bot_id
 from tg_lottery.telegram.ops_winner_designations import OpsWinnerDesignationHandler
@@ -18,7 +19,7 @@ from tg_lottery.telegram.ops_winner_designations import OpsWinnerDesignationHand
 class RecordingMessage:
     def __init__(self, text: str, *, user_id: int = 101, chat_type=ChatType.PRIVATE) -> None:
         self.text = text
-        self.from_user = SimpleNamespace(id=user_id)
+        self.from_user = SimpleNamespace(id=user_id, is_bot=False)
         self.chat = SimpleNamespace(type=chat_type)
         self.answers: list[str] = []
 
@@ -30,10 +31,14 @@ class RecordingService:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, object]]] = []
 
-    async def editable_campaigns(self):
+    async def require_authorized(self, actor_user_id):
+        if actor_user_id != 101:
+            raise UserFacingError("无权访问此运维入口: 操作人不在中奖指定授权名单中")
+
+    async def editable_campaigns(self, *, actor_user_id):
         return (DesignationCampaignView(uuid4(), "ABC123XYZ0", "隔离测试", CampaignState.RUNNING),)
 
-    async def list(self, campaign_id):
+    async def list(self, campaign_id, *, actor_user_id):
         self.calls.append(("list", {"campaign_id": campaign_id}))
         return ()
 
@@ -61,7 +66,6 @@ def _handler(service=None, queries=None) -> OpsWinnerDesignationHandler:
     return OpsWinnerDesignationHandler(
         service=service or RecordingService(),
         queries=queries or RecordingQueries(),
-        allowed_user_ids=frozenset({101}),
         source_bot_id=9001,
     )
 
@@ -88,7 +92,8 @@ async def test_ops_bot_rejects_non_allowlisted_private_user() -> None:
     await _handler(service=service).handle(message)
 
     assert service.calls == []
-    assert message.answers == ["无权访问此运维入口。"]
+    assert len(message.answers) == 1
+    assert "无权访问此运维入口: 操作人不在中奖指定授权名单中" in message.answers[0]
 
 
 async def test_ops_bot_never_responds_in_groups() -> None:

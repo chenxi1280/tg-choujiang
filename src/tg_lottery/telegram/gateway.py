@@ -12,6 +12,14 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LinkPrevie
 
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import InviteLink
+from tg_lottery.presentation.draw_messages import draw_result_text as _draw_result_text
+from tg_lottery.presentation.draw_messages import winner_notice_text
+from tg_lottery.presentation.mentions import (
+    CAPTION_UTF16_LIMIT,
+    MESSAGE_UTF16_LIMIT,
+    html_utf16_length,
+    user_mention,
+)
 from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway_requests import GatewayRequest
@@ -20,6 +28,7 @@ from tg_lottery.telegram.public_projection import public_timezone_label
 from tg_lottery.telegram.remote_serialization import remote_object
 
 _LOGGER = logging.getLogger(__name__)
+_CARD_WINNER_LIMIT = 8
 
 
 @dataclass(frozen=True)
@@ -233,7 +242,10 @@ class TelegramGateway:
         self, outbox: GatewayRequest, _: InviteLink | None
     ) -> GatewayResult:
         message = await self._bot.send_message(
-            outbox.recipient_chat_id, _draw_result_text(outbox.payload)
+            outbox.recipient_chat_id,
+            _draw_result_text(outbox.payload),
+            parse_mode="HTML",
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
         )
         return GatewayResult(
             remote_result=remote_object(message),
@@ -243,16 +255,11 @@ class TelegramGateway:
     async def _send_winner_notice(
         self, outbox: GatewayRequest, _: InviteLink | None
     ) -> GatewayResult:
-        payload = outbox.payload
-        text = (
-            f"恭喜你在「{payload['campaign_name']}」中获得: {payload['prize_name']}"
-            f"（名额 {payload['prize_slot_no']}）。\n领奖方式: {payload['claim_instructions']}"
-        )
-        if payload.get("extended_tips"):
-            text += f"\n发奖人员: {payload['issuer_name']}"
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
-            text,
+            winner_notice_text(outbox.payload),
+            parse_mode="HTML",
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
         )
         return GatewayResult(
             remote_result=remote_object(message),
@@ -412,34 +419,6 @@ def _draw_lines(payload: dict[str, Any]) -> list[str]:
     return [f"📅 <b>开奖日期：</b>（{label}）", moment_line]
 
 
-def _draw_result_text(payload: dict[str, Any]) -> str:
-    lines = [f"🏆 {payload['campaign_name']} 开奖结果"]
-    _append_winners(lines, payload.get("winners", []))
-    _append_undistributed(lines, payload.get("undistributed", []))
-    if payload.get("extended_tips"):
-        lines.append("本次结果已保存，可在「我参加的抽奖」中查看。")
-    return "\n".join(lines)
-
-
-def _append_winners(lines: list[str], winners: list[dict[str, Any]]) -> None:
-    if not winners:
-        lines.append("本期没有符合条件的中奖候选人。")
-        return
-    for item in winners:
-        lines.append(
-            f"• 第{item['prize_position']}顺位 {item['prize_name']}"
-            f"（名额 {item['prize_slot_no']}）: {item['display_name']}"
-        )
-
-
-def _append_undistributed(lines: list[str], items: list[dict[str, Any]]) -> None:
-    if not items:
-        return
-    lines.append("未分配名额:")
-    for item in items:
-        lines.append(f"• 第{item['prize_position']}顺位 {item['prize_name']}: {item['count']} 人")
-
-
 def _campaign_issuer(payload: dict[str, Any]) -> str:
     presentation = payload.get("presentation", {})
     return str(presentation.get("issuer_name") or "活动创建者")
@@ -462,10 +441,22 @@ def _campaign_state_card_text(payload: dict[str, Any]) -> str:
         raise ValueError("unsupported campaign card state")
     name = html.escape(str(payload["campaign_name"]))
     text = f"🎰 <b>{name}</b>\n\n{status}"
-    winners = [html.escape(str(item["display_name"])) for item in payload.get("winners") or []]
-    if winners:
-        rows = [f"• {winner}" for winner in winners[:8]]
-        if len(winners) > 8:
-            rows.append(f"等共 {len(winners)} 人（完整名单见群内结果公告）")
-        text += "\n\n🏆 中奖者：\n" + "\n".join(rows)
-    return text
+    return _with_winner_summary(text, payload)
+
+
+def _with_winner_summary(text: str, payload: dict[str, Any]) -> str:
+    winners = payload.get("winners") or []
+    if not winners:
+        return text
+    prefix = text + "\n\n🏆 中奖者：\n"
+    footer = f"共 {len(winners)} 个中奖名额（完整名单见群内结果公告）"
+    limit = CAPTION_UTF16_LIMIT if payload.get("has_cover") else MESSAGE_UTF16_LIMIT
+    rows: list[str] = []
+    for winner in winners[:_CARD_WINNER_LIMIT]:
+        candidate = [*rows, f"• {user_mention(winner)}"]
+        if html_utf16_length(prefix + "\n".join([*candidate, footer])) > limit:
+            break
+        rows = candidate
+    if len(rows) < len(winners):
+        rows.append(footer)
+    return prefix + "\n".join(rows)

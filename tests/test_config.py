@@ -43,7 +43,7 @@ def test_polling_lease_must_cover_long_poll_timeout() -> None:
     assert _settings(poll_timeout_seconds=50, poll_lease_seconds=60).poll_lease_seconds == 60
 
 
-def test_ops_bot_requires_dedicated_identity_and_non_empty_allowlist() -> None:
+def test_ops_bot_accepts_explicit_config_allowlist() -> None:
     settings = OpsBotSettings(
         ops_bot_token="987654321:abcdefghijklmnopqrstuvwxyz",
         ops_admin_ids="101,202",
@@ -53,12 +53,12 @@ def test_ops_bot_requires_dedicated_identity_and_non_empty_allowlist() -> None:
     assert settings.ops_bot_id == 987654321
     assert settings.ops_admin_ids == frozenset({101, 202})
 
-    with pytest.raises(ValidationError, match="at least one"):
-        OpsBotSettings(
-            ops_bot_token="987654321:abcdefghijklmnopqrstuvwxyz",
-            ops_admin_ids="",
-            database_url="postgresql+asyncpg://user:password@db/app",
-        )
+    database_only = OpsBotSettings(
+        ops_bot_token="987654321:abcdefghijklmnopqrstuvwxyz",
+        ops_admin_ids="",
+        database_url="postgresql+asyncpg://user:password@db/app",
+    )
+    assert database_only.ops_admin_ids == frozenset()
 
 
 def test_ops_bot_explicit_id_must_match_token() -> None:

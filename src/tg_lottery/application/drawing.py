@@ -29,6 +29,7 @@ from tg_lottery.infrastructure.db import (
     Winner,
     WinnerDesignation,
 )
+from tg_lottery.presentation.draw_messages import draw_result_pages
 
 
 @dataclass(frozen=True)
@@ -373,15 +374,17 @@ class DrawingService:
             ],
             "extended_tips": extended_tips,
         }
-        add_outbox(
-            session,
-            operation="send_draw_result",
-            aggregate_type="draw_run",
-            aggregate_id=str(draw_run.id),
-            recipient_chat_id=chat_id,
-            business_key=f"draw_result_group:{draw_run.id}:{chat_id}",
-            payload=payload,
-        )
+        for index, page in enumerate(draw_result_pages(payload)):
+            suffix = f":page:{index + 1}" if index else ""
+            add_outbox(
+                session,
+                operation="send_draw_result",
+                aggregate_type="draw_run",
+                aggregate_id=str(draw_run.id),
+                recipient_chat_id=chat_id,
+                business_key=f"draw_result_group:{draw_run.id}:{chat_id}{suffix}",
+                payload=page,
+            )
 
     def _queue_winner_notices(
         self,
@@ -407,6 +410,8 @@ class DrawingService:
                     "claim_instructions": item.prize.claim_instructions,
                     "extended_tips": extended_tips,
                     "issuer_name": presentation.get("issuer_name") or "活动创建者",
+                    "issuer_user_id": presentation.get("issuer_user_id") or campaign.created_by,
+                    "issuer_username": presentation.get("issuer_username_at_publish"),
                 },
             )
 
@@ -414,6 +419,7 @@ class DrawingService:
         return {
             "user_id": item.participant.user_id,
             "display_name": item.participant.display_name,
+            "username": item.participant.username,
             "prize_position": item.prize.position,
             "prize_name": item.prize.name,
             "prize_slot_no": item.prize_slot_no,

@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import add_audit, utcnow
+from tg_lottery.application.winner_authorization import WinnerAuthorization
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
@@ -42,11 +43,21 @@ class DesignationCampaignView:
 
 
 class WinnerDesignationService:
-    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+    def __init__(
+        self, uow_factory: UnitOfWorkFactory, *, authorization: WinnerAuthorization
+    ) -> None:
         self._uow_factory = uow_factory
+        self._authorization = authorization
 
-    async def editable_campaigns(self) -> tuple[DesignationCampaignView, ...]:
+    async def require_authorized(self, actor_user_id: int) -> None:
         async with self._uow_factory() as uow:
+            await self._authorization.require(uow.session, actor_user_id)
+
+    async def editable_campaigns(
+        self, *, actor_user_id: int
+    ) -> tuple[DesignationCampaignView, ...]:
+        async with self._uow_factory() as uow:
+            await self._authorization.require(uow.session, actor_user_id)
             rows = await uow.session.scalars(
                 select(Campaign)
                 .where(Campaign.state.in_(_EDITABLE_STATES))
@@ -57,8 +68,11 @@ class WinnerDesignationService:
                 DesignationCampaignView(row.id, row.public_ref, row.name, row.state) for row in rows
             )
 
-    async def list(self, campaign_id: UUID) -> tuple[WinnerDesignationView, ...]:
+    async def list(
+        self, campaign_id: UUID, *, actor_user_id: int
+    ) -> tuple[WinnerDesignationView, ...]:
         async with self._uow_factory() as uow:
+            await self._authorization.require(uow.session, actor_user_id)
             rows = await uow.session.execute(
                 select(WinnerDesignation, Prize, Participant)
                 .join(Prize, Prize.id == WinnerDesignation.prize_id)
@@ -79,6 +93,7 @@ class WinnerDesignationService:
         source_bot_id: int | None,
     ) -> WinnerDesignationView:
         async with self._uow_factory() as uow:
+            authorization_source = await self._authorization.require(uow.session, actor_user_id)
             campaign = await _editable_campaign(uow.session, campaign_id)
             prize = await _prize(uow.session, campaign_id, prize_position)
             _validate_slot(prize, prize_slot_no)
@@ -112,6 +127,7 @@ class WinnerDesignationService:
                 prize=prize,
                 participant=participant,
                 before=before,
+                authorization_source=authorization_source,
             )
             return _view(designation, prize, participant)
 
@@ -125,6 +141,7 @@ class WinnerDesignationService:
         source_bot_id: int | None,
     ) -> bool:
         async with self._uow_factory() as uow:
+            authorization_source = await self._authorization.require(uow.session, actor_user_id)
             await _editable_campaign(uow.session, campaign_id)
             prize = await _prize(uow.session, campaign_id, prize_position)
             _validate_slot(prize, prize_slot_no)
@@ -149,6 +166,7 @@ class WinnerDesignationService:
                     "participant_id": str(designation.participant_id),
                     "source": "offline_ops_cli" if source_bot_id is None else "offline_ops_bot",
                     "source_bot_id": source_bot_id,
+                    "authorization_source": authorization_source,
                 },
             )
             await uow.session.delete(designation)
@@ -175,6 +193,7 @@ def _add_designation_audit(
     prize: Prize,
     participant: Participant,
     before: str | None,
+    authorization_source: str,
 ) -> None:
     add_audit(
         session,
@@ -190,6 +209,7 @@ def _add_designation_audit(
             "participant_id": str(participant.id),
             "source": "offline_ops_cli" if source_bot_id is None else "offline_ops_bot",
             "source_bot_id": source_bot_id,
+            "authorization_source": authorization_source,
         },
     )
 

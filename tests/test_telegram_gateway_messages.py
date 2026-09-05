@@ -242,8 +242,8 @@ def test_drawn_state_card_lists_winner_names() -> None:
             "campaign_name": "周末抽奖",
             "card_state": "drawn",
             "winners": [
-                {"display_name": "张三", "prize_name": "一等奖"},
-                {"display_name": "李四", "prize_name": "二等奖"},
+                {"user_id": 101, "display_name": "张三", "prize_name": "一等奖"},
+                {"user_id": 102, "display_name": "李四", "prize_name": "二等奖"},
             ],
         }
     )
@@ -260,14 +260,17 @@ def test_drawn_state_card_caps_winner_list_at_eight_rows() -> None:
         {
             "campaign_name": "周末抽奖",
             "card_state": "drawn",
-            "winners": [{"display_name": name} for name in names],
+            "winners": [
+                {"user_id": index, "display_name": name}
+                for index, name in enumerate(names, start=1)
+            ],
         }
     )
 
     assert "成员8" in text
     assert "成员9" not in text
     assert "成员10" not in text
-    assert "等共 10 人" in text
+    assert "共 10 个中奖名额" in text
     assert "完整名单见群内结果公告" in text
 
 
@@ -276,7 +279,7 @@ def test_drawn_state_card_escapes_winner_names() -> None:
         {
             "campaign_name": "周末抽奖",
             "card_state": "drawn",
-            "winners": [{"display_name": "<b>伪造者</b>"}],
+            "winners": [{"user_id": 103, "display_name": "<b>伪造者</b>"}],
         }
     )
 

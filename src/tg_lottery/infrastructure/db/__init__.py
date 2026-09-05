@@ -46,6 +46,7 @@ from tg_lottery.infrastructure.db.models_engagement import (
     TicketLedger,
     UserGroupMessageTotal,
 )
+from tg_lottery.infrastructure.db.models_ops import WinnerDesignationOperator
 
 __all__ = [
     "ActivityEvent",
@@ -87,5 +88,6 @@ __all__ = [
     "UserRegionChange",
     "Winner",
     "WinnerDesignation",
+    "WinnerDesignationOperator",
     "WorkerHeartbeat",
 ]

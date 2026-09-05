@@ -288,7 +288,7 @@ def _winner_notice_outbox() -> TelegramOutbox:
         recipient_chat_id=201,
         business_key="winner-renewal",
         request_hash="1" * 64,
-        payload={"campaign_name": "test", "prize_name": "prize"},
+        payload={"campaign_name": "test", "prize_name": "prize", "issuer_user_id": 101},
         state=OutboxState.PENDING,
         run_at=utcnow(),
     )
