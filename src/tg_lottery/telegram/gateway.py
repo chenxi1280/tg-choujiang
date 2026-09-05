@@ -15,6 +15,7 @@ from tg_lottery.infrastructure.db import InviteLink
 from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway_requests import GatewayRequest
+from tg_lottery.telegram.member_invites import invite_link_keyboard
 from tg_lottery.telegram.public_projection import public_timezone_label
 from tg_lottery.telegram.remote_serialization import remote_object
 
@@ -191,7 +192,9 @@ class TelegramGateway:
         title = str(outbox.payload.get("group_title") or "本期活动群")
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
-            f"你的「{title}」本期邀请入口（仅归因到该活动和该群）:\n" + link,
+            f"🔗 你的「{title}」本期邀请入口已就绪。\n\n"
+            "点击下方按钮复制或分享给好友。此入口仅归因到当前活动和群聊，不计入下次抽奖。",
+            reply_markup=invite_link_keyboard(link, title),
             disable_web_page_preview=True,
         )
         return GatewayResult(

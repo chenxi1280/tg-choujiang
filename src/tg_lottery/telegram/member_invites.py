@@ -1,6 +1,6 @@
 from urllib.parse import quote
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.application.invitation_models import accepts_attribution
 from tg_lottery.application.records import utcnow
@@ -20,7 +20,8 @@ def invite_link_keyboard(link: str, campaign_name: str) -> InlineKeyboardMarkup:
     share += "&text=" + quote(f"邀请你参加「{campaign_name}」抽奖", safe="")
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="打开群聊", url=link)],
+            [InlineKeyboardButton(text="复制邀请链接", copy_text=CopyTextButton(text=link))],
+            [InlineKeyboardButton(text="打开邀请入口", url=link)],
             [InlineKeyboardButton(text="转发给好友", url=share)],
         ]
     )
