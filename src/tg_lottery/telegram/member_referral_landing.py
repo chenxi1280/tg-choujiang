@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from aiogram.exceptions import TelegramAPIError
@@ -10,6 +10,7 @@ from tg_lottery.application.query_invites import ReferralLanding
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram.public_projection import format_public_time
 
 if TYPE_CHECKING:
@@ -81,7 +82,7 @@ def _landing_text(landing: ReferralLanding, membership: bool | None, *, now: dat
             "但不会再给邀请人增加本期抽奖次数。"
         )
     timezone = landing.campaign.timezone
-    deadline = format_public_time(landing.route.bonus_join_deadline, timezone)
+    deadline = format_public_time(_effective_bonus_deadline(landing), timezone)
     draw_at = format_public_time(landing.campaign.draw_at, timezone)
     verification = "\n⚠ 暂时无法核验你是否已在群内，入群后仍需核验。" if membership is None else ""
     return (
@@ -92,12 +93,18 @@ def _landing_text(landing: ReferralLanding, membership: bool | None, *, now: dat
     )
 
 
+def _effective_bonus_deadline(landing: ReferralLanding) -> datetime:
+    rules = CampaignRules.model_validate(landing.campaign.rules)
+    cutoff = landing.campaign.cutoff_at - timedelta(hours=rules.invite.retention_hours)
+    return min(landing.route.bonus_join_deadline, cutoff)
+
+
 def _bonus_active(landing: ReferralLanding, now: datetime) -> bool:
     return (
         landing.route.status == "active"
         and landing.campaign.state
         in {CampaignState.SCHEDULED, CampaignState.RUNNING, CampaignState.PAUSED}
-        and now <= landing.route.bonus_join_deadline
+        and now <= _effective_bonus_deadline(landing)
     )
 
 

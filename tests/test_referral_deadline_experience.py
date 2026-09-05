@@ -5,6 +5,7 @@ from unittest.mock import Mock
 import pytest
 
 from tg_lottery.domain.enums import CampaignState, OutboxState
+from tg_lottery.domain.rules import CampaignRules, InviteRule
 from tg_lottery.telegram.member_group_invites import _group_rows, _invite_link_note
 from tg_lottery.telegram.member_referral_landing import _group_url, _landing_keyboard, _landing_text
 
@@ -20,6 +21,7 @@ def freeze_clock(monkeypatch):
 def _landing(state=CampaignState.RUNNING):
     campaign = SimpleNamespace(
         name="阅读抽奖",
+        rules=CampaignRules(invite=InviteRule(retention_hours=1)).model_dump(mode="json"),
         public_ref="ABCDEF123456",
         state=state,
         timezone="Asia/Shanghai",
@@ -70,3 +72,12 @@ def test_old_expired_invite_is_not_presented_as_usable() -> None:
         landing.campaign, {"title": "读书群", "id": -1001}, status, cipher=flow._cipher
     )
     assert rows == []
+
+
+def test_early_cutoff_shortens_displayed_invitation_deadline() -> None:
+    landing = _landing(CampaignState.SETTLING)
+    landing.campaign.cutoff_at = NOW + timedelta(minutes=30)
+    text = _landing_text(landing, False, now=NOW)
+    assert "2026年09月05日 15:30 (北京时间)" in text
+    assert "17:00" not in text
+    assert "本期邀请加成已经结束" in text
