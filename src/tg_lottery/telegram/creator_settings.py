@@ -415,7 +415,7 @@ class CreatorSettings:
             query,
             data=data,
             text=message_settings_text(data),
-            rows=message_settings_rows(),
+            rows=message_settings_rows(data),
         )
 
     async def _set_messages(self, query: CallbackQuery, grant: CallbackGrant) -> None:

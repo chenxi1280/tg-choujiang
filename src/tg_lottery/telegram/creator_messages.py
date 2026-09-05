@@ -30,17 +30,30 @@ _DELAY_LABELS = {
 def message_settings_text(data: dict[str, Any]) -> str:
     command = "开启" if data.get("delete_trigger_message") else "关闭"
     delay = _DELAY_LABELS[data.get("completion_delete_after_seconds")]
-    return f"🔔 参与完成提示\n\n删除报名命令: {command}\n完成提示保留: {delay}"
+    return (
+        f"🔔 参与完成提示\n\n扩展说明: {_explanation_label(data)}\n"
+        f"删除报名命令: {command}\n完成提示保留: {delay}\n\n"
+        "精简说明仍保留资格反馈、中奖结果和领奖联系人。"
+    )
 
 
 def message_policy_summary(data: dict[str, Any]) -> str:
     command = "删除报名命令" if data.get("delete_trigger_message") else "保留报名命令"
     delay = _DELAY_LABELS[data.get("completion_delete_after_seconds")]
-    return f"{command}; 完成提示 {delay}"
+    return f"扩展说明 {_explanation_label(data)}; {command}; 完成提示 {delay}"
 
 
-def message_settings_rows() -> ButtonRows:
+def _explanation_label(data: dict[str, Any]) -> str:
+    return "显示" if data.get("message_tips", True) else "精简"
+
+
+def message_settings_rows(data: dict[str, Any]) -> ButtonRows:
+    expanded = bool(data.get("message_tips", True))
     return [
+        [
+            (("✅ " if expanded else "") + "显示扩展说明", "draft_messages_on"),
+            (("✅ " if not expanded else "") + "精简说明", "draft_messages_off"),
+        ],
         [
             ("删除报名命令", "draft_messages_trigger_on"),
             ("保留报名命令", "draft_messages_trigger_off"),
