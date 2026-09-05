@@ -103,20 +103,12 @@ class CreatorRenderer:
         )
         back = await self._keyboard(
             target,
-            [
-                *_group_page_rows(page, maximum),
-                [("全选本页", "draft_groups_select_page"), ("清空本页", "draft_groups_clear_page")],
-                [("🔄 刷新群列表", "draft_groups_refresh")],
-                [("✅ 完成选择", "draft_groups_done")],
-                [("↩ 返回上一层", "draft_back")],
-            ],
+            _group_navigation(page=page, maximum=maximum, has_groups=bool(groups)),
             context=context,
         )
         rows.extend(back.inline_keyboard)
         await self._bot.edit_message_text(
-            f"👥 参与活动的群（已选 {len(selected_chat_ids)}）\n\n"
-            "参与者必须同时加入全部已选群；每个群都会收到活动卡。\n"
-            "若群不在列表，请先把机器人加入该群并设为管理员，再点刷新。",
+            _group_picker_text(selected_count=len(selected_chat_ids), has_groups=bool(groups)),
             chat_id=target.chat_id,
             message_id=target.message_id,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
@@ -209,6 +201,37 @@ class CreatorRenderer:
             requests=scoped_requests,
             expires_in=TOKEN_LIFETIME,
         )
+
+
+def _group_navigation(*, page: int, maximum: int, has_groups: bool) -> ButtonRows:
+    selection = (
+        [
+            [("全选本页", "draft_groups_select_page"), ("清空本页", "draft_groups_clear_page")],
+        ]
+        if has_groups
+        else []
+    )
+    return [
+        *_group_page_rows(page, maximum),
+        *selection,
+        [("🔄 刷新群列表", "draft_groups_refresh")],
+        *([[("✅ 完成选择", "draft_groups_done")]] if has_groups else []),
+        [("↩ 返回上一层", "draft_back")],
+    ]
+
+
+def _group_picker_text(*, selected_count: int, has_groups: bool) -> str:
+    title = f"👥 参与活动的群（已选 {selected_count}）\n\n"
+    if not has_groups:
+        return (
+            title + "当前没有可管理的群。\n"
+            "你可以先返回预览设置标题和奖品。\n"
+            "发布前，请将机器人加入目标群，并确保你和机器人都是该群管理员，再点刷新。"
+        )
+    return (
+        title + "参与者必须同时加入全部已选群；每个群都会收到活动卡。\n"
+        "若群不在列表，请确认你和机器人都是该群管理员，再点刷新。"
+    )
 
 
 def _group_button_text(

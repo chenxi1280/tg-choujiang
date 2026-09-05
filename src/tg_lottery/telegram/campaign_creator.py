@@ -109,8 +109,6 @@ class CampaignCreator:
 
     async def _new_draft(self, user: User, panel_message_id: int) -> dict[str, Any]:
         groups = await self._queries.admin_groups(user.id)
-        if not groups:
-            raise UserFacingError("没有可管理的群，请先将机器人设为群管理员")
         data = new_draft()
         if len(groups) == 1:
             data = bind_initial_group(data, groups[0])

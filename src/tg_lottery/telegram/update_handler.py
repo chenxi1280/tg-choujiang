@@ -190,9 +190,16 @@ class LotteryUpdateHandler:
         try:
             await self._dispatch_callback(query, data)
         except (DomainError, ValueError) as exc:
-            await member_callbacks.safe_answer(
-                query, public_error_text(exc, self._default_timezone), alert=True
-            )
+            await self._callback_error(query, exc)
+
+    async def _callback_error(self, query: CallbackQuery, exc: Exception) -> None:
+        message = query.message
+        if isinstance(message, Message) and message.chat.type == "private":
+            await self._send_operation_error(message, exc)
+            return
+        await member_callbacks.safe_answer(
+            query, public_error_text(exc, self._default_timezone), alert=True
+        )
 
     async def _send_operation_error(self, message: Message, exc: Exception) -> None:
         self._logger.warning(
