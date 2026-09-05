@@ -5,7 +5,7 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 BASE_DIR="${BASE_DIR:-/data/tg-lottery}"
 SHARED_DIR="${SHARED_DIR:-${BASE_DIR}/shared}"
-ENV_FILE="${ENV_FILE:-${SHARED_DIR}/.env}"
+export ENV_FILE="${ENV_FILE:-${SHARED_DIR}/.env}"
 IMAGE_ENV_FILE="${IMAGE_ENV_FILE:-${APP_DIR}/.image.env}"
 DOCKER_COMMAND=()
 
