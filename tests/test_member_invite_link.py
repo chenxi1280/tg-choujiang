@@ -59,8 +59,9 @@ async def test_member_can_retrieve_a_campaign_scoped_personal_invite_link() -> N
     await flow.show_invite_link(message, campaign.public_ref, user_id=201)
 
     assert "仅在本期报名截止前" in message.text
-    assert message.markup.inline_keyboard[0][0].url == "https://t.me/+campaign_personal"
-    assert "share/url" in message.markup.inline_keyboard[1][0].url
+    assert message.markup.inline_keyboard[0][0].copy_text.text == "https://t.me/+campaign_personal"
+    assert message.markup.inline_keyboard[1][0].url == "https://t.me/+campaign_personal"
+    assert "share/url" in message.markup.inline_keyboard[2][0].url
 
 
 async def test_expired_campaign_link_still_opens_but_never_counts_again() -> None:
@@ -81,7 +82,8 @@ async def test_expired_campaign_link_still_opens_but_never_counts_again() -> Non
 
     assert "仍可入群" in message.text
     assert "不再计算本期或以后任何抽奖加成" in message.text
-    assert message.markup.inline_keyboard[0][0].url == "https://t.me/+campaign_personal"
+    assert message.markup.inline_keyboard[0][0].copy_text.text == "https://t.me/+campaign_personal"
+    assert message.markup.inline_keyboard[1][0].url == "https://t.me/+campaign_personal"
 
 
 def test_registration_keyboard_exposes_only_the_current_campaign_link() -> None:

@@ -7,12 +7,12 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import UserFacingError
 
 
-def invite_link_text(campaign_name: str, link: str, *, active: bool) -> str:
+def invite_link_text(campaign_name: str, *, active: bool) -> str:
     if active:
         note = "仅在本期报名截止前通过该链接加入，才会计算本期邀请加成。"
     else:
         note = "本期已截止；此链接仍可入群，但不再计算本期或以后任何抽奖加成。"
-    return f"🔗 {campaign_name} 专属邀请链接\n\n{link}\n\n{note}"
+    return f"🔗 {campaign_name} 专属邀请链接\n\n{note}\n\n使用下方按钮复制或分享邀请。"
 
 
 def invite_link_keyboard(link: str, campaign_name: str) -> InlineKeyboardMarkup:
@@ -68,6 +68,4 @@ async def legacy_invite_link_payload(
         cutoff_at=campaign.cutoff_at,
         event_at=utcnow(),
     )
-    return invite_link_text(campaign.name, link, active=active), invite_link_keyboard(
-        link, campaign.name
-    )
+    return invite_link_text(campaign.name, active=active), invite_link_keyboard(link, campaign.name)
