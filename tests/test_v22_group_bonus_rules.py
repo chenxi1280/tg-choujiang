@@ -373,7 +373,7 @@ async def test_group_selector_explains_when_bot_is_not_an_admin() -> None:
 async def test_bot_join_without_admin_rights_sends_an_actionable_reminder() -> None:
     bot = SimpleNamespace(send_message=AsyncMock())
     event = SimpleNamespace(
-        chat=SimpleNamespace(id=-1001),
+        chat=SimpleNamespace(id=-1001, type="group"),
         old_chat_member=SimpleNamespace(status="left"),
         new_chat_member=SimpleNamespace(status="member"),
     )
