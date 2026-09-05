@@ -16,6 +16,7 @@ from tg_lottery.domain.rules import (
     InviteRewardTier,
     InviteRule,
 )
+from tg_lottery.telegram.creator_invite_retention import retention_hours
 
 LOCAL_TIME_FORMAT = "%Y-%m-%d %H:%M"
 DEFAULT_CLAIM_INSTRUCTIONS = "请联系活动管理员领取奖品"
@@ -29,11 +30,6 @@ DEFAULT_INVITE_BONUS_CAP = 3
 DEFAULT_VALID_INVITES_PER_TICKET = 2
 DEFAULT_ACTIVITY_MESSAGE_THRESHOLD = 10
 DEFAULT_ACTIVITY_REWARD_TICKETS = 1
-
-INVITE_PRESETS = {
-    "standard": InviteRule(reward_tickets=1, retention_hours=24),
-    "strict": InviteRule(reward_tickets=1, retention_hours=48),
-}
 
 
 def new_draft(
@@ -57,6 +53,7 @@ def new_draft(
         "claim_instructions": DEFAULT_CLAIM_INSTRUCTIONS,
         "prizes": [],
         "invite_preset": "standard",
+        "invite_retention_hours": None,
         "required_channel_id": None,
         "required_chat_ids": [],
         "required_chat_refs": [],
@@ -210,6 +207,7 @@ def _has_enabled_group_rule(data: dict[str, Any], kind: str) -> bool:
 
 def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
     keys = (
+        "invite_retention_hours",
         "folder_link",
         "cover_file_id",
         "description",
@@ -265,7 +263,7 @@ def _invite_rule(data: dict[str, Any]) -> InviteRule:
     mode = str(data.get("invite_reward_mode", "tiered"))
     common = {
         "mode": mode,
-        "retention_hours": INVITE_PRESETS[str(data["invite_preset"])].retention_hours,
+        "retention_hours": retention_hours(data),
         "max_bonus_tickets": _invite_cap(data),
     }
     if mode == "ratio":

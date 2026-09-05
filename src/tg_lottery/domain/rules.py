@@ -30,7 +30,7 @@ class InviteRewardTier(BaseModel, frozen=True):
 class InviteRule(BaseModel, frozen=True):
     mode: Literal["ratio", "tiered"] = "tiered"
     reward_tickets: int = Field(default=1, ge=1)
-    retention_hours: int = Field(default=24, ge=1)
+    retention_hours: int = Field(default=24, ge=0)
     require_activity: bool = False
     required_messages: int = Field(default=0, ge=0)
     reward_tiers: tuple[InviteRewardTier, ...] = ()

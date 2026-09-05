@@ -6,6 +6,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.creator_bonus import bonus_summary
+from tg_lottery.telegram.creator_invite_retention import summary as retention_summary
 from tg_lottery.telegram.creator_messages import message_policy_summary
 from tg_lottery.telegram.draft_config import missing_fields
 from tg_lottery.telegram.public_projection import format_public_time
@@ -38,7 +39,7 @@ def preview_text(data: dict[str, Any]) -> str:
         f"📮 准入条件：{_requirements(data)}\n\n"
         f"🎁 奖品内容：\n{_prize_lines(data.get('prizes', []))}\n"
         f"⚠️ 抽奖说明：{data.get('description') or '【等待设置】'}\n\n"
-        f"🔋 抽奖加成：{bonus_summary(data)}\n\n"
+        f"🔋 抽奖加成：{bonus_summary(data)}\n{retention_summary(data)}\n"
         f"🌀 开奖方式：{_draw_text(data)}\n\n"
         f"🎅 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}\n\n"
         f"🔔 参与提示：{message_policy_summary(data)}\n\n"

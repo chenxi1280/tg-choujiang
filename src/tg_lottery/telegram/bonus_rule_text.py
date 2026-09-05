@@ -3,6 +3,7 @@
 from collections.abc import Mapping, Sequence
 
 from tg_lottery.domain.rules import CampaignRules, GroupActivityRule, GroupInviteRule
+from tg_lottery.telegram.creator_invite_retention import retention_text
 
 
 def chat_title(chat: Mapping[str, object]) -> str:
@@ -50,4 +51,6 @@ def per_group_bonus_lines(
         if parts:
             title = chat_title(by_id.get(key, {}))
             lines.append(f"{title}：" + "；".join(parts))
+    if rules.invite_bonus_enabled:
+        lines.append("邀请资格：" + retention_text(rules.invite.retention_hours))
     return tuple(lines)

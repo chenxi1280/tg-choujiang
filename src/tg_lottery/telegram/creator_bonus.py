@@ -9,38 +9,48 @@ from tg_lottery.domain.rules import (
 )
 from tg_lottery.telegram import creator_bonus_copy as bonus_copy
 from tg_lottery.telegram import creator_group_bonus as group_bonus
+from tg_lottery.telegram import creator_invite_retention as retention
 
 ButtonRows = list[list[tuple[str, str]]]
 
-BONUS_ACTIONS = frozenset(
-    {
-        "draft_bonus_toggle_invite",
-        "draft_bonus_toggle_activity",
-        "draft_bonus_invite",
-        "draft_bonus_invite_mode_ratio",
-        "draft_bonus_invite_mode_tiered",
-        "draft_bonus_invite_ratio_dec",
-        "draft_bonus_invite_ratio_inc",
-        "draft_bonus_invite_cap_dec",
-        "draft_bonus_invite_cap_inc",
-        "draft_bonus_invite_count_dec",
-        "draft_bonus_invite_count_inc",
-        "draft_bonus_invite_total_dec",
-        "draft_bonus_invite_total_inc",
-        "draft_bonus_invite_add",
-        "draft_bonus_invite_remove",
-        "draft_bonus_activity",
-        "draft_bonus_activity_threshold_dec",
-        "draft_bonus_activity_threshold_inc",
-        "draft_bonus_activity_reward_dec",
-        "draft_bonus_activity_reward_inc",
-        "draft_bonus_menu",
-    }
+BONUS_ACTIONS = (
+    frozenset(
+        {
+            "draft_bonus_toggle_invite",
+            "draft_bonus_toggle_activity",
+            "draft_bonus_invite",
+            "draft_bonus_invite_mode_ratio",
+            "draft_bonus_invite_mode_tiered",
+            "draft_bonus_invite_ratio_dec",
+            "draft_bonus_invite_ratio_inc",
+            "draft_bonus_invite_cap_dec",
+            "draft_bonus_invite_cap_inc",
+            "draft_bonus_invite_count_dec",
+            "draft_bonus_invite_count_inc",
+            "draft_bonus_invite_total_dec",
+            "draft_bonus_invite_total_inc",
+            "draft_bonus_invite_add",
+            "draft_bonus_invite_remove",
+            "draft_bonus_activity",
+            "draft_bonus_activity_threshold_dec",
+            "draft_bonus_activity_threshold_inc",
+            "draft_bonus_activity_reward_dec",
+            "draft_bonus_activity_reward_inc",
+            "draft_bonus_menu",
+        }
+    )
+    | retention.ACTIONS
 )
 
 
 def bonus_text(data: dict[str, Any]) -> str:
-    return "🔋 抽奖加成\n\n当前设置：" + bonus_summary(data) + "\n\n请直接点击按钮配置。"
+    return (
+        "🔋 抽奖加成\n\n当前设置："
+        + bonus_summary(data)
+        + "\n邀请资格："
+        + retention.retention_text(retention.retention_hours(data))
+        + "\n\n请直接点击按钮配置。"
+    )
 
 
 def bonus_summary(data: dict[str, Any]) -> str:
@@ -67,6 +77,7 @@ def bonus_rows(data: dict[str, Any]) -> ButtonRows:
     rows = [[(invite, "draft_bonus_toggle_invite"), (activity, "draft_bonus_toggle_activity")]]
     if "invite" in types:
         rows.append([("设置邀请加成", "draft_bonus_invite")])
+        rows.append([("邀请留存要求", "draft_retention")])
     if "activity" in types:
         rows.append([("设置每日发言", "draft_bonus_activity")])
     rows.append([("↩ 返回抽奖预览", "draft_back")])
@@ -146,6 +157,8 @@ def activity_bonus_rows(data: dict[str, Any]) -> ButtonRows:
 
 
 def apply_bonus_action(data: dict[str, Any], action: str) -> dict[str, Any]:
+    if action in retention.ACTIONS:
+        return retention.apply_action(data, action)
     if group_bonus.handles_action(action):
         return group_bonus.apply_action(data, action)
     if action == "draft_bonus_toggle_invite":
@@ -166,6 +179,8 @@ def apply_bonus_action(data: dict[str, Any], action: str) -> dict[str, Any]:
 
 
 def bonus_view(data: dict[str, Any], action: str) -> tuple[str, ButtonRows]:
+    if action in retention.ACTIONS:
+        return retention.view(data)
     if data.get("bonus_copy"):
         return bonus_copy.copy_view(data)
     working = data.get("bonus_working_copy")
@@ -180,6 +195,10 @@ def bonus_view(data: dict[str, Any], action: str) -> tuple[str, ButtonRows]:
         return group_bonus.list_view(data, "activity")
     if action.startswith("draft_bonus_group_page:"):
         return group_bonus.list_view(data, group_bonus.page_kind(action))
+    return _legacy_bonus_view(data, action)
+
+
+def _legacy_bonus_view(data: dict[str, Any], action: str) -> tuple[str, ButtonRows]:
     if action.startswith("draft_bonus_invite"):
         return invite_bonus_text(data), invite_bonus_rows(data)
     if action.startswith("draft_bonus_activity"):
