@@ -1,8 +1,10 @@
+from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfoNotFoundError
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import Chat, ChatInviteLink, LinkPreviewOptions, Message, User
 
 from tests.helpers import seed_campaign
 from tg_lottery.infrastructure.db import TelegramOutbox
@@ -191,14 +193,13 @@ async def test_personal_invite_link_remains_joinable_after_campaign_cutoff() -> 
     class InviteBot:
         async def create_chat_invite_link(self, **values):
             self.values = values
-            return type(
-                "Link",
-                (),
-                {
-                    "invite_link": "https://t.me/+personal",
-                    "model_dump": lambda self, **_: {"invite_link": self.invite_link},
-                },
-            )()
+            return ChatInviteLink(
+                invite_link="https://t.me/+personal",
+                creator=User(id=9001, is_bot=True, first_name="测试机器人"),
+                creates_join_request=False,
+                is_primary=False,
+                is_revoked=False,
+            )
 
     bot = InviteBot()
     gateway = TelegramGateway(bot, object())
@@ -282,11 +283,16 @@ def test_drawn_state_card_escapes_winner_names() -> None:
     assert "<b>伪造者</b>" not in text
 
 
-class _FakeSentMessage:
-    message_id = 909
+SENT_MESSAGE_ID = 909
 
-    def model_dump(self, **_: object) -> dict[str, object]:
-        return {"message_id": self.message_id}
+
+def _sent_message() -> Message:
+    return Message(
+        message_id=SENT_MESSAGE_ID,
+        date=datetime.now(UTC),
+        chat=Chat(id=-1001, type="supergroup"),
+        link_preview_options=LinkPreviewOptions(is_disabled=True),
+    )
 
 
 class FakeCardBot:
@@ -294,17 +300,13 @@ class FakeCardBot:
         self.sent: list[tuple[str, tuple[object, ...], dict[str, Any]]] = []
         self.pinned: list[tuple[object, object, dict[str, Any]]] = []
 
-    async def send_message(
-        self, chat_id: object, text: object, **kwargs: object
-    ) -> _FakeSentMessage:
+    async def send_message(self, chat_id: object, text: object, **kwargs: object) -> Message:
         self.sent.append(("send_message", (chat_id, text), kwargs))
-        return _FakeSentMessage()
+        return _sent_message()
 
-    async def send_photo(
-        self, chat_id: object, photo: object, **kwargs: object
-    ) -> _FakeSentMessage:
+    async def send_photo(self, chat_id: object, photo: object, **kwargs: object) -> Message:
         self.sent.append(("send_photo", (chat_id, photo), kwargs))
-        return _FakeSentMessage()
+        return _sent_message()
 
     async def pin_chat_message(self, chat_id: object, message_id: object, **kwargs: object) -> bool:
         self.pinned.append((chat_id, message_id, kwargs))
@@ -371,7 +373,8 @@ async def test_campaign_card_matches_lotterybest_format() -> None:
     assert "📅 <b>开奖日期" in text
     assert "2026年08月08日 11时25分00秒" in text
     assert kwargs["parse_mode"] == "HTML"
-    assert bot.pinned[0][:2] == (-1001, _FakeSentMessage.message_id)
+    assert kwargs["link_preview_options"].is_disabled is True
+    assert bot.pinned[0][:2] == (-1001, SENT_MESSAGE_ID)
     assert bot.pinned[0][2]["disable_notification"] is True
 
 
@@ -402,8 +405,9 @@ async def test_pin_failure_does_not_fail_delivery() -> None:
     )
 
     assert len(bot.sent) == 1
-    assert result.remote_message_id == _FakeSentMessage.message_id
-    assert result.remote_result == {"message_id": _FakeSentMessage.message_id}
+    assert result.remote_message_id == SENT_MESSAGE_ID
+    assert result.remote_result["message_id"] == SENT_MESSAGE_ID
+    assert result.remote_result["link_preview_options"] == {"is_disabled": True}
 
 
 def _campaign_payload() -> dict[str, object]:

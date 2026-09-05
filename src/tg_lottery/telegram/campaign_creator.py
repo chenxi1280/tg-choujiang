@@ -188,6 +188,9 @@ class CampaignCreator:
             "draft_home": self._home,
             "draft_publish": self._publisher.confirm,
             "draft_publish_confirm": self._publisher.publish,
+            "draft_publish_rules": self._publisher.show_rules,
+            "draft_publish_rules_prev": self._publisher.show_rules,
+            "draft_publish_rules_next": self._publisher.show_rules,
         }
 
     async def _edit_title(self, query: CallbackQuery, _: CallbackGrant) -> None:

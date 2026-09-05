@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
 
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import InviteLink
@@ -16,6 +16,7 @@ from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_line
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway_requests import GatewayRequest
 from tg_lottery.telegram.public_projection import public_timezone_label
+from tg_lottery.telegram.remote_serialization import remote_object
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ class TelegramGateway:
                 text,
                 reply_markup=keyboard,
                 parse_mode="HTML",
+                link_preview_options=LinkPreviewOptions(is_disabled=True),
             )
         try:
             await self._bot.pin_chat_message(
@@ -87,7 +89,7 @@ class TelegramGateway:
                 extra={"chat_id": outbox.recipient_chat_id, "error": str(exc)},
             )
         return GatewayResult(
-            remote_result=message.model_dump(mode="json", exclude_none=True),
+            remote_result=remote_object(message),
             remote_message_id=message.message_id,
         )
 
@@ -112,11 +114,7 @@ class TelegramGateway:
                 message_id=message_id,
                 parse_mode="HTML",
             )
-        remote_result = (
-            result.model_dump(mode="json", exclude_none=True)
-            if hasattr(result, "model_dump")
-            else {"ok": bool(result)}
-        )
+        remote_result = remote_object(result)
         return GatewayResult(remote_result=remote_result, remote_message_id=message_id)
 
     async def _edit_campaign_card_state(
@@ -139,7 +137,7 @@ class TelegramGateway:
                 message_id=message_id,
                 parse_mode="HTML",
             )
-        remote = result.model_dump(mode="json") if hasattr(result, "model_dump") else {"ok": True}
+        remote = remote_object(result)
         return GatewayResult(remote_result=remote, remote_message_id=message_id)
 
     async def _create_invite_link(
@@ -156,7 +154,7 @@ class TelegramGateway:
             ),
             creates_join_request=False,
         )
-        remote_result = link.model_dump(mode="json", exclude_none=True)
+        remote_result = remote_object(link)
         remote_result.pop("invite_link", None)
         return GatewayResult(
             remote_result=remote_result,
@@ -173,7 +171,7 @@ class TelegramGateway:
             expire_date=datetime.fromisoformat(str(payload["expire_at"])),
             creates_join_request=False,
         )
-        remote_result = link.model_dump(mode="json", exclude_none=True)
+        remote_result = remote_object(link)
         remote_result.pop("invite_link", None)
         return GatewayResult(remote_result=remote_result, invite_link=link.invite_link)
 
@@ -197,7 +195,7 @@ class TelegramGateway:
             disable_web_page_preview=True,
         )
         return GatewayResult(
-            remote_result=message.model_dump(mode="json", exclude_none=True),
+            remote_result=remote_object(message),
             remote_message_id=message.message_id,
         )
 
@@ -211,7 +209,7 @@ class TelegramGateway:
             context=f"invite-link:{invite_link.id}",
         )
         result = await self._bot.revoke_chat_invite_link(outbox.recipient_chat_id, link)
-        return GatewayResult(remote_result=result.model_dump(mode="json", exclude_none=True))
+        return GatewayResult(remote_result=remote_object(result))
 
     async def _revoke_required_chat_invite(
         self, outbox: GatewayRequest, _: InviteLink | None
@@ -226,7 +224,7 @@ class TelegramGateway:
             ),
         )
         result = await self._bot.revoke_chat_invite_link(outbox.recipient_chat_id, link)
-        return GatewayResult(remote_result=result.model_dump(mode="json", exclude_none=True))
+        return GatewayResult(remote_result=remote_object(result))
 
     async def _send_draw_result(
         self, outbox: GatewayRequest, _: InviteLink | None
@@ -235,7 +233,7 @@ class TelegramGateway:
             outbox.recipient_chat_id, _draw_result_text(outbox.payload)
         )
         return GatewayResult(
-            remote_result=message.model_dump(mode="json", exclude_none=True),
+            remote_result=remote_object(message),
             remote_message_id=message.message_id,
         )
 
@@ -254,7 +252,7 @@ class TelegramGateway:
             text,
         )
         return GatewayResult(
-            remote_result=message.model_dump(mode="json", exclude_none=True),
+            remote_result=remote_object(message),
             remote_message_id=message.message_id,
         )
 

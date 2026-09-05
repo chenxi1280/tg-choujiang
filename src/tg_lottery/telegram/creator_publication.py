@@ -23,6 +23,7 @@ from tg_lottery.telegram.creator_group_selection import (
 )
 from tg_lottery.telegram.creator_invite_retention import summary as retention_summary
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer
+from tg_lottery.telegram.creator_rule_review import review_navigation, rule_review_pages
 from tg_lottery.telegram.draft_config import campaign_input, presentation_from_data
 from tg_lottery.telegram.issuer import resolve_issuer
 
@@ -80,6 +81,23 @@ class CreatorPublisher:
         }
         await self._sessions.set(query.from_user.id, "draft:publishing", progress)
         await self._finish(query, progress, campaign.id)
+
+    async def show_rules(self, query: CallbackQuery, grant: object) -> None:
+        data = await self._required_confirmation(query.from_user.id)
+        pages = rule_review_pages(data)
+        shifts = {"draft_publish_rules_prev": -1, "draft_publish_rules_next": 1}
+        page = int(data.get("publish_rules_page", 0)) + shifts.get(grant.action, 0)
+        page = 0 if grant.action == "draft_publish_rules" else page
+        page = min(max(0, page), len(pages) - 1)
+        await self._sessions.set(
+            query.from_user.id, "draft:publish_confirm", data | {"publish_rules_page": page}
+        )
+        await self._renderer.render(
+            _message(query),
+            user_id=query.from_user.id,
+            text=f"全部规则 · 第 {page + 1}/{len(pages)} 页\n\n{pages[page]}",
+            rows=review_navigation(page, len(pages)),
+        )
 
     async def _finish(self, query: CallbackQuery, data: dict[str, Any], campaign_id: UUID) -> None:
         await self._campaigns.publish(campaign_id, query.from_user.id, self._bot_username)
@@ -164,7 +182,7 @@ def confirmation_view(data: dict[str, Any]) -> tuple[str, ButtonRows]:
         "确认后规则将冻结，并向全部参与群投递同一活动。"
     )
     rows = [
-        [("查看全部规则", "draft_rules")],
+        [("查看全部规则", "draft_publish_rules")],
         [("确认发布", "draft_publish_confirm")],
         [("返回修改", "draft_back")],
     ]

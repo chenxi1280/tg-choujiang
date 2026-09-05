@@ -117,13 +117,6 @@ class OutboxWorker:
                 extra=log_context
                 | {"certainty": "explicit_rejection", "error_code": type(exc).__name__},
             )
-        except ValueError as exc:
-            await self._pre_accept_failed(outbox.id, attempt_number, exc)
-            self._logger.warning(
-                "Telegram delivery payload rejected",
-                extra=log_context
-                | {"certainty": "explicit_rejection", "error_code": type(exc).__name__},
-            )
         except _UNKNOWN_ERRORS as exc:
             await self._unknown(outbox.id, attempt_number, exc)
             self._logger.error(
