@@ -49,7 +49,7 @@ def test_public_time_never_exposes_an_unmapped_iana_timezone() -> None:
 
     text = format_public_time(instant, "Europe/London")
 
-    assert text == "2026年08月08日 04:25 (活动当地时间)"
+    assert text == "2026年08月08日 11:25 (北京时间)"
     assert "Europe/London" not in text
 
 

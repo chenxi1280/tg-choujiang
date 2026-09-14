@@ -36,8 +36,8 @@ def test_campaign_card_timezone_label_follows_campaign_timezone() -> None:
 
     text = _campaign_card_text(payload)
 
-    assert "马来西亚时间" in text
-    assert "北京时间" not in text
+    assert "马来西亚时间" not in text
+    assert "北京时间" in text
 
 
 def test_campaign_card_accepts_legacy_minute_payload() -> None:
@@ -114,10 +114,11 @@ def test_campaign_card_separates_rules_registration_and_join_links() -> None:
     datas = [b.callback_data for row in keyboard.inline_keyboard for b in row]
     urls = [b.url for row in keyboard.inline_keyboard for b in row if b.url]
 
-    assert "member:join:AbCdEfGhIjKlMnOpQrSt-_" in datas
+    assert "member:join:AbCdEfGhIjKlMnOpQrSt-_" not in datas
     assert "member:rules:AbCdEfGhIjKlMnOpQrSt-_" not in datas
     assert "https://t.me/lottery_test_bot?start=rules_AbCdEfGhIjKlMnOpQrSt-_" in urls
     assert urls == [
+        "https://t.me/lottery_test_bot?start=join_AbCdEfGhIjKlMnOpQrSt-_",
         "https://t.me/lottery_test_bot?start=rules_AbCdEfGhIjKlMnOpQrSt-_",
         "https://t.me/lottery_test_bot?start=join_AbCdEfGhIjKlMnOpQrSt-_",
     ]
@@ -392,7 +393,8 @@ async def test_campaign_keyboard_uses_private_rules_link() -> None:
     buttons = [row[0] for row in keyboard.inline_keyboard]
 
     assert len(buttons) == 4
-    assert buttons[0].callback_data.startswith("member:join:")
+    assert buttons[0].url == _campaign_deep_link(_lotterybest_card_payload(), "join")
+    assert buttons[0].callback_data is None
     assert buttons[1].callback_data.startswith("member:bonus:")
     assert "?start=rules_" in buttons[2].url
     assert "?start=join_" in buttons[3].url
@@ -417,6 +419,8 @@ async def test_pin_failure_does_not_fail_delivery() -> None:
 def _campaign_payload() -> dict[str, object]:
     return {
         "name": "123",
+        "bot_username": "lottery_test_bot",
+        "campaign_ref": "AbCdEfGhIjKlMnOpQrSt-_",
         "total_winners": 1,
         "prizes": [{"position": 1, "name": "一等奖", "winner_count": 1}],
         "cutoff_at": "2026-08-08T03:20:00+00:00",

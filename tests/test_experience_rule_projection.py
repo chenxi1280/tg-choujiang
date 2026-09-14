@@ -33,6 +33,8 @@ def _rules() -> CampaignRules:
 def test_card_and_private_rules_render_each_frozen_group_bonus() -> None:
     rules = _rules()
     payload = {
+        "bot_username": "lottery_test_bot",
+        "campaign_ref": "AbCdEfGhIjKlMnOpQrSt-_",
         "name": "周末阅读",
         "timezone": "Asia/Shanghai",
         "draw_at": "2026-09-06T12:00:00+00:00",

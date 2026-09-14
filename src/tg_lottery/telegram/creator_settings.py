@@ -35,6 +35,8 @@ from tg_lottery.telegram.creator_settings_ui import (
     _target,
     _user_id,
     custom_draw_prompt,
+    custom_draw_rows,
+    draw_mode_rows,
 )
 from tg_lottery.telegram.creator_views import (
     dashboard_rows,
@@ -156,7 +158,7 @@ class CreatorSettings:
 
     async def _show_draw_modes(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:idle")
-        rows = [[("满人开奖", "draft_draw_full"), ("定时开奖", "draft_draw_fixed")], *_back_rows()]
+        rows = draw_mode_rows()
         await self._render(query, data=data, text=draw_prompt_text(data), rows=rows)
 
     async def _show_fixed_draw(self, query: CallbackQuery, _: CallbackGrant) -> None:
@@ -179,8 +181,8 @@ class CreatorSettings:
         await self._render(
             query,
             data=data,
-            text=custom_draw_prompt(str(data["timezone"])),
-            rows=_back_rows(),
+            text=custom_draw_prompt(str(data["timezone"])) + "\n\n点击复制时间示例，修改后发送。",
+            rows=custom_draw_rows(str(data["timezone"])),
         )
 
     async def _set_quick_draw(self, query: CallbackQuery, grant: CallbackGrant) -> None:

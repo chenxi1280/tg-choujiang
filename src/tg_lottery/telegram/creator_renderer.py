@@ -18,7 +18,7 @@ from tg_lottery.telegram.creator_group_availability import (
 
 TOKEN_LIFETIME = timedelta(hours=24)
 GROUP_PAGE_SIZE = 6
-ButtonRows = list[list[tuple[str, str]]]
+ButtonRows = list[list[tuple[str, str] | InlineKeyboardButton]]
 
 
 @dataclass(frozen=True)
@@ -164,13 +164,17 @@ class CreatorRenderer:
         context = context or await self._sessions.issue_panel_context(
             target.user_id, target.message_id
         )
-        requests = tuple(CallbackRequest(action) for row in rows for _, action in row)
+        requests = tuple(
+            CallbackRequest(item[1]) for row in rows for item in row if isinstance(item, tuple)
+        )
         tokens = iter(await self._create_tokens(target, requests, context=context))
         return InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text=label, callback_data=f"secure:{next(tokens)}")
-                    for label, _ in row
+                    item
+                    if isinstance(item, InlineKeyboardButton)
+                    else InlineKeyboardButton(text=item[0], callback_data=f"secure:{next(tokens)}")
+                    for item in row
                 ]
                 for row in rows
             ]

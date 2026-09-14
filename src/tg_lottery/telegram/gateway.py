@@ -24,7 +24,7 @@ from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_line
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway_requests import GatewayRequest
 from tg_lottery.telegram.member_invites import invite_link_keyboard
-from tg_lottery.telegram.public_projection import public_timezone_label
+from tg_lottery.telegram.public_projection import BEIJING_TIMEZONE, public_timezone_label
 from tg_lottery.telegram.remote_serialization import remote_object
 
 _LOGGER = logging.getLogger(__name__)
@@ -202,7 +202,7 @@ class TelegramGateway:
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
             f"🔗 你的「{title}」本期邀请入口已就绪。\n\n"
-            "点击下方按钮复制或分享给好友。此入口仅归因到当前活动和群聊，不计入下次抽奖。",
+            f"{link}\n\n复制上方链接分享给好友。此入口仅归因到当前活动和群聊，不计入下次抽奖。",
             reply_markup=invite_link_keyboard(link, title),
             disable_web_page_preview=True,
         )
@@ -244,6 +244,7 @@ class TelegramGateway:
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
             _draw_result_text(outbox.payload),
+            disable_notification=False,
             parse_mode="HTML",
             link_preview_options=LinkPreviewOptions(is_disabled=True),
         )
@@ -258,6 +259,7 @@ class TelegramGateway:
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
             winner_notice_text(outbox.payload),
+            disable_notification=False,
             parse_mode="HTML",
             link_preview_options=LinkPreviewOptions(is_disabled=True),
         )
@@ -280,7 +282,7 @@ def _campaign_deep_link(payload: dict[str, Any], action: str) -> str:
 def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
     rules = payload.get("rules") or {}
     ref = str(payload["campaign_ref"])
-    rows = [[InlineKeyboardButton(text="🎫 立即参与", callback_data=f"member:join:{ref}")]]
+    rows = [[InlineKeyboardButton(text="🎫 立即参与", url=_campaign_deep_link(payload, "join"))]]
     if _bonus_enabled(rules):
         rows.append([InlineKeyboardButton(text="🔋 我的加成", callback_data=f"member:bonus:{ref}")])
     rows.append(
@@ -332,6 +334,8 @@ def _campaign_card_text(payload: dict[str, Any]) -> str:
     issuer = _campaign_issuer(payload)
     if issuer != "活动创建者":
         lines += ["", f"🎁 发奖人员：{html.escape(issuer)}"]
+    link = html.escape(_campaign_deep_link(payload, "join"))
+    lines += ["", "🔗 抽奖链接（可复制转发）：", link]
     return "\n".join(lines)
 
 
@@ -371,7 +375,7 @@ def _draw_time(payload: dict[str, Any]) -> str:
         moment = moment.replace(tzinfo=zone)
     else:
         moment = moment.astimezone(zone)
-    return moment.strftime("%Y年%m月%d日 %H时%M分%S秒")
+    return moment.astimezone(ZoneInfo(BEIJING_TIMEZONE)).strftime("%Y年%m月%d日 %H时%M分%S秒")
 
 
 def _bonus_line(payload: dict[str, Any]) -> str:
@@ -415,7 +419,7 @@ def _draw_lines(payload: dict[str, Any]) -> list[str]:
     if rules.get("draw_mode") == "full":
         return ["🎊 <b>满人开奖：</b>", f"达到 {rules['participant_target']} 人参与后立刻开奖"]
     moment_line = _draw_time(payload)
-    label = public_timezone_label(str(payload["timezone"]))
+    label = public_timezone_label(BEIJING_TIMEZONE)
     return [f"📅 <b>开奖日期：</b>（{label}）", moment_line]
 
 

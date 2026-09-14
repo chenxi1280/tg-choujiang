@@ -98,15 +98,17 @@ def _invite_section(
         lines.append(
             progress_line + _invite_link_note(campaign, link_status, bonus_deadline=bonus_deadline)
         )
-        rows.extend(
-            _group_rows(
-                campaign,
-                group,
-                link_status,
-                cipher=cipher,
-                bot_username=bot_username,
-                bonus_deadline=bonus_deadline,
-            )
+        group_rows = _group_rows(
+            campaign,
+            group,
+            link_status,
+            cipher=cipher,
+            bot_username=bot_username,
+            bonus_deadline=bonus_deadline,
+        )
+        rows.extend(group_rows)
+        lines.extend(
+            button.copy_text.text for row in group_rows for button in row if button.copy_text
         )
     return lines, rows
 

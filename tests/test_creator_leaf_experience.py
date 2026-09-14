@@ -59,7 +59,7 @@ async def test_folder_link_preserves_all_independent_participation_conditions() 
             "presentation": frozen,
         }
     )
-    assert keyboard.inline_keyboard[0][0].callback_data == "member:join:reference"
+    assert keyboard.inline_keyboard[0][0].url.endswith("?start=join_reference")
     assert keyboard.inline_keyboard[-1][0].url == FOLDER_LINK
 
 

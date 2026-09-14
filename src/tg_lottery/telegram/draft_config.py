@@ -17,6 +17,7 @@ from tg_lottery.domain.rules import (
     InviteRule,
 )
 from tg_lottery.telegram.creator_invite_retention import retention_hours
+from tg_lottery.telegram.public_projection import BEIJING_TIMEZONE
 
 LOCAL_TIME_FORMAT = "%Y-%m-%d %H:%M"
 DEFAULT_CLAIM_INSTRUCTIONS = "请联系活动管理员领取奖品"
@@ -96,7 +97,7 @@ def parse_draw_at(value: str, timezone: str) -> datetime:
         parsed = datetime.strptime(value.strip(), LOCAL_TIME_FORMAT)
     except ValueError as exc:
         raise UserFacingError("开奖时间格式应为：2026-08-08 18:30") from exc
-    return parsed.replace(tzinfo=ZoneInfo(timezone))
+    return parsed.replace(tzinfo=ZoneInfo(BEIJING_TIMEZONE))
 
 
 def campaign_input(

@@ -11,6 +11,8 @@ from tg_lottery.domain.errors import (
     UserFacingError,
 )
 
+BEIJING_TIMEZONE = "Asia/Shanghai"
+
 PUBLIC_TIME_FORMAT = "%Y年%m月%d日 %H:%M"
 PUBLIC_TIMEZONE_LABELS = {
     "Asia/Shanghai": "北京时间",
@@ -57,7 +59,8 @@ def format_public_time(value: datetime | str, timezone: str) -> str:
     except ZoneInfoNotFoundError as exc:
         raise ValueError(f"unsupported public timezone: {timezone}") from exc
     localized = moment.replace(tzinfo=zone) if moment.tzinfo is None else moment.astimezone(zone)
-    label = public_timezone_label(timezone)
+    localized = localized.astimezone(ZoneInfo(BEIJING_TIMEZONE))
+    label = public_timezone_label(BEIJING_TIMEZONE)
     return f"{localized.strftime(PUBLIC_TIME_FORMAT)} ({label})"
 
 
