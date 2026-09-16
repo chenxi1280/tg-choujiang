@@ -1,5 +1,6 @@
 from datetime import datetime
 
+from tg_lottery.application.progress_notifications import invitation_notice_chat, queue_bonus_notice
 from tg_lottery.domain.enums import TicketSource
 from tg_lottery.domain.rules import CampaignRules, GroupInviteRule
 from tg_lottery.infrastructure.db import Campaign, Invitation, Participant, TicketLedger
@@ -14,6 +15,8 @@ async def add_invite_bonus(
     business_key: str,
     occurred_at: datetime | None,
 ) -> None:
+    if reward <= 0:
+        raise ValueError("invitation rewards must be positive; confirmed bonuses cannot be revoked")
     participant = await session.get(
         Participant, invitation.inviter_participant_id, with_for_update=True
     )
@@ -25,7 +28,7 @@ async def add_invite_bonus(
             participant_id=participant.id,
             participation_group_id=invitation.participation_group_id,
             delta=reward,
-            source_type=TicketSource.INVITATION if reward > 0 else TicketSource.REVERSAL,
+            source_type=TicketSource.INVITATION,
             source_ref=str(invitation.id),
             business_key=business_key,
             occurred_at=occurred_at,
@@ -33,6 +36,15 @@ async def add_invite_bonus(
         )
     )
     participant.ticket_total_cache += reward
+    await queue_bonus_notice(
+        session,
+        campaign=campaign,
+        participant=participant,
+        chat_id=await invitation_notice_chat(session, invitation),
+        key=business_key,
+        label="邀请加成",
+        delta=reward,
+    )
 
 
 def invite_bonus_target(rules: CampaignRules, invite_count: int) -> int:

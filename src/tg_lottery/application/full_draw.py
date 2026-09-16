@@ -134,6 +134,7 @@ async def _fresh_eligible_count(session: object, campaign: Campaign, candidate_a
         select(func.count(Participant.id)).where(
             Participant.campaign_id == campaign.id,
             Participant.qualification_state == QualificationState.ELIGIBLE,
+            Participant.base_qualified.is_(True),
             fresh_eligible,
         )
     )

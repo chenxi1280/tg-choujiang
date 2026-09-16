@@ -349,7 +349,6 @@ class QueryService:
                 select(func.count(Invitation.id)).where(
                     Invitation.campaign_id == campaign_id,
                     Invitation.state == InvitationState.VALID,
-                    Invitation.left_at.is_(None),
                 )
             )
             pending = await session.scalar(
@@ -383,6 +382,7 @@ class QueryService:
                 select(func.count(Participant.id)).where(
                     Participant.campaign_id == campaign_id,
                     Participant.qualification_state == QualificationState.ELIGIBLE,
+                    Participant.base_qualified.is_(True),
                 )
             )
             return int(count or 0)

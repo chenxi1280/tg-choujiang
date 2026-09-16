@@ -46,35 +46,33 @@ async def award_invitation_bonus(
     target = await _participation_target(session, invitation)
     group_rule = rules.invite_rule_for(target.chat_id_snapshot) if target else None
     if group_rule or rules.invite.mode == "ratio" or rules.invite.reward_tiers:
-        await reconcile_invitation_bonus(
+        await award_invitation_target(
             session,
             invitation=invitation,
             campaign=campaign,
             rules=rules,
-            reason="valid",
             occurred_at=invitation.due_at or invitation.joined_at,
         )
         return
     await _award_legacy_bonus(session, invitation=invitation, campaign=campaign, rules=rules)
 
 
-async def reconcile_invitation_bonus(
+async def award_invitation_target(
     session: object,
     *,
     invitation: Invitation,
     campaign: Campaign,
     rules: CampaignRules,
-    reason: str,
     occurred_at: datetime | None,
 ) -> None:
-    invite_count = await _valid_invite_count(
-        session, invitation=invitation, campaign=campaign, include_current=reason == "valid"
-    )
+    invite_count = await _valid_invite_count(session, invitation=invitation, campaign=campaign)
     target = await _bonus_target(session, invitation, rules, invite_count=invite_count)
     current = await _current_bonus(session, invitation=invitation, campaign=campaign)
     delta = target - current
     if delta == 0:
         return
+    if delta < 0:
+        raise ValueError("confirmed invitation bonus target cannot decrease")
     await add_invite_bonus(
         session,
         invitation=invitation,
@@ -83,7 +81,7 @@ async def reconcile_invitation_bonus(
         business_key=(
             f"invite_bonus:{campaign.id}:{invitation.id}:"
             f"{invitation.participation_group_id}:"
-            f"{invitation.validation_version}:{reason}"
+            f"{invitation.validation_version}:valid"
         ),
         occurred_at=occurred_at,
     )
@@ -94,19 +92,17 @@ async def _valid_invite_count(
     *,
     invitation: Invitation,
     campaign: Campaign,
-    include_current: bool,
 ) -> int:
     filters = [
         Invitation.campaign_id == campaign.id,
         Invitation.inviter_participant_id == invitation.inviter_participant_id,
         Invitation.id != invitation.id,
         Invitation.state == InvitationState.VALID,
-        Invitation.left_at.is_(None),
     ]
     if invitation.participation_group_id is not None:
         filters.append(Invitation.participation_group_id == invitation.participation_group_id)
     count = int(await session.scalar(select(func.count(Invitation.id)).where(*filters)) or 0)
-    return count + int(include_current)
+    return count + 1
 
 
 async def _current_bonus(session: object, *, invitation: Invitation, campaign: Campaign) -> int:

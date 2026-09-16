@@ -14,6 +14,7 @@ from tg_lottery.application.queries import QueryService
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import creator_group_bonus as group_bonus
+from tg_lottery.telegram.creator_base_activity import CreatorBaseActivity
 from tg_lottery.telegram.creator_folder_link import CreatorFolderLink
 from tg_lottery.telegram.creator_group_picker import CreatorGroupPicker
 from tg_lottery.telegram.creator_group_selection import (
@@ -55,6 +56,7 @@ class CampaignCreator:
         self._queries = queries
         self._renderer = renderer
         self._settings = settings
+        self._base_activity = CreatorBaseActivity(sessions=sessions, renderer=renderer, bot=bot)
         self._folder_link = CreatorFolderLink(sessions=sessions, renderer=renderer)
         self._group_picker = CreatorGroupPicker(
             bot=bot,
@@ -129,6 +131,9 @@ class CampaignCreator:
         return await self.handle_text(message, session.state, dict(session.data))
 
     async def handle_text(self, message: Message, state: str, data: dict[str, Any]) -> bool:
+        if state == "draft:base_activity":
+            await self._base_activity.receive(message, data)
+            return True
         if state == "draft:folder_link":
             await self._folder_link.receive(message, data)
             return True
@@ -162,6 +167,7 @@ class CampaignCreator:
 
     def _grant_handlers(self):
         return {
+            "draft_base_activity": self._base_activity.show,
             "draft_folder_link": self._folder_link.show,
             "draft_folder_clear": self._folder_link.clear,
             "draft_group": self._group_picker.show,

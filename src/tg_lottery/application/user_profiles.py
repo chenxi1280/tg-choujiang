@@ -52,6 +52,7 @@ _DRAFT_KEYS = frozenset(
         "activity_message_threshold",
         "activity_reward_tickets",
         "group_activity_rules",
+        "base_activity_rules",
         "message_tips",
         "delete_trigger_message",
         "completion_delete_after_seconds",

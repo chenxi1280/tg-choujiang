@@ -12,9 +12,11 @@ from tg_lottery.application.activity_rules import (
     activity_min_text_length,
     activity_ticket_target,
 )
+from tg_lottery.application.base_activity import record_base_activity
 from tg_lottery.application.group_activity_progress import increment_group_activity_progress
 from tg_lottery.application.message_rules import normalize_text, rejection_reason
 from tg_lottery.application.ports import UnitOfWorkFactory
+from tg_lottery.application.progress_notifications import queue_bonus_notice
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import (
     CampaignState,
@@ -83,6 +85,9 @@ class ActivityService:
         participant = await self._eligible_participant(session, campaign.id, observation.user_id)
         if participant is None:
             return await self._record_invitee_activity(session, campaign, observation)
+        await record_base_activity(
+            session, campaign=campaign, participant=participant, observation=observation
+        )
         existing = await session.scalar(
             select(ActivityEvent).where(
                 ActivityEvent.campaign_id == campaign.id,
@@ -249,6 +254,8 @@ class ActivityService:
                 chat_id=chat_id,
             )
             return
+        if rules.group_activity_rules:
+            return
         progress = await self._locked_legacy_progress(
             session,
             campaign=campaign,
@@ -330,6 +337,15 @@ class ActivityService:
         )
         participant.ticket_total_cache += delta
         progress.tickets_awarded = target
+        await queue_bonus_notice(
+            session,
+            campaign=campaign,
+            participant=participant,
+            chat_id=None,
+            key=f"popularity:{campaign.id}:{participant.user_id}:{progress.local_date.isoformat()}:{target}",
+            label="发言加成",
+            delta=delta,
+        )
 
     async def _active_campaigns(
         self, session: object, chat_id: int

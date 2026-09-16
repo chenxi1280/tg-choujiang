@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import exists, func, or_, select
 
+from tg_lottery.application.base_activity_notifications import notify_unqualified_at_cutoff
 from tg_lottery.application.campaign_targets import qualification_targets
 from tg_lottery.application.draw_commitments import (
     ensure_draw_commitment,
@@ -66,6 +67,7 @@ class SettlementService:
             await ensure_draw_commitment(uow.session, campaign, now)
             await self._expire_unqualified_invitations(uow.session, campaign)
             await self._require_drain_complete(uow.session, campaign, now)
+            await notify_unqualified_at_cutoff(uow.session, campaign)
             entries = await self._eligible_entries(uow.session, campaign.id)
             snapshot = await self._create_snapshot(
                 uow.session,
@@ -208,6 +210,7 @@ class SettlementService:
             .where(
                 Participant.campaign_id == campaign_id,
                 Participant.qualification_state == QualificationState.ELIGIBLE,
+                Participant.base_qualified.is_(True),
                 Participant.private_reachable.is_(True),
             )
             .group_by(Participant.id)

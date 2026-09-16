@@ -114,6 +114,7 @@ async def _reconcile_full_draw(session: AsyncSession, campaign_id: object, now: 
         select(func.count(Participant.id)).where(
             Participant.campaign_id == campaign.id,
             Participant.qualification_state == QualificationState.ELIGIBLE,
+            Participant.base_qualified.is_(True),
         )
     )
     if int(eligible or 0) < rules.participant_target:

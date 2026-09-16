@@ -27,6 +27,12 @@ from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram import member_callbacks, member_condition_views
 from tg_lottery.telegram.crypto import SecretCipher
+from tg_lottery.telegram.member_base_activity import (
+    base_registration_reply,
+    qualification_retry_reply,
+    registration_total,
+    reply_existing,
+)
 from tg_lottery.telegram.member_group_invites import build_group_invite_payload
 from tg_lottery.telegram.member_invites import legacy_invite_link_payload, member_keyboard
 from tg_lottery.telegram.member_missing_targets import build_missing_targets_reply
@@ -130,7 +136,9 @@ class MemberFlow:
         user = user or required_user(message)
         existing = await self._participants.eligible_participant(campaign.id, user.id)
         if existing is not None:
-            await member_callbacks.already_reply(callback, message, existing.ticket_total_cache)
+            await reply_existing(
+                message, campaign, participant=existing, callback=callback, queries=self._queries
+            )
             return
         attempt = await self._participants.begin_registration(
             registration_request_from_message(
@@ -145,13 +153,12 @@ class MemberFlow:
                 attempt, user_id=user.id, campaign=campaign
             )
         except QualificationRetryable:
-            await self._qualification_retry_reply(message, callback)
+            await qualification_retry_reply(message, callback)
             return
         if state is QualificationState.ELIGIBLE:
-            if total == 0:
-                replay = await self._participants.eligible_participant(campaign.id, user.id)
-                total = replay.ticket_total_cache if replay is not None else 1
-            await self._registration_success_reply(message, campaign, total, callback=callback)
+            await self._registration_success_reply(
+                message, campaign, total, callback=callback, user_id=user.id
+            )
             return
         await self._send_qualification_failure(
             message,
@@ -173,18 +180,21 @@ class MemberFlow:
             attempt, user_id=user_id, main_chat_id=group.chat_id, campaign=campaign
         )
 
-    async def _qualification_retry_reply(
-        self, message: Message, callback: CallbackQuery | None
-    ) -> None:
-        text = "当前无法核验群/频道资格，请稍后再试"
-        if callback is not None:
-            await member_callbacks.safe_answer(callback, text, alert=True)
-            return
-        await message.answer(text)
-
     async def _registration_success_reply(
-        self, message: Message, campaign: object, total: int, *, callback: CallbackQuery | None
+        self,
+        message: Message,
+        campaign: object,
+        total: int,
+        *,
+        callback: CallbackQuery | None,
+        user_id: int,
     ) -> None:
+        if campaign.rules.get("base_activity_rules"):
+            await base_registration_reply(
+                message, campaign, user_id=user_id, callback=callback, queries=self._queries
+            )
+            return
+        total = await registration_total(self._participants, campaign, user_id=user_id, total=total)
         chat_type = getattr(getattr(message, "chat", None), "type", None)
         if callback is not None and chat_type != "private":
             await member_callbacks.safe_answer(callback, popup_success(total), alert=False)

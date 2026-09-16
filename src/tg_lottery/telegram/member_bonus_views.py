@@ -31,6 +31,7 @@ class BonusViewContext:
     unavailable: Mapping[int, str]
     cipher: object
     bot_username: str
+    base_progress: str = ""
 
 
 async def build_bonus_overview(
@@ -138,6 +139,7 @@ async def _load_context(
         campaign=campaign,
         rules=rules,
         groups=groups,
+        base_progress=progress.base_progress,
         invite_progress={item.chat_id: item for item in progress.invitations},
         activity_progress={item.chat_id: item for item in progress.activities},
         link_statuses=statuses,
@@ -176,7 +178,7 @@ def _target_join_url(target: object | None, cipher: object) -> str | None:
 def _category_payload(context: BonusViewContext) -> tuple[str, InlineKeyboardMarkup]:
     invite_total = sum(item.awarded_tickets for item in context.invite_progress.values())
     activity_total = sum(item.awarded_tickets for item in context.activity_progress.values())
-    text = _header(context.campaign, "我的加成")
+    text = _header(context.campaign, "我的加成") + "\n" + context.base_progress
     rows = [
         [
             InlineKeyboardButton(
@@ -241,7 +243,7 @@ def build_invite_group_list(
             )
         ]
     )
-    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+    return "\n".join([*lines, context.base_progress]), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def build_activity_group_list(
@@ -284,7 +286,7 @@ def build_activity_group_list(
             )
         ]
     )
-    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+    return "\n".join([*lines, context.base_progress]), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _invite_group_detail(
@@ -312,7 +314,9 @@ def _invite_group_detail(
         return_page=return_page,
     )
     rows.extend(_invite_detail_navigation(context, chat_id, return_page=return_page))
-    return "\n".join(line for line in lines if line), InlineKeyboardMarkup(inline_keyboard=rows)
+    return "\n".join(
+        line for line in [*lines, context.base_progress] if line
+    ), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _invite_detail_navigation(
@@ -373,7 +377,7 @@ def _activity_group_detail(
             )
         ],
     ]
-    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+    return "\n".join([*lines, context.base_progress]), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _available_invite_rows(

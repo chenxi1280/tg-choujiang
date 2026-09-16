@@ -94,8 +94,9 @@ class ReplayEligibleParticipants:
 
 
 class CampaignQueries:
-    def __init__(self, campaign):
+    def __init__(self, campaign, detail=None):
         self._campaign = campaign
+        self._detail = detail
 
     async def campaign_by_reference(self, reference):
         return self._campaign
@@ -103,14 +104,22 @@ class CampaignQueries:
     async def campaign_group(self, campaign_id):
         return SimpleNamespace(chat_id=MAIN_CHAT_ID)
 
+    async def participant_campaign_detail(self, user_id, public_ref):
+        return self._detail
+
 
 class RecordingMessage:
-    def __init__(self):
+    def __init__(self, chat_type=None):
         self.texts = []
+        self.chat = (
+            SimpleNamespace(id=201, type=chat_type)
+            if chat_type is not None
+            else SimpleNamespace(id=201)
+        )
 
     async def answer(self, text, *, reply_markup=None):
         self.texts.append(text)
-        return SimpleNamespace(chat=SimpleNamespace(id=201), message_id=88)
+        return SimpleNamespace(chat=self.chat, message_id=88)
 
 
 class RecordingCallback:
@@ -133,11 +142,11 @@ def _campaign(message_thresholds):
     )
 
 
-def _flow(participants, campaign, bot=None):
+def _flow(participants, campaign, *, bot=None, detail=None):
     return MemberFlow(
         bot=bot or FakeBot(),
         participants=participants,
-        queries=CampaignQueries(campaign),
+        queries=CampaignQueries(campaign, detail=detail),
         cipher=object(),
         stats=FakeStats({}),
     )
@@ -276,3 +285,54 @@ def test_popup_failure_two_missing_groups_without_count_suffix():
     assert text.startswith("请先加入")
     assert text.endswith("群B")
     assert "个群" not in text
+
+
+async def test_base_activity_group_callback_answers_popup_without_sending_message():
+    campaign = SimpleNamespace(
+        id=uuid4(),
+        public_ref=PUBLIC_REF,
+        rules={"base_activity_rules": {"-1001": {"consecutive_days": 7}}},
+        presentation={"main_chat": {"id": MAIN_CHAT_ID, "title": "主群"}},
+    )
+    detail = SimpleNamespace(
+        base_qualified=False,
+        total=1,
+        base_progress="A群: 今日 0/5 条; 连续 0/7 天",
+    )
+    participants = AlreadyEligibleParticipants(1)
+    flow = _flow(participants, campaign, detail=detail)
+    callback = RecordingCallback()
+    message = RecordingMessage(chat_type="supergroup")
+
+    await flow.register(
+        message, PUBLIC_REF, user=_user(), observed_at=datetime.now(UTC), callback=callback
+    )
+
+    assert len(callback.answers) == 1
+    text, show_alert = callback.answers[0]
+    assert "基础发言门槛未完成" in text
+    assert show_alert is False
+    assert message.texts == []
+
+
+async def test_base_activity_private_reply_sends_progress_message():
+    campaign = SimpleNamespace(
+        id=uuid4(),
+        public_ref=PUBLIC_REF,
+        rules={"base_activity_rules": {"-1001": {"consecutive_days": 7}}},
+        presentation={"main_chat": {"id": MAIN_CHAT_ID, "title": "主群"}},
+    )
+    detail = SimpleNamespace(
+        base_qualified=False,
+        total=1,
+        base_progress="A群: 今日 0/5 条; 连续 0/7 天",
+    )
+    participants = AlreadyEligibleParticipants(1)
+    flow = _flow(participants, campaign, detail=detail)
+    message = RecordingMessage(chat_type="private")
+
+    await flow.register(message, PUBLIC_REF, user=_user(), observed_at=datetime.now(UTC))
+
+    assert len(message.texts) == 1
+    assert "已登记参与本期活动。" in message.texts[0]
+    assert "A群" in message.texts[0]

@@ -170,7 +170,7 @@ async def test_invitation_bonus_uses_cumulative_tiers_and_awards_only_the_differ
     assert sum(rewards) == 3
 
 
-async def test_valid_invite_leave_is_reversed_and_rejoin_restarts_retention(
+async def test_valid_invite_leave_retains_bonus_and_rejoin_does_not_repeat_reward(
     session_factory,
 ) -> None:
     now = datetime.now(UTC)
@@ -203,8 +203,8 @@ async def test_valid_invite_leave_is_reversed_and_rejoin_restarts_retention(
     await service.record_left(campaign_id, 502, left_at)
     rejoined = await service.record_rejoined(campaign_id, 502, left_at + timedelta(minutes=5))
     assert rejoined is not None
-    assert rejoined.state is InvitationState.JOINED_PENDING
-    assert rejoined.due_at == left_at + timedelta(hours=1, minutes=5)
+    assert rejoined.state is InvitationState.VALID
+    assert rejoined.due_at == invitations[1].due_at
     await service.validate(
         invitations[1].id,
         observed_at=left_at + timedelta(hours=1, minutes=5),
@@ -219,7 +219,7 @@ async def test_valid_invite_leave_is_reversed_and_rejoin_restarts_retention(
                 .order_by(TicketLedger.occurred_at)
             )
         ).all()
-    assert rewards == [1, 2, -2, 2]
+    assert rewards == [1, 2]
 
 
 async def _seed_tiered_invite_link(session_factory, rules, now) -> tuple[UUID, UUID]:

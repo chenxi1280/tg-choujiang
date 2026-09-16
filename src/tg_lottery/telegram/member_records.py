@@ -57,10 +57,10 @@ async def show_ticket_record(
         f"活动状态: {campaign_state_text(detail.state)}\n"
         f"参与资格: {qualification_state_text(detail.qualification)}\n"
         f"开奖时间: {format_public_time(detail.draw_at, detail.timezone)}\n\n"
-        f"总抽奖次数: {detail.total}\n"
+        f"累计次数（含暂存）: {detail.total}\n"
         f"基础次数: {detail.registration}\n"
         f"发言加成: {detail.activity}\n"
-        f"邀请加成: {detail.invitation}",
+        f"邀请加成: {detail.invitation}\n{detail.base_progress}",
         reply_markup=_record_keyboard(
             public_ref,
             bonus_enabled=detail.bonus_enabled,

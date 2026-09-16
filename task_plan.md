@@ -97,7 +97,12 @@
 - [complete] 89. 审计主群创建权限、多条件管理员校验与发言条件现有数据合同
 - [complete] 90. 冻结并补回归：所有群管理员可创建、多群双管理员、逐群发言要求展示与核验
 - [complete] 91. 实施权限、草稿、活动卡和资格判定改动并更新 V1.9 合同
-- [in_progress] 92. 执行完整本地门禁，发布生产并分层验证 SHA、健康和 Telegram 行为
+- [complete] 92. 执行完整本地门禁，发布生产并分层验证 SHA、健康和 Telegram 行为
+- [complete] 93. 复核公开频道参与条件失败，区分链接解析、机器人权限与真实 Telegram 未验证边界
+- [complete] 94. 根据 2026-08-15 客户端无回复截图，只读追踪 Inbox/Outbox、轮询心跳与创建状态机的首个破损边界
+- [complete] 95. 证明活动已按冻结配置发往主群，条件群无卡片属预期语义；不擅自改成多群重复发卡
+- [complete] 96. 完成脱敏生产诊断、精确时间/目标群回读及 master 质量门禁，保持 release 和应用未变
+- [complete] 97. 修复当前生产 `unknown_deliveries=3`、重新部署，并完成线上功能验收
 
 ## 关键约束
 
@@ -118,6 +123,9 @@
 | LibreOffice 隔离渲染环境未发现中文字体 | 1 | 在任务临时配置目录安装系统自带 `Arial Unicode MS` 后重新渲染；未修改系统与项目依赖 |
 | 文档表格审计工具不接受旧参数 `--audit` | 1 | 改用当前版本的直接调用方式，20 张表几何审计通过 |
 | 当前目录不是 Git 仓库且没有实现代码 | 1 | 作为新项目初始化；先复用同类项目的 Actions/部署合同，再创建仓库和工程 |
+| macOS 没有 `timeout` 命令，且 zsh 的 `status` 为只读变量 | 1 | 改用 Python `subprocess.run(..., timeout=60)` 包装测试，避免重复执行失败命令 |
+| 系统 Python 3.14 未安装 pytest | 1 | 发现项目 `.venv` 已存在，改用 `.venv/bin/python` 运行项目门禁 |
+| 全量 pytest 的数据库夹具连接 PostgreSQL 时反复 `ConnectionResetError: [Errno 54]` | 1 | 停止本地全量进程；将其标记为本机数据库环境阻断，改以定向纯单元测试和最近 CI/生产健康结果核对 |
 | GitHub 不存在 `chenxi1280/tg-choujiang` | 1 | 代码和测试完成后创建私有仓库，并配置 Actions secrets/variables |
 | 首轮 Ruff 报 2 个 import 顺序、1 个行宽、1 个 ClassVar | 1 | 自动排序 import，拆分长集合，并为 SQLAlchemy 类型映射标注 ClassVar |
 | 应用服务首轮 Ruff 报 5 个排序和 2 个行宽问题 | 1 | 统一 Ruff 自动排序并拆分长签名/推导式；未改变业务语义 |
@@ -198,3 +206,7 @@
 | 首轮全仓门禁发现 1 个格式化文件和 4 个正则断言规则 | 1 | 使用项目 Ruff 做机械格式化，测试正则改为 raw string；不放宽格式或 lint 门禁 |
 | 首轮全量测试连接 55432 命中 PostgreSQL 密码不一致 | 1 | 非业务断言失败；先识别端口所有者，再使用仓库隔离测试数据库和显式 `TEST_DATABASE_URL` 重跑 |
 | Shell 门禁误用 `sh -n` 检查 Bash 专用进程替换 | 1 | 脚本本身声明 Bash；改用 `bash -n` 逐文件检查，不修改脚本或规避语法 |
+| 初次尝试同时向三个计划文件追加记录时，`findings.md` 上下文已变化 | 1 | 补丁原子失败且无部分写入；改为读取当前文件尾后按精确上下文追加 |
+| 本机到马来西亚生产 SSH 在 banner 交换阶段超时 | 1 | 已在主机指纹校验后尝试，连接未进入远程 shell、未执行 SQL；改走 GitHub Actions 已授权生产通道做固定脱敏查询 |
+| 新建 Actions 诊断工作流的首个 `apply_patch` 调用中，JavaScript 模板字符串把 shell `${...}` 误解为插值 | 1 | 调用在文件写入前失败；改用中性占位符构造补丁后再一次性替换，工作流文件已完整落盘 |
+| 本轮首次追加计划文件时 `findings.md` 上下文已变化 | 1 | 补丁原子失败且无部分写入；读取文件尾部后改用精确末尾追加 |

@@ -17,6 +17,7 @@ async def verify_bonus_action(bot: Bot, user_id: int, data: dict[str, Any], *, a
     targets = _action_targets(data, action)
     if not targets:
         return
+    targets.extend((int(key), "activity") for key in data.get("base_activity_rules", {}))
     errors = await _permission_errors(bot, user_id, targets, data=data)
     if errors:
         raise UserFacingError("以下群的加成权限需要修复：\n" + "\n".join(errors))
@@ -35,6 +36,7 @@ async def verify_publication_bonus_permissions(
         for chat_id, rule in (data.get("group_activity_rules") or {}).items()
         if rule.get("enabled")
     )
+    targets.extend((int(key), "activity") for key in data.get("base_activity_rules", {}))
     errors = await _permission_errors(bot, user_id, targets, data=data)
     if errors:
         raise UserFacingError("以下群的加成权限需要修复：\n" + "\n".join(errors))

@@ -90,6 +90,12 @@ class GroupActivityRule(BaseModel, frozen=True):
         return self
 
 
+class BaseActivityRule(BaseModel, frozen=True):
+    consecutive_days: int = Field(default=7, ge=1)
+    daily_messages: int = Field(default=5, ge=1)
+    min_text_length: int = Field(default=5, ge=1)
+
+
 class CampaignRules(BaseModel, frozen=True):
     timezone: str = "Asia/Shanghai"
     activity: ActivityRule = ActivityRule()
@@ -104,6 +110,7 @@ class CampaignRules(BaseModel, frozen=True):
     bonus_types: tuple[Literal["invite", "activity"], ...] = ()
     unique_winner: bool = True
     settlement_drain_seconds: int = Field(default=300, ge=0)
+    base_activity_rules: dict[str, BaseActivityRule] = Field(default_factory=dict)
     message_thresholds: dict[str, int] = Field(default_factory=dict)
     group_invite_rules: dict[str, GroupInviteRule] = Field(default_factory=dict)
     group_activity_rules: dict[str, GroupActivityRule] = Field(default_factory=dict)
@@ -119,7 +126,11 @@ class CampaignRules(BaseModel, frozen=True):
 
     @model_validator(mode="after")
     def validate_group_rule_keys(self) -> CampaignRules:
-        for chat_id in (*self.group_invite_rules, *self.group_activity_rules):
+        for chat_id in (
+            *self.group_invite_rules,
+            *self.group_activity_rules,
+            *self.base_activity_rules,
+        ):
             if not chat_id.lstrip("-").isdigit():
                 raise ValueError("group bonus rule chat ids must be numeric")
         return self
@@ -219,7 +230,12 @@ def _requirement_ids(rules: CampaignRules, presentation: dict[str, Any]) -> set[
 
 def _validate_bonus_scope(group_ids: tuple[int, ...], rules: CampaignRules) -> None:
     bonus_chat_ids = {
-        int(value) for value in (*rules.group_invite_rules, *rules.group_activity_rules)
+        int(value)
+        for value in (
+            *rules.group_invite_rules,
+            *rules.group_activity_rules,
+            *rules.base_activity_rules,
+        )
     }
     unknown = bonus_chat_ids.difference(group_ids)
     if unknown:

@@ -14,7 +14,6 @@ from tg_lottery.application.group_membership_facts import (
 from tg_lottery.application.invitation_bonus_service import (
     award_invitation_bonus,
     invitation_activity_requirement_met,
-    reconcile_invitation_bonus,
 )
 from tg_lottery.application.invitation_models import (
     InvitationValidationAttempt,
@@ -151,7 +150,7 @@ class InvitationService:
         invitation = await upsert_candidate(
             session, link=link, campaign=campaign, observation=observation
         )
-        if invitation.state is InvitationState.VALID and invitation.left_at is None:
+        if invitation.state is InvitationState.VALID:
             return invitation
         self._schedule_validation(session, invitation, campaign, event_at=observation.event_at)
         return invitation
@@ -171,6 +170,8 @@ class InvitationService:
                 invitee_user_id,
                 participation_group_id=participation_group_id,
             )
+            if invitation.state is InvitationState.VALID:
+                return invitation
             recoverable = invitation.left_at is not None or (
                 invitation.state is InvitationState.LEFT_BEFORE_VALID
             )
@@ -190,7 +191,7 @@ class InvitationService:
         participation_group_id: UUID | None = None,
     ) -> None:
         async with self._uow_factory() as uow:
-            invitation, campaign = await locked_invitation_by_user(
+            invitation, _ = await locked_invitation_by_user(
                 uow.session,
                 campaign_id,
                 invitee_user_id,
@@ -201,20 +202,6 @@ class InvitationService:
             invitation.left_at = event_at
             await mark_invitation_member_left(uow.session, invitation, observed_at=event_at)
             if invitation.state is InvitationState.VALID:
-                if event_at <= campaign.cutoff_at:
-                    invitation.validation_version += 1
-                    rules = CampaignRules.model_validate(campaign.rules)
-                    await reconcile_invitation_bonus(
-                        uow.session,
-                        invitation=invitation,
-                        campaign=campaign,
-                        rules=rules,
-                        reason="left",
-                        occurred_at=event_at,
-                    )
-                    invitation.state = InvitationState.INVALID
-                    invitation.validation_error = "left_after_valid"
-                    invitation.final_reason = "left_before_cutoff"
                 return
             invitation.state = InvitationState.LEFT_BEFORE_VALID
             invitation.final_reason = "left_before_valid"

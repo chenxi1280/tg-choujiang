@@ -186,8 +186,9 @@ def _remove_groups(data: dict[str, Any], groups: list[Group]) -> dict[str, Any]:
 
 def _group_has_rules(data: dict[str, Any], chat_id: int) -> bool:
     key = str(chat_id)
-    return key in (data.get("group_invite_rules") or {}) or key in (
-        data.get("group_activity_rules") or {}
+    return any(
+        key in (data.get(field) or {})
+        for field in ("group_invite_rules", "group_activity_rules", "base_activity_rules")
     )
 
 

@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.base_activity_views import base_progress_text
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import InvitationState, TicketSource
 from tg_lottery.domain.rules import CampaignRules
@@ -40,6 +41,7 @@ class GroupBonusProgress:
     local_date: date
     invitations: tuple[InviteGroupProgress, ...]
     activities: tuple[ActivityGroupProgress, ...]
+    base_progress: str = ""
 
 
 async def load_group_bonus_progress(
@@ -72,6 +74,7 @@ async def load_group_bonus_progress(
             invite_counts=invite_counts,
             ticket_totals=ticket_totals,
             daily=daily,
+            base_text=await base_progress_text(session, campaign, participant),
         )
 
 
@@ -94,7 +97,6 @@ async def _valid_invite_counts(
             Invitation.campaign_id == campaign_id,
             Invitation.inviter_participant_id == participant_id,
             Invitation.state == InvitationState.VALID,
-            Invitation.left_at.is_(None),
             Invitation.participation_group_id.is_not(None),
         )
         .group_by(Invitation.participation_group_id)
@@ -151,6 +153,7 @@ def _build_progress(
     invite_counts: dict[UUID, int],
     ticket_totals: dict[tuple[UUID, TicketSource], int],
     daily: dict[UUID, DailyProgress],
+    base_text: str = "",
 ) -> GroupBonusProgress:
     invitations = []
     activities = []
@@ -175,7 +178,7 @@ def _build_progress(
                     progress.tickets_awarded if progress else 0,
                 )
             )
-    return GroupBonusProgress(local_date, tuple(invitations), tuple(activities))
+    return GroupBonusProgress(local_date, tuple(invitations), tuple(activities), base_text)
 
 
 def _required_group_id(group_ids: dict[int, UUID], chat_id: int) -> UUID:

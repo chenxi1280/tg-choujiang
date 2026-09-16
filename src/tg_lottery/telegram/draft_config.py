@@ -78,6 +78,7 @@ def new_draft(
         "activity_message_threshold": DEFAULT_ACTIVITY_MESSAGE_THRESHOLD,
         "activity_reward_tickets": DEFAULT_ACTIVITY_REWARD_TICKETS,
         "group_activity_rules": {},
+        "base_activity_rules": {},
         "message_tips": True,
         "delete_trigger_message": False,
         "completion_delete_after_seconds": None,
@@ -160,6 +161,7 @@ def rules_from_data(data: dict[str, Any]) -> CampaignRules:
             for key, value in (data.get("chat_message_thresholds") or {}).items()
             if value
         },
+        base_activity_rules=data.get("base_activity_rules") or {},
         group_invite_rules={
             str(key): GroupInviteRule.model_validate(value)
             for key, value in (data.get("group_invite_rules") or {}).items()
@@ -237,6 +239,7 @@ def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
         "activity_message_threshold",
         "activity_reward_tickets",
         "group_activity_rules",
+        "base_activity_rules",
         "message_tips",
         "delete_trigger_message",
         "completion_delete_after_seconds",

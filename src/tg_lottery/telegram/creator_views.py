@@ -8,6 +8,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.bonus_rule_text import chat_title
+from tg_lottery.telegram.creator_base_activity import base_rules_text
 from tg_lottery.telegram.creator_bonus import bonus_summary
 from tg_lottery.telegram.creator_invite_retention import summary as retention_summary
 from tg_lottery.telegram.creator_messages import message_policy_summary
@@ -39,6 +40,7 @@ def preview_text(data: dict[str, Any], *, now: datetime | None = None) -> str:
         f"🌏️ 地区限制：{_region_limits(data)}\n\n"
         f"👥 参与活动的群：{_participation_groups(data)}\n"
         f"📮 准入条件：{_requirements(data)}\n\n"
+        f"{_base_summary(data)}\n\n"
         f"🎁 奖品内容：\n{_prize_lines(data.get('prizes', []))}\n"
         f"⚠️ 抽奖说明：{data.get('description') or '【等待设置】'}\n\n"
         f"🔋 抽奖加成：{bonus_summary(data)}\n{retention_summary(data)}\n"
@@ -158,3 +160,7 @@ def _prize_lines(prizes: list[dict[str, Any]]) -> str:
     if not prizes:
         return "【等待设置】"
     return "\n".join(f"  💰 {item['name']} × {item['winner_count']} 人" for item in prizes)
+
+
+def _base_summary(data: dict[str, Any]) -> str:
+    return base_rules_text(data) if data.get("base_activity_rules") else "基础发言门槛：未设置"

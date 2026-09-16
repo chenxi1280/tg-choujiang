@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from tg_lottery.application.activity_rules import group_activity_ticket_target
+from tg_lottery.application.progress_notifications import queue_bonus_notice
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import TicketSource
 from tg_lottery.domain.rules import CampaignRules
@@ -128,6 +129,15 @@ async def _award_target(
     )
     progress.tickets_awarded = target
     participant.ticket_total_cache += delta
+    await queue_bonus_notice(
+        session,
+        campaign=campaign,
+        participant=participant,
+        chat_id=chat_id,
+        key=f"group_activity:{campaign.id}:{participant.user_id}:{chat_id}:{progress.local_date.isoformat()}:{target}",
+        label="发言加成",
+        delta=delta,
+    )
 
 
 async def _participation_group_id(session: object, campaign_id: object, chat_id: int) -> object:

@@ -172,7 +172,7 @@ async def _assert_multi_group_projection(session_factory, campaign_id: UUID) -> 
     assert len(jobs) == 6
 
 
-async def test_ratio_invite_bonus_awards_each_n_valid_invites_and_reverses(
+async def test_ratio_invite_bonus_awards_each_n_confirmed_invites_and_retains(
     session_factory,
 ) -> None:
     now = datetime.now(UTC)
@@ -188,9 +188,9 @@ async def test_ratio_invite_bonus_awards_each_n_valid_invites_and_reverses(
     await service.record_left(campaign_id, 904, now + timedelta(hours=3))
     ledger = await _participant_ledger(session_factory, participant_id)
     assert totals == [0, 1, 1, 2]
-    assert [row.delta for row in ledger] == [1, 1, -1]
-    assert ledger[-1].source_type is TicketSource.REVERSAL
-    assert sum(row.delta for row in ledger) == 1
+    assert [row.delta for row in ledger] == [1, 1]
+    assert all(row.source_type is TicketSource.INVITATION for row in ledger)
+    assert sum(row.delta for row in ledger) == 2
 
 
 async def _seed_ratio_campaign(session_factory, now: datetime) -> tuple[UUID, UUID, UUID]:

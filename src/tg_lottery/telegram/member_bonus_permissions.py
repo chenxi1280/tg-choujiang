@@ -14,6 +14,8 @@ async def inspect_bonus_permissions(bot: Bot, rules: CampaignRules) -> dict[int,
     for chat_id, rule in rules.group_activity_rules.items():
         if rule.enabled:
             kinds.setdefault(int(chat_id), set()).add("activity")
+    for chat_id in rules.base_activity_rules:
+        kinds.setdefault(int(chat_id), set()).add("activity")
     errors = {}
     for chat_id, group_kinds in kinds.items():
         reason = await _permission_error(bot, chat_id, group_kinds)

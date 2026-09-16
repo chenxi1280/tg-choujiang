@@ -32,8 +32,10 @@ def draw_rule(rules: CampaignRules) -> str:
 
 def human_rule(rules: CampaignRules, chats: tuple[dict[str, object], ...] = ()) -> str:
     if not rules.bonus_types:
-        return "抽奖加成: 关闭，仅计算基础抽奖次数"
-    if rules.group_invite_rules or rules.group_activity_rules:
+        return "抽奖加成: 关闭，仅计算基础抽奖次数\n" + "\n".join(
+            per_group_bonus_lines(rules, chats)
+        )
+    if rules.group_invite_rules or rules.group_activity_rules or rules.base_activity_rules:
         lines = per_group_bonus_lines(rules, chats)
         return "抽奖加成（各群独立累计）:\n" + "\n".join(lines)
     parts = []

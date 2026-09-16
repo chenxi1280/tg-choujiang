@@ -350,3 +350,59 @@
 - 定向回归已有 49/49 通过；新迁移 `c6d4e8f1a205` 在隔离 PostgreSQL 16 完成空库升级、回退和再升级，`alembic check` 无模型漂移。
 - 自审补充了活动规则 JSONB GIN 索引和多活动固定加锁顺序；迁移回归证明 7 条历史主群进度升级后仍为主群 7 条，未丢失计数。
 - 最终本地门禁通过：188/188 项测试在 19.52 秒完成，Ruff format/check、代码度量、compileall、Compose、Bash 语法、`git diff --check`、Alembic 完整往返和模型漂移全部通过。
+- 修复提交 `26d44ac87cbc9516ca069cf84b69c092cf614b67` 已推送 `master`；Python Checks `31781040178` 的静态门禁、迁移、188 项测试、Compose 与镜像构建全部成功。
+- `release` 已严格快进至同一提交；Deploy Production `31781315550` 成功，生产 release 为 `20260814074946_26d44ac`，app/worker 均运行精确 SHA 镜像且 healthy，Alembic 升级至 `c6d4e8f1a205`。
+- 部署后独立 Production Health `31781772732` 成功：app/worker 为 `running healthy`，Alembic 为 `c6d4e8f1a205 (head)`，`STATUS=HEALTHY`。阶段 92 完成。
+- 未擅自在两个真实群/频道中调整 Bot 或创建者权限、发布抽奖及制造发言，因此真实双群发布、逐群消息累计与结算端到端保持 `unproven`；代码、数据库、CI、部署和生产运行层均为 `pass`。
+
+# 2026-08-14 公开频道识别问题复核
+
+- 用户反馈 `https://t.me/zzxshc` 仍无法识别；截图中的错误实际已显示频道标题“郑州楼凤阁车库”，说明公开用户名解析和 `getChat` 已成功。
+- 当前失败发生在 `getChatMember(chat_id, bot.id)`：机器人不是该频道管理员，或 Telegram 尚未将管理员状态同步给 Bot API；代码随后才会检查创建者管理员身份。
+- 本轮先做只读复核，不改变代码、不调整 Telegram 权限、不发布测试活动；待确认机器人管理员状态后再决定是否存在代码缺陷。
+- 首次测试命令因 macOS 缺少 GNU `timeout` 且使用了 zsh 保留变量 `status` 失败；未形成测试结果，下一次改用 Python 子进程硬超时。
+- 系统 Python 3.14 不含 pytest；项目 `.venv` 存在且含 pytest，后续测试固定使用该解释器。
+- 定向参与条件测试 23/23 通过，Ruff 通过；本机全量 pytest 无法完成，数据库夹具在 SSL 升级阶段反复 `ConnectionResetError: [Errno 54] Connection reset by peer`，不是参与条件断言失败。
+- GitHub Actions Production Health `31784546471` 对精确 SHA `26d44ac87cbc9516ca069cf84b69c092cf614b67` 成功：app/worker healthy，检查脚本 `STATUS=HEALTHY`；这只能证明运行/异常计数边界，不证明目标频道的管理员状态。
+
+# 2026-08-14 公开频道权限复核结论
+
+- 使用 Telegram Desktop 搜索并打开 `https://t.me/zzxshc` 对应频道，窗口标题为“郑州学生会车库”；因此公开用户名、频道可访问性和 `getChat` 路径均已得到客户端侧旁证。
+- 频道窗口仅显示当前账号“已订阅频道”，没有取得管理员列表或 Bot API 成员状态；不能把“能看到/已订阅”当成创建者或 `@tggb1231_bot` 的管理员证据。
+- 代码当前先解析公开链接并调用 `getChat`，再调用 `getChatMember(chat_id, bot.id)`；截图中的“无法检查参与条件「郑州学生会车库」的机器人权限”对应第二步。若 Bot 未加入、不是管理员，或 Telegram API 暂时无法返回成员，都会进入同一错误文案。
+- 因此当前最小可执行修复是远端权限操作：在该频道把实际 Bot `@tggb1231_bot` 设为管理员，并确认创建者账号也仍是管理员，再重试原公开链接；不需要把公开链接改成 `t.me/c/...`，也不需要重新部署代码。
+- 额外发现一个可改进但本轮未实施的 UX 问题：输入提示只写“机器人”，没有显示实际用户名；权限失败也没有区分“Bot 未加入/非管理员/API 查询失败”。这会增加排查成本，但不改变当前根因。
+- 本轮仍未改变 Telegram 权限、发布活动或制造参与者数据；目标频道的真实 Bot/创建者管理员状态及后续混合条件 E2E 保持 `unproven`。定向测试 23/23 与 Ruff 通过；本机全量 pytest 仍受 PostgreSQL 连接重置阻断，CI 188 项通过与生产健康不能替代该频道远端事实。
+
+# 2026-08-15 创建抽奖无回复
+
+- 已读取用户两张客户端截图：发布请求后群内无卡片，随后私聊输入也无回复。
+- 已保护现有脏工作树；开始阶段 94，先做代码/运行证据定位，未改变生产数据或 Telegram 群状态。
+- 已定位创建器提交边界：提交后会话会被清空，群卡交给 Outbox 异步发送；后续普通文本无回复与这一状态机行为一致。
+- 已确认生产仍运行精确 SHA `26d44ac87cbc9516ca069cf84b69c092cf614b67`，且截图后多次 Production Health 成功；下一步继续下钻该张卡的 Outbox/DeliveryAttempt，不将健康成功当作送达证明。
+- 已确认截图中的三条后续文本本应收到主菜单；“无回复”直接指向 Inbox 处理链未完成。
+- 已审计健康检查：它可以发现 polling 心跳过期、update gap 和当下 `failed` 状态，但会遗漏持续 `RECEIVED`/`PROCESSING` 的 Inbox 头部阻塞。尚需生产表的安全只读查询来确定该次的具体 update 和原始异常。
+- 已确认生产 SSH 目标及本机已保存的主机指纹；已根据 ORM 模型准备不包含用户正文/用户 ID/聊天 ID 的只读查询。
+- 直连生产 SSH 首次尝试在 banner 交换阶段超时，未进入主机且未修改任何状态。按 3-strike 约束不重复相同尝试，改为 GitHub Actions 受控只读诊断。
+- 已新增手动触发的 `Production Diagnose` 工作流：只接受严格 UTC 时间窗口，只输出 update/outbox/delivery/campaign 的状态与时间等脱敏事实。YAML 解析和 `git diff --check` 通过；本机未安装 actionlint，将继续用 shell 语法及 GitHub 实际调度验证。
+- 诊断工作流已以提交 `38d3230` 单独推送 `master`，未推进 `release`、未部署应用；run `31865052392` 全部步骤成功。
+- 生产查询已证明 22:09–22:12 消息全部首次处理成功，当前无 Update 积压；但 22:08 事故窗口内无 Campaign/Outbox/DeliveryAttempt。下一步以匿名 chat ref 将 Update、管理会话和更宽时间范围的活动记录关联。
+- 已执行扩大时间窗口的只读 run `31865130801`：真正 Campaign 于 05:08:26 创建，活动卡于 05:08:27 首次投递就获得 Telegram `confirmed`，当前活动 `running`，开奖时间为今日 22:00。
+- 开始核对活动冻结主群标题、Outbox 接收群和截图群名；将仅输出群的公开标题，不输出 chat ID。
+- 目标核对已完成：卡片发往主群“吃瓜”；“抽奖测试1”、“抽奖测试2”均仅是额外参与条件群。该结论同时由 Campaign 冻结数据和 Outbox 接收目标支持。
+- 今日 21:55 的截止/资格复核/链接撤销任务与 22:00 的结算/开奖任务都已持久化为待执行，当前无异常。
+- 诊断工作流增强以提交 `37f5c48c8e227fe054b8bd8a9006995315370ed1` 推送 `master`；Production Diagnose `31865236316` 通过，Python Checks `31865232072` 的静态门禁、迁移、全量测试、Compose 和运行镜像构建全部通过。`release` 与生产应用 SHA 仍为 `26d44ac87cbc9516ca069cf84b69c092cf614b67`，本轮没有改动业务代码或部署应用。
+
+# 2026-08-16 生产 unknown 投递修复与线上功能验收
+
+- 用户授权继续修复问题、部署功能并完成线上验收；阶段 97 开始。
+- 当前已知基线：代码提交 `32b9d37dc2fd9cb0e3f6ca90f1edcc017a45bf2b` 已部署到生产 release `20260815155855_32b9d37`，app/worker healthy，Alembic `3f1d9a7c21b4 (head)`。
+- 部署后 Production Health `31894340359` 失败点为 `unknown_deliveries=3`；生产诊断 `31894396706` 显示三条均为历史 `ExceptionGroup` unknown，核心 E2E 验收活动的发卡、开奖、中奖私信为 confirmed。
+- 已新增生产 reconciliation 命令和手动 workflow：preview 只读输出候选与 fingerprint，apply 必须带同一 fingerprint 和期望数量，且只收敛旧 `ExceptionGroup` unknown；原 DeliveryAttempt 的 `unknown` 审计事实不改写。
+- 本地门禁通过：新增 reconciliation 回归 2/2，全量 243/243 测试在 23.94 秒完成；Ruff format/check、代码度量、compileall、Alembic `3f1d9a7c21b4` 无漂移、Compose、workflow YAML 解析与 `git diff --check` 均通过。
+- 修复提交 `b01a6ade9ae3de6745f2d99f41f08959287b0f4a` 已推送 master；Python Checks `31895016124` 成功，包含静态门禁、迁移、243 项测试、Compose 和镜像构建。
+- `release` 已快进并部署：Deploy Production `31895110568` 成功，生产 release 为 `20260815161943_b01a6ad`，app/worker 运行同一 SHA 镜像且 healthy，Alembic 为 `3f1d9a7c21b4 (head)`。
+- Production Reconcile Outbox preview `31895287349` 精确命中 3 条旧 `ExceptionGroup` unknown，fingerprint `85a19f677167f48cb647c4a9a670d92561cd9c80ca238fe680ce1c19b65a3bb7`；apply `31895316740` 使用同一 fingerprint 成功，将三条 outbox 收敛为 `cancelled` 并保留原 unknown DeliveryAttempt。
+- apply 内置健康与独立 Production Health `31895351671` 均通过：app/worker healthy、Alembic head、`STATUS=HEALTHY`，`unknown_deliveries` 已为 0。
+- 部署后 Production Diagnose `31895383566` 确认当前 release 为 `20260815161943_b01a6ad`；旧三条 outbox 已为 `cancelled`，同窗口 E2E 活动 `E2E验收测试抽奖` 为 `drawn`，发卡、开奖、中奖私信均 confirmed，生命周期任务均 succeeded。
+- Telegram Desktop 只读打开 `TGCCJBOT` 私聊，未发送新消息；客户端可见 `E2E验收测试抽奖` 的专属邀请链接、参与记录、中奖私信和已开奖记录，与生产诊断事实一致。阶段 97 完成。

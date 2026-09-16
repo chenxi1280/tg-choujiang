@@ -35,7 +35,7 @@ def build_participated_campaign_list(
 def _campaign_line(row: object, *, position: int) -> str:
     return (
         f"{position}. {row.name}｜{campaign_state_text(row.state)}｜"
-        f"{row.tickets} 次｜{qualification_state_text(row.qualification)}\n"
+        f"{_ticket_label(row)}｜{qualification_state_text(row.qualification)}\n"
         f"  开奖 {format_public_time(row.draw_at, row.timezone)}"
     )
 
@@ -79,7 +79,7 @@ def _campaign_button(
     )
     return [
         InlineKeyboardButton(
-            text=f"{position}. {row.name[:24]}｜{row.tickets} 次",
+            text=f"{position}. {row.name[:24]}｜{_ticket_label(row)}",
             callback_data=callback,
         )
     ]
@@ -105,3 +105,9 @@ def parse_campaign_list_callback(value: str) -> tuple[str, int]:
     if not separator or category not in _CATEGORY_LABELS or not raw_page.isdecimal():
         raise ValueError("参与记录列表按钮参数无效")
     return category, int(raw_page)
+
+
+def _ticket_label(row: object) -> str:
+    if not row.base_qualified:
+        return f"门槛未达标 · 累计 {row.tickets} 次（暂存）"
+    return f"{row.tickets} 次"

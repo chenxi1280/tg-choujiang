@@ -59,12 +59,42 @@ class TelegramGateway:
             "revoke_required_chat_invite": self._revoke_required_chat_invite,
             "send_draw_result": self._send_draw_result,
             "send_winner_notice": self._send_winner_notice,
+            "send_progress_notice": self._send_progress_notice,
             "delete_message": self._delete_message,
         }
         handler = handlers.get(outbox.operation)
         if handler is None:
             raise ValueError(f"unsupported Telegram outbox operation: {outbox.operation}")
         return await handler(outbox, invite_link)
+
+    async def _send_progress_notice(
+        self, outbox: GatewayRequest, _: InviteLink | None
+    ) -> GatewayResult:
+        payload = outbox.payload
+        mention = user_mention(payload)
+        text = (
+            f"{mention}\n{html.escape(str(payload['campaign_name']))}\n"
+            f"{html.escape(str(payload['text']))}\n{html.escape(str(payload['ticket_status']))}"
+        )
+        message = await self._bot.send_message(
+            outbox.recipient_chat_id,
+            text,
+            parse_mode="HTML",
+            disable_notification=False,
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="查看我的进度",
+                            callback_data=f"member:tickets:{payload['campaign_ref']}",
+                        )
+                    ]
+                ]
+            ),
+        )
+        return GatewayResult(
+            remote_result=remote_object(message), remote_message_id=message.message_id
+        )
 
     async def _send_campaign_card(
         self, outbox: GatewayRequest, _: InviteLink | None
@@ -380,7 +410,10 @@ def _draw_time(payload: dict[str, Any]) -> str:
 
 def _bonus_line(payload: dict[str, Any]) -> str:
     rules = payload.get("rules", {})
-    if rules.get("group_invite_rules") or rules.get("group_activity_rules"):
+    if any(
+        rules.get(key)
+        for key in ("group_invite_rules", "group_activity_rules", "base_activity_rules")
+    ):
         lines = per_group_bonus_lines(
             CampaignRules.model_validate(rules), _campaign_conditions(payload)
         )

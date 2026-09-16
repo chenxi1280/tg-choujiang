@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.base_activity_views import base_progress_text
 from tg_lottery.domain.enums import (
     CampaignState,
     InvitationState,
@@ -46,6 +47,7 @@ class ParticipatedCampaign:
     tickets: int
     draw_at: datetime
     timezone: str
+    base_qualified: bool = True
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,8 @@ class ParticipantCampaignDetail:
     invite_enabled: bool
     draw_at: datetime
     timezone: str
+    base_progress: str = ""
+    base_qualified: bool = True
 
 
 @dataclass(frozen=True)
@@ -171,6 +175,7 @@ def _participated_campaigns_statement(user_id: int):
             func.coalesce(ticket_totals.c.tickets, 0),
             Campaign.draw_at,
             Campaign.timezone,
+            Participant.base_qualified,
         )
         .join(Participant, Participant.campaign_id == Campaign.id)
         .outerjoin(ticket_totals, ticket_totals.c.participant_id == Participant.id)
@@ -214,8 +219,8 @@ def _has_invitation_surface():
 
 
 def _participated_values(row: object) -> tuple[object, ...]:
-    public_ref, name, state, qualification, tickets, draw_at, timezone = row
-    return public_ref, name, state, qualification, int(tickets), draw_at, timezone
+    public_ref, name, state, qualification, tickets, draw_at, timezone, base_qualified = row
+    return public_ref, name, state, qualification, int(tickets), draw_at, timezone, base_qualified
 
 
 async def load_participant_campaign_detail(
@@ -235,6 +240,8 @@ async def load_participant_campaign_detail(
         totals = await _ticket_totals(session, participant.id)
         rules = CampaignRules.model_validate(campaign.rules)
         return ParticipantCampaignDetail(
+            base_progress=await base_progress_text(session, campaign, participant),
+            base_qualified=participant.base_qualified,
             public_ref=campaign.public_ref,
             campaign_name=campaign.name,
             state=campaign.state,

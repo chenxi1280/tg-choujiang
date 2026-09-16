@@ -101,7 +101,9 @@ class ParticipantService:
                 raise UserFacingError("活动正在等待 Telegram 权限恢复, 暂时不能报名")
             await self._validate_profile_requirements(uow.session, campaign, request)
             targets = await qualification_targets(uow.session, campaign)
-            participant = participant or await self._new_participant(uow.session, request)
+            participant = participant or await self._new_participant(
+                uow.session, request, campaign=campaign
+            )
             existing = await self._source_qualification_check(uow.session, participant.id)
             if existing is not None:
                 return self._registration_attempt(existing, campaign, targets)
@@ -248,6 +250,7 @@ class ParticipantService:
         await session.flush()
         count = await session.scalar(
             select(func.count(Participant.id)).where(
+                Participant.base_qualified.is_(True),
                 Participant.campaign_id == campaign.id,
                 Participant.qualification_state == QualificationState.ELIGIBLE,
             )
@@ -336,7 +339,9 @@ class ParticipantService:
         participant.private_reachable = True
         return participant
 
-    async def _new_participant(self, session: object, request: RegistrationRequest) -> Participant:
+    async def _new_participant(
+        self, session: object, request: RegistrationRequest, *, campaign: Campaign
+    ) -> Participant:
         participant = Participant(
             campaign_id=request.campaign_id,
             user_id=request.user_id,
@@ -344,6 +349,7 @@ class ParticipantService:
             display_name=request.display_name,
             private_reachable=True,
             qualification_state=QualificationState.PENDING,
+            base_qualified=not bool(campaign.rules.get("base_activity_rules")),
             registered_revision=1,
             registered_source_update_id=current_update_id(),
             registered_via_participation_group_id=await source_participation_group_id(

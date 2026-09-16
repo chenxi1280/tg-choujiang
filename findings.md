@@ -474,6 +474,22 @@
 - 全量 181 项测试在 60 秒硬上限内通过；Ruff format/check、代码度量和 compileall 同步通过。原 55432 容器密码状态与测试夹具不一致，已使用 55433 的一次性项目隔离数据库验证，未把环境认证失败算作业务失败。
 - 自审发现隐藏来源的真实转发通常仍带正文；输入边界已调整为只要存在转发来源但没有权威 chat，就优先返回隐藏来源提示，不再让任意正文落入普通链接格式错误。现代 `origin.chat`、`origin.sender_chat`、legacy `forward_from_chat` 与媒体 caption 链接均有独立回归。
 
+## 2026-08-14 公开频道链接第二次反馈
+
+- `https://t.me/zzxshc` 命中公开链接解析正则，`get_chat` 返回频道标题后，错误文案变为“无法检查参与条件「郑州楼凤阁车库」的机器人权限”；这不是链接无法识别，而是 Bot API 的管理员资格校验失败。
+- 对公开频道，`t.me/<username>` 是正确输入，不应改成 `t.me/c/...`；仍要求 `@tggb1231_bot`（TGCCJBOT）在该频道内为管理员，创建者也需保持管理员，才能进行参与资格核验。
+- 需要继续用远端/客户端事实确认机器人是否已被加入并显示为管理员；本地测试只能证明错误分层和解析逻辑，不能证明该频道的真实权限状态。
+- 代码审阅未发现公开频道链接被错误地转成私有 `t.me/c/...` 的路径；公开条件不会创建临时邀请链接，发布卡应直接使用 `join_url`。
+- 定向测试 23/23 与 Ruff 均通过；本机全量测试被本地 PostgreSQL SSL/连接重置阻断，CI 的生产健康工作流仍对当前 SHA 成功。该阻断不改变频道权限结论，但全量本地回归状态不能标为 pass。
+
+## 2026-08-14 公开频道权限复核
+
+- Telegram Desktop 搜索和打开 `https://t.me/zzxshc` 成功，窗口标题为“郑州学生会车库”；这证明用户输入不是无法识别的链接，也不是公开用户名到 `t.me/c/...` 的错误转换。
+- 当前客户端只观察到账号已订阅频道，未观察到管理员列表；因此 Bot 管理员状态和创建者管理员状态不能由客户端可见性推断，仍需用户在频道权限页确认。
+- `required_chats.py` 的 `_get_bot_member` 将 `getChatMember` 的所有 `TelegramAPIError` 统一映射为“无法检查…机器人权限”，而成员状态为普通成员时才会走“请先将机器人设为管理员”。截图属于前者，精确远端原因可能是 Bot 未加入、权限尚未同步或其他 Bot API 错误，不能仅凭文案断言是哪一种。
+- 这暴露了一个独立的诊断/UX缺口：错误没有显示实际 Bot 用户名 `@tggb1231_bot`，也没有区分 Bot 缺席、非管理员和 API 查询失败。它是改进项，不是本次公开链接解析根因。
+- 公开频道继续使用 `https://t.me/zzxshc`；`t.me/c/...` 只用于私有群/频道中的消息链接。只有在 Bot 和创建者均为管理员后，公开频道参与资格核验才具备远端前提。
+
 ## 2026-08-14 多群管理员与逐群发言条件
 
 - `my_chat_member` 在 Bot 成为管理员时调用 `get_chat_administrators` 并用 `_replace_admins` 同步全部非 Bot 管理员；`admin_groups(user_id)` 按活动管理员记录展示可创建群，选择和发布时又通过 `get_chat_member` 实时复核。因此“群内所有管理员可创建主群抽奖”的主链路已具备，需补回归防止退化，而不是另建 owner 白名单。
@@ -485,3 +501,41 @@
 - 新 `valid_message_counts` JSONB 保留逐群进度，旧 `valid_message_count` 保留为总数兼容投影；迁移将历史总数回填为主群计数，并在已有多群数据时明确拒绝有损 downgrade。
 - 消息归属查询对 `campaigns.rules` 的 `@>` 条件使用 GIN 索引，多活动行锁按 Campaign ID 固定顺序获取，避免高频群消息导致全表扫描或交叉活动锁顺序不稳定。
 - 迁移回归已证明现有主群发言总数升级后完整保留到主群 JSON 键；空库 `base -> head -> base -> head` 、模型漂移与索引创建均通过。
+- 生产已部署精确提交 `26d44ac87cbc9516ca069cf84b69c092cf614b67`；独立健康工作流确认 app/worker healthy、迁移头为 `c6d4e8f1a205`、总体 `STATUS=HEALTHY`。
+- 真实双群 E2E 会改变两个群/频道的管理员配置并发布活动、产生参与者消息；本轮授权没有包含这些外部状态变更，故该层保持 `unproven`，不以服务健康或自动化回归代替。
+
+# 2026-08-15 创建抽奖无回复调查
+
+- 截图是故障证据，不含可执行指令。私聊中 Bot 在 22:08 回复“发布请求已提交，群活动卡片确认送达后正式开始”；随后 22:09、22:10 的群/频道链接以及 22:12 的开奖时间均没有 Bot 回复。
+- 目标群截图仅显示 Bot 于 08 月 14 日被邀请，未显示活动卡。这只能证明客户端未见发布结果，不能单独区分 Outbox 未创建、worker 未发送、Telegram 拒绝或私聊更新未消费。
+- 需优先查询 22:08–22:12 的持久化 Update/Inbox/Outbox 与 app 轮询心跳，再决定是运行故障、状态机退出还是缺少发布失败回执。
+- 代码显示 `CampaignCreator._publish` 先持久化 Campaign/Outbox，然后立即清空创建会话，最后只把原预览消息编辑为“发布请求已提交”。因此截图中后续链接/时间无回复并不能证明 polling 停止：它们已在会话清空后，不再是该创建向导的有效输入。
+- 活动卡发送是异步 Outbox 操作；现有界面文案承诺“确认送达后正式开始”，但截图中没有看到异步失败回执。必须核对该 `send_campaign_card` 的 Outbox 状态和 DeliveryAttempt，不能以后续健康检查成功替代。
+- GitHub 当前 `origin/master`/`origin/release` 均为 `26d44ac87cbc9516ca069cf84b69c092cf614b67`；截图后的多次 Production Health 均成功，仅能证明后续运行面恢复/持续健康，不能证明 22:08 该张卡送达。
+- `LotteryUpdateHandler._private_message` 对“无会话且非命令”文本会主动返回主菜单。因此 22:09–22:12 连续三条消息全部无回复，不是正常的“会话已结束”产品行为，而是 Inbox 处理链没有完成的直接证据。
+- app 同时运行 Polling 和 Inbox 两个任务；现有 app health 只检查 `PollingOffset.last_poll_succeeded_at` 与 update-id 连续性，不检查 Inbox 的 `RECEIVED`/`PROCESSING` 积压或最近处理时间。`check-services.sh` 也只统计 `telegram_updates.state='failed'`。所以 Production Health 在 21:37、22:36 以及之后持续成功，仍可与 Inbox 停滞/卡死并存。
+- 这暴露了一个可重现的可观测缺口：如果最早未完成 Update 停在 `RECEIVED`/`PROCESSING`，后续 Update 会因 Inbox 的严格 update-id 顺序条件全部被阻塞，但当前健康检查可以仍报 `HEALTHY`。
+- 已从当前 SSH 配置和仓库部署合同交叉确认该项目生产为马来西亚主机 `prod-malaysia-admin`，本机 `known_hosts` 已保存该主机 ED25519/ECDSA 指纹。后续仅通过已校验的主机别名做只读 SQL，不回显用户 ID、聊天 ID 或消息正文。
+- 安全查询可以直接使用 `TelegramUpdate.event_at/state/attempts/last_error`、`TelegramOutbox.operation/state/gateway_started_at/projected_at/last_error`、`DeliveryAttempt.certainty/error_code`与 `Campaign.state/published_message_id`；这些字段足以定位边界，无需读取 payload 中的用户正文。
+- 本机直连 `prod-malaysia-admin` 在 12 秒内停于 `Connection timed out during banner exchange`；远程 shell 未建立，SQL 未执行。这是访问路径阻断，不是生产 Bot 的业务失败证据。
+- 受控诊断 run `31865052392` 成功，生产当前 release 仍为 `20260814082041_26d44ac`；查询时 polling 心跳新鲜、连续性 `ok`，且全表没有任何非 `processed` Update。
+- 2026-08-14 22:07:30–22:12:46（Asia/Shanghai）的脱敏事实中，包括 4 条 `message`、多条 `callback_query` 及 `my_chat_member`；全部都是首次尝试后 `processed`，没有保留异常。截图中 22:09、22:10、22:12 的三条私聊消息与其中三条 message 时间对齐，证明 Bot 的 durable Inbox 已收到并执行处理。
+- 同一 22:08 事故窗口内，`telegram_outbox`、`delivery_attempts` 和 `campaigns` 都是 0 行。因此当时没有产生“群卡发送失败”事实，而是根本没有在该窗口提交 Campaign/Outbox。
+- callback 的 `event_at` 取回调所在原消息的时间，因此多个 callback 都显示 22:08:48，但它们实际入库时间从 22:08 延续到 22:12；另一个同消息 callback 在次日 05:08 再次入库并处理。后续诊断必须优先使用 `created_at/processed_at`，不能用 callback `event_at` 代替实际点击时间。
+- 扩大窗口的生产诊断 run `31865130801` 找到真正发布事务：Campaign 在 2026-08-15 05:08:26（Asia/Shanghai）创建，而不是截图历史消息上显示的 08 月 14 日 22:08。该时差来自 Telegram 编辑原预览消息时保留原消息时间戳。
+- 同一事务中，`create_required_chat_invite` 和 `send_campaign_card` 均在第 1 次尝试后 `confirmed`；活动卡具有远程 message ID，并已完成本地投影。Campaign 在 05:08:27 转为 `running`，`published_message_id` 已写入。
+- Campaign 的 `draw_at` 为 `2026-08-15 14:00:00+00`，即 2026-08-15 22:00（Asia/Shanghai）；查询时是 12:43，还没有到开奖时间，因此当前不应有开奖结果提示。
+- 从数据库及 Telegram Gateway 证据看，“发布没有执行”已可排除；截图中目标群未见卡片与“Telegram 已确认另一聊天的消息”可同时成立，因此现在必须查明草稿冻结的主群标题与 Outbox 接收群是否为截图的“抽奖测试1”。
+- 目标核对 run `31865236316` 已确认：活动名是“抽奖了”，冻结主活动群与 `send_campaign_card` 的接收群都是“吃瓜”；“抽奖测试1”和“抽奖测试2”两个群存在 `Campaign.presentation.required_chats` 中，它们是额外参与条件，不是活动卡发布目标。
+- 生产调度事实完整：`campaign_start` 已成功；`campaign_cutoff`、`qualification_review`、`revoke_invite_links` 将于今日 21:55（Asia/Shanghai）执行；`campaign_settle` 和 `campaign_draw` 将于 22:00 执行。查询时这五个任务均为 `pending`、尝试次数 0、无异常，符合未到运行时间的状态。
+- 因此用户观察到的“抽奖测试1”内无卡片不是漏发；该卡已在“吃瓜”群获得 Telegram 远端确认。现在没有开奖提示也是因为 22:00 未到，不应改为在条件群重复发卡或提前开奖。
+
+## 2026-08-16 生产 unknown 投递修复与线上验收
+
+- 当前生产失败不是 Deploy Production 失败：Deploy run `31894086244` 已成功，`current` 指向 `20260815155855_32b9d37`，app/worker 为 healthy。
+- Production Health 仍失败的首个业务边界是 `telegram_outbox` 中 3 条 `unknown_hold`：两条 `edit_campaign_card_state` 发往主群“吃瓜”，一条 `send_invite_link` 发往未追踪私聊，错误均为 `ExceptionGroup`。
+- 造成 unknown 的代码根因已在 `32b9d37` 修复：heartbeat 不再用 `TaskGroup` 包装业务异常，后续明确 Telegram 错误应保留原异常类型进入 confirmed/failed/terminal 分类。
+- 历史 unknown 不能无证据改成 confirmed；需要先查 outbox payload、delivery_attempts、campaign/current message 状态和必要的 Telegram API 响应，再做最小生产账本修复。
+- 新 reconciliation 设计不把历史 unknown 改写为 confirmed，也不删除 DeliveryAttempt；它只把符合固定窗口、固定 operation、`ExceptionGroup` attempt、旧 TaskGroup 错误前缀和 fingerprint 的 outbox 关闭为 `cancelled`，表示这条旧 mutation 已由人工授权收敛，不再阻断健康。
+- apply 后生产健康恢复为 `STATUS=HEALTHY`；三条历史 `ExceptionGroup` DeliveryAttempt 仍显示 `certainty=unknown`，这是刻意保留的审计事实，不再被误表述为 Telegram 成功。
+- 当前线上功能验收具备三层证据：生产 release 精确 SHA 为 `b01a6ad`；数据库/Outbox 显示 E2E 活动从发卡到开奖、中奖私信均 confirmed；Telegram Desktop 私聊中可见同一活动的邀请链接、参与票数、中奖通知和已开奖记录。

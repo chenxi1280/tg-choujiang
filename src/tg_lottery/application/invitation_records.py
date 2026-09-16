@@ -108,6 +108,8 @@ async def invalid_candidate(
     invitation = await upsert_candidate(
         session, link=link, campaign=campaign, observation=observation
     )
+    if invitation.state is InvitationState.VALID:
+        return invitation
     invitation.state = InvitationState.INVALID
     invitation.validation_error = reason
     invitation.final_reason = reason

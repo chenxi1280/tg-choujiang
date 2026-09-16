@@ -36,10 +36,10 @@ async def resolve_participation_groups(
 
 def configured_activity_chat_ids(data: dict[str, Any]) -> frozenset[int] | None:
     configured = data.get("group_activity_rules") or {}
-    if configured:
-        return frozenset(
-            int(chat_id) for chat_id, rule in configured.items() if rule.get("enabled")
-        )
+    base = set(map(int, data.get("base_activity_rules") or {}))
+    if configured or base:
+        active = {int(chat_id) for chat_id, rule in configured.items() if rule.get("enabled")}
+        return frozenset(active | base)
     return None
 
 
@@ -141,6 +141,9 @@ def _with_groups(
         "participation_group_ids": [int(item["id"]) for item in records],
         "participation_groups": records,
         "group_invite_rules": invite_rules,
+        "base_activity_rules": {
+            k: v for k, v in (data.get("base_activity_rules") or {}).items() if k in selected
+        },
         "group_activity_rules": activity_rules,
     }
 
@@ -153,6 +156,7 @@ def _clear_groups(data: dict[str, Any]) -> dict[str, Any]:
         "participation_groups": [],
         "group_invite_rules": {},
         "group_activity_rules": {},
+        "base_activity_rules": {},
         "bonus_types": [],
         "luck_mode": "off",
     }

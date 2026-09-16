@@ -86,6 +86,7 @@ def participation_rows(data: dict[str, Any]) -> ButtonRows:
         )
     start = page * PARTICIPATION_PAGE_SIZE
     rows.extend(_threshold_rows(data, chats[start : start + PARTICIPATION_PAGE_SIZE]))
+    rows.append([("基础连续发言门槛", "draft_base_activity")])
     rows.append([("🗂 组合分享链接", "draft_folder_link")])
     rows.append([("↩ 返回上一层", "draft_back")])
     return rows

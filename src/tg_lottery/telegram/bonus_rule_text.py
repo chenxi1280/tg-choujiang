@@ -51,6 +51,20 @@ def per_group_bonus_lines(
         if parts:
             title = chat_title(by_id.get(key, {}))
             lines.append(f"{title}：" + "；".join(parts))
+    lines.extend(base_rule_lines(rules, by_id))
     if rules.invite_bonus_enabled:
         lines.append("邀请资格：" + retention_text(rules.invite.retention_hours))
     return tuple(lines)
+
+
+def base_rule_lines(rules: CampaignRules, by_id: Mapping[str, object]) -> list[str]:
+    lines = []
+    for key, rule in rules.base_activity_rules.items():
+        title = chat_title(by_id.get(key, {}))
+        lines.append(
+            f"{title}基础门槛：连续 {rule.consecutive_days} 天，"
+            f"每天 {rule.daily_messages} 条，每条至少 {rule.min_text_length} 字"
+        )
+    if rules.base_activity_rules:
+        lines.append("北京时间每日统计；先报名再累计；全部基础门槛完成前，加成暂存，不能参与开奖。")
+    return lines

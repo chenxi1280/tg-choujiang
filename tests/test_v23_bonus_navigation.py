@@ -93,6 +93,7 @@ def _bonus_state() -> tuple[object, object, dict[int, object]]:
         presentation={"participation_groups": [{"id": -1001, "title": "A群"}]},
     )
     progress = SimpleNamespace(
+        base_progress="",
         invitations=(SimpleNamespace(chat_id=-1001, valid_invites=3, awarded_tickets=1),),
         activities=(SimpleNamespace(chat_id=-1001, valid_messages=8, awarded_tickets=0),),
     )
