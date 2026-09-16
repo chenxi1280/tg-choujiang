@@ -45,10 +45,20 @@ async def reply_existing(
     participant: object,
     callback: CallbackQuery | None,
     queries: object,
+    user_id: int | None = None,
 ) -> None:
     if campaign.rules.get("base_activity_rules"):
+        target_user_id = user_id or getattr(participant, "user_id", None)
+        if target_user_id is None and callback is not None and callback.from_user:
+            target_user_id = callback.from_user.id
+        if target_user_id is None and getattr(message, "from_user", None):
+            target_user_id = message.from_user.id
         await base_registration_reply(
-            message, campaign, user_id=participant.user_id, callback=callback, queries=queries
+            message,
+            campaign,
+            user_id=target_user_id,
+            callback=callback,
+            queries=queries,
         )
         return
     await member_callbacks.already_reply(callback, message, participant.ticket_total_cache)

@@ -67,7 +67,7 @@ class AlreadyEligibleParticipants:
         self.begun = 0
 
     async def eligible_participant(self, campaign_id, user_id):
-        return SimpleNamespace(ticket_total_cache=self.total)
+        return SimpleNamespace(ticket_total_cache=self.total, user_id=user_id)
 
     async def begin_registration(self, request):
         self.begun += 1
