@@ -105,7 +105,7 @@ class CreatorGroupPicker:
             _message(query),
             user_id=query.from_user.id,
             text=preview_text(data),
-            rows=dashboard_rows(),
+            rows=dashboard_rows(data),
         )
 
     async def problem(self, query: CallbackQuery, grant: CallbackGrant) -> None:

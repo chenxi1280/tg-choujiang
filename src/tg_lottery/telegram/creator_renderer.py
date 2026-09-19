@@ -69,6 +69,14 @@ class CreatorRenderer:
             reply_markup=keyboard,
         )
 
+    async def keyboard_for(
+        self,
+        target: PanelTarget,
+        rows: ButtonRows,
+    ) -> InlineKeyboardMarkup:
+        """Build buttons scoped to the id of an already sent panel."""
+        return await self._keyboard(target, rows)
+
     async def render_groups(
         self,
         message: Message,

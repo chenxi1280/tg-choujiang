@@ -89,6 +89,8 @@ class CampaignCreator:
         existing = await self._sessions.get(query.from_user.id)
         if existing is None or not existing.state.startswith("draft:"):
             return False
+        if existing.data.get("panel_message_id") != message.message_id:
+            raise UserFacingError("该按钮属于旧面板，请使用下方最新面板继续。")
         data = ensure_draft_identity(dict(existing.data)) | {
             "panel_message_id": message.message_id,
             "creator_name": query.from_user.full_name,
@@ -340,7 +342,7 @@ class CampaignCreator:
             message,
             data=updated,
             text=preview_text(updated),
-            rows=dashboard_rows(),
+            rows=dashboard_rows(updated),
         )
 
     async def _render_prizes_from_text(self, message: Message, data: dict[str, Any]) -> None:
@@ -377,7 +379,7 @@ class CampaignCreator:
         updated = data | {"guided": False}
         await self._sessions.set(_user(message).id, "draft:idle", updated)
         await self._edit_from_text(
-            message, data=updated, text=preview_text(updated), rows=dashboard_rows()
+            message, data=updated, text=preview_text(updated), rows=dashboard_rows(updated)
         )
 
     async def _update_and_dashboard(self, query: CallbackQuery, changes: dict[str, Any]) -> None:

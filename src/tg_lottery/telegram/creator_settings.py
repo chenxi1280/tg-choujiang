@@ -14,6 +14,7 @@ from tg_lottery.telegram import creator_bonus as bonus
 from tg_lottery.telegram import creator_group_bonus as group_bonus
 from tg_lottery.telegram import creator_participation as participation
 from tg_lottery.telegram.creator_bonus_permissions import verify_bonus_action
+from tg_lottery.telegram.creator_cover import CreatorCover
 from tg_lottery.telegram.creator_messages import (
     MESSAGE_DELAYS,
     message_settings_rows,
@@ -71,6 +72,7 @@ class CreatorSettings:
         self._profiles = profiles
         self._queries = queries
         self._bot = bot
+        self._cover = CreatorCover(sessions=sessions, renderer=renderer)
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> bool:
         if group_bonus.handles_action(grant.action):
@@ -111,7 +113,7 @@ class CreatorSettings:
             "draft_claim": self._edit_claim,
             "draft_claim_default": self._default_claim,
             "draft_rules": self._edit_bonus,
-            "draft_cover": self._edit_cover,
+            "draft_cover": self._cover.show,
             "draft_cover_clear": self._clear_cover,
             "draft_user_limits": self._show_user_limits,
             "draft_username_on": self._set_username,
@@ -147,7 +149,7 @@ class CreatorSettings:
             "draft:draw": self._receive_draw,
             "draft:full_target": self._receive_full_target,
             "draft:claim": self._receive_claim,
-            "draft:cover": self._receive_cover,
+            "draft:cover": self._cover.receive,
             "draft:regions": self._receive_regions,
             "draft:participation": self._receive_participation,
             "draft:participation_delete": self._receive_participation_delete,
@@ -241,20 +243,8 @@ class CreatorSettings:
         text, rows = bonus.bonus_view(updated, "")
         await self._renderer.edit(_target(message, updated), text=text, rows=rows)
 
-    async def _edit_cover(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:cover")
-        rows = [[("清除封面", "draft_cover_clear")], *_back_rows()]
-        await self._render(query, data=data, text="🏞️ 请发送一张图片作为抽奖封面：", rows=rows)
-
-    async def _receive_cover(self, message: Message, data: dict[str, Any]) -> None:
-        if not message.photo:
-            raise UserFacingError("封面必须发送 Telegram 图片")
-        await self._dashboard_from_message(
-            message, data | {"cover_file_id": message.photo[-1].file_id}
-        )
-
     async def _clear_cover(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        await self._update(query, {"cover_file_id": None})
+        await self._update(query, {"cover_file_id": None, "guided": False})
 
     async def _show_user_limits(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:idle")
@@ -468,13 +458,13 @@ class CreatorSettings:
 
     async def _dashboard(self, query: CallbackQuery, data: dict[str, Any]) -> None:
         await self._sessions.set(query.from_user.id, "draft:idle", data)
-        await self._render(query, data=data, text=preview_text(data), rows=dashboard_rows())
+        await self._render(query, data=data, text=preview_text(data), rows=dashboard_rows(data))
 
     async def _dashboard_from_message(self, message: Message, data: dict[str, Any]) -> None:
         user_id = _user_id(message)
         await self._sessions.set(user_id, "draft:idle", data)
         await self._renderer.edit(
-            _target(message, data), text=preview_text(data), rows=dashboard_rows()
+            _target(message, data), text=preview_text(data), rows=dashboard_rows(data)
         )
 
     async def _set_state(self, query: CallbackQuery, state: str) -> dict[str, Any]:

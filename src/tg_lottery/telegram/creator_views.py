@@ -63,12 +63,13 @@ def _preview_status(data: dict[str, Any], now: datetime) -> str:
     return "可以发布"
 
 
-def dashboard_rows() -> ButtonRows:
+def dashboard_rows(data: dict[str, Any] | None = None) -> ButtonRows:
+    cover_label = "替换封面" if (data or {}).get("cover_file_id") else "上传封面"
     return [
         [("参与活动的群", "draft_group")],
         [
             ("活动标题", "draft_title"),
-            ("上传封面", "draft_cover"),
+            (cover_label, "draft_cover"),
             ("用户限制", "draft_user_limits"),
         ],
         [
