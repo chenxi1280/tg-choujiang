@@ -30,7 +30,6 @@ from tg_lottery.telegram.creator_required_chats_data import (
 from tg_lottery.telegram.creator_schedule import positive_int, quick_draw_at, validate_draw_time
 from tg_lottery.telegram.creator_settings_ui import (
     _back_rows,
-    _draw_rows,
     _message,
     _required_user,
     _target,
@@ -39,6 +38,7 @@ from tg_lottery.telegram.creator_settings_ui import (
     custom_draw_rows,
     draw_mode_rows,
 )
+from tg_lottery.telegram.creator_threshold_input import CreatorThresholdInput
 from tg_lottery.telegram.creator_views import (
     dashboard_rows,
     draw_prompt_text,
@@ -73,8 +73,12 @@ class CreatorSettings:
         self._queries = queries
         self._bot = bot
         self._cover = CreatorCover(sessions=sessions, renderer=renderer)
+        self._threshold_input = CreatorThresholdInput(sessions=sessions, renderer=renderer)
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> bool:
+        if grant.action.startswith("draft_threshold_input:"):
+            await self._threshold_input.show(query, grant)
+            return True
         if group_bonus.handles_action(grant.action):
             await self._change_bonus(query, grant)
             return True
@@ -89,7 +93,7 @@ class CreatorSettings:
 
     def handles_action(self, action: str) -> bool:
         return (
-            action.startswith("draft_chat_threshold:")
+            action.startswith(("draft_chat_threshold:", "draft_threshold_input:"))
             or group_bonus.handles_action(action)
             or action in self._grant_handlers()
         )
@@ -104,7 +108,7 @@ class CreatorSettings:
     def _grant_handlers(self) -> dict[str, Handler]:
         handlers = {
             "draft_draw": self._show_draw_modes,
-            "draft_draw_fixed": self._show_fixed_draw,
+            "draft_draw_fixed": self._edit_custom_draw,
             "draft_draw_full": self._edit_full_draw,
             "draft_draw_hour": self._set_quick_draw,
             "draft_draw_evening": self._set_quick_draw,
@@ -147,6 +151,7 @@ class CreatorSettings:
     def _text_handlers(self) -> dict[str, TextHandler]:
         return {
             "draft:draw": self._receive_draw,
+            "draft:chat_threshold": self._threshold_input.receive,
             "draft:full_target": self._receive_full_target,
             "draft:claim": self._receive_claim,
             "draft:cover": self._cover.receive,
@@ -163,12 +168,6 @@ class CreatorSettings:
         rows = draw_mode_rows()
         await self._render(query, data=data, text=draw_prompt_text(data), rows=rows)
 
-    async def _show_fixed_draw(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:idle")
-        await self._render(
-            query, data=data, text="🕒 定时开奖\n\n请选择快捷时间或自定义时间：", rows=_draw_rows()
-        )
-
     async def _edit_full_draw(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:full_target")
         await self._render(
@@ -180,11 +179,14 @@ class CreatorSettings:
 
     async def _edit_custom_draw(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:draw")
-        await self._render(
-            query,
-            data=data,
-            text=custom_draw_prompt(str(data["timezone"])) + "\n\n点击复制时间示例，修改后发送。",
-            rows=custom_draw_rows(str(data["timezone"])),
+        saved = str(data.get("draw_at") or "")
+        now = utcnow()
+        await self._renderer.render(
+            _message(query),
+            user_id=query.from_user.id,
+            text=custom_draw_prompt(str(data["timezone"]), saved=saved, now=now),
+            rows=custom_draw_rows(str(data["timezone"]), saved=saved, now=now),
+            parse_mode="HTML",
         )
 
     async def _set_quick_draw(self, query: CallbackQuery, grant: CallbackGrant) -> None:

@@ -81,13 +81,23 @@ async def test_copy_button_does_not_consume_or_shift_callback_authorization():
     from tg_lottery.telegram.creator_renderer import CreatorRenderer, PanelTarget
 
     tokens = AsyncMock()
-    tokens.create_many.return_value = ("back-token",)
+    tokens.create_many.return_value = (
+        "hour-token",
+        "evening-token",
+        "tomorrow-token",
+        "back-token",
+    )
     sessions = AsyncMock()
     sessions.issue_panel_context.return_value = DraftPanelContext("draft", 1, 9)
     renderer = CreatorRenderer(bot=object(), tokens=tokens, queries=object(), sessions=sessions)
     keyboard = await renderer._keyboard(PanelTarget(123, 123, 9), custom_draw_rows("Europe/London"))
     assert keyboard.inline_keyboard[0][0].copy_text is not None
-    assert keyboard.inline_keyboard[1][0].callback_data == "secure:back-token"
+    assert keyboard.inline_keyboard[1][0].callback_data == "secure:hour-token"
+    assert keyboard.inline_keyboard[-1][0].callback_data == "secure:back-token"
     requests = tokens.create_many.call_args.kwargs["requests"]
-    assert len(requests) == 1
-    assert requests[0].action == "draft_back"
+    assert [request.action for request in requests] == [
+        "draft_draw_hour",
+        "draft_draw_evening",
+        "draft_draw_tomorrow",
+        "draft_draw",
+    ]

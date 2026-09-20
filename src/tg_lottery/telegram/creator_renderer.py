@@ -49,10 +49,11 @@ class CreatorRenderer:
         user_id: int,
         text: str,
         rows: ButtonRows,
+        parse_mode: str | None = None,
     ) -> None:
         target = PanelTarget(user_id, message.chat.id, message.message_id)
         keyboard = await self._keyboard(target, rows)
-        await message.edit_text(text, reply_markup=keyboard)
+        await message.edit_text(text, reply_markup=keyboard, parse_mode=parse_mode)
 
     async def edit(
         self,

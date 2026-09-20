@@ -23,6 +23,11 @@ def group_invite_text(rule: GroupInviteRule) -> str:
 
 
 def group_activity_text(rule: GroupActivityRule) -> str:
+    if rule.daily_cap_mode == "limited" and rule.daily_max_cycles == 1:
+        return (
+            f"每天发言满 {rule.messages_per_cycle} 条 +{rule.reward_tickets} 次，"
+            f"每天只奖励一次，按达标天数累计；每条至少 {rule.min_text_length} 字"
+        )
     cap = (
         "每日不设上限"
         if rule.daily_cap_mode == "unlimited"

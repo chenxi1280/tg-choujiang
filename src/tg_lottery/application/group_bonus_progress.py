@@ -34,6 +34,8 @@ class ActivityGroupProgress:
     chat_id: int
     valid_messages: int
     awarded_tickets: int
+    total_awarded_tickets: int = 0
+    qualified_days: int = 0
 
 
 @dataclass(frozen=True)
@@ -74,8 +76,25 @@ async def load_group_bonus_progress(
             invite_counts=invite_counts,
             ticket_totals=ticket_totals,
             daily=daily,
+            activity_days=await _activity_days(session, campaign_id, participant.id),
             base_text=await base_progress_text(session, campaign, participant),
         )
+
+
+async def _activity_days(
+    session: AsyncSession, campaign_id: UUID, participant_id: UUID
+) -> dict[UUID, int]:
+    rows = await session.execute(
+        select(DailyProgress.participation_group_id, func.count(DailyProgress.id))
+        .where(
+            DailyProgress.campaign_id == campaign_id,
+            DailyProgress.participant_id == participant_id,
+            DailyProgress.participation_group_id.is_not(None),
+            DailyProgress.tickets_awarded > 0,
+        )
+        .group_by(DailyProgress.participation_group_id)
+    )
+    return {group_id: int(count) for group_id, count in rows}
 
 
 async def _group_ids(session: AsyncSession, campaign_id: UUID) -> dict[int, UUID]:
@@ -153,6 +172,7 @@ def _build_progress(
     invite_counts: dict[UUID, int],
     ticket_totals: dict[tuple[UUID, TicketSource], int],
     daily: dict[UUID, DailyProgress],
+    activity_days: dict[UUID, int],
     base_text: str = "",
 ) -> GroupBonusProgress:
     invitations = []
@@ -176,6 +196,8 @@ def _build_progress(
                     int(chat_id),
                     progress.valid_message_count if progress else 0,
                     progress.tickets_awarded if progress else 0,
+                    ticket_totals.get((group_id, TicketSource.POPULARITY), 0),
+                    activity_days.get(group_id, 0),
                 )
             )
     return GroupBonusProgress(local_date, tuple(invitations), tuple(activities), base_text)

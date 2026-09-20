@@ -202,7 +202,13 @@ async def test_activity_only_bonus_progress_is_paginated_by_six_groups() -> None
     progress = SimpleNamespace(
         invitations=(),
         activities=tuple(
-            SimpleNamespace(chat_id=chat_id, valid_messages=index, awarded_tickets=0)
+            SimpleNamespace(
+                chat_id=chat_id,
+                valid_messages=index,
+                awarded_tickets=0,
+                total_awarded_tickets=0,
+                qualified_days=0,
+            )
             for index, chat_id in enumerate(chat_ids)
         ),
     )

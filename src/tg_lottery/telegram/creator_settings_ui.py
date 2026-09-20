@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from aiogram.types import CallbackQuery, CopyTextButton, InlineKeyboardButton, Message
 
@@ -9,17 +10,34 @@ from tg_lottery.telegram.draft_config import LOCAL_TIME_FORMAT
 from tg_lottery.telegram.public_projection import BEIJING_TIMEZONE, public_timezone_label
 
 
-def custom_draw_prompt(timezone: str, *, now: datetime | None = None) -> str:
-    example = quick_draw_at("draft_draw_tomorrow", timezone, now=now)
+def custom_draw_value(timezone: str, *, saved: str = "", now: datetime | None = None) -> str:
+    if saved:
+        moment = datetime.fromisoformat(saved)
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=ZoneInfo(timezone))
+        return moment.astimezone(ZoneInfo(BEIJING_TIMEZONE)).strftime(LOCAL_TIME_FORMAT)
+    return quick_draw_at("draft_draw_tomorrow", timezone, now=now).strftime(LOCAL_TIME_FORMAT)
+
+
+def custom_draw_prompt(timezone: str, *, now: datetime | None = None, saved: str = "") -> str:
+    example = custom_draw_value(timezone, saved=saved, now=now)
     label = public_timezone_label(BEIJING_TIMEZONE)
-    return f"🕒 回复开奖时间 ({label})\n\n例如: {example.strftime(LOCAL_TIME_FORMAT)}"
+    value_label = "当前时间" if saved else "时间示例"
+    return (
+        f"🕒 定时开奖 ({label})\n\n{value_label}：\n<code>{example}</code>\n\n"
+        "点击上方时间或下方复制按钮，修改后直接发送。\n"
+        "格式：年-月-日 时:分；也可选择快捷时间。"
+    )
 
 
-def custom_draw_rows(timezone: str) -> ButtonRows:
-    example = quick_draw_at("draft_draw_tomorrow", timezone).strftime(LOCAL_TIME_FORMAT)
+def custom_draw_rows(timezone: str, *, saved: str = "", now: datetime | None = None) -> ButtonRows:
+    example = custom_draw_value(timezone, saved=saved, now=now)
+    label = "复制当前时间" if saved else "复制时间示例"
     return [
-        [InlineKeyboardButton(text="复制时间示例", copy_text=CopyTextButton(text=example))],
-        *_back_rows(),
+        [InlineKeyboardButton(text=label, copy_text=CopyTextButton(text=example))],
+        [("1小时后", "draft_draw_hour"), ("今晚20:00", "draft_draw_evening")],
+        [("明晚20:00", "draft_draw_tomorrow")],
+        [("↩ 返回开奖方式", "draft_draw")],
     ]
 
 
@@ -47,17 +65,8 @@ def _back_rows() -> ButtonRows:
     return [[("↩ 返回上一层", "draft_back")]]
 
 
-def _draw_rows() -> ButtonRows:
-    return [
-        [("1小时后", "draft_draw_hour"), ("今晚20:00", "draft_draw_evening")],
-        [("明晚20:00", "draft_draw_tomorrow"), ("自定义时间", "draft_draw_custom")],
-        *_back_rows(),
-    ]
-
-
 def draw_mode_rows() -> ButtonRows:
     return [
-        [("自定义时间（北京时间）", "draft_draw_custom")],
-        [("满人开奖", "draft_draw_full"), ("快捷时间", "draft_draw_fixed")],
+        [("🕒 定时开奖 / 自定义时间", "draft_draw_fixed"), ("👥 满人开奖", "draft_draw_full")],
         *_back_rows(),
     ]

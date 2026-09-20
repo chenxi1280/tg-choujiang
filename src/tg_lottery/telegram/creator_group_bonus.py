@@ -15,6 +15,9 @@ GROUP_PREFIXES = (
     "draft_bonus_group_page:",
 )
 PRESET_PREFIX = "draft_bonus_preset:"
+DEFAULT_INVITES_PER_TICKET = 1
+DEFAULT_DAILY_MESSAGES = 4
+DAILY_REWARD_CYCLES = 1
 GROUP_ACTIONS = frozenset(
     {
         "draft_bonus_invite_cycle_dec",
@@ -39,6 +42,7 @@ GROUP_ACTIONS = frozenset(
         "draft_bonus_input_cycle",
         "draft_bonus_input_length",
         "draft_bonus_input_cap",
+        "draft_bonus_activity_daily",
     }
 )
 
@@ -167,6 +171,10 @@ def _new_working_copy(data: dict[str, Any], kind: str, chat_id: int) -> dict[str
 
 def _change_working_copy(working: dict[str, Any], action: str) -> dict[str, Any]:
     rule = dict(working["rule"])
+    if action == "draft_bonus_activity_daily":
+        return working | {
+            "rule": rule | {"daily_cap_mode": "limited", "daily_max_cycles": DAILY_REWARD_CYCLES}
+        }
     key, delta = _numeric_change(action)
     if key:
         current = rule.get(key)
@@ -255,27 +263,41 @@ def _activity_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str
     rule = working["rule"]
     cap = _cap_label(rule, "activity")
     rows = [_number_row("消息数", "activity_cycle", rule["messages_per_cycle"])]
-    rows.append(_preset_row("cycle", (5, 10, 20, 50), "条"))
+    rows.append(_preset_row("cycle", (4, 5, 10, 20), "条"))
     rows.append(_number_row("字数", "activity_length", rule["min_text_length"]))
     rows.append(_preset_row("length", (1, 5, 10, 20), "字"))
     rows.append(_mode_row("activity", rule["daily_cap_mode"]))
+    rows.append([("每天达标一次（按天累计）", "draft_bonus_activity_daily")])
     if rule["daily_cap_mode"] == "limited":
         rows.append(_number_row("上限", "activity_cap", cap))
         rows.append(_preset_row("cap", (1, 5, 10, 20), "次"))
     rows.extend(_editor_footer("activity", data, working))
     title = _group_title(data, int(working["chat_id"]))
-    text = (
-        f"💬 {title}发言加成\n\n每 {rule['messages_per_cycle']} 条 +1；"
-        f"每条 ≥{rule['min_text_length']} 字；每日上限：{cap}"
-    )
+    text = f"💬 {title}发言加成\n\n" + _activity_description(rule, cap)
     return text, rows
+
+
+def _activity_description(rule: dict[str, Any], cap: object) -> str:
+    reward = rule["reward_tickets"]
+    if rule["daily_cap_mode"] == "limited" and rule["daily_max_cycles"] == DAILY_REWARD_CYCLES:
+        counting = (
+            f"每天发言满 {rule['messages_per_cycle']} 条 +{reward} 票；每天只奖励一次，"
+            "按实际达标天数累计，不要求连续。"
+        )
+    else:
+        counting = f"每天每满 {rule['messages_per_cycle']} 条 +{reward} 票；每日上限：{cap} 轮。"
+    return (
+        counting + f"\n每条至少 {rule['min_text_length']} 字。"
+        "\n北京时间每天 00:00 更新当天统计，之前获得的加成保留。"
+        "\n选择预设或点击“自定义”，保存后生效。"
+    )
 
 
 def _number_row(label: str, action: str, value: object) -> list[tuple[str, str]]:
     field = "length" if "length" in action else "cap" if "cap" in action else "cycle"
     return [
         (f"{label} −", f"draft_bonus_{action}_dec"),
-        (str(value), f"draft_bonus_input_{field}"),
+        (f"自定义 · {value}", f"draft_bonus_input_{field}"),
         ("＋", f"draft_bonus_{action}_inc"),
     ]
 
@@ -381,8 +403,8 @@ def _parse_group_action(action: str) -> tuple[str, int]:
 
 def _default_rule(kind: str) -> dict[str, Any]:
     if kind == "invite":
-        return GroupInviteRule().model_dump(mode="json")
-    return GroupActivityRule().model_dump(mode="json")
+        return GroupInviteRule(invites_per_cycle=DEFAULT_INVITES_PER_TICKET).model_dump(mode="json")
+    return GroupActivityRule(messages_per_cycle=DEFAULT_DAILY_MESSAGES).model_dump(mode="json")
 
 
 def _validated_rule(kind: str, rule: dict[str, Any]) -> dict[str, Any]:

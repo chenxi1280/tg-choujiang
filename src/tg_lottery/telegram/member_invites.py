@@ -5,6 +5,7 @@ from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMa
 from tg_lottery.application.invitation_models import accepts_attribution
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram.member_group_invites import COMPLETED_STATES
 
 
 def invite_link_text(campaign_name: str, *, active: bool, link: str) -> str:
@@ -58,6 +59,12 @@ def member_keyboard(
 async def legacy_invite_link_payload(
     campaign: object, *, user_id: int, queries: object, cipher: object
 ) -> tuple[str, InlineKeyboardMarkup]:
+    if campaign.state in COMPLETED_STATES:
+        return (
+            f"{campaign.name}：本场已开奖，邀请入口已隐藏。旧链接仍可入群，"
+            "不再计算本期或以后任何抽奖加成；历史邀请记录和已确认加成保留。",
+            member_keyboard(campaign.public_ref, invite_enabled=True),
+        )
     stored = await queries.invite_link_for_participant(campaign.id, user_id)
     if stored is None or stored.encrypted_url is None:
         raise UserFacingError("本期专属链接正在创建，或你尚未完成报名，请稍后再点")

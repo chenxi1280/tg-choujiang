@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from tests.v22_bonus_test_helpers import draft_data
 from tg_lottery.domain.base_activity import base_progress
 from tg_lottery.domain.rules import BaseActivityRule, CampaignRules
-from tg_lottery.telegram.creator_base_activity import apply_base_rule
+from tg_lottery.telegram.creator_base_editor import apply_action, receive_value
 from tg_lottery.telegram.draft_config import rules_from_data
 
 
@@ -32,22 +32,29 @@ def test_missing_day_resets_streak_and_today_does_not_reset_until_day_is_over():
 
 def test_configuration_is_per_group_immutable_and_freezes():
     original = draft_data()
-    first = apply_base_rule(original, "1 7 5 5")
-    both = apply_base_rule(first, "2 3 10 8")
+    first = apply_action(original, "draft_base:group:-1001")
+    first = apply_action(first, "draft_base:preset:consecutive_days:7")
+    first = apply_action(first, "draft_base:save")
+    both = apply_action(first, "draft_base:group:-1002")
+    both = apply_action(both, "draft_base:preset:daily_messages:10")
+    both = apply_action(both, "draft_base:save")
     assert not original.get("base_activity_rules")
     rules = rules_from_data(both)
     assert rules.base_activity_rules["-1001"].consecutive_days == 7
     assert rules.base_activity_rules["-1002"].daily_messages == 10
-    assert "-1001" not in apply_base_rule(both, "1 0")["base_activity_rules"]
+    disabled = apply_action(both, "draft_base:group:-1001")
+    assert "-1001" not in apply_action(disabled, "draft_base:disable")["base_activity_rules"]
     assert "-1001" in both["base_activity_rules"]
 
 
-@pytest.mark.parametrize("value", ["1 0 5 5", "1 7 -1 5", "1 7 5.5 5", "3 7 5 5", "1 7"])
+@pytest.mark.parametrize("value", ["0", "-1", "5.5", "1 7", "四"])
 def test_invalid_configuration_is_not_saved(value):
     from tg_lottery.domain.errors import UserFacingError
 
+    data = apply_action(draft_data(), "draft_base:group:-1001")
+    data = apply_action(data, "draft_base:input:daily_messages")
     with pytest.raises(UserFacingError):
-        apply_base_rule(draft_data(), value)
+        receive_value(data, value)
 
 
 def test_invalid_rule_keys_rejected_and_old_campaigns_have_no_gate():

@@ -67,7 +67,7 @@ def test_old_expired_invite_is_not_presented_as_usable() -> None:
     assert _group_url(flow, landing) is None
     flow._cipher.decrypt.assert_not_called()
     status = SimpleNamespace(link=landing.link, delivery_state=OutboxState.CONFIRMED)
-    assert "旧版邀请链接已过期" in _invite_link_note(landing.campaign, status)
+    assert "邀请入口已隐藏" in _invite_link_note(landing.campaign, status)
     rows = _group_rows(
         landing.campaign, {"title": "读书群", "id": -1001}, status, cipher=flow._cipher
     )

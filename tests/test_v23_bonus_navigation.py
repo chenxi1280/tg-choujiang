@@ -95,7 +95,15 @@ def _bonus_state() -> tuple[object, object, dict[int, object]]:
     progress = SimpleNamespace(
         base_progress="",
         invitations=(SimpleNamespace(chat_id=-1001, valid_invites=3, awarded_tickets=1),),
-        activities=(SimpleNamespace(chat_id=-1001, valid_messages=8, awarded_tickets=0),),
+        activities=(
+            SimpleNamespace(
+                chat_id=-1001,
+                valid_messages=8,
+                awarded_tickets=0,
+                total_awarded_tickets=2,
+                qualified_days=2,
+            ),
+        ),
     )
     route = SimpleNamespace(
         public_ref="AAAAAAAAAAAAAAAAAAAAAA",
@@ -148,7 +156,7 @@ def test_activity_only_ticket_detail_has_no_invitation_entry() -> None:
     assert "查看本期邀请记录" not in labels
 
 
-async def test_cutoff_without_personal_link_uses_normal_private_group_entry() -> None:
+async def test_drawn_campaign_hides_entries_but_keeps_invitation_history() -> None:
     campaign, progress, _ = _bonus_state()
     campaign.state = CampaignState.DRAWN
     campaign.cutoff_at = datetime.now(UTC) - timedelta(minutes=1)
@@ -179,9 +187,11 @@ async def test_cutoff_without_personal_link_uses_normal_private_group_entry() ->
         unavailable={},
     )
 
-    assert "活动已截止" in detail
+    assert "邀请入口已隐藏" in detail
     assert "不再计算新增邀请加成" in detail
-    assert keyboard.inline_keyboard[0][0].url == "https://t.me/+normal-private"
+    buttons = [button for row in keyboard.inline_keyboard for button in row]
+    assert not any(button.url or button.copy_text for button in buttons)
+    assert "邀请记录" in [button.text for button in buttons]
 
 
 def _assert_callback_limit(*keyboards: object) -> None:

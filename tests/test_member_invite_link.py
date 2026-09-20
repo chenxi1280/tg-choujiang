@@ -82,8 +82,10 @@ async def test_expired_campaign_link_still_opens_but_never_counts_again() -> Non
 
     assert "仍可入群" in message.text
     assert "不再计算本期或以后任何抽奖加成" in message.text
-    assert message.markup.inline_keyboard[0][0].copy_text.text == "https://t.me/+campaign_personal"
-    assert message.markup.inline_keyboard[1][0].url == "https://t.me/+campaign_personal"
+    assert "邀请入口已隐藏" in message.text
+    buttons = [button for row in message.markup.inline_keyboard for button in row]
+    assert not any(button.url or button.copy_text for button in buttons)
+    assert "邀请记录" in [button.text for button in buttons]
 
 
 def test_registration_keyboard_exposes_only_the_current_campaign_link() -> None:

@@ -144,7 +144,7 @@ def rules_from_data(data: dict[str, Any]) -> CampaignRules:
     )
     invite = _invite_rule(data)
     return CampaignRules(
-        timezone=str(data["timezone"]),
+        timezone=BEIJING_TIMEZONE,
         activity=activity,
         invite=invite,
         required_channel_id=data.get("required_channel_id"),

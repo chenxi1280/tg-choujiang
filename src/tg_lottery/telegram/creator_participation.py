@@ -86,7 +86,8 @@ def participation_rows(data: dict[str, Any]) -> ButtonRows:
         )
     start = page * PARTICIPATION_PAGE_SIZE
     rows.extend(_threshold_rows(data, chats[start : start + PARTICIPATION_PAGE_SIZE]))
-    rows.append([("基础连续发言门槛", "draft_base_activity")])
+    rows.append([("💬 基础发言门槛", "draft_base_activity")])
+    rows.append([("🔋 邀请与每日发言加成", "draft_rules")])
     rows.append([("🗂 组合分享链接", "draft_folder_link")])
     rows.append([("↩ 返回上一层", "draft_back")])
     return rows
@@ -100,11 +101,11 @@ def _threshold_rows(data: dict[str, Any], page_chats: list[dict[str, Any]]) -> B
             continue
         chat_id = str(chat["id"])
         current = int(thresholds.get(chat_id, 0))
-        label = f"🗣 门槛 {current} 条" if current else "🗣 门槛 未设置"
+        label = f"自定义 · {current} 条" if current else "自定义条数"
         rows.append(
             [
                 ("发言门槛 −", f"draft_chat_threshold:{chat_id}:dec"),
-                (label, f"draft_chat_threshold:{chat_id}:noop"),
+                (label, f"draft_threshold_input:{chat_id}"),
                 ("＋", f"draft_chat_threshold:{chat_id}:inc"),
             ]
         )

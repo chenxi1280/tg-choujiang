@@ -48,7 +48,9 @@ def test_card_and_private_rules_render_each_frozen_group_bonus() -> None:
         assert "每邀请 3 个有效新成员 +1 次" in text
         assert "每邀请 5 个有效新成员 +1 次" in text
         assert "上限 7 次" in text
-        assert "每日每满 20 条有效消息 +2 次" in text
+        assert "每天发言满 20 条 +2 次" in text
+        assert "每天只奖励一次" in text
+        assert "按达标天数累计" in text
         assert "每条至少 8 字" in text
         assert "-100" not in text
     assert "关注-公告频道" in card

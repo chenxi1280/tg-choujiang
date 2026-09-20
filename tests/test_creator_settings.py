@@ -318,7 +318,8 @@ def test_custom_draw_prompt_uses_an_example_instead_of_a_python_format_string() 
 
     prompt = custom_draw_prompt("Asia/Shanghai", now=now)
 
-    assert prompt == "🕒 回复开奖时间 (北京时间)\n\n例如: 2026-08-11 20:00"
+    assert "定时开奖 (北京时间)" in prompt
+    assert "<code>2026-08-11 20:00</code>" in prompt
     assert "%Y" not in prompt
 
 

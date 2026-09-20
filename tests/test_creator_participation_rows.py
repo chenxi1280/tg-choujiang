@@ -19,12 +19,12 @@ def test_threshold_rows_show_current_value_and_match_chat_id() -> None:
 
     assert [
         ("发言门槛 \u2212", "draft_chat_threshold:-100123:dec"),
-        ("🗣 门槛 10 条", "draft_chat_threshold:-100123:noop"),
+        ("自定义 · 10 条", "draft_threshold_input:-100123"),
         ("\uff0b", "draft_chat_threshold:-100123:inc"),
     ] in rows
     assert [
         ("发言门槛 \u2212", "draft_chat_threshold:-100456:dec"),
-        ("🗣 门槛 未设置", "draft_chat_threshold:-100456:noop"),
+        ("自定义条数", "draft_threshold_input:-100456"),
         ("\uff0b", "draft_chat_threshold:-100456:inc"),
     ] in rows
     assert rows[-1] == [("↩ 返回上一层", "draft_back")]

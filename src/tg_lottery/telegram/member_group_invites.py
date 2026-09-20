@@ -9,11 +9,12 @@ from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMa
 from tg_lottery.application.invitation_models import accepts_attribution
 from tg_lottery.application.query_invites import GroupInviteLinkStatus
 from tg_lottery.application.records import utcnow
-from tg_lottery.domain.enums import OutboxState
+from tg_lottery.domain.enums import CampaignState, OutboxState
 from tg_lottery.domain.rules import CampaignRules, GroupInviteRule
 from tg_lottery.telegram.bonus_rule_text import chat_title
 
 PAGE_SIZE = 6
+COMPLETED_STATES = frozenset({CampaignState.DRAWN, CampaignState.ARCHIVED})
 
 
 async def build_group_invite_payload(
@@ -156,6 +157,8 @@ def _group_rows(
     bot_username: str = "",
     bonus_deadline: datetime | None = None,
 ) -> list[list[InlineKeyboardButton]]:
+    if campaign.state in COMPLETED_STATES:
+        return []
     title = str(group["title"])
     stored = status.link if status is not None else None
     if stored is None or stored.encrypted_url is None:
@@ -280,6 +283,8 @@ def _invite_link_note(
     *,
     bonus_deadline: datetime | None = None,
 ) -> str:
+    if campaign.state in COMPLETED_STATES:
+        return "；本场已开奖，邀请入口已隐藏，不再计算新增邀请加成；旧链接仍可入群"
     link_note = _unavailable_link_note(status)
     if link_note:
         return link_note
@@ -357,7 +362,9 @@ def _activity_progress_line(title: str, rule: object, progress: object) -> str:
         if rule.daily_cap_mode == "unlimited"
         else f"每日上限 {rule.daily_max_cycles} 次"
     )
-    return f"· {title}：{messages} 条，{status}；{cap}"
+    total = progress.total_awarded_tickets
+    days = progress.qualified_days
+    return f"· {title}：今日 {messages} 条，{status}；{cap}；累计达标 {days} 天、获得 {total} 次"
 
 
 def _group_titles(campaign: object) -> dict[int, str]:

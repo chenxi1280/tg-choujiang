@@ -10,6 +10,7 @@ from tg_lottery.application.query_invites import GroupInviteLinkStatus
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram.member_group_invites import (
+    COMPLETED_STATES,
     PAGE_SIZE,
     _activity_progress_line,
     _configured_groups,
@@ -178,6 +179,7 @@ def _target_join_url(target: object | None, cipher: object) -> str | None:
 def _category_payload(context: BonusViewContext) -> tuple[str, InlineKeyboardMarkup]:
     invite_total = sum(item.awarded_tickets for item in context.invite_progress.values())
     activity_total = sum(item.awarded_tickets for item in context.activity_progress.values())
+    cumulative = sum(item.total_awarded_tickets for item in context.activity_progress.values())
     text = _header(context.campaign, "我的加成") + "\n" + context.base_progress
     rows = [
         [
@@ -188,7 +190,7 @@ def _category_payload(context: BonusViewContext) -> tuple[str, InlineKeyboardMar
         ],
         [
             InlineKeyboardButton(
-                text=f"💬 发言加成｜今日 {activity_total} 次",
+                text=f"💬 发言加成｜今日 {activity_total} 次 · 累计 {cumulative} 次",
                 callback_data=f"member:bonus_activity:{context.campaign.public_ref}:0",
             )
         ],
@@ -212,6 +214,8 @@ def build_invite_group_list(
     )
     visible, selected, total_pages = _visible_page(groups, page)
     lines = [_header(context.campaign, "邀请加成"), "请选择一个群查看本期链接和邀请记录："]
+    if context.campaign.state in COMPLETED_STATES:
+        lines[1] = "本场已开奖，邀请入口已隐藏；可查看历史邀请记录，旧链接仍可入群。"
     rows = []
     for group in visible:
         chat_id = int(group["id"])
@@ -255,7 +259,7 @@ def build_activity_group_list(
         if context.rules.activity_rule_for(int(group["id"])) is not None
     )
     visible, selected, total_pages = _visible_page(groups, page)
-    lines = [_header(context.campaign, "今日发言加成"), "请选择一个群查看独立规则和进度："]
+    lines = [_header(context.campaign, "发言加成"), "请选择一个群查看今日进度和累计加成："]
     rows = []
     for group in visible:
         chat_id = int(group["id"])
@@ -388,6 +392,8 @@ def _available_invite_rows(
     deadline: datetime,
     return_page: int,
 ) -> list[list[InlineKeyboardButton]]:
+    if context.campaign.state in COMPLETED_STATES:
+        return []
     chat_id = int(group["id"])
     if chat_id in context.unavailable:
         return [

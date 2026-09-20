@@ -157,6 +157,9 @@ class CampaignCreator:
         return True
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        if grant.action.startswith("draft_base:"):
+            await self._base_activity.handle(query, grant)
+            return
         handler = self._grant_handlers().get(grant.action)
         if handler is not None:
             await handler(query, grant)
@@ -165,7 +168,11 @@ class CampaignCreator:
             raise UserFacingError("创建操作不存在或已经失效")
 
     def handles_action(self, action: str) -> bool:
-        return action in self._grant_handlers() or self._settings.handles_action(action)
+        return (
+            action.startswith("draft_base:")
+            or action in self._grant_handlers()
+            or self._settings.handles_action(action)
+        )
 
     def _grant_handlers(self):
         return {
