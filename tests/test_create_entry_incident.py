@@ -46,7 +46,10 @@ def creator_case(session_factory, monkeypatch):
     queries = QueryService(session_factory)
     edits = AsyncMock()
     monkeypatch.setattr(Message, "edit_text", edits)
-    monkeypatch.setattr(Message, "answer", AsyncMock(return_value=_query().message))
+    answers = AsyncMock(return_value=_query().message)
+    markup_edits = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answers)
+    monkeypatch.setattr(Message, "edit_reply_markup", markup_edits)
     renderer = CreatorRenderer(bot=bot, sessions=sessions, tokens=tokens, queries=queries)
     creator = CampaignCreator(
         bot=bot,
@@ -64,6 +67,8 @@ def creator_case(session_factory, monkeypatch):
         tokens=tokens,
         bot=bot,
         edits=edits,
+        answers=answers,
+        markup_edits=markup_edits,
         renderer=renderer,
     )
 
@@ -78,9 +83,11 @@ async def test_zero_group_creator_opens_saved_draft_with_working_buttons(creator
         await case.creator.start_message(query.message)
     stored = await case.sessions.get(USER_ID)
     assert stored.state == "draft:idle" and stored.data["chat_id"] is None
-    assert "抽奖预览" in case.edits.call_args.args[0]
-    assert "活动群" in case.edits.call_args.args[0]
-    keyboard = case.edits.call_args.kwargs["reply_markup"]
+    text_call = case.edits.call_args if entry == "button" else case.answers.call_args
+    markup_call = case.edits.call_args if entry == "button" else case.markup_edits.call_args
+    assert "抽奖预览" in text_call.args[0]
+    assert "活动群" in text_call.args[0]
+    keyboard = markup_call.kwargs["reply_markup"]
     button = next(
         item for row in keyboard.inline_keyboard for item in row if item.text == "活动标题"
     )

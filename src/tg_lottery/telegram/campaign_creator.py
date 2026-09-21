@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from aiogram import Bot
-from aiogram.types import CallbackQuery, Message, User
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, User
 
 from tg_lottery.application.admin_sessions import AdminSessionService
 from tg_lottery.application.callback_tokens import (
@@ -79,8 +79,19 @@ class CampaignCreator:
 
     async def start_message(self, message: Message) -> None:
         user = _user(message)
-        panel = await message.answer("正在准备抽奖草稿…")
-        await self._open(user, panel)
+        existing = await self._sessions.get(user.id)
+        data = (
+            ensure_draft_identity(dict(existing.data))
+            if existing is not None and existing.state.startswith("draft:")
+            else await self._new_draft(user, message.message_id)
+        ) | {"creator_name": user.full_name, "guided": False}
+        panel = await message.answer(preview_text(data))
+        updated = data | {"panel_message_id": panel.message_id}
+        await self._sessions.set(user.id, "draft:idle", updated)
+        keyboard = await self._renderer.keyboard_for(
+            PanelTarget(user.id, panel.chat.id, panel.message_id), dashboard_rows(updated)
+        )
+        await panel.edit_reply_markup(reply_markup=keyboard)
 
     async def recover_expired_panel(self, query: CallbackQuery) -> bool:
         message = _message(query)
@@ -90,7 +101,16 @@ class CampaignCreator:
         if existing is None or not existing.state.startswith("draft:"):
             return False
         if existing.data.get("panel_message_id") != message.message_id:
-            raise UserFacingError("该按钮属于旧面板，请使用下方最新面板继续。")
+            await message.answer(
+                "草稿已在另一条消息中更新，本次旧按钮操作未执行。\n"
+                "已填写的内容仍然保留，点击下方按钮继续当前草稿。",
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="继续当前草稿", callback_data="nav:create")]
+                    ]
+                ),
+            )
+            return True
         data = ensure_draft_identity(dict(existing.data)) | {
             "panel_message_id": message.message_id,
             "creator_name": query.from_user.full_name,

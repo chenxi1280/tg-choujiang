@@ -181,8 +181,12 @@ async def test_stale_panel_callback_does_not_take_over_latest_cover_panel(flow, 
     before = dict(flow.sessions.data)
     old_panel = _message(message_id=9)
     query = SimpleNamespace(from_user=old_panel.from_user, message=old_panel)
-    with pytest.raises(UserFacingError, match="最新面板"):
-        await flow.creator.recover_expired_panel(query)
+    notification = AsyncMock()
+    monkeypatch.setattr(Message, "answer", notification)
+    assert await flow.creator.recover_expired_panel(query)
+    assert "旧按钮操作未执行" in notification.call_args.args[0]
+    button = notification.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+    assert button.text == "继续当前草稿" and button.callback_data == "nav:create"
     assert flow.sessions.data == before
     assert flow.sessions.state == "draft:cover"
 
@@ -206,3 +210,41 @@ async def test_expired_buttons_on_current_panel_can_still_recover(flow, monkeypa
     assert flow.sessions.data["panel_message_id"] == 20
     assert flow.sessions.data["cover_file_id"] == "new-cover"
     assert flow.sessions.state == "draft:idle"
+
+
+async def test_new_command_sends_preview_then_binds_buttons_to_new_panel(flow, monkeypatch):
+    original = dict(flow.sessions.data)
+    answer = AsyncMock(return_value=_message(message_id=30))
+    monkeypatch.setattr(Message, "answer", answer)
+    markup = AsyncMock()
+    monkeypatch.setattr(Message, "edit_reply_markup", markup)
+
+    async def keyboard(target, rows):
+        assert flow.sessions.data["panel_message_id"] == target.message_id == 30
+        return "KEYBOARD"
+
+    flow.renderer.keyboard_for.side_effect = keyboard
+    await flow.creator.start_message(_message(message_id=29))
+    assert "抽奖预览" in answer.call_args.args[0]
+    assert "正在准备" not in answer.call_args.args[0]
+    assert flow.sessions.data["title"] == original["title"]
+    markup.assert_awaited_once_with(reply_markup="KEYBOARD")
+    flow.renderer.render.assert_not_awaited()
+
+
+async def test_old_panel_continue_button_opens_preserved_draft(flow, monkeypatch):
+    await _upload(flow, monkeypatch)
+    original = dict(flow.sessions.data)
+    notification = AsyncMock(return_value=_message(message_id=31))
+    monkeypatch.setattr(Message, "answer", notification)
+    old = _message(message_id=9)
+    assert await flow.creator.recover_expired_panel(
+        SimpleNamespace(from_user=old.from_user, message=old)
+    )
+    assert flow.sessions.data == original
+    new = notification.return_value
+    await flow.creator.start(SimpleNamespace(from_user=old.from_user, message=new))
+    assert flow.sessions.data["panel_message_id"] == 31
+    assert flow.sessions.data["cover_file_id"] == original["cover_file_id"]
+    assert flow.sessions.data["title"] == original["title"]
+    assert "抽奖预览" in flow.renderer.render.call_args.kwargs["text"]

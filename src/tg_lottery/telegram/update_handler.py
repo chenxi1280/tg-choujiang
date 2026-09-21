@@ -326,7 +326,7 @@ class LotteryUpdateHandler:
         except RecoverableDraftCallback:
             recovered = await self._admin_flow.recover_draft_callback(query)
             text = (
-                "草稿面板已刷新，请使用新按钮"
+                "请使用最新草稿面板或下方继续按钮"
                 if recovered
                 else "草稿已超过 7 天，请发送 /new 重新创建"
             )

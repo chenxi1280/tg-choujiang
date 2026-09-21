@@ -41,7 +41,7 @@ async def test_expired_draft_callback_refreshes_active_panel() -> None:
     await handler._dispatch_secure_callback(query, "secure:expired")
 
     assert admin.recovered is True
-    assert "草稿面板已刷新" in query.answers[0][0]
+    assert "最新草稿面板" in query.answers[0][0]
     assert query.answers[0][1] is True
 
 
