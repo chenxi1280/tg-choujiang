@@ -365,7 +365,7 @@ def _campaign_card_text(payload: dict[str, Any]) -> str:
     if issuer != "活动创建者":
         lines += ["", f"🎁 发奖人员：{html.escape(issuer)}"]
     link = html.escape(_campaign_deep_link(payload, "join"))
-    lines += ["", "🔗 抽奖链接（可复制转发）：", link]
+    lines += ["", "🔗 点击链接参与抽奖（长按本消息可转发）：", link]
     return "\n".join(lines)
 
 

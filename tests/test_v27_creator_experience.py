@@ -100,13 +100,12 @@ def test_custom_required_chat_threshold_can_set_four_and_disable_without_changin
         apply_threshold_input(data, "4.5")
 
 
-def test_time_text_and_copy_button_share_saved_beijing_time():
+def test_time_text_preserves_saved_beijing_time_without_copy_button():
     saved = "2026-10-01T12:30:00+00:00"
     prompt = custom_draw_prompt("Europe/London", saved=saved)
     rows = custom_draw_rows("Europe/London", saved=saved)
     assert "<code>2026-10-01 20:30</code>" in prompt
-    assert rows[0][0].copy_text.text == "2026-10-01 20:30"
-    assert rows[0][0].text == "复制当前时间"
+    assert rows[0] == [("7天后", "draft_draw_week"), ("10天后", "draft_draw_ten_days")]
     assert rows[-1] == [("↩ 返回开奖方式", "draft_draw")]
     assert rules_from_data(draft_data() | {"timezone": "Europe/London"}).timezone == "Asia/Shanghai"
 
@@ -122,7 +121,7 @@ async def test_fixed_draw_opens_input_immediately_and_renderer_preserves_code_en
     assert sessions.state == "draft:draw"
     values = renderer.render.await_args.kwargs
     assert values["parse_mode"] == "HTML"
-    assert values["rows"][0][0].copy_text.text == "2026-10-01 20:30"
+    assert "<code>2026-10-01 20:30</code>" in values["text"]
     panel = SimpleNamespace(chat=SimpleNamespace(id=1), message_id=2, edit_text=AsyncMock())
     live_renderer = CreatorRenderer(
         bot=object(), tokens=object(), queries=object(), sessions=object()

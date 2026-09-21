@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from aiogram.types import CallbackQuery, CopyTextButton, InlineKeyboardButton, Message
+from aiogram.types import CallbackQuery, Message
 
 from tg_lottery.telegram.creator_renderer import ButtonRows, PanelTarget
 from tg_lottery.telegram.creator_schedule import quick_draw_at
@@ -25,17 +25,14 @@ def custom_draw_prompt(timezone: str, *, now: datetime | None = None, saved: str
     value_label = "当前时间" if saved else "时间示例"
     return (
         f"🕒 定时开奖 ({label})\n\n{value_label}：\n<code>{example}</code>\n\n"
-        "点击上方时间或下方复制按钮，修改后直接发送。\n"
+        "点击上方时间复制，修改后直接发送。\n"
         "格式：年-月-日 时:分；也可选择快捷时间。"
     )
 
 
 def custom_draw_rows(timezone: str, *, saved: str = "", now: datetime | None = None) -> ButtonRows:
-    example = custom_draw_value(timezone, saved=saved, now=now)
-    label = "复制当前时间" if saved else "复制时间示例"
     return [
-        [InlineKeyboardButton(text=label, copy_text=CopyTextButton(text=example))],
-        [("1小时后", "draft_draw_hour"), ("今晚20:00", "draft_draw_evening")],
+        [("7天后", "draft_draw_week"), ("10天后", "draft_draw_ten_days")],
         [("明晚20:00", "draft_draw_tomorrow")],
         [("↩ 返回开奖方式", "draft_draw")],
     ]
@@ -67,6 +64,6 @@ def _back_rows() -> ButtonRows:
 
 def draw_mode_rows() -> ButtonRows:
     return [
-        [("🕒 定时开奖 / 自定义时间", "draft_draw_fixed"), ("👥 满人开奖", "draft_draw_full")],
+        [("🕒 定时开奖 / 自定义时间", "draft_draw_fixed")],
         *_back_rows(),
     ]

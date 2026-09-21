@@ -24,6 +24,7 @@ from tg_lottery.telegram.creator_group_selection import (
 from tg_lottery.telegram.creator_invite_retention import summary as retention_summary
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer
 from tg_lottery.telegram.creator_rule_review import review_navigation, rule_review_pages
+from tg_lottery.telegram.creator_share import publication_receipt
 from tg_lottery.telegram.draft_config import campaign_input, presentation_from_data
 from tg_lottery.telegram.issuer import resolve_issuer
 
@@ -53,6 +54,7 @@ class CreatorPublisher:
         if data.get("published_campaign_id"):
             await self._finish(query, data, UUID(str(data["published_campaign_id"])))
             return
+        _require_fixed_draw(data)
         now = utcnow()
         campaign_input(data, now=now)
         resolved = await self._resolve(data, query.from_user)
@@ -69,6 +71,7 @@ class CreatorPublisher:
         if data.get("published_campaign_id"):
             await self._finish(query, data, UUID(str(data["published_campaign_id"])))
             return
+        _require_fixed_draw(data)
         now = utcnow()
         draft, prizes = campaign_input(data, now=now)
         source = DraftSource(str(data["draft_id"]), int(data["draft_revision"]))
@@ -106,11 +109,12 @@ class CreatorPublisher:
         await self._profiles.save_last_draft(
             query.from_user.id, accepted | presentation_from_data(accepted), utcnow()
         )
+        campaign = await self._queries.campaign(campaign_id)
+        if campaign is None:
+            raise UserFacingError("找不到已创建的活动，请在抽奖管理中核对")
+        text, keyboard = publication_receipt(campaign, self._bot_username)
+        await _message(query).edit_text(text, reply_markup=keyboard)
         await self._sessions.clear(query.from_user.id)
-        await _message(query).edit_text(
-            "🎉 发布请求已提交。全部参与群活动卡确认送达后活动才正式开始；"
-            "请在「抽奖管理」查看已确认、失败和远端未知状态。"
-        )
 
     async def _resolve(self, data: dict[str, Any], creator: User) -> dict[str, Any]:
         participation_groups, requirements = await self._review_targets(data, creator.id)
@@ -214,3 +218,8 @@ def _message(query: CallbackQuery) -> Message:
     if not isinstance(query.message, Message):
         raise ValueError("callback message is no longer accessible")
     return query.message
+
+
+def _require_fixed_draw(data: dict[str, Any]) -> None:
+    if data.get("draw_mode") == "full":
+        raise UserFacingError("满人开奖已取消，请返回开奖方式设置定时开奖")

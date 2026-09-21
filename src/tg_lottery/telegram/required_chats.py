@@ -13,6 +13,8 @@ async def resolve_required_chat(
     admin_user_id: int | None = None,
 ) -> dict[str, Any]:
     chat = await _get_chat(bot, ref)
+    if str(chat.type) not in {"group", "supergroup", "channel"}:
+        raise UserFacingError("准入条件只能选择群聊或频道")
     member = await _get_bot_member(bot, chat)
     _validate_bot_membership(chat, member)
     if admin_user_id is not None:

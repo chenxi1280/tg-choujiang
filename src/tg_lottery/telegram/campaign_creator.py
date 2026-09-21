@@ -379,7 +379,7 @@ class CampaignCreator:
             message,
             data=data,
             text="🌀 请选择开奖方式：",
-            rows=[[("满人开奖", "draft_draw_full"), ("定时开奖", "draft_draw_fixed")]],
+            rows=[[("定时开奖", "draft_draw_fixed")]],
         )
 
     async def _render_dashboard_from_text(self, message: Message, data: dict[str, Any]) -> None:

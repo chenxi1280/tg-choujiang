@@ -13,14 +13,13 @@ def test_custom_time_is_beijing_even_for_a_group_in_another_timezone():
     moment = parse_draw_at("2026-09-15 20:30", "Europe/London")
     assert moment.astimezone(UTC) == datetime(2026, 9, 15, 12, 30, tzinfo=UTC)
     assert "北京时间" in custom_draw_prompt("Europe/London")
-    copy_button = custom_draw_rows("Europe/London")[0][0]
-    assert parse_draw_at(copy_button.copy_text.text, "Europe/London").hour == 20
+    assert custom_draw_rows("Europe/London")[0][0] == ("7天后", "draft_draw_week")
 
 
-def test_quick_evening_and_legacy_naive_time_preserve_correct_instants():
+def test_quick_ten_days_and_legacy_naive_time_preserve_correct_instants():
     now = datetime(2026, 9, 14, 9, tzinfo=UTC)
-    target = quick_draw_at("draft_draw_evening", "Europe/London", now=now)
-    assert target.astimezone(UTC) == datetime(2026, 9, 14, 12, tzinfo=UTC)
+    target = quick_draw_at("draft_draw_ten_days", "Europe/London", now=now)
+    assert target.astimezone(UTC) == datetime(2026, 9, 24, 9, tzinfo=UTC)
     assert format_public_time("2026-09-14 10:00", "Europe/London") == (
         "2026年09月14日 17:00 (北京时间)"
     )
@@ -74,7 +73,7 @@ async def test_winner_private_notice_is_not_silent():
     assert options["disable_notification"] is False
 
 
-async def test_copy_button_does_not_consume_or_shift_callback_authorization():
+async def test_quick_time_buttons_keep_callback_authorization_order():
     from unittest.mock import AsyncMock
 
     from tg_lottery.application.admin_sessions import DraftPanelContext
@@ -91,13 +90,13 @@ async def test_copy_button_does_not_consume_or_shift_callback_authorization():
     sessions.issue_panel_context.return_value = DraftPanelContext("draft", 1, 9)
     renderer = CreatorRenderer(bot=object(), tokens=tokens, queries=object(), sessions=sessions)
     keyboard = await renderer._keyboard(PanelTarget(123, 123, 9), custom_draw_rows("Europe/London"))
-    assert keyboard.inline_keyboard[0][0].copy_text is not None
-    assert keyboard.inline_keyboard[1][0].callback_data == "secure:hour-token"
+    assert keyboard.inline_keyboard[0][0].copy_text is None
+    assert keyboard.inline_keyboard[0][0].callback_data == "secure:hour-token"
     assert keyboard.inline_keyboard[-1][0].callback_data == "secure:back-token"
     requests = tokens.create_many.call_args.kwargs["requests"]
     assert [request.action for request in requests] == [
-        "draft_draw_hour",
-        "draft_draw_evening",
+        "draft_draw_week",
+        "draft_draw_ten_days",
         "draft_draw_tomorrow",
         "draft_draw",
     ]

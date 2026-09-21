@@ -13,6 +13,13 @@ from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import creator_bonus as bonus
 from tg_lottery.telegram import creator_group_bonus as group_bonus
 from tg_lottery.telegram import creator_participation as participation
+from tg_lottery.telegram.creator_admission_picker import (
+    PREFIX as ADMISSION_PREFIX,
+)
+from tg_lottery.telegram.creator_admission_picker import (
+    CreatorAdmissionPicker,
+    add_admission_chats,
+)
 from tg_lottery.telegram.creator_bonus_permissions import verify_bonus_action
 from tg_lottery.telegram.creator_cover import CreatorCover
 from tg_lottery.telegram.creator_messages import (
@@ -27,7 +34,7 @@ from tg_lottery.telegram.creator_required_chats_data import (
     validated_text_changes,
     with_required_chats,
 )
-from tg_lottery.telegram.creator_schedule import positive_int, quick_draw_at, validate_draw_time
+from tg_lottery.telegram.creator_schedule import quick_draw_at, validate_draw_time
 from tg_lottery.telegram.creator_settings_ui import (
     _back_rows,
     _message,
@@ -51,7 +58,6 @@ from tg_lottery.telegram.draft_config import (
 )
 from tg_lottery.telegram.issuer import resolve_issuer
 from tg_lottery.telegram.personal_flow import REGIONS
-from tg_lottery.telegram.required_chats import resolve_required_chat
 
 Handler = Callable[[CallbackQuery, CallbackGrant], Awaitable[None]]
 TextHandler = Callable[[Message, dict[str, Any]], Awaitable[None]]
@@ -72,10 +78,16 @@ class CreatorSettings:
         self._profiles = profiles
         self._queries = queries
         self._bot = bot
+        self._admission = CreatorAdmissionPicker(
+            bot=bot, sessions=sessions, queries=queries, renderer=renderer
+        )
         self._cover = CreatorCover(sessions=sessions, renderer=renderer)
         self._threshold_input = CreatorThresholdInput(sessions=sessions, renderer=renderer)
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> bool:
+        if grant.action.startswith(ADMISSION_PREFIX):
+            await self._admission.handle(query, grant)
+            return True
         if grant.action.startswith("draft_threshold_input:"):
             await self._threshold_input.show(query, grant)
             return True
@@ -93,12 +105,17 @@ class CreatorSettings:
 
     def handles_action(self, action: str) -> bool:
         return (
-            action.startswith(("draft_chat_threshold:", "draft_threshold_input:"))
+            action.startswith(("draft_chat_threshold:", "draft_threshold_input:", ADMISSION_PREFIX))
             or group_bonus.handles_action(action)
             or action in self._grant_handlers()
         )
 
     async def handle_message(self, message: Message, state: str, data: dict[str, Any]) -> bool:
+        if state in {"draft:admission_picker", "draft:admission_search"}:
+            await self._admission.receive(
+                message, data, searching=state == "draft:admission_search"
+            )
+            return True
         handler = self._text_handlers().get(state)
         if handler is None:
             return False
@@ -110,6 +127,8 @@ class CreatorSettings:
             "draft_draw": self._show_draw_modes,
             "draft_draw_fixed": self._edit_custom_draw,
             "draft_draw_full": self._edit_full_draw,
+            "draft_draw_week": self._set_quick_draw,
+            "draft_draw_ten_days": self._set_quick_draw,
             "draft_draw_hour": self._set_quick_draw,
             "draft_draw_evening": self._set_quick_draw,
             "draft_draw_tomorrow": self._set_quick_draw,
@@ -169,13 +188,7 @@ class CreatorSettings:
         await self._render(query, data=data, text=draw_prompt_text(data), rows=rows)
 
     async def _edit_full_draw(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:full_target")
-        await self._render(
-            query,
-            data=data,
-            text="👥 满人开奖\n\n请回复达到多少名合格参与者后开奖：",
-            rows=_back_rows(),
-        )
+        raise UserFacingError("满人开奖已取消，请返回开奖方式选择定时开奖")
 
     async def _edit_custom_draw(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:draw")
@@ -202,10 +215,7 @@ class CreatorSettings:
         )
 
     async def _receive_full_target(self, message: Message, data: dict[str, Any]) -> None:
-        target = positive_int(message.text or "", "参与人数")
-        await self._dashboard_from_message(
-            message, data | {"draw_mode": "full", "participant_target": target}
-        )
+        raise UserFacingError("满人开奖已取消，请返回开奖方式选择定时开奖")
 
     async def _edit_claim(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:claim")
@@ -293,36 +303,18 @@ class CreatorSettings:
         )
 
     async def _edit_participation_add(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:participation")
-        await self._render(
-            query,
-            data=data,
-            text=participation.participation_add_text(),
-            rows=[[("↩ 返回条件列表", "draft_participation")]],
-        )
+        await self._admission.show(query, _)
 
     async def _receive_participation(self, message: Message, data: dict[str, Any]) -> None:
-        if data.get("chat_id") is None:
-            raise UserFacingError("请先在抽奖预览中选择活动群")
-        values = participation.message_chat_refs(message)
-        if not values:
-            raise UserFacingError("请至少填写一个群或频道")
-        chats = list(data.get("required_chats") or [])
-        existing_ids = {int(item["id"]) for item in chats}
-        existing_ids.update(int(value) for value in data.get("participation_group_ids") or [])
-        added = []
-        for value in values:
-            chat = await resolve_required_chat(self._bot, value, admin_user_id=_user_id(message))
-            chat_id = int(chat["id"])
-            if chat_id == int(data["chat_id"]):
-                raise UserFacingError("该目标已经是参与活动的群，不能同时作为准入条件")
-            if chat_id in existing_ids:
-                raise UserFacingError("该群或频道已经在参与条件中")
-            existing_ids.add(chat_id)
-            added.append(chat)
-        updated_chats = [*chats, *added]
-        updated = with_required_chats(data, updated_chats) | {
-            "participation_page": (len(updated_chats) - 1) // participation.PARTICIPATION_PAGE_SIZE,
+        updated = await add_admission_chats(
+            self._bot,
+            data,
+            refs=participation.message_chat_refs(message),
+            user_id=_user_id(message),
+        )
+        updated = updated | {
+            "participation_page": (len(updated["required_chats"]) - 1)
+            // participation.PARTICIPATION_PAGE_SIZE,
         }
         await self._sessions.set(_user_id(message), "draft:participation", updated)
         await self._renderer.edit(
@@ -441,7 +433,11 @@ class CreatorSettings:
             ensure_draft_identity(last_draft | protected),
             user_id=query.from_user.id,
         )
-        await self._dashboard(query, restored | {"guided": False, "draw_at": ""})
+        await self._dashboard(
+            query,
+            restored
+            | {"guided": False, "draw_at": "", "draw_mode": "fixed", "participant_target": None},
+        )
 
     async def _receive_text(
         self,

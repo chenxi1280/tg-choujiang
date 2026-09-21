@@ -116,7 +116,7 @@ def draw_prompt_text(data: dict[str, Any]) -> str:
     return (
         "🌀 创建抽奖·设置开奖时间（必填项）\n\n"
         f"当前设置：{_draw_text(data)}\n\n"
-        "请选择满人开奖或定时开奖："
+        "请选择定时开奖设置开奖时间："
     )
 
 
