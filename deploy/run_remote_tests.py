@@ -40,6 +40,9 @@ def main() -> None:
     if mode in {"all", "migrate"}:
         _run(["alembic", "upgrade", "head"], environment)
         _run(["alembic", "check"], environment)
+        _run(["alembic", "downgrade", "base"], environment)
+        _run(["alembic", "upgrade", "head"], environment)
+        _run(["alembic", "check"], environment)
     if mode == "all":
         for index in range(SHARD_COUNT):
             _run(

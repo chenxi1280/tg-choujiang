@@ -28,8 +28,8 @@ bash deploy/run-shanghai-tests.sh all
 ```
 
 脚本只打包当前工作区的 `src`、`tests`、`alembic`、`scripts` 和测试执行器，
-传到远端临时目录构建镜像。`all` 先运行 `alembic upgrade head` 与
-`alembic check`，再顺序运行八个分片。每个后端测试进程硬超时 60 秒，
+传到远端临时目录构建镜像。`all` 先运行 Alembic 升级、差异检查、
+降级到 base、重新升级及差异检查，再顺序运行八个分片。每个后端测试进程硬超时 60 秒，
 超时或数据库身份不匹配均为失败。
 
 GitHub Actions 的 `master` 与 `release` 流水线使用同一远端入口。仓库需配置

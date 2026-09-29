@@ -35,7 +35,7 @@ bash deploy/run-shanghai-tests.sh all
 ```
 
 测试库与测试进程运行在上海服务器的独立 Docker 环境。上述命令传输当前工作区源码，
-在服务器内执行 Alembic 迁移检查及八个顺序测试分片，每个测试进程硬超时 60 秒。
+在服务器内执行 Alembic 往返迁移检查及八个顺序测试分片，每个测试进程硬超时 60 秒。
 定向测试可运行 `bash deploy/run-shanghai-tests.sh pytest tests/test_domain.py -q`。
 测试库身份、CI 配置与故障核查见 [上海测试环境](docs/deployment/SHANGHAI_TEST_ENV.md)。
 
