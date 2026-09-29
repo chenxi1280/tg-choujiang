@@ -29,7 +29,8 @@
 
 ## 本地验证
 
-- `tests/conftest.py` 会在测试结束后执行清表及序列重置。数据库测试必须经上海 Docker 测试执行器运行；执行器设置专用测试库 URL 和实例标记，fixture 在清表前核对库名、角色和实例标记。迁移与测试使用同一个专用库。
+- `tests/conftest.py` 会在测试结束后执行清表及序列重置。数据库测试必须经上海 Docker 测试执行器运行；执行器设置专用测试库 URL 和实例标记，fixture 在清表前核对库名、角色和实例标记。迁移与测试使用同一个专用库；不得使用旧本机 `55432` 默认地址。
+- 本机只读连接配置保存在被 Git 忽略的 `.env.test`，通过 SSH 隧道 `127.0.0.1:25433 -> 上海机 127.0.0.1:15433` 访问。先运行 `bash deploy/open-shanghai-test-db-tunnel.sh`，再运行 `python scripts/check_shanghai_test_db.py` 核对库身份与 TLS 1.3；完整测试继续在上海 Docker 中运行。
 - 在已确认的隔离测试环境内，可自行执行测试、修复本次变更导致的失败并重跑，无需逐步确认。后端单元测试执行硬超时为 60 秒。
 - 先验证受影响行为；需要完整回归时，运行 `bash deploy/run-shanghai-tests.sh all`。远端通过 `flock` 串行执行迁移和八个分片，每个测试进程硬超时 60 秒。
 - Python 修改使用以下现有检查；局部修改可先限定相关文件，完整检查范围以 [Python Checks](.github/workflows/python-checks.yml) 为准。检查通过后，只在新增修改、失败或未解决疑点需要时继续扩大或重复验证。

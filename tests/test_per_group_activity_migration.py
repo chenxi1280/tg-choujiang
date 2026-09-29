@@ -11,9 +11,6 @@ from tests.helpers import seed_campaign
 from tg_lottery.infrastructure.db import DailyProgress
 
 DOWN_REVISION = "b91e4d7a6c20"
-DEFAULT_TEST_DATABASE_URL = (
-    "postgresql+asyncpg://postgres:lottery_test@127.0.0.1:55432/lottery_test"
-)
 
 
 async def test_upgrade_backfills_existing_progress_for_main_group(session_factory) -> None:
@@ -46,8 +43,7 @@ async def test_upgrade_backfills_existing_progress_for_main_group(session_factor
 
 def _run_alembic(action: str, revision: str) -> None:
     environment = os.environ.copy()
-    database_url = environment.get("TEST_DATABASE_URL", DEFAULT_TEST_DATABASE_URL)
-    environment["DATABASE_URL"] = database_url
+    environment["DATABASE_URL"] = environment["TEST_DATABASE_URL"]
     subprocess.run(
         [sys.executable, "-m", "alembic", action, revision],
         cwd=Path(__file__).resolve().parents[1],

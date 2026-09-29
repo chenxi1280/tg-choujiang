@@ -31,12 +31,16 @@ python -m pip install -e ".[dev]"
 ruff format --check src tests alembic scripts deploy
 ruff check src tests alembic scripts deploy
 python scripts/check_code_metrics.py
+bash deploy/open-shanghai-test-db-tunnel.sh
+python scripts/check_shanghai_test_db.py
 bash deploy/run-shanghai-tests.sh all
 ```
 
-测试库与测试进程运行在上海服务器的独立 Docker 环境。上述命令传输当前工作区源码，
+测试库与测试进程运行在上海服务器的独立 Docker 环境。最后一条命令传输当前工作区源码，
 在服务器内执行 Alembic 往返迁移检查及八个顺序测试分片，每个测试进程硬超时 60 秒。
 定向测试可运行 `bash deploy/run-shanghai-tests.sh pytest tests/test_domain.py -q`。
+本机只读连接使用被 Git 忽略的 `.env.test`：`127.0.0.1:25433` 经 SSH 隧道连接上海机
+`15433`，并使用独立 CA 验证 TLS 证书。配置结构见 [.env.test.example](.env.test.example)。
 测试库身份、CI 配置与故障核查见 [上海测试环境](docs/deployment/SHANGHAI_TEST_ENV.md)。
 
 运行时配置见 `.env.docker.example`，生产发布和证据要求见 [部署文档](docs/deployment/DEPLOYMENT.md)。

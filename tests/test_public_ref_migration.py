@@ -10,9 +10,6 @@ from tests.helpers import seed_campaign
 from tg_lottery.infrastructure.db import Campaign
 
 DOWN_REVISION = "2a4e91b6f703"
-DEFAULT_TEST_DATABASE_URL = (
-    "postgresql+asyncpg://postgres:lottery_test@127.0.0.1:55432/lottery_test"
-)
 
 
 async def test_public_ref_downgrade_refuses_existing_campaign(session_factory) -> None:
@@ -35,8 +32,7 @@ async def test_public_ref_downgrade_refuses_existing_campaign(session_factory) -
 
 def _downgrade_public_ref() -> subprocess.CompletedProcess[str]:
     environment = os.environ.copy()
-    database_url = environment.get("TEST_DATABASE_URL", DEFAULT_TEST_DATABASE_URL)
-    environment["DATABASE_URL"] = database_url
+    environment["DATABASE_URL"] = environment["TEST_DATABASE_URL"]
     return subprocess.run(
         [sys.executable, "-m", "alembic", "downgrade", DOWN_REVISION],
         cwd=Path(__file__).resolve().parents[1],
