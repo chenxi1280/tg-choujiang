@@ -29,14 +29,14 @@
 
 ## 本地验证
 
-- `tests/conftest.py` 会在测试结束后执行清表及序列重置。数据库测试前确认 `TEST_DATABASE_URL` 指向独立、可清空的测试库；URL 包含 `test` 的现有检查不等于隔离证明。迁移所用 `DATABASE_URL` 也必须指向该测试库。
+- `tests/conftest.py` 会在测试结束后执行清表及序列重置。数据库测试必须经上海 Docker 测试执行器运行；执行器设置专用测试库 URL 和实例标记，fixture 在清表前核对库名、角色和实例标记。迁移与测试使用同一个专用库。
 - 在已确认的隔离测试环境内，可自行执行测试、修复本次变更导致的失败并重跑，无需逐步确认。后端单元测试执行硬超时为 60 秒。
-- 先验证受影响行为；需要完整回归时，按 README 顺序运行 `python scripts/run_pytest_shard.py --index <0到7> --count 8`。该脚本的测试执行超时为 60 秒，同一测试数据库不能并发运行分片。
+- 先验证受影响行为；需要完整回归时，运行 `bash deploy/run-shanghai-tests.sh all`。远端通过 `flock` 串行执行迁移和八个分片，每个测试进程硬超时 60 秒。
 - Python 修改使用以下现有检查；局部修改可先限定相关文件，完整检查范围以 [Python Checks](.github/workflows/python-checks.yml) 为准。检查通过后，只在新增修改、失败或未解决疑点需要时继续扩大或重复验证。
 
 ```bash
-ruff format --check src tests alembic scripts
-ruff check src tests alembic scripts
+ruff format --check src tests alembic scripts deploy
+ruff check src tests alembic scripts deploy
 python scripts/check_code_metrics.py
 ```
 

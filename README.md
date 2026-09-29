@@ -24,19 +24,20 @@
 
 具体规则、通知时机和兼容范围见 [V2.6 基础门槛与进度提醒](docs/development/v2.6-base-activity-and-progress-notices.md)；最新按钮、时间复制和结束展示见 [V2.7 准入与每日加成](docs/development/v2.7-creator-admission-and-daily-bonus.md)。
 
-## 本地校验
+## 校验与上海 Docker 测试环境
 
 ```bash
 python -m pip install -e ".[dev]"
-ruff format --check src tests alembic scripts
-ruff check src tests alembic scripts
+ruff format --check src tests alembic scripts deploy
+ruff check src tests alembic scripts deploy
 python scripts/check_code_metrics.py
-export TEST_DATABASE_URL="postgresql+asyncpg://postgres:<测试密码>@127.0.0.1:<测试端口>/lottery_test"
-DATABASE_URL="$TEST_DATABASE_URL" alembic upgrade head
-python scripts/run_pytest_shard.py --index 0 --count 8
+bash deploy/run-shanghai-tests.sh all
 ```
 
-测试使用独立测试数据库，按 `--index 0` 到 `--index 7` 顺序运行八个分片；每个分片执行硬超时为 60 秒，同一数据库不要并发执行。
+测试库与测试进程运行在上海服务器的独立 Docker 环境。上述命令传输当前工作区源码，
+在服务器内执行 Alembic 迁移检查及八个顺序测试分片，每个测试进程硬超时 60 秒。
+定向测试可运行 `bash deploy/run-shanghai-tests.sh pytest tests/test_domain.py -q`。
+测试库身份、CI 配置与故障核查见 [上海测试环境](docs/deployment/SHANGHAI_TEST_ENV.md)。
 
 运行时配置见 `.env.docker.example`，生产发布和证据要求见 [部署文档](docs/deployment/DEPLOYMENT.md)。
 
