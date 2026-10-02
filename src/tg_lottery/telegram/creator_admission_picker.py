@@ -110,7 +110,6 @@ class CreatorAdmissionPicker:
             text += f"\n搜索：{search}"
         if not candidates:
             text += "\n没有匹配的群/频道，可清除搜索、刷新列表或转发来源可见的消息。"
-        text += "\n点击列表选择，再次点击取消；完成后返回条件列表。"
         await self._sessions.set(user_id, "draft:admission_picker", updated)
         await self._renderer.edit(
             PanelTarget(user_id, chat_id, int(data["panel_message_id"])), text=text, rows=rows

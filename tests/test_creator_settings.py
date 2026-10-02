@@ -143,7 +143,7 @@ def test_participation_add_button_opens_a_distinct_input_prompt() -> None:
     )
 
     assert rows[0] == [("添加准入条件", "draft_participation_add")]
-    assert "请直接发送群聊或频道链接" in participation_add_text()
+    assert "也可直接发送群聊或频道链接" in participation_add_text()
     assert "参与活动的群无需在这里重复添加" in participation_add_text()
     assert "创建者和机器人都必须" in participation_add_text()
     assert "数字 chat ID 仅用于高级操作" in participation_add_text()

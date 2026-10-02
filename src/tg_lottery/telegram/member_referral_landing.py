@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
+from tg_lottery.application.invitation_models import accepts_attribution
 from tg_lottery.application.query_invites import ReferralLanding
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
@@ -60,27 +61,7 @@ async def _membership_state(
 
 def _landing_text(landing: ReferralLanding, membership: bool | None, *, now: datetime) -> str:
     identity = f"{landing.campaign.name}"
-    if landing.campaign.state is CampaignState.CANCELLED:
-        state = (
-            "本次抽奖已经取消。\n"
-            f"该入口不再产生抽奖加成；如群入口仍可用，你仍可加入「{landing.target.title_snapshot}」。"
-        )
-    elif membership is True:
-        state = (
-            f"你已经是「{landing.target.title_snapshot}」成员。\n本次打开不会产生新成员邀请加成。"
-        )
-    elif _bonus_active(landing, now):
-        state = (
-            "你收到一位好友的邀请。\n"
-            f"在最晚计奖时间前加入「{landing.target.title_snapshot}」，"
-            "完成留存后可计入邀请人的本期加成。"
-        )
-    else:
-        state = (
-            "本期邀请加成已经结束。\n"
-            f"你仍可加入「{landing.target.title_snapshot}」，"
-            "但不会再给邀请人增加本期抽奖次数。"
-        )
+    state = _landing_state(landing, membership, now=now)
     timezone = landing.campaign.timezone
     deadline = format_public_time(_effective_bonus_deadline(landing), timezone)
     draw_at = format_public_time(landing.campaign.draw_at, timezone)
@@ -89,7 +70,36 @@ def _landing_text(landing: ReferralLanding, membership: bool | None, *, now: dat
         f"👥 {identity}\n\n{state}{verification}\n\n"
         f"最晚计奖入群时间：{deadline}\n开奖时间：{draw_at}\n\n"
         "加入该群不等于自动报名本次抽奖。\n"
-        "此邀请入口仅属于本次抽奖，结束后仍可入群，不计入下次抽奖。"
+        "此邀请入口仅属于本次抽奖，结束后如入群入口仍有效，可继续入群，不计入下次抽奖。"
+    )
+
+
+def _landing_state(landing: ReferralLanding, membership: bool | None, *, now: datetime) -> str:
+    if landing.campaign.state is CampaignState.CANCELLED:
+        return (
+            "本次抽奖已经取消。\n"
+            f"该入口不再产生抽奖加成；如群入口仍可用，你仍可加入「{landing.target.title_snapshot}」。"
+        )
+    if membership is True:
+        return (
+            f"你已经是「{landing.target.title_snapshot}」成员。\n本次打开不会产生新成员邀请加成。"
+        )
+    if _registration_open(landing, now) and now < landing.campaign.preheat_at:
+        return (
+            "本期邀请加成尚未开始。\n"
+            f"你仍可加入「{landing.target.title_snapshot}」，"
+            "但当前入群不会给邀请人增加本期抽奖次数。"
+        )
+    if _bonus_active(landing, now):
+        return (
+            "你收到一位好友的邀请。\n"
+            f"在最晚计奖时间前加入「{landing.target.title_snapshot}」，"
+            "完成留存后可计入邀请人的本期加成。"
+        )
+    return (
+        "本期邀请加成已经结束。\n"
+        f"如群入口仍有效，你仍可加入「{landing.target.title_snapshot}」，"
+        "但不会再给邀请人增加本期抽奖次数。"
     )
 
 
@@ -104,6 +114,12 @@ def _bonus_active(landing: ReferralLanding, now: datetime) -> bool:
         landing.route.status == "active"
         and landing.campaign.state
         in {CampaignState.SCHEDULED, CampaignState.RUNNING, CampaignState.PAUSED}
+        and accepts_attribution(
+            landing.campaign.state,
+            preheat_at=landing.campaign.preheat_at,
+            cutoff_at=landing.campaign.cutoff_at,
+            event_at=now,
+        )
         and now <= _effective_bonus_deadline(landing)
     )
 

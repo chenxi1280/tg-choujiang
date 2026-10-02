@@ -5,15 +5,12 @@ from tg_lottery.application.participant_records import (
     InvitationRecordFilter,
     InvitationRecordRow,
 )
-from tg_lottery.domain.enums import InvitationState
+from tg_lottery.domain.enums import CampaignState, InvitationState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram.bonus_rule_text import chat_title
-from tg_lottery.telegram.public_projection import (
-    campaign_state_text,
-    format_public_time,
-    qualification_state_text,
-)
+from tg_lottery.telegram.member_record_text import participant_record_pages
+from tg_lottery.telegram.public_projection import format_public_time
 
 _GROUP_PAGE_SIZE = 6
 _FILTER_LABELS = {
@@ -49,24 +46,29 @@ _FINAL_REASON_TEXT = {
 async def show_ticket_record(
     message: Message, queries: object, user_id: int, *, public_ref: str
 ) -> None:
+    if message.chat.type != "private" or message.chat.id != user_id:
+        raise UserFacingError("请在与机器人的本人私聊中查看参与记录")
     detail = await queries.participant_campaign_detail(user_id, public_ref)
     if detail is None:
         raise UserFacingError("未找到你在该活动中的参与记录")
-    await message.answer(
-        f"🎟 {detail.campaign_name}\n"
-        f"活动状态: {campaign_state_text(detail.state)}\n"
-        f"参与资格: {qualification_state_text(detail.qualification)}\n"
-        f"开奖时间: {format_public_time(detail.draw_at, detail.timezone)}\n\n"
-        f"累计次数（含暂存）: {detail.total}\n"
-        f"基础次数: {detail.registration}\n"
-        f"发言加成: {detail.activity}\n"
-        f"邀请加成: {detail.invitation}\n{detail.base_progress}",
-        reply_markup=_record_keyboard(
-            public_ref,
-            bonus_enabled=detail.bonus_enabled,
-            invite_enabled=detail.invite_enabled,
+    pages = participant_record_pages(detail)
+    keyboard = _record_keyboard(
+        public_ref,
+        bonus_enabled=detail.bonus_enabled,
+        invite_enabled=detail.invite_enabled,
+        state=detail.state,
+        issuer_user_id=(
+            detail.draw_result.issuer_user_id
+            if detail.draw_result is not None and detail.draw_result.awards
+            else None
         ),
     )
+    for index, text in enumerate(pages, start=1):
+        await message.answer(
+            text,
+            parse_mode=None,
+            reply_markup=keyboard if index == len(pages) else None,
+        )
 
 
 async def show_invitation_records(
@@ -166,9 +168,18 @@ def _masked_identity(name: str | None, user_id: int) -> str:
 
 
 def _record_keyboard(
-    public_ref: str, *, bonus_enabled: bool, invite_enabled: bool
+    public_ref: str,
+    *,
+    bonus_enabled: bool,
+    invite_enabled: bool,
+    state: CampaignState = CampaignState.RUNNING,
+    issuer_user_id: int | None = None,
 ) -> InlineKeyboardMarkup:
     rows = []
+    if issuer_user_id is not None:
+        rows.append(
+            [InlineKeyboardButton(text="联系发奖人员", url=f"tg://user?id={issuer_user_id}")]
+        )
     if bonus_enabled:
         rows.append([InlineKeyboardButton(text="我的加成", callback_data=f"m:bo:{public_ref}")])
     if invite_enabled:
@@ -180,8 +191,18 @@ def _record_keyboard(
                 )
             ]
         )
-    rows.append([InlineKeyboardButton(text="返回参与列表", callback_data="nav:join")])
+    rows.append(
+        [InlineKeyboardButton(text="返回参与列表", callback_data=f"nav:join:{_category(state)}:0")]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _category(state: CampaignState) -> str:
+    if state in {CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED}:
+        return "ended"
+    if state in {CampaignState.SETTLING, CampaignState.READY_TO_DRAW, CampaignState.DRAWING}:
+        return "pending"
+    return "active"
 
 
 def _invitation_keyboard(records: CampaignInvitationRecords) -> InlineKeyboardMarkup:

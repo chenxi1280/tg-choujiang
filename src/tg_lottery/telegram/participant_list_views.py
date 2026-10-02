@@ -3,6 +3,7 @@ from __future__ import annotations
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.application.participant_records import ParticipatedCampaignPage
+from tg_lottery.domain.enums import CampaignState
 from tg_lottery.telegram.public_projection import (
     campaign_state_text,
     format_public_time,
@@ -108,6 +109,11 @@ def parse_campaign_list_callback(value: str) -> tuple[str, int]:
 
 
 def _ticket_label(row: object) -> str:
+    if row.state == CampaignState.CANCELLED:
+        return f"历史累计 {row.tickets} 次 · 活动已取消"
+    if row.state in {CampaignState.DRAWN, CampaignState.ARCHIVED}:
+        status = "未计入本场" if not row.base_qualified else "最终次数见详情"
+        return f"历史累计 {row.tickets} 次 · {status}"
     if not row.base_qualified:
         return f"门槛未达标 · 累计 {row.tickets} 次（暂存）"
     return f"{row.tickets} 次"

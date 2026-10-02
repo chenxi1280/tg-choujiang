@@ -10,6 +10,10 @@ from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tg_lottery.application.base_activity_views import base_progress_text
+from tg_lottery.application.participant_results import (
+    ParticipantDrawResult,
+    load_participant_draw_result,
+)
 from tg_lottery.domain.enums import (
     CampaignState,
     InvitationState,
@@ -74,6 +78,7 @@ class ParticipantCampaignDetail:
     timezone: str
     base_progress: str = ""
     base_qualified: bool = True
+    draw_result: ParticipantDrawResult | None = None
 
 
 @dataclass(frozen=True)
@@ -240,6 +245,7 @@ async def load_participant_campaign_detail(
         totals = await _ticket_totals(session, participant.id)
         rules = CampaignRules.model_validate(campaign.rules)
         return ParticipantCampaignDetail(
+            draw_result=await load_participant_draw_result(session, campaign, participant.id),
             base_progress=await base_progress_text(session, campaign, participant),
             base_qualified=participant.base_qualified,
             public_ref=campaign.public_ref,

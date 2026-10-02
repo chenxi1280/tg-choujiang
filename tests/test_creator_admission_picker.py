@@ -12,7 +12,7 @@ from tg_lottery.telegram.creator_participation import participation_rows
 from tg_lottery.telegram.creator_publication import _require_fixed_draw
 from tg_lottery.telegram.creator_schedule import quick_draw_at
 from tg_lottery.telegram.creator_settings import CreatorSettings
-from tg_lottery.telegram.creator_settings_ui import custom_draw_rows, draw_mode_rows
+from tg_lottery.telegram.creator_settings_ui import custom_draw_rows
 from tg_lottery.telegram.creator_share import publication_receipt
 
 
@@ -119,7 +119,6 @@ def test_quick_days_preserve_beijing_clock_across_month(action, days):
 
 
 def test_draw_options_remove_full_and_copy_and_preserve_tomorrow():
-    assert "draft_draw_full" not in str(draw_mode_rows())
     assert custom_draw_rows("UTC")[:2] == [
         [("7天后", "draft_draw_week"), ("10天后", "draft_draw_ten_days")],
         [("明晚20:00", "draft_draw_tomorrow")],

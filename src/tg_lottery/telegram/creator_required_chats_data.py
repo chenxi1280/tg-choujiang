@@ -1,15 +1,17 @@
 from typing import Any
 
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram.creator_group_selection import selected_chat_ids
 from tg_lottery.telegram.required_chats import resolve_required_chat
 
 
 def with_required_chats(data: dict[str, Any], chats: list[dict[str, Any]]) -> dict[str, Any]:
     chat_ids = [int(item["id"]) for item in chats]
+    retained_ids = set(chat_ids) | set(selected_chat_ids(data))
     thresholds = {
         key: value
         for key, value in (data.get("chat_message_thresholds") or {}).items()
-        if int(key) in chat_ids
+        if int(key) in retained_ids
     }
     return data | {
         "required_chats": chats,

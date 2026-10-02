@@ -20,9 +20,10 @@ def positive_int(value: str, label: str) -> int:
     return number
 
 
-def validate_draw_time(draw_at: datetime) -> None:
-    if draw_at <= utcnow().astimezone(draw_at.tzinfo) + MIN_DRAW_LEAD:
-        raise UserFacingError("开奖时间至少需要晚于当前时间 5 分钟")
+def validate_draw_time(draw_at: datetime, *, now: datetime | None = None) -> None:
+    current = (now or utcnow()).astimezone(draw_at.tzinfo)
+    if draw_at <= current + MIN_DRAW_LEAD:
+        raise UserFacingError("开奖时间至少需要晚于当前时间 5 分钟（北京时间）")
 
 
 def quick_draw_at(action: str, timezone: str, *, now: datetime | None = None) -> datetime:

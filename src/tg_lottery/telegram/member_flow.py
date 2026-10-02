@@ -38,6 +38,7 @@ from tg_lottery.telegram.member_invites import legacy_invite_link_payload, membe
 from tg_lottery.telegram.member_missing_targets import build_missing_targets_reply
 from tg_lottery.telegram.member_observation import apply_message_thresholds
 from tg_lottery.telegram.member_popups import popup_success
+from tg_lottery.telegram.member_record_delivery import private_record_message
 from tg_lottery.telegram.member_records import (
     show_invitation_groups,
     show_ticket_record,
@@ -445,7 +446,8 @@ class MemberFlow:
         return decrypt_required_chat_url(self._cipher, campaign.id, chat)
 
     async def show_tickets(self, message: Message, user_id: int, *, public_ref: str) -> None:
-        await show_ticket_record(message, self._queries, user_id, public_ref=public_ref)
+        destination = private_record_message(message, self._bot, user_id=user_id)
+        await show_ticket_record(destination, self._queries, user_id, public_ref=public_ref)
 
     async def show_invitations(
         self, message: Message, user_id: int, *, public_ref: str, page: int = 0

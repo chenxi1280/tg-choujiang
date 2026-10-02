@@ -44,7 +44,7 @@ class PlainCipher:
 
 async def test_member_can_retrieve_a_campaign_scoped_personal_invite_link() -> None:
     now = datetime.now(UTC)
-    campaign = _campaign(now + timedelta(hours=1))
+    campaign = _campaign(now + timedelta(hours=25))
     link = SimpleNamespace(id=uuid4(), encrypted_url=b"encrypted")
     cipher = PlainCipher()
     cipher.link_id = link.id
@@ -58,10 +58,46 @@ async def test_member_can_retrieve_a_campaign_scoped_personal_invite_link() -> N
 
     await flow.show_invite_link(message, campaign.public_ref, user_id=201)
 
-    assert "仅在本期报名截止前" in message.text
+    assert "最晚计奖入群" in message.text
+    assert "满足留群及活动条件" in message.text
     assert message.markup.inline_keyboard[0][0].copy_text.text == "https://t.me/+campaign_personal"
     assert message.markup.inline_keyboard[1][0].url == "https://t.me/+campaign_personal"
     assert "share/url" in message.markup.inline_keyboard[2][0].url
+
+
+async def test_legacy_invite_link_after_join_deadline_still_opens_without_bonus_promise() -> None:
+    campaign = _campaign(datetime.now(UTC) + timedelta(hours=1))
+    link = SimpleNamespace(id=uuid4(), encrypted_url=b"encrypted")
+    cipher = PlainCipher()
+    cipher.link_id = link.id
+    flow = MemberFlow(
+        bot=object(), participants=object(), queries=InviteQueries(campaign, link), cipher=cipher
+    )
+    message = RecordingMessage()
+    await flow.show_invite_link(message, campaign.public_ref, user_id=201)
+    assert "最晚计奖入群时间已过" in message.text
+    assert "新入群不计加成" in message.text
+    assert "仅核验此前邀请" in message.text
+    assert message.markup.inline_keyboard[0][0].text == "复制入群链接"
+    assert message.markup.inline_keyboard[2][0].text == "转发入群"
+
+
+async def test_legacy_invite_link_before_preheat_does_not_say_campaign_has_ended() -> None:
+    now = datetime.now(UTC)
+    campaign = _campaign(now + timedelta(days=2))
+    campaign.state = CampaignState.SCHEDULED
+    campaign.preheat_at = now + timedelta(hours=1)
+    link = SimpleNamespace(id=uuid4(), encrypted_url=b"encrypted")
+    cipher = PlainCipher()
+    cipher.link_id = link.id
+    flow = MemberFlow(
+        bot=object(), participants=object(), queries=InviteQueries(campaign, link), cipher=cipher
+    )
+    message = RecordingMessage()
+    await flow.show_invite_link(message, campaign.public_ref, user_id=201)
+    assert "邀请加成尚未开始" in message.text
+    assert "已截止" not in message.text
+    assert message.markup.inline_keyboard[0][0].text == "复制入群链接"
 
 
 async def test_expired_campaign_link_still_opens_but_never_counts_again() -> None:
@@ -80,7 +116,7 @@ async def test_expired_campaign_link_still_opens_but_never_counts_again() -> Non
 
     await flow.show_invite_link(message, campaign.public_ref, user_id=201)
 
-    assert "仍可入群" in message.text
+    assert "仍有效的旧链接可入群" in message.text
     assert "不再计算本期或以后任何抽奖加成" in message.text
     assert "邀请入口已隐藏" in message.text
     buttons = [button for row in message.markup.inline_keyboard for button in row]
@@ -128,7 +164,8 @@ def _campaign(cutoff_at: datetime):
         public_ref="AbCdEfGhIjKlMnOpQrSt-_",
         name="本期抽奖",
         state=CampaignState.RUNNING,
-        preheat_at=cutoff_at - timedelta(days=1),
+        preheat_at=cutoff_at - timedelta(days=2),
         cutoff_at=cutoff_at,
+        timezone="Asia/Shanghai",
         rules=rules.model_dump(mode="json"),
     )

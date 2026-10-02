@@ -19,19 +19,16 @@ from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import DomainError, RecoverableDraftCallback
-from tg_lottery.telegram import member_callbacks
+from tg_lottery.telegram import command_input, member_callbacks
 from tg_lottery.telegram.admin_flow import AdminFlow
 from tg_lottery.telegram.bot_permission_reminders import send_bot_permission_reminder
+from tg_lottery.telegram.help_views import DRAFT_UNAVAILABLE_TEXT
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.personal_flow import PersonalFlow
 from tg_lottery.telegram.public_projection import public_error_text
 
 
 class LotteryUpdateHandler:
-    _PRIVATE_COMMANDS = frozenset(
-        {"/start", "/menu", "/new", "/index", "/join", "/region", "/myid"}
-    )
-
     def __init__(
         self,
         *,
@@ -107,14 +104,14 @@ class LotteryUpdateHandler:
     async def _group_command(self, message: Message, text: str) -> None:
         command = text.split(maxsplit=1)[0]
         name, _, mention = command.partition("@")
-        if mention and mention != self._bot_username:
+        if mention and mention.casefold() != self._bot_username.casefold():
             return
         if name == "/getid":
             await message.answer(
                 f"本群 ID：{message.chat.id}（以 -100 开头为超级群/频道 ID，可直接复制使用）"
             )
             return
-        if name in self._PRIVATE_COMMANDS:
+        if name in command_input.PRIVATE_BOT_COMMANDS:
             await message.answer(
                 "该命令请在私聊中使用。",
                 reply_markup=InlineKeyboardMarkup(
@@ -132,16 +129,7 @@ class LotteryUpdateHandler:
     async def _private_message(self, message: Message) -> None:
         text = (message.text or "").strip()
         try:
-            if text.startswith("/start"):
-                payload = text.partition(" ")[2]
-                if not await self._start_payload(message, payload):
-                    await self._personal_flow.show_guide(message)
-                return
-            if text == "/menu":
-                await self._personal_flow.show_index(message)
-                return
-            if text == "/new":
-                await self._admin_flow.start_create_message(message)
+            if await self._private_navigation(message, text):
                 return
             if await self._personal_flow.handle_command(message, text):
                 return
@@ -149,6 +137,26 @@ class LotteryUpdateHandler:
                 await self._personal_flow.show_index(message)
         except (DomainError, ValueError) as exc:
             await self._send_operation_error(message, exc)
+
+    async def _private_navigation(self, message: Message, text: str) -> bool:
+        command = command_input.parse_bot_command(text)
+        if command is None:
+            return False
+        if not command.addressed_to(self._bot_username):
+            return True
+        if command.name == "/start":
+            if not await self._start_payload(message, command.argument):
+                await self._personal_flow.show_index(message)
+            return True
+        handlers = {
+            "/menu": self._personal_flow.show_index,
+            "/new": self._admin_flow.start_create_message,
+        }
+        handler = handlers.get(command.name)
+        if handler is None:
+            return False
+        await handler(message)
+        return True
 
     async def _start_payload(self, message: Message, payload: str) -> bool:
         if payload.startswith("join_"):
@@ -183,7 +191,7 @@ class LotteryUpdateHandler:
 
     async def _callback(self, query: CallbackQuery) -> None:
         data = query.data or ""
-        if not data.startswith(("member:join:", "member:bonus:", "member:rules:")):
+        if not data.startswith(command_input.DEFERRED_CALLBACK_PREFIXES):
             await self._answer_callback(query)
         if not isinstance(query.message, Message):
             return
@@ -325,11 +333,7 @@ class LotteryUpdateHandler:
             )
         except RecoverableDraftCallback:
             recovered = await self._admin_flow.recover_draft_callback(query)
-            text = (
-                "请使用最新草稿面板或下方继续按钮"
-                if recovered
-                else "草稿已超过 7 天，请发送 /new 重新创建"
-            )
+            text = "请使用最新草稿面板或下方继续按钮" if recovered else DRAFT_UNAVAILABLE_TEXT
             await member_callbacks.safe_answer(query, text, alert=True)
             return
         await self._admin_flow.handle_grant(query, grant)

@@ -43,12 +43,10 @@ from tg_lottery.telegram.creator_settings_ui import (
     _user_id,
     custom_draw_prompt,
     custom_draw_rows,
-    draw_mode_rows,
 )
 from tg_lottery.telegram.creator_threshold_input import CreatorThresholdInput
 from tg_lottery.telegram.creator_views import (
     dashboard_rows,
-    draw_prompt_text,
     preview_text,
 )
 from tg_lottery.telegram.draft_config import (
@@ -124,7 +122,7 @@ class CreatorSettings:
 
     def _grant_handlers(self) -> dict[str, Handler]:
         handlers = {
-            "draft_draw": self._show_draw_modes,
+            "draft_draw": self._edit_custom_draw,
             "draft_draw_fixed": self._edit_custom_draw,
             "draft_draw_full": self._edit_full_draw,
             "draft_draw_week": self._set_quick_draw,
@@ -181,11 +179,6 @@ class CreatorSettings:
             "draft:issuer": self._receive_issuer,
             "draft:bonus_input": self._receive_bonus_input,
         }
-
-    async def _show_draw_modes(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:idle")
-        rows = draw_mode_rows()
-        await self._render(query, data=data, text=draw_prompt_text(data), rows=rows)
 
     async def _edit_full_draw(self, query: CallbackQuery, _: CallbackGrant) -> None:
         raise UserFacingError("满人开奖已取消，请返回开奖方式选择定时开奖")

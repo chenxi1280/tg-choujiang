@@ -22,7 +22,7 @@ def custom_draw_value(timezone: str, *, saved: str = "", now: datetime | None = 
 def custom_draw_prompt(timezone: str, *, now: datetime | None = None, saved: str = "") -> str:
     example = custom_draw_value(timezone, saved=saved, now=now)
     label = public_timezone_label(BEIJING_TIMEZONE)
-    value_label = "当前时间" if saved else "时间示例"
+    value_label = "已保存的开奖时间" if saved else "时间示例"
     return (
         f"🕒 定时开奖 ({label})\n\n{value_label}：\n<code>{example}</code>\n\n"
         "点击上方时间复制，修改后直接发送。\n"
@@ -34,7 +34,7 @@ def custom_draw_rows(timezone: str, *, saved: str = "", now: datetime | None = N
     return [
         [("7天后", "draft_draw_week"), ("10天后", "draft_draw_ten_days")],
         [("明晚20:00", "draft_draw_tomorrow")],
-        [("↩ 返回开奖方式", "draft_draw")],
+        [("↩ 返回草稿", "draft_back")],
     ]
 
 
@@ -60,10 +60,3 @@ def _target(message: Message, data: dict[str, Any]) -> PanelTarget:
 
 def _back_rows() -> ButtonRows:
     return [[("↩ 返回上一层", "draft_back")]]
-
-
-def draw_mode_rows() -> ButtonRows:
-    return [
-        [("🕒 定时开奖 / 自定义时间", "draft_draw_fixed")],
-        *_back_rows(),
-    ]

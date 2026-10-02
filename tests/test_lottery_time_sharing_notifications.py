@@ -98,5 +98,5 @@ async def test_quick_time_buttons_keep_callback_authorization_order():
         "draft_draw_week",
         "draft_draw_ten_days",
         "draft_draw_tomorrow",
-        "draft_draw",
+        "draft_back",
     ]

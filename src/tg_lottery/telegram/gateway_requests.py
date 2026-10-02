@@ -5,6 +5,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.records import utcnow
+from tg_lottery.domain.enums import CampaignState
 from tg_lottery.infrastructure.db import (
     Campaign,
     DrawRun,
@@ -14,6 +16,8 @@ from tg_lottery.infrastructure.db import (
     TelegramOutbox,
     Winner,
 )
+from tg_lottery.telegram.member_group_invites import HIDDEN_INVITE_STATES
+from tg_lottery.telegram.member_invites import legacy_invite_note
 
 
 @dataclass(frozen=True)
@@ -55,11 +59,57 @@ async def build_gateway_request(
         payload["campaign_ref"] = campaign.public_ref
     if outbox.operation == "send_winner_notice" and "issuer_user_id" not in payload:
         payload = payload | await _winner_notice_issuer(session_factory, outbox)
+    if outbox.operation == "send_invite_link":
+        payload = payload | await _invite_delivery_projection(session_factory, outbox)
     return GatewayRequest(
         operation=outbox.operation,
         recipient_chat_id=outbox.recipient_chat_id,
         payload=payload,
     )
+
+
+async def _invite_delivery_projection(
+    session_factory: async_sessionmaker[AsyncSession], outbox: TelegramOutbox
+) -> dict[str, Any]:
+    link_id = invite_link_id(outbox)
+    if outbox.aggregate_type != "invite_link" or link_id != UUID(outbox.aggregate_id):
+        raise ValueError("invite delivery must reference its persisted invite link")
+    async with session_factory() as session:
+        record = (
+            await session.execute(
+                select(Campaign, InviteLink)
+                .join(InviteLink, InviteLink.campaign_id == Campaign.id)
+                .join(
+                    Participant,
+                    (Participant.id == InviteLink.participant_id)
+                    & (Participant.campaign_id == Campaign.id),
+                )
+                .where(InviteLink.id == link_id, Participant.user_id == outbox.recipient_chat_id)
+            )
+        ).one_or_none()
+        if record is None:
+            raise ValueError("invite delivery recipient does not match its persisted participant")
+        campaign, link = record
+        note, active, visible = _invite_entry_status(campaign, link)
+        return {
+            "invite_delivery_note": note,
+            "invite_bonus_active": active,
+            "invite_entry_visible": visible,
+            "campaign_name": campaign.name,
+            "campaign_ref": campaign.public_ref,
+        }
+
+
+def _invite_entry_status(campaign: Campaign, link: InviteLink) -> tuple[str, bool, bool]:
+    if campaign.state in HIDDEN_INVITE_STATES:
+        state = "本场已取消" if campaign.state is CampaignState.CANCELLED else "本场已开奖"
+        return f"{state}，邀请入口已隐藏；历史邀请记录和已确认加成保留。", False, False
+    if link.revoked_at is not None:
+        return "个人邀请链接已撤销；请返回活动查看当前入口与记录。", False, False
+    if link.expire_at is not None and link.expire_at <= utcnow():
+        return "个人邀请链接已过期；请返回活动查看当前入口与记录。", False, False
+    note, active = legacy_invite_note(campaign)
+    return note, active, True
 
 
 async def _winner_notice_issuer(

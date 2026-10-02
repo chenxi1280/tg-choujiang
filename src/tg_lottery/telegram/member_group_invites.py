@@ -12,9 +12,15 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState, OutboxState
 from tg_lottery.domain.rules import CampaignRules, GroupInviteRule
 from tg_lottery.telegram.bonus_rule_text import chat_title
+from tg_lottery.telegram.member_bonus_text import (
+    bonus_closed_notice,
+    campaign_bonus_completed,
+    invite_bonus_completed,
+)
 
 PAGE_SIZE = 6
 COMPLETED_STATES = frozenset({CampaignState.DRAWN, CampaignState.ARCHIVED})
+HIDDEN_INVITE_STATES = COMPLETED_STATES | {CampaignState.CANCELLED}
 
 
 async def build_group_invite_payload(
@@ -83,7 +89,7 @@ def _invite_section(
     rows = []
     for group in visible:
         chat_id = int(group["id"])
-        if chat_id in unavailable:
+        if chat_id in unavailable and not campaign_bonus_completed(campaign):
             if rules.activity_rule_for(chat_id) is None:
                 lines.append(f"· {group['title']}：⚠ {unavailable[chat_id]}")
             rows.append(_permission_refresh_row(campaign.public_ref, group))
@@ -93,12 +99,14 @@ def _invite_section(
             continue
         bonus_deadline = campaign.cutoff_at - timedelta(hours=rules.invite.retention_hours)
         link_status = link_statuses.get(chat_id)
-        progress_line = _invite_progress_line(
-            str(group["title"]), rule, invite_progress.get(chat_id)
-        )
         lines.append(
-            progress_line + _invite_link_note(campaign, link_status, bonus_deadline=bonus_deadline)
+            _invite_group_progress(
+                campaign, rules, group, progress=invite_progress.get(chat_id), status=link_status
+            )
         )
+        if chat_id in unavailable:
+            lines.append(f"· {group['title']}：⚠ {unavailable[chat_id]}")
+            continue
         group_rows = _group_rows(
             campaign,
             group,
@@ -112,6 +120,25 @@ def _invite_section(
             button.copy_text.text for row in group_rows for button in row if button.copy_text
         )
     return lines, rows
+
+
+def _invite_group_progress(
+    campaign: object,
+    rules: CampaignRules,
+    group: dict[str, Any],
+    *,
+    progress: object,
+    status: GroupInviteLinkStatus | None,
+) -> str:
+    rule = rules.invite_rule_for(int(group["id"]))
+    deadline = campaign.cutoff_at - timedelta(hours=rules.invite.retention_hours)
+    line = _invite_progress_line(
+        str(group["title"]),
+        rule,
+        progress,
+        completed=invite_bonus_completed(campaign, retention_hours=rules.invite.retention_hours),
+    )
+    return line + _invite_link_note(campaign, status, bonus_deadline=deadline)
 
 
 def _permission_refresh_row(reference: str, group: dict[str, Any]) -> list[InlineKeyboardButton]:
@@ -157,7 +184,7 @@ def _group_rows(
     bot_username: str = "",
     bonus_deadline: datetime | None = None,
 ) -> list[list[InlineKeyboardButton]]:
-    if campaign.state in COMPLETED_STATES:
+    if campaign.state in HIDDEN_INVITE_STATES:
         return []
     title = str(group["title"])
     stored = status.link if status is not None else None
@@ -171,9 +198,11 @@ def _group_rows(
     route = status.route if status is not None else None
     referral = _referral_url(bot_username, route)
     if referral:
-        return _referral_rows(campaign, title, referral, group_link=link, route=route)
-    if not campaign_link_active(campaign):
-        return [[InlineKeyboardButton(text=f"打开 {title}（加成已截止）", url=link)]]
+        return _referral_rows(
+            campaign, title, referral, group_link=link, route=route, bonus_deadline=bonus_deadline
+        )
+    if not _link_creation_active(campaign, bonus_deadline):
+        return [[InlineKeyboardButton(text=f"打开 {title}（不计加成）", url=link)]]
     share = "https://t.me/share/url?url=" + quote(link, safe="")
     share += "&text=" + quote(f"邀请你加入「{title}」参加抽奖", safe="")
     return [
@@ -198,9 +227,10 @@ def _referral_rows(
     *,
     group_link: str,
     route: object,
+    bonus_deadline: datetime | None,
 ) -> list[list[InlineKeyboardButton]]:
     active = (
-        campaign_link_active(campaign)
+        _link_creation_active(campaign, bonus_deadline)
         and utcnow() <= route.bonus_join_deadline
         and route.status == "active"
     )
@@ -283,18 +313,29 @@ def _invite_link_note(
     *,
     bonus_deadline: datetime | None = None,
 ) -> str:
-    if campaign.state in COMPLETED_STATES:
-        return "；本场已开奖，邀请入口已隐藏，不再计算新增邀请加成；旧链接仍可入群"
     link_note = _unavailable_link_note(status)
+    if campaign.state in COMPLETED_STATES:
+        return _completed_invite_note(link_note)
+    if campaign.state is CampaignState.CANCELLED:
+        return "；本场已取消，邀请入口已隐藏，不再计算新增邀请加成" + link_note
+    if campaign_bonus_completed(campaign):
+        return "；活动已截止，不再计算新增邀请加成" + link_note
     if link_note:
         return link_note
-    if not campaign_link_active(campaign):
-        return "；活动已截止，不再计算新增邀请加成"
+    if utcnow() < campaign.preheat_at:
+        return "；邀请加成尚未开始"
     if bonus_deadline is not None and utcnow() > bonus_deadline:
-        return "；最晚计奖入群时间已过，不再创建新邀请入口"
+        return "；最晚计奖入群时间已过；仅核验此前邀请，不再创建新邀请入口"
     if status is not None and status.delivery_state is OutboxState.UNKNOWN_HOLD:
         return "；链接创建结果暂时未知，不会盲目重试"
     return ""
+
+
+def _completed_invite_note(link_note: str) -> str:
+    notice = "；本场已开奖，邀请入口已隐藏，不再计算新增邀请加成"
+    if link_note:
+        return notice + link_note
+    return notice + "；仍有效的旧链接可入群"
 
 
 def _page_row(reference: str, page: int, maximum: int) -> list[InlineKeyboardButton]:
@@ -311,11 +352,15 @@ def _page_row(reference: str, page: int, maximum: int) -> list[InlineKeyboardBut
     ]
 
 
-def _invite_progress_line(title: str, rule: GroupInviteRule, progress: object) -> str:
+def _invite_progress_line(
+    title: str, rule: GroupInviteRule, progress: object, *, completed: bool = False
+) -> str:
     valid = int(getattr(progress, "valid_invites", 0))
     awarded = int(getattr(progress, "awarded_tickets", 0))
     if rule.cap_mode == "limited" and awarded >= int(rule.max_bonus_tickets or 0):
         status = f"已达上限 {awarded}/{rule.max_bonus_tickets} 次"
+    elif completed:
+        status = f"已获得 {awarded} 次"
     else:
         remaining = rule.invites_per_cycle - valid % rule.invites_per_cycle
         status = f"已获得 {awarded} 次；距下一次还差 {remaining} 人"
@@ -337,33 +382,43 @@ def _activity_progress_lines(
         return []
     titles = _group_titles(campaign)
     total = sum(item.awarded_tickets for item in all_activities)
-    lines = ["", f"今日发言加成：{total} 次"]
+    completed = campaign_bonus_completed(campaign)
+    lines = [
+        "",
+        bonus_closed_notice(campaign, category="发言")
+        if completed
+        else f"今日发言加成：{total} 次",
+    ]
     for item in activities:
         rule = rules.activity_rule_for(item.chat_id)
         title = titles.get(item.chat_id, "群聊（名称待更新）")
         if item.chat_id in unavailable:
             lines.append(f"· {title}：⚠ {unavailable[item.chat_id]}")
-        elif rule is not None:
-            lines.append(_activity_progress_line(title, rule, item))
+        if rule is not None and (completed or item.chat_id not in unavailable):
+            lines.append(_activity_progress_line(title, rule, item, completed=completed))
     return lines
 
 
-def _activity_progress_line(title: str, rule: object, progress: object) -> str:
+def _activity_progress_line(
+    title: str, rule: object, progress: object, *, completed: bool = False
+) -> str:
     messages = int(progress.valid_messages)
     awarded = int(progress.awarded_tickets)
-    completed = awarded // int(rule.reward_tickets)
-    if rule.daily_cap_mode == "limited" and completed >= int(rule.daily_max_cycles or 0):
-        status = f"已达每日上限 {completed}/{rule.daily_max_cycles} 次"
+    total = progress.total_awarded_tickets
+    days = progress.qualified_days
+    if completed:
+        return f"· {title}：累计达标 {days} 天、获得 {total} 次"
+    completed_cycles = awarded // int(rule.reward_tickets)
+    if rule.daily_cap_mode == "limited" and completed_cycles >= int(rule.daily_max_cycles or 0):
+        status = f"已达每日上限 {completed_cycles}/{rule.daily_max_cycles} 次"
     else:
         remaining = int(rule.messages_per_cycle) - messages % int(rule.messages_per_cycle)
-        status = f"已完成 {completed} 次；距下一次还差 {remaining} 条"
+        status = f"已完成 {completed_cycles} 次；距下一次还差 {remaining} 条"
     cap = (
         "每日不设上限"
         if rule.daily_cap_mode == "unlimited"
         else f"每日上限 {rule.daily_max_cycles} 次"
     )
-    total = progress.total_awarded_tickets
-    days = progress.qualified_days
     return f"· {title}：今日 {messages} 条，{status}；{cap}；累计达标 {days} 天、获得 {total} 次"
 
 

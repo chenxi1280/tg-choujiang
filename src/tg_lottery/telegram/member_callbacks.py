@@ -1,9 +1,10 @@
 """群内卡片 callback 处理: 直接参与、获取加成链接与查看活动规则。"""
 
+import logging
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
 from tg_lottery.application.records import utcnow
@@ -18,6 +19,7 @@ from tg_lottery.telegram.member_bonus_views import (
     build_bonus_overview,
 )
 from tg_lottery.telegram.member_popups import popup_already_participated, popup_failure
+from tg_lottery.telegram.member_record_delivery import private_record_message
 from tg_lottery.telegram.member_records import show_invitation_records
 
 if TYPE_CHECKING:
@@ -28,10 +30,48 @@ if TYPE_CHECKING:
 async def record_callback(
     flow: "MemberFlow", personal: "PersonalFlow", query: CallbackQuery, *, data: str
 ) -> bool:
+    try:
+        handled = await _show_record_callback(flow, personal, query, data=data)
+    except TelegramForbiddenError:
+        logging.getLogger(__name__).warning(
+            "Participant record private delivery forbidden", exc_info=True
+        )
+        await _record_acknowledgement(
+            flow,
+            query,
+            text="私聊发送失败，请先打开机器人或解除屏蔽，再私聊发送 /join 查看参与记录。",
+            alert=True,
+        )
+        return True
+    if handled:
+        await _record_acknowledgement(flow, query)
+    return handled
+
+
+async def _record_acknowledgement(
+    flow: "MemberFlow", query: CallbackQuery, *, text: str | None = None, alert: bool = False
+) -> None:
+    try:
+        await query.model_copy().as_(flow._bot).answer(text, show_alert=alert)
+    except TelegramBadRequest as exc:
+        logging.getLogger(__name__).warning(
+            "Participant record callback acknowledgement rejected by Telegram",
+            extra={"callback_query_id": query.id, "error": str(exc)},
+        )
+
+
+async def _show_record_callback(
+    flow: "MemberFlow", personal: "PersonalFlow", query: CallbackQuery, *, data: str
+) -> bool:
+    if not data.startswith(("m:ir:", "member:tickets", "member:invites")):
+        return False
+    message = private_record_message(
+        query.message, flow._bot, user_id=query.from_user.id, user=query.from_user
+    )
     if data.startswith("m:ir:"):
         reference, chat_id, group_page, status_filter, page = _group_record_reference(data)
         await show_invitation_records(
-            query.message,
+            message,
             flow._queries,
             query.from_user.id,
             public_ref=reference,
@@ -43,19 +83,17 @@ async def record_callback(
         return True
     if data.startswith("member:tickets:"):
         await flow.show_tickets(
-            query.message,
+            message,
             query.from_user.id,
             public_ref=data.removeprefix("member:tickets:"),
         )
         return True
     if data.startswith("member:invites:"):
         public_ref, page = _invitation_record_reference(data)
-        await flow.show_invitations(
-            query.message, query.from_user.id, public_ref=public_ref, page=page
-        )
+        await flow.show_invitations(message, query.from_user.id, public_ref=public_ref, page=page)
         return True
     if data in {"member:tickets", "member:invites"}:
-        await personal.show_joined(query.message)
+        await personal.show_joined(message)
         return True
     return False
 

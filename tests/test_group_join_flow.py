@@ -1,9 +1,11 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
+from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError
-from aiogram.methods import SendMessage
+from aiogram.methods import AnswerCallbackQuery, SendMessage
 from aiogram.types import CallbackQuery, User
 
 from tg_lottery.application.participants import RegistrationAttempt
@@ -271,6 +273,7 @@ class FakeQuery:
 
 class RoutingMemberFlow:
     def __init__(self):
+        self._bot = Bot(token="123456:test-token", session=AsyncMock(return_value=True))
         self.calls = []
 
     async def register_callback(self, query, ref):
@@ -378,15 +381,16 @@ async def test_group_join_callback_routes_to_register_callback_without_preanswer
     assert preanswered == []
 
 
-async def test_other_member_callbacks_still_pre_answered():
+async def test_legacy_record_callback_acknowledges_after_dispatch_without_preanswer():
     flow = RoutingMemberFlow()
     handler = _handler(flow)
     preanswered = _pre_answer_spy(handler)
 
     await handler._callback(_group_callback("member:tickets"))
 
-    assert len(preanswered) == 1
+    assert preanswered == []
     assert flow.calls == []
+    assert isinstance(flow._bot.session.call_args.args[1], AnswerCallbackQuery)
 
 
 async def test_bonus_callback_without_registration_answers_popup():

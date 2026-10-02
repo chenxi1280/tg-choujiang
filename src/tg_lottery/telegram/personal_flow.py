@@ -5,6 +5,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
+from tg_lottery.telegram.command_input import parse_bot_command
 from tg_lottery.telegram.help_views import GUIDE_TEXT, HelpLinks, guide_keyboard
 from tg_lottery.telegram.member_records import show_ticket_record
 from tg_lottery.telegram.participant_list_views import (
@@ -78,9 +79,9 @@ class PersonalFlow:
         )
 
     async def handle_command(self, message: Message, text: str) -> bool:
-        if not text.strip():
+        command = parse_bot_command(text)
+        if command is None or not command.addressed_to(self._bot_username):
             return False
-        command = text.split(maxsplit=1)[0].split("@", maxsplit=1)[0]
         handlers = {
             "/help": self.show_guide,
             "/index": self.show_index,
@@ -88,7 +89,7 @@ class PersonalFlow:
             "/region": self.show_regions,
             "/myid": self.show_user_id,
         }
-        handler = handlers.get(command)
+        handler = handlers.get(command.name)
         if handler is None:
             return False
         await handler(message)

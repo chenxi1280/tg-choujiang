@@ -112,14 +112,6 @@ def title_prompt_text(data: dict[str, Any]) -> str:
     )
 
 
-def draw_prompt_text(data: dict[str, Any]) -> str:
-    return (
-        "🌀 创建抽奖·设置开奖时间（必填项）\n\n"
-        f"当前设置：{_draw_text(data)}\n\n"
-        "请选择定时开奖设置开奖时间："
-    )
-
-
 def _draw_text(data: dict[str, Any]) -> str:
     if data.get("draw_mode") == "full":
         target = data.get("participant_target") or "【等待设置】"

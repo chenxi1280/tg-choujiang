@@ -139,9 +139,11 @@ def apply_threshold_action(thresholds: dict[str, int], chat_id: str, op: str) ->
 def participation_add_text() -> str:
     return (
         "📮 添加准入条件（必须全部满足）\n\n"
+        "点击下方列表勾选群聊或频道，再次点击取消；可搜索名称或刷新列表。\n"
+        "完成后点击「返回条件列表」。\n\n"
         "参与活动的群无需在这里重复添加。\n"
         "创建者和机器人都必须是每个目标群聊/频道的管理员。\n"
-        "请直接发送群聊或频道链接，例如：https://t.me/example_group\n"
+        "列表中没有目标时，也可直接发送群聊或频道链接，例如：https://t.me/example_group\n"
         "一次可发送一个或多个，用逗号、空格或换行分隔。\n"
         "私有群/频道请发送其中一条消息的 t.me/c/... 链接，"
         "也可转发来源可见的群聊或频道消息；数字 chat ID 仅用于高级操作。"

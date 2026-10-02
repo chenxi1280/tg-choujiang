@@ -22,7 +22,11 @@ from tg_lottery.domain.enums import (
     CampaignState,
     QualificationState,
 )
-from tg_lottery.domain.errors import InvitationValidationDeferred, SettlementBlocked
+from tg_lottery.domain.errors import (
+    InvitationValidationDeferred,
+    SettlementBlocked,
+    UserFacingError,
+)
 from tg_lottery.domain.transitions import require_campaign_transition
 from tg_lottery.infrastructure.db import (
     Campaign,
@@ -253,7 +257,10 @@ class JobHandlers:
             return
         if state is not CampaignState.READY_TO_DRAW:
             raise JobRetry(f"campaign is not ready to draw: {state}")
-        await self._drawing.run(campaign_id)
+        try:
+            await self._drawing.run(campaign_id)
+        except UserFacingError as exc:
+            raise JobRetry(str(exc)) from exc
 
     async def _full_draw_verify(self, job: ScheduledJob) -> None:
         await self._qualification_review(job, force=True)

@@ -106,7 +106,7 @@ def test_time_text_preserves_saved_beijing_time_without_copy_button():
     rows = custom_draw_rows("Europe/London", saved=saved)
     assert "<code>2026-10-01 20:30</code>" in prompt
     assert rows[0] == [("7天后", "draft_draw_week"), ("10天后", "draft_draw_ten_days")]
-    assert rows[-1] == [("↩ 返回开奖方式", "draft_draw")]
+    assert rows[-1] == [("↩ 返回草稿", "draft_back")]
     assert rules_from_data(draft_data() | {"timezone": "Europe/London"}).timezone == "Asia/Shanghai"
 
 

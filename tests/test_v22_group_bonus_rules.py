@@ -182,7 +182,11 @@ def test_active_group_invite_link_has_copy_and_share_actions() -> None:
     assert "share/url" in buttons[1].url
 
 
-async def test_activity_only_bonus_progress_is_paginated_by_six_groups() -> None:
+@pytest.mark.parametrize(
+    "state", [CampaignState.RUNNING, CampaignState.DRAWN, CampaignState.CANCELLED]
+)
+async def test_activity_only_bonus_progress_is_paginated_by_six_groups(state) -> None:
+    now = datetime.now(UTC)
     chat_ids = tuple(-1000 - index for index in range(7))
     rules = CampaignRules(
         bonus_types=("activity",),
@@ -192,6 +196,9 @@ async def test_activity_only_bonus_progress_is_paginated_by_six_groups() -> None
         id="campaign-1",
         public_ref="AbCdEfGhIjKlMnOpQrSt-_",
         name="七群活动",
+        state=state,
+        preheat_at=now - timedelta(hours=1),
+        cutoff_at=now + timedelta(hours=1),
         rules=rules.model_dump(mode="json"),
         presentation={
             "participation_groups": [
@@ -206,8 +213,8 @@ async def test_activity_only_bonus_progress_is_paginated_by_six_groups() -> None
                 chat_id=chat_id,
                 valid_messages=index,
                 awarded_tickets=0,
-                total_awarded_tickets=0,
-                qualified_days=0,
+                total_awarded_tickets=index,
+                qualified_days=index,
             )
             for index, chat_id in enumerate(chat_ids)
         ),
@@ -223,6 +230,32 @@ async def test_activity_only_bonus_progress_is_paginated_by_six_groups() -> None
 
     assert "群0" in first and "群5" in first and "群6" not in first
     assert "群6" in second and "群0" not in second
+    if state is not CampaignState.RUNNING:
+        assert "距下一次还差" not in first + second
+        assert "累计达标 6 天、获得 6 次" in second
+
+
+def test_invite_join_deadline_keeps_legacy_group_link_without_bonus_share_prompt() -> None:
+    now = datetime.now(UTC)
+    campaign = SimpleNamespace(
+        state=CampaignState.RUNNING,
+        preheat_at=now - timedelta(hours=1),
+        cutoff_at=now + timedelta(hours=1),
+    )
+    link = SimpleNamespace(id="link-1", encrypted_url=b"secret", revoked_at=None)
+    status = GroupInviteLinkStatus(-1001, link, OutboxState.CONFIRMED)
+    cipher = SimpleNamespace(decrypt=lambda encrypted, *, context: "https://t.me/+join-only")
+    rows = _group_rows(
+        campaign,
+        {"id": -1001, "title": "A群"},
+        status,
+        cipher=cipher,
+        bonus_deadline=now - timedelta(minutes=1),
+    )
+    assert len(rows) == 1 and len(rows[0]) == 1
+    assert rows[0][0].url == "https://t.me/+join-only"
+    assert "不计加成" in rows[0][0].text
+    assert rows[0][0].copy_text is None
 
 
 def test_unlimited_rules_reject_a_fake_numeric_cap() -> None:

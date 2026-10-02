@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, time, timedelta
 from secrets import token_urlsafe
 from typing import Any
@@ -20,6 +21,7 @@ from tg_lottery.telegram.creator_invite_retention import retention_hours
 from tg_lottery.telegram.public_projection import BEIJING_TIMEZONE
 
 LOCAL_TIME_FORMAT = "%Y-%m-%d %H:%M"
+LOCAL_TIME_INPUT = re.compile(r"[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}\s+[0-9]{1,2}:[0-9]{1,2}")
 DEFAULT_CLAIM_INSTRUCTIONS = "请联系活动管理员领取奖品"
 SETTLEMENT_DRAIN_SECONDS = 300
 FULL_DRAW_FALLBACK_DAYS = 30
@@ -94,10 +96,17 @@ def ensure_draft_identity(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def parse_draw_at(value: str, timezone: str) -> datetime:
+    text = value.strip()
+    if not LOCAL_TIME_INPUT.fullmatch(text):
+        raise UserFacingError(
+            "开奖时间格式应为：年-月-日 时:分（北京时间），请按时间设置页的示例输入"
+        )
     try:
-        parsed = datetime.strptime(value.strip(), LOCAL_TIME_FORMAT)
+        parsed = datetime.strptime(text, LOCAL_TIME_FORMAT)
     except ValueError as exc:
-        raise UserFacingError("开奖时间格式应为：2026-08-08 18:30") from exc
+        raise UserFacingError(
+            "开奖日期或时间无效（北京时间），请检查月份、日期、小时和分钟"
+        ) from exc
     return parsed.replace(tzinfo=ZoneInfo(BEIJING_TIMEZONE))
 
 
@@ -110,7 +119,7 @@ def campaign_input(
     draw_at = _draw_at(data, now)
     cutoff_at = draw_at - timedelta(seconds=SETTLEMENT_DRAIN_SECONDS)
     if cutoff_at <= now:
-        raise UserFacingError("开奖时间至少需要晚于当前时间 5 分钟")
+        raise UserFacingError("开奖时间至少需要晚于当前时间 5 分钟（北京时间）")
     rules = rules_from_data(data)
     draft = CampaignDraft(
         group_id=int(data["chat_id"]),

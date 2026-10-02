@@ -22,8 +22,8 @@ from tg_lottery.presentation.mentions import (
 )
 from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
 from tg_lottery.telegram.crypto import SecretCipher
+from tg_lottery.telegram.gateway_invite_delivery import invite_delivery_content
 from tg_lottery.telegram.gateway_requests import GatewayRequest
-from tg_lottery.telegram.member_invites import invite_link_keyboard
 from tg_lottery.telegram.public_projection import BEIJING_TIMEZONE, public_timezone_label
 from tg_lottery.telegram.remote_serialization import remote_object
 
@@ -218,22 +218,11 @@ class TelegramGateway:
     async def _send_invite_link(
         self, outbox: GatewayRequest, invite_link: InviteLink | None
     ) -> GatewayResult:
-        if invite_link is None:
-            raise ValueError("send_invite_link requires a stored invite link")
-        link = str(outbox.payload.get("referral_url") or "")
-        if not link:
-            if invite_link.encrypted_url is None:
-                raise ValueError("send_invite_link requires an encrypted URL")
-            link = self._cipher.decrypt(
-                invite_link.encrypted_url,
-                context=f"invite-link:{invite_link.id}",
-            )
-        title = str(outbox.payload.get("group_title") or "本期活动群")
+        text, keyboard = invite_delivery_content(outbox, invite_link, cipher=self._cipher)
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
-            f"🔗 你的「{title}」本期邀请入口已就绪。\n\n"
-            f"{link}\n\n复制上方链接分享给好友。此入口仅归因到当前活动和群聊，不计入下次抽奖。",
-            reply_markup=invite_link_keyboard(link, title),
+            text,
+            reply_markup=keyboard,
             disable_web_page_preview=True,
         )
         return GatewayResult(

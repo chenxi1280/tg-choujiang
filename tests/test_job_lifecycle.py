@@ -135,3 +135,55 @@ def _job(job_type: str, aggregate_id: str) -> ScheduledJob:
         state=JobState.CLAIMED,
         attempts=1,
     )
+
+
+async def test_campaign_draw_converts_user_facing_error_to_job_retry() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    import pytest
+
+    from tg_lottery.domain.errors import UserFacingError
+    from tg_lottery.jobs.errors import JobRetry
+
+    drawing = SimpleNamespace(
+        run=AsyncMock(
+            side_effect=UserFacingError("指定中奖人未通过最终资格复核, 请重新指定或删除该名额")
+        )
+    )
+    handlers = JobHandlers(
+        bot=object(),
+        session_factory=object(),
+        participants=object(),
+        invitations=object(),
+        settlement=object(),
+        drawing=drawing,
+    )
+    handlers._campaign_state = AsyncMock(return_value=CampaignState.READY_TO_DRAW)
+
+    with pytest.raises(JobRetry) as exc_info:
+        await handlers.handle(_job("campaign_draw", "00000000-0000-0000-0000-000000000001"))
+    assert "指定中奖人未通过最终资格复核" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, UserFacingError)
+
+
+async def test_campaign_draw_preserves_data_integrity_error() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    import pytest
+
+    drawing = SimpleNamespace(
+        run=AsyncMock(side_effect=ValueError("campaign prize plan changed after publication"))
+    )
+    handlers = JobHandlers(
+        bot=object(),
+        session_factory=object(),
+        participants=object(),
+        invitations=object(),
+        settlement=object(),
+        drawing=drawing,
+    )
+    handlers._campaign_state = AsyncMock(return_value=CampaignState.READY_TO_DRAW)
+    with pytest.raises(ValueError, match="prize plan changed"):
+        await handlers.handle(_job("campaign_draw", "00000000-0000-0000-0000-000000000001"))
