@@ -6,21 +6,23 @@ from urllib.parse import quote
 
 from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 
+from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts
 from tg_lottery.application.invitation_models import accepts_attribution
 from tg_lottery.application.query_invites import GroupInviteLinkStatus
 from tg_lottery.application.records import utcnow
-from tg_lottery.domain.enums import CampaignState, OutboxState
+from tg_lottery.domain.enums import OutboxState
 from tg_lottery.domain.rules import CampaignRules, GroupInviteRule
 from tg_lottery.telegram.bonus_rule_text import chat_title
+from tg_lottery.telegram.member_bonus_navigation import PAGE_SIZE, footer_rows, page_row
 from tg_lottery.telegram.member_bonus_text import (
+    HISTORICAL_CAMPAIGN_STATES,
     bonus_closed_notice,
     campaign_bonus_completed,
+    historical_outcome_status,
     invite_bonus_completed,
 )
 
-PAGE_SIZE = 6
-COMPLETED_STATES = frozenset({CampaignState.DRAWN, CampaignState.ARCHIVED})
-HIDDEN_INVITE_STATES = COMPLETED_STATES | {CampaignState.CANCELLED}
+HIDDEN_INVITE_STATES = HISTORICAL_CAMPAIGN_STATES
 
 
 async def build_group_invite_payload(
@@ -40,6 +42,7 @@ async def build_group_invite_payload(
         raise ValueError("group bonus progress requires an existing participant")
     invite_progress = {item.chat_id: item for item in progress.invitations}
     link_statuses = await queries.group_invite_link_statuses(campaign.id, user_id)
+    outcome = await _load_outcome(campaign, queries)
     unavailable = unavailable or {}
     maximum = max(0, (len(groups) - 1) // PAGE_SIZE)
     page = min(maximum, max(0, page))
@@ -56,6 +59,7 @@ async def build_group_invite_payload(
         unavailable=unavailable,
         cipher=cipher,
         bot_username=bot_username,
+        outcome=outcome,
     )
     lines.extend(invite_lines)
     lines.extend(
@@ -65,13 +69,30 @@ async def build_group_invite_payload(
             progress,
             unavailable=unavailable,
             visible_chat_ids={int(group["id"]) for group in visible},
+            outcome=outcome,
         )
     )
-    if maximum:
-        rows.append(_page_row(campaign.public_ref, page, maximum))
-    rows.extend(_footer_rows(campaign.public_ref))
-    lines.extend(["", "链接只归因到对应群；机器人权限异常时请联系创建者修复管理员权限。"])
-    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+    return _finish_invite_payload(campaign.public_ref, lines, rows, page=page, maximum=maximum)
+
+
+async def _load_outcome(campaign: object, queries: object) -> CampaignOutcomeFacts | None:
+    if campaign.state in HISTORICAL_CAMPAIGN_STATES:
+        return await queries.campaign_outcome(campaign.id)
+    return None
+
+
+def _finish_invite_payload(
+    reference: str,
+    lines: list[str],
+    rows: list[list[InlineKeyboardButton]],
+    *,
+    page: int,
+    maximum: int,
+) -> tuple[str, InlineKeyboardMarkup]:
+    pages = [page_row(reference, page, maximum)] if maximum else []
+    final_rows = [*rows, *pages, *footer_rows(reference)]
+    final_lines = [*lines, "", "链接只归因到对应群；机器人权限异常时请联系创建者修复管理员权限。"]
+    return "\n".join(final_lines), InlineKeyboardMarkup(inline_keyboard=final_rows)
 
 
 def _invite_section(
@@ -84,42 +105,62 @@ def _invite_section(
     unavailable: dict[int, str],
     cipher: object,
     bot_username: str,
+    outcome: CampaignOutcomeFacts | None,
 ) -> tuple[list[str], list[list[InlineKeyboardButton]]]:
     lines = []
     rows = []
     for group in visible:
-        chat_id = int(group["id"])
-        if chat_id in unavailable and not campaign_bonus_completed(campaign):
-            if rules.activity_rule_for(chat_id) is None:
-                lines.append(f"· {group['title']}：⚠ {unavailable[chat_id]}")
-            rows.append(_permission_refresh_row(campaign.public_ref, group))
-            continue
-        rule = rules.invite_rule_for(chat_id)
-        if rule is None:
-            continue
-        bonus_deadline = campaign.cutoff_at - timedelta(hours=rules.invite.retention_hours)
-        link_status = link_statuses.get(chat_id)
-        lines.append(
-            _invite_group_progress(
-                campaign, rules, group, progress=invite_progress.get(chat_id), status=link_status
-            )
-        )
-        if chat_id in unavailable:
-            lines.append(f"· {group['title']}：⚠ {unavailable[chat_id]}")
-            continue
-        group_rows = _group_rows(
+        group_lines, group_rows = _single_invite_section(
             campaign,
+            rules,
             group,
-            link_status,
+            progress=invite_progress.get(int(group["id"])),
+            status=link_statuses.get(int(group["id"])),
+            unavailable=unavailable,
             cipher=cipher,
             bot_username=bot_username,
-            bonus_deadline=bonus_deadline,
+            outcome=outcome,
         )
+        lines.extend(group_lines)
         rows.extend(group_rows)
-        lines.extend(
-            button.copy_text.text for row in group_rows for button in row if button.copy_text
-        )
     return lines, rows
+
+
+def _single_invite_section(
+    campaign: object,
+    rules: CampaignRules,
+    group: dict[str, Any],
+    *,
+    progress: object,
+    status: GroupInviteLinkStatus | None,
+    unavailable: dict[int, str],
+    cipher: object,
+    bot_username: str,
+    outcome: CampaignOutcomeFacts | None,
+) -> tuple[list[str], list[list[InlineKeyboardButton]]]:
+    chat_id = int(group["id"])
+    if chat_id in unavailable and not campaign_bonus_completed(campaign):
+        lines = (
+            [f"· {group['title']}：⚠ {unavailable[chat_id]}"]
+            if rules.activity_rule_for(chat_id) is None
+            else []
+        )
+        return lines, [_permission_refresh_row(campaign.public_ref, group)]
+    if rules.invite_rule_for(chat_id) is None:
+        return [], []
+    lines = [
+        _invite_group_progress(
+            campaign, rules, group, progress=progress, status=status, outcome=outcome
+        )
+    ]
+    if chat_id in unavailable:
+        return [*lines, f"· {group['title']}：⚠ {unavailable[chat_id]}"], []
+    deadline = campaign.cutoff_at - timedelta(hours=rules.invite.retention_hours)
+    rows = _group_rows(
+        campaign, group, status, cipher=cipher, bot_username=bot_username, bonus_deadline=deadline
+    )
+    links = [button.copy_text.text for row in rows for button in row if button.copy_text]
+    return [*lines, *links], rows
 
 
 def _invite_group_progress(
@@ -129,6 +170,7 @@ def _invite_group_progress(
     *,
     progress: object,
     status: GroupInviteLinkStatus | None,
+    outcome: CampaignOutcomeFacts | None,
 ) -> str:
     rule = rules.invite_rule_for(int(group["id"]))
     deadline = campaign.cutoff_at - timedelta(hours=rules.invite.retention_hours)
@@ -138,7 +180,7 @@ def _invite_group_progress(
         progress,
         completed=invite_bonus_completed(campaign, retention_hours=rules.invite.retention_hours),
     )
-    return line + _invite_link_note(campaign, status, bonus_deadline=deadline)
+    return line + _invite_link_note(campaign, status, bonus_deadline=deadline, outcome=outcome)
 
 
 def _permission_refresh_row(reference: str, group: dict[str, Any]) -> list[InlineKeyboardButton]:
@@ -300,24 +342,17 @@ def _revoked_link_row(
     ]
 
 
-def _footer_rows(reference: str) -> list[list[InlineKeyboardButton]]:
-    return [
-        [InlineKeyboardButton(text="🔄 刷新加成状态", callback_data=f"member:bonus:{reference}")],
-        [InlineKeyboardButton(text="↩ 返回活动规则", callback_data=f"member:rules:{reference}")],
-    ]
-
-
 def _invite_link_note(
     campaign: object,
     status: GroupInviteLinkStatus | None,
     *,
     bonus_deadline: datetime | None = None,
+    outcome: CampaignOutcomeFacts | None = None,
 ) -> str:
     link_note = _unavailable_link_note(status)
-    if campaign.state in COMPLETED_STATES:
-        return _completed_invite_note(link_note)
-    if campaign.state is CampaignState.CANCELLED:
-        return "；本场已取消，邀请入口已隐藏，不再计算新增邀请加成" + link_note
+    historical_status = historical_outcome_status(campaign, outcome=outcome)
+    if historical_status is not None:
+        return _completed_invite_note(link_note, status=historical_status)
     if campaign_bonus_completed(campaign):
         return "；活动已截止，不再计算新增邀请加成" + link_note
     if link_note:
@@ -331,25 +366,11 @@ def _invite_link_note(
     return ""
 
 
-def _completed_invite_note(link_note: str) -> str:
-    notice = "；本场已开奖，邀请入口已隐藏，不再计算新增邀请加成"
+def _completed_invite_note(link_note: str, *, status: str) -> str:
+    notice = f"；{status}，邀请入口已隐藏，不再计算新增邀请加成"
     if link_note:
         return notice + link_note
     return notice + "；仍有效的旧链接可入群"
-
-
-def _page_row(reference: str, page: int, maximum: int) -> list[InlineKeyboardButton]:
-    previous = max(0, page - 1)
-    following = min(maximum, page + 1)
-    return [
-        InlineKeyboardButton(
-            text="上一页", callback_data=f"member:invite_page:{reference}:{previous}"
-        ),
-        InlineKeyboardButton(text=f"{page + 1}/{maximum + 1}", callback_data="member:noop"),
-        InlineKeyboardButton(
-            text="下一页", callback_data=f"member:invite_page:{reference}:{following}"
-        ),
-    ]
 
 
 def _invite_progress_line(
@@ -375,6 +396,7 @@ def _activity_progress_lines(
     *,
     unavailable: dict[int, str],
     visible_chat_ids: set[int],
+    outcome: CampaignOutcomeFacts | None,
 ) -> list[str]:
     all_activities = list(getattr(progress, "activities", ()))
     activities = [item for item in all_activities if item.chat_id in visible_chat_ids]
@@ -385,7 +407,7 @@ def _activity_progress_lines(
     completed = campaign_bonus_completed(campaign)
     lines = [
         "",
-        bonus_closed_notice(campaign, category="发言")
+        bonus_closed_notice(campaign, category="发言", outcome=outcome)
         if completed
         else f"今日发言加成：{total} 次",
     ]

@@ -1,15 +1,18 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from urllib.parse import quote
 
 from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.application.invitation_models import accepts_attribution
 from tg_lottery.application.records import utcnow
-from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
-from tg_lottery.telegram.member_bonus_text import campaign_bonus_completed, invite_bonus_completed
-from tg_lottery.telegram.member_group_invites import COMPLETED_STATES
+from tg_lottery.telegram.member_bonus_text import (
+    HISTORICAL_CAMPAIGN_STATES,
+    campaign_bonus_completed,
+    invite_bonus_completed,
+    invite_list_prompt,
+)
 from tg_lottery.telegram.public_projection import format_public_time
 
 
@@ -66,26 +69,41 @@ def member_keyboard(
 async def legacy_invite_link_payload(
     campaign: object, *, user_id: int, queries: object, cipher: object
 ) -> tuple[str, InlineKeyboardMarkup]:
-    if campaign.state in COMPLETED_STATES:
+    if campaign.state in HISTORICAL_CAMPAIGN_STATES:
+        rules = CampaignRules.model_validate(campaign.rules)
+        outcome = await queries.campaign_outcome(campaign.id)
+        notice = invite_list_prompt(
+            campaign, retention_hours=rules.invite.retention_hours, outcome=outcome
+        )
         return (
-            f"{campaign.name}：本场已开奖，邀请入口已隐藏。仍有效的旧链接可入群，"
+            f"{campaign.name}：{notice}\n"
             "不再计算本期或以后任何抽奖加成；历史邀请记录和已确认加成保留。",
             member_keyboard(campaign.public_ref, invite_enabled=True),
         )
-    if campaign.state is CampaignState.CANCELLED:
+    stored = await queries.invite_link_for_participant(campaign.id, user_id)
+    if stored is None:
+        raise UserFacingError("本期专属链接正在创建，或你尚未完成报名，请稍后再点")
+    unavailable = unavailable_invite_link_note(stored, now=utcnow())
+    if unavailable is not None:
         return (
-            f"{campaign.name}：本场已取消，邀请入口已隐藏；不再计算新增邀请加成，"
-            "历史邀请记录和已确认加成保留。",
+            f"{campaign.name}：{unavailable}",
             member_keyboard(campaign.public_ref, invite_enabled=True),
         )
-    stored = await queries.invite_link_for_participant(campaign.id, user_id)
-    if stored is None or stored.encrypted_url is None:
+    if stored.encrypted_url is None:
         raise UserFacingError("本期专属链接正在创建，或你尚未完成报名，请稍后再点")
     link = cipher.decrypt(stored.encrypted_url, context=f"invite-link:{stored.id}")
     note, active = legacy_invite_note(campaign)
     return invite_link_text(campaign.name, note=note, link=link), invite_link_keyboard(
         link, campaign.name, active=active
     )
+
+
+def unavailable_invite_link_note(link: object, *, now: datetime) -> str | None:
+    if link.revoked_at is not None:
+        return "个人邀请链接已撤销；请返回活动查看当前入口与记录。"
+    if link.expire_at is not None and link.expire_at <= now:
+        return "个人邀请链接已过期；请返回活动查看当前入口与记录。"
+    return None
 
 
 def legacy_invite_note(campaign: object) -> tuple[str, bool]:

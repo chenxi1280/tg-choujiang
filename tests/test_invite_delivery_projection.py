@@ -7,7 +7,14 @@ from aiogram.types import Chat, Message
 from tests.helpers import seed_campaign
 from tg_lottery.domain.enums import CampaignState, OutboxState
 from tg_lottery.domain.rules import CampaignRules, InviteRule
-from tg_lottery.infrastructure.db import Campaign, InviteLink, TelegramOutbox
+from tg_lottery.infrastructure.db import (
+    AuditLog,
+    Campaign,
+    DrawRun,
+    DrawSnapshot,
+    InviteLink,
+    TelegramOutbox,
+)
 from tg_lottery.telegram.gateway import TelegramGateway
 from tg_lottery.telegram.gateway_requests import build_gateway_call, build_gateway_request
 
@@ -127,10 +134,43 @@ async def _apply_phase(session_factory, campaign_id, link_id, *, phase: str) -> 
             campaign.cutoff_at = now - timedelta(minutes=1)
         if phase in {"drawn", "cancelled"}:
             campaign.state = CampaignState.DRAWN if phase == "drawn" else CampaignState.CANCELLED
+            await _record_terminal_phase(session, campaign, phase=phase, now=now)
         if phase == "revoked":
             link.revoked_at = now
         if phase == "expired":
             link.expire_at = now - timedelta(minutes=1)
+
+
+async def _record_terminal_phase(session, campaign, *, phase, now):
+    if phase == "cancelled":
+        session.add(
+            AuditLog(
+                actor_user_id=campaign.created_by,
+                aggregate_type="campaign",
+                aggregate_id=str(campaign.id),
+                action="campaign.cancelled",
+                created_at=now,
+            )
+        )
+        return
+    snapshot = DrawSnapshot(
+        campaign_id=campaign.id,
+        config_revision=campaign.config_revision,
+        ledger_watermark=now,
+        snapshot_hash="f" * 64,
+        prize_plan_hash=campaign.prize_plan_hash,
+        total_weight=0,
+    )
+    session.add(snapshot)
+    await session.flush()
+    session.add(
+        DrawRun(
+            snapshot_id=snapshot.id,
+            algorithm_version="delivery-history-test",
+            random_input="saved-random-input",
+            completed_at=now,
+        )
+    )
 
 
 def _delivered_message() -> Message:

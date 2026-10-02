@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 from tests.helpers import seed_campaign
+from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts
 from tg_lottery.application.queries import QueryService
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignRules
@@ -21,9 +22,16 @@ class RecordingMessage:
 
 
 class InviteQueries:
-    def __init__(self, campaign: object, link: object) -> None:
+    def __init__(
+        self, campaign: object, link: object, *, outcome: CampaignOutcomeFacts | None = None
+    ) -> None:
         self._campaign = campaign
         self._link = link
+        self._outcome = outcome or CampaignOutcomeFacts("unconfirmed")
+
+    async def campaign_outcome(self, campaign_id):
+        assert campaign_id == self._campaign.id
+        return self._outcome
 
     async def campaign_by_reference(self, reference):
         assert reference == self._campaign.public_ref
@@ -45,7 +53,7 @@ class PlainCipher:
 async def test_member_can_retrieve_a_campaign_scoped_personal_invite_link() -> None:
     now = datetime.now(UTC)
     campaign = _campaign(now + timedelta(hours=25))
-    link = SimpleNamespace(id=uuid4(), encrypted_url=b"encrypted")
+    link = _link()
     cipher = PlainCipher()
     cipher.link_id = link.id
     flow = MemberFlow(
@@ -67,7 +75,7 @@ async def test_member_can_retrieve_a_campaign_scoped_personal_invite_link() -> N
 
 async def test_legacy_invite_link_after_join_deadline_still_opens_without_bonus_promise() -> None:
     campaign = _campaign(datetime.now(UTC) + timedelta(hours=1))
-    link = SimpleNamespace(id=uuid4(), encrypted_url=b"encrypted")
+    link = _link()
     cipher = PlainCipher()
     cipher.link_id = link.id
     flow = MemberFlow(
@@ -87,7 +95,7 @@ async def test_legacy_invite_link_before_preheat_does_not_say_campaign_has_ended
     campaign = _campaign(now + timedelta(days=2))
     campaign.state = CampaignState.SCHEDULED
     campaign.preheat_at = now + timedelta(hours=1)
-    link = SimpleNamespace(id=uuid4(), encrypted_url=b"encrypted")
+    link = _link()
     cipher = PlainCipher()
     cipher.link_id = link.id
     flow = MemberFlow(
@@ -103,13 +111,13 @@ async def test_legacy_invite_link_before_preheat_does_not_say_campaign_has_ended
 async def test_expired_campaign_link_still_opens_but_never_counts_again() -> None:
     campaign = _campaign(datetime.now(UTC) - timedelta(minutes=1))
     campaign.state = CampaignState.DRAWN
-    link = SimpleNamespace(id=uuid4(), encrypted_url=b"encrypted")
+    link = _link()
     cipher = PlainCipher()
     cipher.link_id = link.id
     flow = MemberFlow(
         bot=object(),
         participants=object(),
-        queries=InviteQueries(campaign, link),
+        queries=InviteQueries(campaign, link, outcome=CampaignOutcomeFacts("drawn")),
         cipher=cipher,
     )
     message = RecordingMessage()
@@ -155,6 +163,10 @@ async def test_invite_link_query_requires_matching_campaign_and_user(session_fac
 
     assert (await queries.invite_link_for_participant(campaign_id, 201)).id == link_id
     assert await queries.invite_link_for_participant(campaign_id, 999) is None
+
+
+def _link():
+    return SimpleNamespace(id=uuid4(), encrypted_url=b"encrypted", revoked_at=None, expire_at=None)
 
 
 def _campaign(cutoff_at: datetime):

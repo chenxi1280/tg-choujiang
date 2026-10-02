@@ -5,8 +5,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts, load_campaign_outcome
 from tg_lottery.application.records import utcnow
-from tg_lottery.domain.enums import CampaignState
 from tg_lottery.infrastructure.db import (
     Campaign,
     DrawRun,
@@ -16,8 +16,9 @@ from tg_lottery.infrastructure.db import (
     TelegramOutbox,
     Winner,
 )
+from tg_lottery.telegram.member_bonus_text import historical_outcome_status
 from tg_lottery.telegram.member_group_invites import HIDDEN_INVITE_STATES
-from tg_lottery.telegram.member_invites import legacy_invite_note
+from tg_lottery.telegram.member_invites import legacy_invite_note, unavailable_invite_link_note
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,10 @@ async def _invite_delivery_projection(
         if record is None:
             raise ValueError("invite delivery recipient does not match its persisted participant")
         campaign, link = record
-        note, active, visible = _invite_entry_status(campaign, link)
+        outcome = None
+        if campaign.state in HIDDEN_INVITE_STATES:
+            outcome = await load_campaign_outcome(session, campaign.id)
+        note, active, visible = _invite_entry_status(campaign, link, outcome=outcome)
         return {
             "invite_delivery_note": note,
             "invite_bonus_active": active,
@@ -100,14 +104,15 @@ async def _invite_delivery_projection(
         }
 
 
-def _invite_entry_status(campaign: Campaign, link: InviteLink) -> tuple[str, bool, bool]:
-    if campaign.state in HIDDEN_INVITE_STATES:
-        state = "本场已取消" if campaign.state is CampaignState.CANCELLED else "本场已开奖"
-        return f"{state}，邀请入口已隐藏；历史邀请记录和已确认加成保留。", False, False
-    if link.revoked_at is not None:
-        return "个人邀请链接已撤销；请返回活动查看当前入口与记录。", False, False
-    if link.expire_at is not None and link.expire_at <= utcnow():
-        return "个人邀请链接已过期；请返回活动查看当前入口与记录。", False, False
+def _invite_entry_status(
+    campaign: Campaign, link: InviteLink, *, outcome: CampaignOutcomeFacts | None = None
+) -> tuple[str, bool, bool]:
+    historical_status = historical_outcome_status(campaign, outcome=outcome)
+    if historical_status is not None:
+        return f"{historical_status}，邀请入口已隐藏；历史邀请记录和已确认加成保留。", False, False
+    unavailable = unavailable_invite_link_note(link, now=utcnow())
+    if unavailable is not None:
+        return unavailable, False, False
     note, active = legacy_invite_note(campaign)
     return note, active, True
 

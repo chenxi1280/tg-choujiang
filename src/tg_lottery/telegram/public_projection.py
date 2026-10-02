@@ -1,6 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from tg_lottery.application.campaign_outcomes import TERMINAL_CAMPAIGN_STATES
 from tg_lottery.domain.enums import CampaignState, QualificationState
 from tg_lottery.domain.errors import (
     AuthorizationDenied,
@@ -44,6 +45,15 @@ _QUALIFICATION_STATE_TEXT = {
 
 def campaign_state_text(state: CampaignState) -> str:
     return _CAMPAIGN_STATE_TEXT[state]
+
+
+def campaign_history_state_text(state: CampaignState, outcome_kind: str | None) -> str:
+    if state not in TERMINAL_CAMPAIGN_STATES:
+        return campaign_state_text(state)
+    if outcome_kind not in {"drawn", "cancelled"}:
+        return "历史结果未确认"
+    label = "已开奖" if outcome_kind == "drawn" else "已取消"
+    return f"{label}（已归档）" if state is CampaignState.ARCHIVED else label
 
 
 def qualification_state_text(state: QualificationState) -> str:

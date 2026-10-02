@@ -10,6 +10,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, Teleg
 from aiogram.methods import AnswerCallbackQuery, SendMessage
 from aiogram.types import CallbackQuery, Chat, Message, User
 
+from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts
 from tg_lottery.application.participant_records import (
     ParticipantCampaignDetail,
     ParticipatedCampaign,
@@ -242,7 +243,7 @@ async def test_foreign_private_record_callback_cannot_read_another_users_result(
 
 @pytest.mark.parametrize("state", [CampaignState.DRAWN, CampaignState.ARCHIVED])
 async def test_ended_list_explains_unqualified_history_without_stashed_promise(state):
-    row = _campaign_row(state, qualified=False)
+    row = _campaign_row(state, qualified=False, outcome_kind="drawn")
     text, keyboard = build_participated_campaign_list(
         ParticipatedCampaignPage("ended", 0, 1, (row,)), invitation_only=False
     )
@@ -254,7 +255,7 @@ async def test_ended_list_explains_unqualified_history_without_stashed_promise(s
 
 @pytest.mark.parametrize("qualified", [False, True])
 async def test_cancelled_list_never_promises_tickets_can_still_become_effective(qualified):
-    row = _campaign_row(CampaignState.CANCELLED, qualified=qualified)
+    row = _campaign_row(CampaignState.CANCELLED, qualified=qualified, outcome_kind="cancelled")
     text, _ = build_participated_campaign_list(
         ParticipatedCampaignPage("ended", 0, 1, (row,)), invitation_only=False
     )
@@ -264,7 +265,7 @@ async def test_cancelled_list_never_promises_tickets_can_still_become_effective(
 
 
 def test_drawn_qualified_history_points_to_final_snapshot_count():
-    row = _campaign_row(CampaignState.DRAWN, qualified=True)
+    row = _campaign_row(CampaignState.DRAWN, qualified=True, outcome_kind="drawn")
     text, _ = build_participated_campaign_list(
         ParticipatedCampaignPage("ended", 0, 1, (row,)), invitation_only=False
     )
@@ -334,10 +335,11 @@ def _detail():
         draw_at=NOW,
         timezone="Asia/Shanghai",
         draw_result=result,
+        outcome=CampaignOutcomeFacts("drawn", completed_at=NOW),
     )
 
 
-def _campaign_row(state, *, qualified):
+def _campaign_row(state, *, qualified, outcome_kind):
     return ParticipatedCampaign(
         public_ref=PUBLIC_REF,
         name="测试活动",
@@ -347,4 +349,5 @@ def _campaign_row(state, *, qualified):
         draw_at=NOW,
         timezone="Asia/Shanghai",
         base_qualified=qualified,
+        outcome_kind=outcome_kind,
     )

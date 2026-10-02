@@ -1,9 +1,16 @@
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from tg_lottery.application.base_activity import load_base_progress
+from tg_lottery.application.campaign_outcomes import (
+    TERMINAL_CAMPAIGN_STATES,
+    load_campaign_outcome,
+)
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState, QualificationState
 from tg_lottery.domain.rules import CampaignRules
+
+BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 async def base_progress_text(session: object, campaign: object, participant: object) -> str:
@@ -11,13 +18,13 @@ async def base_progress_text(session: object, campaign: object, participant: obj
     if not rules.base_activity_rules:
         return ""
     now = utcnow()
-    today = min(now, campaign.cutoff_at).astimezone(ZoneInfo("Asia/Shanghai")).date()
+    observed_at = await _progress_observed_at(session, campaign, now)
+    if observed_at is None:
+        return _unconfirmed_terminal_progress(campaign, participant, rules)
+    today = observed_at.astimezone(BEIJING_TIMEZONE).date()
     completed = _progress_completed(campaign, now)
     progress = await load_base_progress(session, campaign, participant, today=today)
-    groups = {
-        str(group["id"]): group["title"]
-        for group in campaign.presentation.get("participation_groups", [])
-    }
+    groups = _group_titles(campaign)
     lines = [_qualification_text(participant.base_qualified, completed=completed)]
     date_label = f"记录日期 {today}" if completed else "今日"
     for key, item in progress.items():
@@ -50,7 +57,41 @@ def _qualification_text(qualified: bool, *, completed: bool) -> str:
     return f"基础发言门槛: 未达标, {suffix}"
 
 
-def _progress_completed(campaign: object, now: object) -> bool:
+async def _progress_observed_at(
+    session: object, campaign: object, now: datetime
+) -> datetime | None:
+    if campaign.state not in TERMINAL_CAMPAIGN_STATES:
+        return min(now, campaign.cutoff_at)
+    outcome = await load_campaign_outcome(session, campaign.id)
+    if outcome.kind == "cancelled":
+        return min(outcome.cancelled_at, campaign.cutoff_at)
+    if outcome.kind == "drawn":
+        return campaign.cutoff_at
+    return None
+
+
+def _unconfirmed_terminal_progress(
+    campaign: object, participant: object, rules: CampaignRules
+) -> str:
+    groups = _group_titles(campaign)
+    lines = [_qualification_text(participant.base_qualified, completed=True)]
+    lines.extend(
+        f"{groups.get(key) or '名称待更新'}: 记录日期未确认, 历史条数和连续进度未确认"
+        for key in rules.base_activity_rules
+    )
+    lines.append("本期基础发言已停止累计; 此处为历史进度。")
+    lines.append("无法确认记录截止日期: 活动缺少取消时间审计记录及已完成的开奖记录, 需要核查。")
+    return "\n".join(lines)
+
+
+def _group_titles(campaign: object) -> dict[str, str]:
+    return {
+        str(group["id"]): group["title"]
+        for group in campaign.presentation.get("participation_groups", [])
+    }
+
+
+def _progress_completed(campaign: object, now: datetime) -> bool:
     return now > campaign.cutoff_at or campaign.state not in {
         CampaignState.SCHEDULED,
         CampaignState.RUNNING,

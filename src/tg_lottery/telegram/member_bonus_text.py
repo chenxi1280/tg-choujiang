@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.telegram.public_projection import format_public_time
@@ -13,6 +14,9 @@ BONUS_CLOSED_STATES = frozenset(
         CampaignState.CANCELLED,
     }
 )
+HISTORICAL_CAMPAIGN_STATES = frozenset(
+    {CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED}
+)
 
 
 def campaign_bonus_completed(campaign: object) -> bool:
@@ -24,34 +28,53 @@ def invite_bonus_completed(campaign: object, *, retention_hours: int) -> bool:
     return campaign_bonus_completed(campaign) or utcnow() > deadline
 
 
-def bonus_closed_notice(campaign: object, *, category: str = "") -> str:
+def historical_outcome_status(
+    campaign: object, *, outcome: CampaignOutcomeFacts | None
+) -> str | None:
+    if campaign.state not in HISTORICAL_CAMPAIGN_STATES:
+        return None
+    if outcome is not None and outcome.kind == "drawn":
+        return "本场已开奖"
+    if outcome is not None and outcome.kind == "cancelled":
+        return "本场已取消，未开奖"
+    return "本场开奖结果尚未确认，请联系创建者核查"
+
+
+def bonus_closed_notice(
+    campaign: object, *, category: str = "", outcome: CampaignOutcomeFacts | None = None
+) -> str:
     if not campaign_bonus_completed(campaign):
         return ""
-    if campaign.state is CampaignState.CANCELLED:
-        status = "本场已取消"
-    elif campaign.state in {CampaignState.DRAWN, CampaignState.ARCHIVED}:
-        status = "本场已开奖"
-    else:
-        status = "活动已截止"
+    status = historical_outcome_status(campaign, outcome=outcome) or "活动已截止"
     return f"{status}，不再计算新增{category}加成；以下保留本期累计记录。"
 
 
-def invite_list_prompt(campaign: object, *, retention_hours: int) -> str:
-    if campaign.state in {CampaignState.DRAWN, CampaignState.ARCHIVED}:
-        return "本场已开奖，邀请入口已隐藏；可查看历史邀请记录，仍有效的旧链接可入群。"
-    if campaign.state is CampaignState.CANCELLED:
-        return "本场已取消，邀请入口已隐藏；可查看历史邀请记录。"
+def invite_list_prompt(
+    campaign: object, *, retention_hours: int, outcome: CampaignOutcomeFacts | None = None
+) -> str:
+    status = historical_outcome_status(campaign, outcome=outcome)
+    if status is not None:
+        return f"{status}，邀请入口已隐藏；可查看历史邀请记录，仍有效的旧链接可入群。"
     if campaign_bonus_completed(campaign):
-        return bonus_closed_notice(campaign, category="邀请")
+        return bonus_closed_notice(campaign, category="邀请", outcome=outcome)
     if invite_bonus_completed(campaign, retention_hours=retention_hours):
         return "最晚计奖入群时间已过；仅核验此前邀请，可查看本期记录。"
     return "请选择一个群查看本期链接和邀请记录："
 
 
-def bonus_header(campaign: object, title: str) -> str:
+def bonus_header(
+    campaign: object, title: str, *, outcome: CampaignOutcomeFacts | None = None
+) -> str:
+    moment = campaign.draw_at
+    label = "开奖"
+    if campaign.state in HISTORICAL_CAMPAIGN_STATES:
+        label = "计划开奖"
+        if outcome is not None and outcome.kind == "drawn" and outcome.completed_at is not None:
+            label = "实际开奖"
+            moment = outcome.completed_at
     return (
         f"🔋 {title}\n活动：{campaign.name}\n"
-        f"开奖：{format_public_time(campaign.draw_at, campaign.timezone)}"
+        f"{label}：{format_public_time(moment, campaign.timezone)}"
     )
 
 

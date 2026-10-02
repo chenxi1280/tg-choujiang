@@ -5,13 +5,12 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts, load_campaign_outcome
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.infrastructure.db import (
     Campaign,
     DrawEntry,
     DrawRound,
-    DrawRun,
-    DrawSnapshot,
     Prize,
     Winner,
 )
@@ -36,30 +35,29 @@ class ParticipantDrawResult:
 
 
 async def load_participant_draw_result(
-    session: AsyncSession, campaign: Campaign, participant_id: UUID
+    session: AsyncSession,
+    campaign: Campaign,
+    participant_id: UUID,
+    *,
+    outcome: CampaignOutcomeFacts | None = None,
 ) -> ParticipantDrawResult | None:
-    if campaign.state not in {CampaignState.DRAWN, CampaignState.ARCHIVED}:
+    if campaign.state not in {CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED}:
         return None
-    row = (
-        await session.execute(
-            select(DrawSnapshot.id, DrawRun.id, DrawRun.completed_at)
-            .join(DrawRun, DrawRun.snapshot_id == DrawSnapshot.id)
-            .where(DrawSnapshot.campaign_id == campaign.id, DrawRun.completed_at.is_not(None))
-        )
-    ).one_or_none()
-    if row is None:
+    facts = outcome if outcome is not None else await load_campaign_outcome(session, campaign.id)
+    if facts.kind != "drawn":
         return None
-    snapshot_id, draw_run_id, completed_at = row
+    if facts.snapshot_id is None or facts.draw_run_id is None or facts.completed_at is None:
+        raise ValueError("completed campaign outcome is missing its persisted draw identity")
     frozen_tickets = await session.scalar(
         select(DrawEntry.weight).where(
-            DrawEntry.snapshot_id == snapshot_id, DrawEntry.participant_id == participant_id
+            DrawEntry.snapshot_id == facts.snapshot_id, DrawEntry.participant_id == participant_id
         )
     )
     presentation = campaign.presentation or {}
     return ParticipantDrawResult(
-        completed_at=completed_at,
+        completed_at=facts.completed_at,
         frozen_tickets=frozen_tickets,
-        awards=await _participant_awards(session, draw_run_id, participant_id),
+        awards=await _participant_awards(session, facts.draw_run_id, participant_id),
         issuer_name=str(presentation.get("issuer_name") or "活动创建者"),
         issuer_user_id=int(presentation.get("issuer_user_id") or campaign.created_by),
         issuer_username=presentation.get("issuer_username_at_publish"),

@@ -6,12 +6,14 @@ from typing import TYPE_CHECKING
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
+from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts
 from tg_lottery.application.invitation_models import accepts_attribution
 from tg_lottery.application.query_invites import ReferralLanding
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.telegram.member_bonus_text import historical_outcome_status
 from tg_lottery.telegram.public_projection import format_public_time
 
 if TYPE_CHECKING:
@@ -27,6 +29,9 @@ async def show_referral_landing(flow: MemberFlow, message: Message, public_ref: 
     user = message.from_user
     if user is None:
         raise ValueError("Telegram message has no sender")
+    outcome = None
+    if historical_outcome_status(landing.campaign, outcome=None) is not None:
+        outcome = await flow._queries.campaign_outcome(landing.campaign.id)
     membership = await _membership_state(flow, landing, user.id)
     if membership is True and flow._invitations is not None:
         await flow._invitations.record_existing_member(
@@ -35,7 +40,7 @@ async def show_referral_landing(flow: MemberFlow, message: Message, public_ref: 
             utcnow(),
             display_name=user.full_name,
         )
-    text = _landing_text(landing, membership, now=utcnow())
+    text = _landing_text(landing, membership, now=utcnow(), outcome=outcome)
     if _group_url(flow, landing) is None:
         text += "\n\n⚠ 入群入口当前不可用，请联系群管理员更新链接。"
     markup = _landing_keyboard(flow, landing, membership)
@@ -59,25 +64,38 @@ async def _membership_state(
     return None
 
 
-def _landing_text(landing: ReferralLanding, membership: bool | None, *, now: datetime) -> str:
+def _landing_text(
+    landing: ReferralLanding,
+    membership: bool | None,
+    *,
+    now: datetime,
+    outcome: CampaignOutcomeFacts | None = None,
+) -> str:
     identity = f"{landing.campaign.name}"
-    state = _landing_state(landing, membership, now=now)
+    state = _landing_state(landing, membership, now=now, outcome=outcome)
     timezone = landing.campaign.timezone
     deadline = format_public_time(_effective_bonus_deadline(landing), timezone)
-    draw_at = format_public_time(landing.campaign.draw_at, timezone)
+    draw_time = _draw_time_text(landing, outcome=outcome)
     verification = "\n⚠ 暂时无法核验你是否已在群内，入群后仍需核验。" if membership is None else ""
     return (
         f"👥 {identity}\n\n{state}{verification}\n\n"
-        f"最晚计奖入群时间：{deadline}\n开奖时间：{draw_at}\n\n"
+        f"最晚计奖入群时间：{deadline}\n{draw_time}\n\n"
         "加入该群不等于自动报名本次抽奖。\n"
         "此邀请入口仅属于本次抽奖，结束后如入群入口仍有效，可继续入群，不计入下次抽奖。"
     )
 
 
-def _landing_state(landing: ReferralLanding, membership: bool | None, *, now: datetime) -> str:
-    if landing.campaign.state is CampaignState.CANCELLED:
+def _landing_state(
+    landing: ReferralLanding,
+    membership: bool | None,
+    *,
+    now: datetime,
+    outcome: CampaignOutcomeFacts | None = None,
+) -> str:
+    historical_status = historical_outcome_status(landing.campaign, outcome=outcome)
+    if historical_status is not None:
         return (
-            "本次抽奖已经取消。\n"
+            f"{historical_status}。\n"
             f"该入口不再产生抽奖加成；如群入口仍可用，你仍可加入「{landing.target.title_snapshot}」。"
         )
     if membership is True:
@@ -101,6 +119,17 @@ def _landing_state(landing: ReferralLanding, membership: bool | None, *, now: da
         f"如群入口仍有效，你仍可加入「{landing.target.title_snapshot}」，"
         "但不会再给邀请人增加本期抽奖次数。"
     )
+
+
+def _draw_time_text(
+    landing: ReferralLanding, *, outcome: CampaignOutcomeFacts | None = None
+) -> str:
+    campaign = landing.campaign
+    if historical_outcome_status(campaign, outcome=outcome) is None:
+        return f"开奖时间：{format_public_time(campaign.draw_at, campaign.timezone)}"
+    if outcome is not None and outcome.kind == "drawn" and outcome.completed_at is not None:
+        return f"实际开奖时间：{format_public_time(outcome.completed_at, campaign.timezone)}"
+    return f"计划开奖时间：{format_public_time(campaign.draw_at, campaign.timezone)}"
 
 
 def _effective_bonus_deadline(landing: ReferralLanding) -> datetime:

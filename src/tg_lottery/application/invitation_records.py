@@ -5,7 +5,10 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from tg_lottery.application.group_membership_facts import observe_existing_member
+from tg_lottery.application.group_membership_facts import (
+    first_source_matches_invitation,
+    observe_existing_member,
+)
 from tg_lottery.application.invitation_models import JoinObservation, campaign_accepts_attribution
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.request_context import current_update_id
@@ -68,14 +71,11 @@ async def upsert_candidate(
     campaign: Campaign,
     observation: JoinObservation,
 ) -> Invitation:
-    invitation = await session.scalar(
-        select(Invitation)
-        .where(
-            Invitation.campaign_id == campaign.id,
-            Invitation.participation_group_id == link.participation_group_id,
-            Invitation.invitee_user_id == observation.invitee_user_id,
-        )
-        .with_for_update()
+    invitation = await _existing_invitation(
+        session,
+        campaign_id=campaign.id,
+        participation_group_id=link.participation_group_id,
+        invitee_user_id=observation.invitee_user_id,
     )
     if invitation is not None:
         if observation.display_name and not invitation.invitee_display_name_snapshot:
@@ -95,6 +95,24 @@ async def upsert_candidate(
     session.add(invitation)
     await session.flush()
     return invitation
+
+
+async def _existing_invitation(
+    session: object,
+    *,
+    campaign_id: UUID,
+    participation_group_id: UUID | None,
+    invitee_user_id: int,
+) -> Invitation | None:
+    return await session.scalar(
+        select(Invitation)
+        .where(
+            Invitation.campaign_id == campaign_id,
+            Invitation.participation_group_id == participation_group_id,
+            Invitation.invitee_user_id == invitee_user_id,
+        )
+        .with_for_update()
+    )
 
 
 async def invalid_candidate(
@@ -177,12 +195,22 @@ async def record_existing_member(
         )
         if link is None or await is_self_invite(uow.session, link, invitee_user_id):
             return None
-        campaign = await uow.session.get(Campaign, route.campaign_id)
+        campaign = await uow.session.scalar(
+            select(Campaign).where(Campaign.id == route.campaign_id).with_for_update()
+        )
         if campaign is None:
             raise ValueError("referral campaign not found")
         await observe_existing_member(
             uow.session, link=link, user_id=invitee_user_id, observed_at=event_at
         )
+        existing = await _existing_invitation(
+            uow.session,
+            campaign_id=campaign.id,
+            participation_group_id=link.participation_group_id,
+            invitee_user_id=invitee_user_id,
+        )
+        if existing is not None and await _has_recorded_join(uow.session, existing):
+            return existing
         observation = JoinObservation(link.id, invitee_user_id, event_at, display_name=display_name)
         return await invalid_candidate(
             uow.session,
@@ -191,3 +219,12 @@ async def record_existing_member(
             observation=observation,
             reason="existing_member",
         )
+
+
+async def _has_recorded_join(session: object, invitation: Invitation) -> bool:
+    if invitation.state is InvitationState.VALID:
+        return True
+    # Opening a route observes current membership, not a new join or attribution.
+    return invitation.joined_at is not None and await first_source_matches_invitation(
+        session, invitation
+    )

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts
 from tg_lottery.application.participant_records import CampaignInvitationRecords
 from tg_lottery.application.query_invites import GroupInviteLinkStatus
 from tg_lottery.domain.enums import CampaignState, OutboxState
@@ -25,10 +26,15 @@ class BonusQueries:
         statuses: dict[int, object],
         *,
         targets: tuple[object, ...] = (),
+        outcome: CampaignOutcomeFacts | None = None,
     ) -> None:
         self._progress = progress
         self._statuses = statuses
         self._targets = targets
+        self._outcome = outcome or CampaignOutcomeFacts("unconfirmed")
+
+    async def campaign_outcome(self, campaign_id):
+        return self._outcome
 
     async def group_bonus_progress(self, campaign_id, user_id):
         return self._progress
@@ -306,7 +312,8 @@ async def test_single_bonus_category_keeps_closed_progress_and_group_return_rout
     disabled = "group_activity_rules" if category == "invites" else "group_invite_rules"
     campaign.rules = rules.model_dump(mode="json") | {disabled: {}}
     campaign.state = CampaignState.CANCELLED
-    text, keyboard = await build_bonus_overview(campaign, **_view_dependencies(progress, statuses))
+    common = _view_dependencies(progress, statuses, outcome=CampaignOutcomeFacts("cancelled"))
+    text, keyboard = await build_bonus_overview(campaign, **common)
     assert "本场已取消" in text
     assert "距下一次还差" not in text
     assert keyboard.inline_keyboard[0][0].text == "A群"
@@ -323,7 +330,10 @@ async def test_cancelled_legacy_invite_entry_keeps_history_without_loading_revok
     campaign, _, _ = _bonus_state()
     campaign.state = CampaignState.CANCELLED
     text, keyboard = await legacy_invite_link_payload(
-        campaign, user_id=201, queries=object(), cipher=object()
+        campaign,
+        user_id=201,
+        queries=BonusQueries(None, {}, outcome=CampaignOutcomeFacts("cancelled")),
+        cipher=object(),
     )
     assert "本场已取消" in text
     assert "历史邀请记录和已确认加成保留" in text
@@ -344,10 +354,12 @@ async def test_closed_legacy_bonus_keeps_awarded_history_after_bot_loses_group_p
     assert "距下一次还差" not in text
 
 
-def _view_dependencies(progress: object, statuses: dict[int, object]) -> dict[str, object]:
+def _view_dependencies(
+    progress: object, statuses: dict[int, object], *, outcome: CampaignOutcomeFacts | None = None
+) -> dict[str, object]:
     return {
         "user_id": 201,
-        "queries": BonusQueries(progress, statuses),
+        "queries": BonusQueries(progress, statuses, outcome=outcome),
         "cipher": SimpleNamespace(decrypt=lambda *_args, **_kwargs: "https://t.me/+raw-link"),
         "bot_username": "lottery_bot",
         "unavailable": {},

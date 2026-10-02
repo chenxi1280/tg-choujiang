@@ -14,6 +14,7 @@ from tg_lottery.application.activity_rules import (
     group_activity_ticket_target,
 )
 from tg_lottery.application.callback_tokens import CallbackGrant
+from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts
 from tg_lottery.application.invitation_rewards import group_invite_bonus_target
 from tg_lottery.application.query_invites import GroupInviteLinkStatus
 from tg_lottery.domain.enums import CampaignState, OutboxState
@@ -80,6 +81,9 @@ class PickerSessions:
 class BonusProgressQueries:
     def __init__(self, progress: object) -> None:
         self._progress = progress
+
+    async def campaign_outcome(self, campaign_id):
+        return CampaignOutcomeFacts("unconfirmed")
 
     async def group_bonus_progress(self, campaign_id, user_id):
         return self._progress

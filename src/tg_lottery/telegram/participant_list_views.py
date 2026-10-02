@@ -5,7 +5,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from tg_lottery.application.participant_records import ParticipatedCampaignPage
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.telegram.public_projection import (
-    campaign_state_text,
+    campaign_history_state_text,
     format_public_time,
     qualification_state_text,
 )
@@ -35,7 +35,7 @@ def build_participated_campaign_list(
 
 def _campaign_line(row: object, *, position: int) -> str:
     return (
-        f"{position}. {row.name}｜{campaign_state_text(row.state)}｜"
+        f"{position}. {row.name}｜{_state_label(row)}｜"
         f"{_ticket_label(row)}｜{qualification_state_text(row.qualification)}\n"
         f"  开奖 {format_public_time(row.draw_at, row.timezone)}"
     )
@@ -108,12 +108,22 @@ def parse_campaign_list_callback(value: str) -> tuple[str, int]:
     return category, int(raw_page)
 
 
+def _state_label(row: object) -> str:
+    return campaign_history_state_text(row.state, row.outcome_kind)
+
+
 def _ticket_label(row: object) -> str:
-    if row.state == CampaignState.CANCELLED:
-        return f"历史累计 {row.tickets} 次 · 活动已取消"
-    if row.state in {CampaignState.DRAWN, CampaignState.ARCHIVED}:
-        status = "未计入本场" if not row.base_qualified else "最终次数见详情"
-        return f"历史累计 {row.tickets} 次 · {status}"
+    if row.state in {CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED}:
+        return _historical_ticket_label(row)
     if not row.base_qualified:
         return f"门槛未达标 · 累计 {row.tickets} 次（暂存）"
     return f"{row.tickets} 次"
+
+
+def _historical_ticket_label(row: object) -> str:
+    if row.outcome_kind == "cancelled":
+        return f"历史累计 {row.tickets} 次 · 活动已取消，未开奖"
+    if row.outcome_kind == "drawn":
+        status = "未计入本场" if not row.base_qualified else "最终次数见详情"
+        return f"历史累计 {row.tickets} 次 · {status}"
+    return f"历史累计 {row.tickets} 次 · 历史结果未确认，待核查"

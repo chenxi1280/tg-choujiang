@@ -406,7 +406,7 @@ async def test_bonus_callback_without_registration_answers_popup():
 
 
 async def test_bonus_callback_sends_invite_link_to_private_chat():
-    link = SimpleNamespace(id=uuid4(), encrypted_url=b"enc")
+    link = SimpleNamespace(id=uuid4(), encrypted_url=b"enc", revoked_at=None, expire_at=None)
     flow, bot = _bonus_flow(_bonus_campaign(), link)
     query = FakeQuery(RecordingMessage())
 
@@ -420,7 +420,7 @@ async def test_bonus_callback_sends_invite_link_to_private_chat():
 
 
 async def test_bonus_callback_private_failure_guides_user_to_dm():
-    link = SimpleNamespace(id=uuid4(), encrypted_url=b"enc")
+    link = SimpleNamespace(id=uuid4(), encrypted_url=b"enc", revoked_at=None, expire_at=None)
     error = TelegramForbiddenError(
         method=SendMessage(chat_id=201, text="x"), message="Forbidden: bot blocked"
     )

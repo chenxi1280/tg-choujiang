@@ -3,7 +3,7 @@ from tg_lottery.application.participant_results import ParticipantAward
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.presentation.mentions import MESSAGE_UTF16_LIMIT
 from tg_lottery.telegram.public_projection import (
-    campaign_state_text,
+    campaign_history_state_text,
     format_public_time,
     qualification_state_text,
 )
@@ -12,7 +12,7 @@ from tg_lottery.telegram.public_projection import (
 def participant_record_pages(detail: ParticipantCampaignDetail) -> tuple[str, ...]:
     blocks = [
         f"🎟 {detail.campaign_name}\n"
-        f"活动状态: {campaign_state_text(detail.state)}\n"
+        f"活动状态: {_record_state_text(detail)}\n"
         f"参与资格: {qualification_state_text(detail.qualification)}\n"
         f"计划开奖时间: {format_public_time(detail.draw_at, detail.timezone)}",
     ]
@@ -25,14 +25,19 @@ def participant_record_pages(detail: ParticipantCampaignDetail) -> tuple[str, ..
     return _record_pages(blocks)
 
 
+def _record_state_text(detail: ParticipantCampaignDetail) -> str:
+    kind = "drawn" if detail.draw_result is not None else None
+    if kind is None and detail.outcome is not None:
+        kind = detail.outcome.kind
+    return campaign_history_state_text(detail.state, kind)
+
+
 def _result_summary(detail: ParticipantCampaignDetail) -> str:
-    if detail.state == CampaignState.CANCELLED:
-        return "开奖结果：活动已取消，未开奖。"
-    if detail.state not in {CampaignState.DRAWN, CampaignState.ARCHIVED}:
+    if detail.state not in {CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED}:
         return ""
     result = detail.draw_result
     if result is None:
-        return "开奖结果：未找到已完成的开奖记录，请联系活动创建者核查。"
+        return _missing_result_summary(detail)
     if result.frozen_tickets is None:
         status = "未进入最终开奖名单"
     else:
@@ -47,6 +52,14 @@ def _result_summary(detail: ParticipantCampaignDetail) -> str:
         contact = f"@{result.issuer_username}" if result.issuer_username else result.issuer_name
         lines.append(f"发奖人员：{contact}")
     return "\n".join(lines)
+
+
+def _missing_result_summary(detail: ParticipantCampaignDetail) -> str:
+    if detail.outcome is not None and detail.outcome.kind == "cancelled":
+        return "开奖结果：活动已取消，未开奖。"
+    if detail.state in {CampaignState.ARCHIVED, CampaignState.CANCELLED}:
+        return "历史开奖结果未确认：未找到已完成的开奖记录或本活动取消记录，请联系活动创建者核查。"
+    return "开奖结果：未找到已完成的开奖记录，请联系活动创建者核查。"
 
 
 def _award_text(award: ParticipantAward) -> str:

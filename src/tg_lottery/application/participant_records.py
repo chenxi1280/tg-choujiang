@@ -10,6 +10,11 @@ from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tg_lottery.application.base_activity_views import base_progress_text
+from tg_lottery.application.campaign_outcomes import (
+    CampaignOutcomeFacts,
+    campaign_outcome_expression,
+    load_campaign_outcome,
+)
 from tg_lottery.application.participant_results import (
     ParticipantDrawResult,
     load_participant_draw_result,
@@ -52,6 +57,7 @@ class ParticipatedCampaign:
     draw_at: datetime
     timezone: str
     base_qualified: bool = True
+    outcome_kind: str | None = None
 
 
 @dataclass(frozen=True)
@@ -79,6 +85,7 @@ class ParticipantCampaignDetail:
     base_progress: str = ""
     base_qualified: bool = True
     draw_result: ParticipantDrawResult | None = None
+    outcome: CampaignOutcomeFacts | None = None
 
 
 @dataclass(frozen=True)
@@ -181,6 +188,7 @@ def _participated_campaigns_statement(user_id: int):
             Campaign.draw_at,
             Campaign.timezone,
             Participant.base_qualified,
+            campaign_outcome_expression().label("outcome_kind"),
         )
         .join(Participant, Participant.campaign_id == Campaign.id)
         .outerjoin(ticket_totals, ticket_totals.c.participant_id == Participant.id)
@@ -224,8 +232,11 @@ def _has_invitation_surface():
 
 
 def _participated_values(row: object) -> tuple[object, ...]:
-    public_ref, name, state, qualification, tickets, draw_at, timezone, base_qualified = row
-    return public_ref, name, state, qualification, int(tickets), draw_at, timezone, base_qualified
+    public_ref, name, state, qualification, tickets, draw_at, timezone, base_qualified, outcome = (
+        row
+    )
+    participation = (public_ref, name, state, qualification, int(tickets))
+    return (*participation, draw_at, timezone, base_qualified, outcome)
 
 
 async def load_participant_campaign_detail(
@@ -244,8 +255,12 @@ async def load_participant_campaign_detail(
         campaign, participant = row
         totals = await _ticket_totals(session, participant.id)
         rules = CampaignRules.model_validate(campaign.rules)
+        outcome = await load_campaign_outcome(session, campaign.id)
         return ParticipantCampaignDetail(
-            draw_result=await load_participant_draw_result(session, campaign, participant.id),
+            draw_result=await load_participant_draw_result(
+                session, campaign, participant.id, outcome=outcome
+            ),
+            outcome=outcome,
             base_progress=await base_progress_text(session, campaign, participant),
             base_qualified=participant.base_qualified,
             public_ref=campaign.public_ref,

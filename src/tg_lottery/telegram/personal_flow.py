@@ -5,6 +5,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
+from tg_lottery.domain.enums import CampaignState
 from tg_lottery.telegram.command_input import parse_bot_command
 from tg_lottery.telegram.help_views import GUIDE_TEXT, HelpLinks, guide_keyboard
 from tg_lottery.telegram.member_records import show_ticket_record
@@ -138,12 +139,13 @@ class PersonalFlow:
     async def show_index(self, message: Message) -> None:
         user = _user(message)
         summary = await self._queries.admin_campaign_summary(user.id)
+        unconfirmed = f"\n未确认（待核查）：{summary.unconfirmed}" if summary.unconfirmed else ""
         await message.answer(
             "🎁 抽奖管理\n\n"
             f"累计创建：{summary.total}\n"
             f"进行中：{summary.active}\n"
             f"已开奖：{summary.drawn}\n"
-            f"已取消：{summary.cancelled}",
+            f"已取消：{summary.cancelled}{unconfirmed}",
             reply_markup=_index_keyboard(self._bot_username, self._help_links),
         )
 
@@ -194,7 +196,7 @@ class PersonalFlow:
         buttons = [
             [
                 InlineKeyboardButton(
-                    text=f"{item.name}｜{campaign_state_text(item.state)}",
+                    text=f"{item.name}｜{_created_campaign_label(item.state, category)}",
                     callback_data=f"nav:campaign:{item.public_ref}",
                 )
             ]
@@ -215,6 +217,13 @@ class PersonalFlow:
         if profile.region_editable_until is None or profile.region_locked_until is None:
             raise RuntimeError("region lock deadlines are missing")
         await message.edit_text(_region_success_text(profile, self._default_timezone))
+
+
+def _created_campaign_label(state: CampaignState, category: str) -> str:
+    if category == "active":
+        return campaign_state_text(state)
+    title = {"drawn": "已开奖", "cancelled": "已取消"}[category]
+    return f"{title} · 已归档" if state is CampaignState.ARCHIVED else title
 
 
 def _index_keyboard(

@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from tests.helpers import seed_campaign
 from tg_lottery.application import base_activity_views
+from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts
 from tg_lottery.application.drawing import DrawingService
 from tg_lottery.application.participant_records import ParticipantCampaignDetail
 from tg_lottery.application.participant_results import ParticipantAward, ParticipantDrawResult
@@ -120,7 +121,8 @@ async def test_missing_completed_result_never_claims_not_winning(session_factory
 
 @pytest.mark.parametrize("state", [CampaignState.RUNNING, CampaignState.CANCELLED])
 def test_unfinished_and_cancelled_campaigns_do_not_claim_a_draw_result(state):
-    text = "\n".join(participant_record_pages(replace(_detail(), state=state)))
+    outcome = CampaignOutcomeFacts("cancelled") if state is CampaignState.CANCELLED else None
+    text = "\n".join(participant_record_pages(replace(_detail(), state=state, outcome=outcome)))
     assert "已中奖" not in text and "未中奖" not in text
     assert ("活动已取消，未开奖" in text) == (state == CampaignState.CANCELLED)
 

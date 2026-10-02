@@ -1,9 +1,16 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.campaign_outcomes import (
+    TERMINAL_CAMPAIGN_STATES,
+    CampaignOutcomeFacts,
+    campaign_category_filter,
+    campaign_outcome_expression,
+    load_campaign_outcome,
+)
 from tg_lottery.application.campaign_query_targets import (
     active_campaign_by_chat as load_active_campaign_by_chat,
 )
@@ -64,7 +71,6 @@ from tg_lottery.application.query_invites import (
     referral_route_by_reference as load_referral_route_by_reference,
 )
 from tg_lottery.domain.enums import (
-    CampaignState,
     InvitationState,
     OutboxState,
     QualificationState,
@@ -100,6 +106,7 @@ class AdminCampaignSummary:
     active: int
     drawn: int
     cancelled: int
+    unconfirmed: int = 0
 
 
 @dataclass(frozen=True)
@@ -158,21 +165,26 @@ class QueryService:
             return list(rows)
 
     async def admin_campaign_summary(self, user_id: int) -> AdminCampaignSummary:
+        category = case(
+            (Campaign.state.not_in(TERMINAL_CAMPAIGN_STATES), "active"),
+            else_=campaign_outcome_expression(),
+        )
+        categories = (
+            select(category.label("category")).where(Campaign.created_by == user_id).subquery()
+        )
         async with self._session_factory() as session:
             rows = (
                 await session.execute(
-                    select(Campaign.state, func.count(Campaign.id))
-                    .where(Campaign.created_by == user_id)
-                    .group_by(Campaign.state)
+                    select(categories.c.category, func.count()).group_by(categories.c.category)
                 )
             ).all()
-        counts = {state: int(count) for state, count in rows}
-        terminal = {CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED}
+        counts = {kind: int(count) for kind, count in rows}
         return AdminCampaignSummary(
             total=sum(counts.values()),
-            active=sum(count for state, count in counts.items() if state not in terminal),
-            drawn=counts.get(CampaignState.DRAWN, 0) + counts.get(CampaignState.ARCHIVED, 0),
-            cancelled=counts.get(CampaignState.CANCELLED, 0),
+            active=counts.get("active", 0),
+            drawn=counts.get("drawn", 0),
+            cancelled=counts.get("cancelled", 0),
+            unconfirmed=counts.get("unconfirmed", 0),
         )
 
     async def participated_campaigns(self, user_id: int) -> list[ParticipatedCampaign]:
@@ -195,17 +207,21 @@ class QueryService:
         )
 
     async def created_campaigns(self, user_id: int, category: str) -> list[Campaign]:
-        states = _campaign_category_states(category)
+        category_filter = campaign_category_filter(category)
         async with self._session_factory() as session:
             rows = (
                 await session.scalars(
                     select(Campaign)
-                    .where(Campaign.created_by == user_id, Campaign.state.in_(states))
+                    .where(Campaign.created_by == user_id, category_filter)
                     .order_by(Campaign.created_at.desc())
                     .limit(20)
                 )
             ).all()
             return list(rows)
+
+    async def campaign_outcome(self, campaign_id: UUID) -> CampaignOutcomeFacts:
+        async with self._session_factory() as session:
+            return await load_campaign_outcome(session, campaign_id)
 
     async def campaign(self, campaign_id: UUID) -> Campaign | None:
         async with self._session_factory() as session:
@@ -452,14 +468,3 @@ class QueryService:
                 )
             ).all()
             return [WinnerRow(winner, participant, prize) for winner, participant, prize in rows]
-
-
-def _campaign_category_states(category: str) -> tuple[CampaignState, ...]:
-    if category == "drawn":
-        return (CampaignState.DRAWN, CampaignState.ARCHIVED)
-    if category == "cancelled":
-        return (CampaignState.CANCELLED,)
-    if category != "active":
-        raise ValueError("抽奖分类无效")
-    terminal = {CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED}
-    return tuple(state for state in CampaignState if state not in terminal)
