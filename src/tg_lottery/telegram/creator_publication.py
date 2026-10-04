@@ -194,6 +194,10 @@ def confirmation_view(data: dict[str, Any]) -> tuple[str, ButtonRows]:
 
 
 def _enabled_rules(data: dict[str, Any], kind: str) -> list[dict[str, Any]]:
+    if data.get("participation_rules_version") == "v3.0" and kind not in data.get(
+        "bonus_types", []
+    ):
+        return []
     return [
         rule for rule in (data.get(f"group_{kind}_rules") or {}).values() if rule.get("enabled")
     ]

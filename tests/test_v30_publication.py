@@ -7,6 +7,19 @@ from tg_lottery.application.rule_publication import project_rule_page, queue_rul
 from tg_lottery.domain.enums import CampaignState, OutboxState
 from tg_lottery.infrastructure.db import Campaign, Prize, TelegramOutbox
 from tg_lottery.presentation.participation_rules import condition_blocks, rule_manifest, utf16_units
+from tg_lottery.telegram.creator_publication import confirmation_view
+
+
+@pytest.mark.parametrize("version", ["legacy", "v3.0"])
+@pytest.mark.parametrize("bonuses", [(), ("activity",), ("invite",), ("activity", "invite")])
+def test_confirmation_counts_only_effective_bonus_groups(version, bonuses):
+    rules = rules_for("invite", bonuses)
+    data = rules.model_dump(mode="json") | {"participation_rules_version": version}
+    text, _rows = confirmation_view(data)
+    for kind, label in (("invite", "邀请"), ("activity", "发言")):
+        count = len(data[f"group_{kind}_rules"])
+        expected = count if version == "legacy" or kind in bonuses else 0
+        assert f"{label}加成\uff1a{expected} 个群开启" in text
 
 
 @pytest.mark.parametrize("cover", [None, "file-id"])
