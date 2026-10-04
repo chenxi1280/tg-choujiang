@@ -85,6 +85,7 @@ class ParticipantCampaignDetail:
     timezone: str
     base_progress: str = ""
     base_qualified: bool = True
+    invite_gate_enabled: bool = False
     draw_result: ParticipantDrawResult | None = None
     outcome: CampaignOutcomeFacts | None = None
 
@@ -276,6 +277,7 @@ async def load_participant_campaign_detail(
             + totals.get(TicketSource.REVERSAL, 0),
             bonus_enabled=bool(rules.bonus_types),
             invite_enabled=rules.invitation_enabled,
+            invite_gate_enabled=rules.invite_admission_enabled,
             draw_at=campaign.draw_at,
             timezone=campaign.timezone,
         )

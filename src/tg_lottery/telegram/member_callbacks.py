@@ -139,7 +139,7 @@ async def bonus_callback(
         await safe_answer(query, "活动不存在或已经失效", alert=True)
         return
     rules = CampaignRules.model_validate(campaign.rules)
-    if not rules.bonus_types:
+    if not rules.bonus_types and not rules.invite_admission_enabled:
         await safe_answer(query, "本期抽奖没有开启加成", alert=True)
         return
     if not await _registered_for_bonus(flow, campaign, rules, user_id=query.from_user.id):
@@ -164,7 +164,7 @@ async def show_bonus_message(
     if campaign is None:
         raise UserFacingError("活动不存在或已经失效")
     rules = CampaignRules.model_validate(campaign.rules)
-    if not rules.bonus_types:
+    if not rules.bonus_types and not rules.invite_admission_enabled:
         raise UserFacingError("本期抽奖没有开启加成")
     if not await _registered_for_bonus(flow, campaign, rules, user_id=user_id):
         raise UserFacingError("请先点击「立即参与」完成全部参与群资格校验")

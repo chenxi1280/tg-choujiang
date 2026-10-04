@@ -56,6 +56,7 @@ async def show_ticket_record(
         public_ref,
         bonus_enabled=detail.bonus_enabled,
         invite_enabled=detail.invite_enabled,
+        invite_gate_enabled=detail.invite_gate_enabled,
         state=detail.state,
         issuer_user_id=(
             detail.draw_result.issuer_user_id
@@ -172,6 +173,7 @@ def _record_keyboard(
     *,
     bonus_enabled: bool,
     invite_enabled: bool,
+    invite_gate_enabled: bool = False,
     state: CampaignState = CampaignState.RUNNING,
     issuer_user_id: int | None = None,
 ) -> InlineKeyboardMarkup:
@@ -180,8 +182,9 @@ def _record_keyboard(
         rows.append(
             [InlineKeyboardButton(text="联系发奖人员", url=f"tg://user?id={issuer_user_id}")]
         )
-    if bonus_enabled:
-        rows.append([InlineKeyboardButton(text="我的加成", callback_data=f"m:bo:{public_ref}")])
+    if bonus_enabled or invite_gate_enabled:
+        label = "邀请门槛与入口" if invite_gate_enabled and not bonus_enabled else "我的加成"
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"m:bo:{public_ref}")])
     if invite_enabled:
         rows.append(
             [

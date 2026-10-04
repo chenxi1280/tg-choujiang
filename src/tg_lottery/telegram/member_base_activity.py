@@ -33,6 +33,7 @@ async def base_registration_reply(
             campaign.public_ref,
             bool(rules.bonus_types),
             invite_enabled=rules.invitation_enabled,
+            invite_gate_enabled=rules.invite_admission_enabled,
         ),
     )
     if callback is not None:

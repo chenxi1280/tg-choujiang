@@ -43,6 +43,7 @@ def member_keyboard(
     bonus_enabled: bool = False,
     *,
     invite_enabled: bool | None = None,
+    invite_gate_enabled: bool = False,
 ) -> InlineKeyboardMarkup:
     ticket_callback = (
         f"member:tickets:{campaign_reference}" if campaign_reference else "member:tickets"
@@ -51,11 +52,13 @@ def member_keyboard(
         f"member:invites:{campaign_reference}:0" if campaign_reference else "member:invites"
     )
     rows = [[InlineKeyboardButton(text="我的抽奖次数", callback_data=ticket_callback)]]
-    if bonus_enabled and campaign_reference:
+    if (bonus_enabled or invite_gate_enabled) and campaign_reference:
         rows.append(
             [
                 InlineKeyboardButton(
-                    text="我的加成",
+                    text="邀请门槛与入口"
+                    if invite_gate_enabled and not bonus_enabled
+                    else "我的加成",
                     callback_data=f"member:bonus:{campaign_reference}",
                 )
             ]

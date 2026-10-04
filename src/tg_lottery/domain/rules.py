@@ -161,7 +161,11 @@ class CampaignRules(BaseModel, frozen=True):
 
     @property
     def invitation_enabled(self) -> bool:
-        return self.invite_bonus_enabled or bool(self.admission and self.admission.type == "invite")
+        return self.invite_bonus_enabled or self.invite_admission_enabled
+
+    @property
+    def invite_admission_enabled(self) -> bool:
+        return bool(self.admission and self.admission.type == "invite")
 
     @model_validator(mode="after")
     def validate_message_thresholds(self) -> CampaignRules:
