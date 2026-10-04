@@ -24,6 +24,9 @@ class BaseActivityEvent(Base, UuidPkMixin, CreatedAtMixin):
     )
     campaign_id: Mapped[UUID] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"))
     participant_id: Mapped[UUID] = mapped_column(ForeignKey("participants.id", ondelete="CASCADE"))
+    participation_group_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("campaign_participation_groups.id", ondelete="CASCADE")
+    )
     chat_id: Mapped[int] = mapped_column(BigInteger)
     message_id: Mapped[int] = mapped_column(BigInteger)
     event_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

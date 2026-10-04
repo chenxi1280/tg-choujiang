@@ -171,6 +171,7 @@ def activity_bonus_rows(data: dict[str, Any]) -> ButtonRows:
 
 
 def apply_bonus_action(data: dict[str, Any], action: str) -> dict[str, Any]:
+    _reject_legacy_invite_action(data, action)
     if action in retention.ACTIONS:
         return retention.apply_action(data, action)
     if group_bonus.handles_action(action):
@@ -190,6 +191,15 @@ def apply_bonus_action(data: dict[str, Any], action: str) -> dict[str, Any]:
     if action.startswith("draft_bonus_activity_"):
         return _change_activity(data, action)
     return dict(data)
+
+
+def _reject_legacy_invite_action(data: dict, action: str) -> None:
+    if (
+        data.get("participation_rules_version") == "v3.0"
+        and action.startswith("draft_bonus_invite_")
+        and not group_bonus.handles_action(action)
+    ):
+        raise UserFacingError("旧邀请配置入口已失效，请重新打开逐群邀请加成设置")
 
 
 def bonus_view(data: dict[str, Any], action: str) -> tuple[str, ButtonRows]:

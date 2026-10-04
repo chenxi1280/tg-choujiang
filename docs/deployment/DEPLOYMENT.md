@@ -32,3 +32,9 @@ BASE_DIR=/data/tg-lottery bash /data/tg-lottery/current/deploy/rollback.sh <rele
 ```
 
 回滚仍会先运行目标版本迁移和健康检查。若数据库迁移不向后兼容，必须按对应版本迁移合同单独处理，不允许只切镜像伪装成功。
+
+V3.0 发布及回滚在迁移或替换进程前执行制品规则能力检查。候选镜像运行
+`python -m tg_lottery.rule_capabilities --describe`，当前守卫将其声明与数据库中全部活动
+（包含历史查询和未决投递对应活动）的冻结规则版本对照。不识别版本或缺少能力入口时明确失败，
+保留当前运行制品；首次启用 V3.0 后只选择包含该检查且支持 V3.0 的回滚版本。
+数据库 downgrade 在存在 V3.0 活动时拒绝删除资格事实。

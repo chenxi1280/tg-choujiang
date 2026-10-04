@@ -35,12 +35,23 @@ async def resolve_participation_groups(
 
 
 def configured_activity_chat_ids(data: dict[str, Any]) -> frozenset[int] | None:
-    configured = data.get("group_activity_rules") or {}
     base = set(map(int, data.get("base_activity_rules") or {}))
+    gate = data.get("admission") or {}
+    if gate.get("type") == "message":
+        base.update(map(int, gate.get("groups") or {}))
+    configured = _active_activity_rules(data)
     if configured or base:
         active = {int(chat_id) for chat_id, rule in configured.items() if rule.get("enabled")}
         return frozenset(active | base)
     return None
+
+
+def _active_activity_rules(data: dict) -> dict:
+    if data.get("participation_rules_version") == "v3.0" and "activity" not in data.get(
+        "bonus_types", []
+    ):
+        return {}
+    return data.get("group_activity_rules") or {}
 
 
 def validate_activity_target(record: dict[str, Any], *, activity_enabled: bool) -> None:
@@ -145,6 +156,7 @@ def _with_groups(
             k: v for k, v in (data.get("base_activity_rules") or {}).items() if k in selected
         },
         "group_activity_rules": activity_rules,
+        "admission": _retained_admission(data, selected),
     }
 
 
@@ -157,6 +169,7 @@ def _clear_groups(data: dict[str, Any]) -> dict[str, Any]:
         "group_invite_rules": {},
         "group_activity_rules": {},
         "base_activity_rules": {},
+        "admission": None,
         "bonus_types": [],
         "luck_mode": "off",
     }
@@ -168,4 +181,13 @@ def _group_record(group: Group) -> dict[str, Any]:
         "title": group.title,
         "type": "group",
         "timezone": group.timezone,
+    }
+
+
+def _retained_admission(data: dict, selected: set) -> dict | None:
+    gate = data.get("admission")
+    if not gate:
+        return None
+    return gate | {
+        "groups": {key: value for key, value in gate["groups"].items() if key in selected}
     }

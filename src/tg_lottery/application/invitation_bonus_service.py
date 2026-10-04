@@ -130,6 +130,8 @@ async def _bonus_target(
     if target is None:
         return invite_bonus_target(rules, invite_count)
     group_rule = rules.invite_rule_for(target.chat_id_snapshot)
+    if group_rule is None and rules.admission is not None:
+        return 0
     if group_rule is None:
         return invite_bonus_target(rules, invite_count)
     return group_invite_bonus_target(group_rule, invite_count)

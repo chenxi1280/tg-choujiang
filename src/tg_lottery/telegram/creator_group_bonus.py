@@ -57,6 +57,7 @@ def handles_action(action: str) -> bool:
 
 
 def apply_action(data: dict[str, Any], action: str) -> dict[str, Any]:
+    _validate_v3_invite_action(data, action)
     direct = _apply_direct_action(data, action)
     if direct is not None:
         return direct
@@ -94,6 +95,12 @@ def receive_input(data: dict[str, Any], text: str) -> dict[str, Any]:
     field = str(data.get("bonus_input_field") or "")
     if not working or field not in {"cycle", "length", "cap"}:
         raise UserFacingError("当前没有待输入的加成字段")
+    if (
+        data.get("participation_rules_version") == "v3.0"
+        and working["kind"] == "invite"
+        and field == "cap"
+    ):
+        raise UserFacingError("新活动邀请加成不限累计上限，请重新打开邀请加成编辑页")
     rule = dict(working["rule"])
     rule[_input_rule_key(str(working["kind"]), field)] = _positive_integer(text)
     return data | {
@@ -139,6 +146,10 @@ def list_view(data: dict[str, Any], kind: str) -> tuple[str, ButtonRows]:
         for group in visible
     ]
     rows.extend(_page_rows(kind, page, len(groups)))
+    enabled = kind in data.get("bonus_types", [])
+    rows.append([("关闭本加成" if enabled else "开启本加成", f"draft_bonus_toggle_{kind}")])
+    if kind == "invite":
+        rows.append([("有效邀请要求", "draft_retention")])
     rows.append([("↩ 返回加成设置", "draft_bonus_menu")])
     title = "邀请" if kind == "invite" else "发言"
     reminder = "机器人必须在每个参与群中且拥有管理员权限。"
@@ -249,7 +260,8 @@ def _invite_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str, 
     cap = _cap_label(rule, "invite")
     rows = [_number_row("邀请数", "invite_cycle", rule["invites_per_cycle"])]
     rows.append(_preset_row("cycle", (1, 2, 3, 5, 10), "人"))
-    rows.append(_mode_row("invite", rule["cap_mode"]))
+    if data.get("participation_rules_version") != "v3.0":
+        rows.append(_mode_row("invite", rule["cap_mode"]))
     if rule["cap_mode"] == "limited":
         rows.append(_number_row("上限", "invite_group_cap", cap))
         rows.append(_preset_row("cap", (1, 5, 10, 20), "次"))
@@ -453,6 +465,20 @@ def _without_editor(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _enabled_rules(data: dict[str, Any], kind: str) -> list[dict[str, Any]]:
+    if data.get("participation_rules_version") == "v3.0" and kind not in data.get(
+        "bonus_types", []
+    ):
+        return []
     return [
         rule for rule in (data.get(f"group_{kind}_rules") or {}).values() if rule.get("enabled")
     ]
+
+
+def _validate_v3_invite_action(data, action):
+    if data.get("participation_rules_version") != "v3.0":
+        return
+    kind = (data.get("bonus_working_copy") or {}).get("kind")
+    invite_action = "invite" in action or kind == "invite"
+    cap_action = "cap" in action or ("limited" in action and "unlimited" not in action)
+    if invite_action and cap_action:
+        raise UserFacingError("本场邀请加成固定不限累计上限")

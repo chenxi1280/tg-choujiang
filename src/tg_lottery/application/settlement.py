@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import exists, func, or_, select
 
+from tg_lottery.application.admission_qualification import behavior_clause
 from tg_lottery.application.base_activity_notifications import notify_unqualified_at_cutoff
 from tg_lottery.application.campaign_targets import qualification_targets
 from tg_lottery.application.draw_commitments import (
@@ -210,7 +211,7 @@ class SettlementService:
             .where(
                 Participant.campaign_id == campaign_id,
                 Participant.qualification_state == QualificationState.ELIGIBLE,
-                Participant.base_qualified.is_(True),
+                behavior_clause(),
                 Participant.private_reachable.is_(True),
             )
             .group_by(Participant.id)

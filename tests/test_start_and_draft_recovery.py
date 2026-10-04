@@ -28,7 +28,10 @@ def _handler() -> LotteryUpdateHandler:
         handle_text=AsyncMock(return_value=True),
         recover_draft_callback=AsyncMock(return_value=False),
     )
-    handler._member_flow = SimpleNamespace(register=AsyncMock())
+    handler._member_flow = SimpleNamespace(
+        register=AsyncMock(),
+        _queries=SimpleNamespace(campaign_by_reference=AsyncMock(return_value=None)),
+    )
     return handler
 
 

@@ -1,6 +1,7 @@
 from sqlalchemy import select
 
 from tg_lottery.application.records import add_outbox
+from tg_lottery.application.rule_publication import queue_rule_states
 from tg_lottery.infrastructure.db import Campaign, CampaignParticipationGroup, Group
 
 
@@ -12,6 +13,7 @@ def add_campaign_card_state(
     state: str,
     winners: list[dict[str, object]] | None = None,
     message_id: int | None = None,
+    rule_chat_id: int | None = None,
 ) -> None:
     remote_message_id = message_id or campaign.published_message_id
     if remote_message_id is None:
@@ -21,6 +23,7 @@ def add_campaign_card_state(
         "message_id": remote_message_id,
         "has_cover": bool(campaign.presentation.get("cover_file_id")),
         "card_state": state,
+        **_rule_text_payload(campaign, rule_chat_id or recipient_chat_id),
     }
     if winners is not None:
         payload["winners"] = winners
@@ -41,6 +44,7 @@ def add_cancelled_campaign_card(
     recipient_chat_id: int,
     *,
     message_id: int | None = None,
+    rule_chat_id: int | None = None,
 ) -> None:
     remote_message_id = message_id or campaign.published_message_id
     if remote_message_id is None:
@@ -56,6 +60,7 @@ def add_cancelled_campaign_card(
             "campaign_name": campaign.name,
             "message_id": remote_message_id,
             "has_cover": bool(campaign.presentation.get("cover_file_id")),
+            **_rule_text_payload(campaign, rule_chat_id or recipient_chat_id),
         },
     )
 
@@ -67,6 +72,7 @@ async def add_campaign_card_state_fanout(
     state: str,
     winners: list[dict[str, object]] | None = None,
 ) -> None:
+    queue_rule_states(session, campaign, state=state)
     rows = await _published_targets(session, campaign.id)
     if not rows:
         group = await session.get(Group, campaign.group_id)
@@ -81,10 +87,12 @@ async def add_campaign_card_state_fanout(
             state=state,
             winners=winners,
             message_id=target.published_message_id,
+            rule_chat_id=target.chat_id_snapshot,
         )
 
 
 async def add_cancelled_campaign_card_fanout(session: object, campaign: Campaign) -> None:
+    queue_rule_states(session, campaign, state="cancelled")
     rows = await _published_targets(session, campaign.id)
     if not rows:
         group = await session.get(Group, campaign.group_id)
@@ -97,6 +105,7 @@ async def add_cancelled_campaign_card_fanout(session: object, campaign: Campaign
             campaign,
             chat_id,
             message_id=target.published_message_id,
+            rule_chat_id=target.chat_id_snapshot,
         )
 
 
@@ -112,3 +121,8 @@ async def _published_targets(session: object, campaign_id: object) -> tuple[obje
         .order_by(CampaignParticipationGroup.position)
     )
     return tuple(rows)
+
+
+def _rule_text_payload(campaign, chat_id):
+    text = (campaign.presentation.get("publication_card_texts") or {}).get(str(chat_id))
+    return {"frozen_rules_text": text} if text else {}

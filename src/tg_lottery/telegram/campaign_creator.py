@@ -15,6 +15,7 @@ from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import creator_group_bonus as group_bonus
 from tg_lottery.telegram.creator_base_activity import CreatorBaseActivity
+from tg_lottery.telegram.creator_behavior_admission import CreatorBehaviorAdmission
 from tg_lottery.telegram.creator_folder_link import CreatorFolderLink
 from tg_lottery.telegram.creator_group_picker import CreatorGroupPicker
 from tg_lottery.telegram.creator_group_selection import (
@@ -56,6 +57,9 @@ class CampaignCreator:
         self._queries = queries
         self._renderer = renderer
         self._settings = settings
+        self._behavior_admission = CreatorBehaviorAdmission(
+            sessions=sessions, renderer=renderer, bot=bot
+        )
         self._base_activity = CreatorBaseActivity(sessions=sessions, renderer=renderer, bot=bot)
         self._folder_link = CreatorFolderLink(sessions=sessions, renderer=renderer)
         self._group_picker = CreatorGroupPicker(
@@ -153,6 +157,9 @@ class CampaignCreator:
         return await self.handle_text(message, session.state, dict(session.data))
 
     async def handle_text(self, message: Message, state: str, data: dict[str, Any]) -> bool:
+        if state == "draft:behavior_admission":
+            await self._behavior_admission.receive(message, data)
+            return
         if state == "draft:base_activity":
             await self._base_activity.receive(message, data)
             return True
@@ -177,6 +184,11 @@ class CampaignCreator:
         return True
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        if grant.action.startswith("draft_gate:"):
+            closed = await self._behavior_admission.handle(query, grant)
+            if closed:
+                await self._show_dashboard(query, grant)
+            return
         if grant.action.startswith("draft_base:"):
             await self._base_activity.handle(query, grant)
             return
@@ -189,13 +201,14 @@ class CampaignCreator:
 
     def handles_action(self, action: str) -> bool:
         return (
-            action.startswith("draft_base:")
+            action.startswith(("draft_base:", "draft_gate:"))
             or action in self._grant_handlers()
             or self._settings.handles_action(action)
         )
 
     def _grant_handlers(self):
         return {
+            "draft_gate": self._behavior_admission.show,
             "draft_base_activity": self._base_activity.show,
             "draft_folder_link": self._folder_link.show,
             "draft_folder_clear": self._folder_link.clear,

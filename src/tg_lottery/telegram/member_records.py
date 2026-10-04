@@ -270,7 +270,7 @@ def _invite_groups(campaign: object, rules: CampaignRules) -> tuple[dict[str, ob
     return tuple(
         {"id": int(item["id"]), "title": chat_title(item)}
         for item in presentation.get("participation_groups") or []
-        if item.get("id") is not None and rules.invite_rule_for(int(item["id"])) is not None
+        if item.get("id") is not None and rules.invite_target_enabled(int(item["id"]))
     )
 
 

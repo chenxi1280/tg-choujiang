@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from types import SimpleNamespace
 from uuid import UUID
 
 from sqlalchemy import select
 
+from tg_lottery.application.admission_qualification import source_qualification_reason
 from tg_lottery.application.group_membership_facts import (
     first_source_matches_invitation,
     observe_existing_member,
@@ -17,6 +19,7 @@ from tg_lottery.infrastructure.db import (
     Campaign,
     CampaignParticipationGroup,
     CampaignReferralRoute,
+    Group,
     Invitation,
     InviteLink,
     Participant,
@@ -41,7 +44,10 @@ async def matches_target_group(session: object, link: InviteLink, chat_id: int |
     target = await session.get(CampaignParticipationGroup, link.participation_group_id)
     if target is None:
         raise ValueError("invite link participation group is missing")
-    return target.chat_id_snapshot == chat_id
+    group = await session.get(Group, target.group_id)
+    if group is None:
+        raise ValueError("invite link group is missing")
+    return chat_id in {target.chat_id_snapshot, group.chat_id}
 
 
 async def participation_target(
@@ -134,21 +140,28 @@ async def invalid_candidate(
     return invitation
 
 
-async def accepts_bonus(
-    session: object,
-    *,
-    link: InviteLink,
-    campaign: Campaign,
-    event_at: datetime,
-) -> bool:
+async def acceptance_reason(session, *, link, campaign, event_at):
+    if campaign.rules.get("participation_rules_version") == "v3.0":
+        inviter = await session.get(Participant, link.participant_id)
+        if inviter is None:
+            raise ValueError("invite link participant is missing")
+        reason = await source_qualification_reason(
+            session, inviter, SimpleNamespace(event_at=event_at)
+        )
+        if reason:
+            return reason
+        hours = campaign.rules.get("invite", {}).get("retention_hours", 24)
+        if event_at > campaign.cutoff_at - timedelta(hours=hours):
+            return "after_bonus_deadline"
     if not campaign_accepts_attribution(campaign, event_at):
-        return False
+        return "after_bonus_deadline"
     if link.referral_route_id is None:
-        return True
+        return None
     route = await session.get(CampaignReferralRoute, link.referral_route_id)
-    return bool(
+    accepted = bool(
         route is not None and route.status == "active" and event_at <= route.bonus_join_deadline
     )
+    return None if accepted else "after_bonus_deadline"
 
 
 async def locked_invitation_by_user(

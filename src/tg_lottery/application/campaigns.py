@@ -25,7 +25,9 @@ from tg_lottery.application.qualification_recovery import (
     retry_qualification_review,
 )
 from tg_lottery.application.records import add_audit, add_job, utcnow
+from tg_lottery.domain.admission import validate_admission_window
 from tg_lottery.domain.enums import CampaignState
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignDraft, CampaignRules, canonical_hash
 from tg_lottery.domain.transitions import require_campaign_transition
 from tg_lottery.infrastructure.db import Campaign, Group, Prize, RuleRevision, TelegramOutbox
@@ -234,6 +236,15 @@ class CampaignService:
             raise ValueError("campaign cutoff must be in the future when published")
         if campaign.draw_at <= campaign.cutoff_at:
             raise ValueError("campaign draw must be after cutoff")
+
+        try:
+            validate_admission_window(
+                CampaignRules.model_validate(campaign.rules),
+                start_at=now,
+                cutoff_at=campaign.cutoff_at,
+            )
+        except ValueError as exc:
+            raise UserFacingError(str(exc)) from exc
 
     def _new_campaign(
         self,

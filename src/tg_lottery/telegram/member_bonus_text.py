@@ -82,6 +82,17 @@ def invite_cap(rule: object) -> str:
     return "不设上限" if rule.cap_mode == "unlimited" else f"上限 {rule.max_bonus_tickets} 次"
 
 
+def invitation_section_title(rules: object) -> str:
+    if rules.admission and rules.admission.type == "invite":
+        return "邀请门槛与加成" if rules.invite_bonus_enabled else "邀请门槛与入口"
+    return "邀请加成"
+
+
+def invitation_category_label(rules: object, total: int) -> str:
+    title = "👥 " + invitation_section_title(rules)
+    return f"{title}｜{total} 次" if rules.invite_bonus_enabled else title
+
+
 def activity_cap(rule: object) -> str:
     return (
         "每日不设上限"

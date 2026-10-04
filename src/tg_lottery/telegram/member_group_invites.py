@@ -146,7 +146,7 @@ def _single_invite_section(
             else []
         )
         return lines, [_permission_refresh_row(campaign.public_ref, group)]
-    if rules.invite_rule_for(chat_id) is None:
+    if not rules.invite_target_enabled(chat_id):
         return [], []
     lines = [
         _invite_group_progress(
@@ -174,6 +174,14 @@ def _invite_group_progress(
 ) -> str:
     rule = rules.invite_rule_for(int(group["id"]))
     deadline = campaign.cutoff_at - timedelta(hours=rules.invite.retention_hours)
+    if rule is None:
+        gate = rules.admission.groups[str(group["id"])]
+        count = progress.valid_invites if progress is not None else 0
+        return (
+            f"· {group['title']}：邀请门槛 {count}/{gate.required_valid_invites} 人；"
+            "邀请加成关闭，人数继续累计。"
+            + _invite_link_note(campaign, status, bonus_deadline=deadline, outcome=outcome)
+        )
     line = _invite_progress_line(
         str(group["title"]),
         rule,
@@ -195,14 +203,9 @@ def _permission_refresh_row(reference: str, group: dict[str, Any]) -> list[Inlin
 def _configured_groups(campaign: object, rules: CampaignRules) -> list[dict[str, Any]]:
     presentation = getattr(campaign, "presentation", {}) or {}
     records = presentation.get("participation_groups") or []
-    enabled = {
-        int(chat_id)
-        for chat_id, rule in (
-            *rules.group_invite_rules.items(),
-            *rules.group_activity_rules.items(),
-        )
-        if rule.enabled
-    }
+    enabled = _bonus_group_ids(rules)
+    if rules.admission and rules.admission.type == "invite":
+        enabled.update(map(int, rules.admission.groups))
     groups = [
         {
             "id": int(item["id"]),
@@ -215,6 +218,12 @@ def _configured_groups(campaign: object, rules: CampaignRules) -> list[dict[str,
     known = {int(item["id"]) for item in groups}
     groups.extend({"id": chat_id, "title": "群聊（名称待更新）"} for chat_id in enabled - known)
     return groups
+
+
+def _bonus_group_ids(rules: CampaignRules) -> set[int]:
+    invites = {int(key) for key in rules.group_invite_rules if rules.invite_rule_for(int(key))}
+    activity = {int(key) for key in rules.group_activity_rules if rules.activity_rule_for(int(key))}
+    return invites | activity
 
 
 def _group_rows(
@@ -378,6 +387,8 @@ def _invite_progress_line(
 ) -> str:
     valid = int(getattr(progress, "valid_invites", 0))
     awarded = int(getattr(progress, "awarded_tickets", 0))
+    if rule is None:
+        return f"· {title}：有效邀请 {valid} 人，邀请加成关闭；门槛进度见下方。"
     if rule.cap_mode == "limited" and awarded >= int(rule.max_bonus_tickets or 0):
         status = f"已达上限 {awarded}/{rule.max_bonus_tickets} 次"
     elif completed:

@@ -70,7 +70,9 @@ def _issue_statement(campaign_id: UUID):
         .where(
             TelegramOutbox.aggregate_type == "campaign",
             TelegramOutbox.aggregate_id == str(campaign_id),
-            TelegramOutbox.operation.in_(("send_campaign_card", "create_required_chat_invite")),
+            TelegramOutbox.operation.in_(
+                ("send_campaign_card", "send_campaign_rules", "create_required_chat_invite")
+            ),
             TelegramOutbox.state.in_((OutboxState.PRE_ACCEPT_FAILED, OutboxState.UNKNOWN_HOLD)),
         )
         .order_by(TelegramOutbox.recipient_chat_id)

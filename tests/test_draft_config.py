@@ -16,6 +16,9 @@ def _complete_draft() -> dict[str, object]:
     data = new_draft(chat_id=-1001, group_title="测试群", timezone="Asia/Shanghai")
     data.update(
         {
+            "participation_rules_version": None,
+            "invite_cap_mode": "limited",
+            "invite_bonus_cap": 3,
             "title": "周末福利",
             "draw_at": "2026-08-09T20:00:00+08:00",
             "prizes": [
@@ -27,10 +30,12 @@ def _complete_draft() -> dict[str, object]:
     return data
 
 
-def test_new_draft_only_requires_three_simple_fields() -> None:
+def test_new_draft_requires_title_prize_time_and_admission() -> None:
     data = new_draft(chat_id=-1001, group_title="测试群", timezone="Asia/Shanghai")
 
-    assert missing_fields(data) == ("抽奖标题", "至少一个奖品", "开奖时间")
+    fields = missing_fields(data)
+    assert fields[:3] == ("抽奖标题", "至少一个奖品", "开奖时间")
+    assert len(fields) == 4 and fields[3].startswith("抽奖门槛")
 
 
 def test_new_draft_does_not_delete_completion_messages_by_default() -> None:

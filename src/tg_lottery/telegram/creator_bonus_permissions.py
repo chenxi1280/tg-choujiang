@@ -18,6 +18,9 @@ async def verify_bonus_action(bot: Bot, user_id: int, data: dict[str, Any], *, a
     if not targets:
         return
     targets.extend((int(key), "activity") for key in data.get("base_activity_rules", {}))
+    gate = data.get("admission") or {}
+    kind = "invite" if gate.get("type") == "invite" else "activity"
+    targets.extend((int(key), kind) for key in gate.get("groups") or {})
     errors = await _permission_errors(bot, user_id, targets, data=data)
     if errors:
         raise UserFacingError("以下群的加成权限需要修复：\n" + "\n".join(errors))
@@ -26,20 +29,33 @@ async def verify_bonus_action(bot: Bot, user_id: int, data: dict[str, Any], *, a
 async def verify_publication_bonus_permissions(
     bot: Bot, user_id: int, data: dict[str, Any]
 ) -> None:
-    targets = [
-        (int(chat_id), "invite")
-        for chat_id, rule in (data.get("group_invite_rules") or {}).items()
-        if rule.get("enabled")
-    ]
-    targets.extend(
-        (int(chat_id), "activity")
-        for chat_id, rule in (data.get("group_activity_rules") or {}).items()
-        if rule.get("enabled")
-    )
-    targets.extend((int(key), "activity") for key in data.get("base_activity_rules", {}))
+    targets = _publication_targets(data)
     errors = await _permission_errors(bot, user_id, targets, data=data)
     if errors:
-        raise UserFacingError("以下群的加成权限需要修复：\n" + "\n".join(errors))
+        raise UserFacingError("以下群的门槛或加成权限需要修复：\n" + "\n".join(errors))
+
+
+def _publication_targets(data: dict[str, Any]) -> list[tuple[int, str]]:
+    targets = _bonus_targets(data, "invite") + _bonus_targets(data, "activity")
+    targets.extend((int(key), "activity") for key in data.get("base_activity_rules", {}))
+    gate = data.get("admission") or {}
+    kind = "invite" if gate.get("type") == "invite" else "activity"
+    targets.extend((int(key), kind) for key in gate.get("groups") or {})
+    return targets
+
+
+def _bonus_targets(data: dict, kind: str) -> list[tuple[int, str]]:
+    if not _module_enabled(data, kind):
+        return []
+    return [
+        (int(chat_id), kind)
+        for chat_id, rule in (data.get(f"group_{kind}_rules") or {}).items()
+        if rule.get("enabled")
+    ]
+
+
+def _module_enabled(data: dict, kind: str) -> bool:
+    return data.get("participation_rules_version") != "v3.0" or kind in data.get("bonus_types", [])
 
 
 def _action_targets(data: dict[str, Any], action: str) -> list[tuple[int, str]]:

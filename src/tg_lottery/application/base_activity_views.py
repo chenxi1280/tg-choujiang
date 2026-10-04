@@ -15,6 +15,14 @@ BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 async def base_progress_text(session: object, campaign: object, participant: object) -> str:
     rules = CampaignRules.model_validate(campaign.rules)
+    if rules.admission is not None:
+        from tg_lottery.application.admission_views import admission_progress_text
+
+        return await admission_progress_text(session, campaign, participant)
+    return await _legacy_progress_text(session, campaign, participant, rules=rules)
+
+
+async def _legacy_progress_text(session, campaign, participant, *, rules):
     if not rules.base_activity_rules:
         return ""
     now = utcnow()

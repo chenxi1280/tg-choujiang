@@ -22,6 +22,7 @@ from tg_lottery.telegram.creator_admission_picker import (
 )
 from tg_lottery.telegram.creator_bonus_permissions import verify_bonus_action
 from tg_lottery.telegram.creator_cover import CreatorCover
+from tg_lottery.telegram.creator_gate_schedule import validate_gate_time
 from tg_lottery.telegram.creator_messages import (
     MESSAGE_DELAYS,
     message_settings_rows,
@@ -34,6 +35,7 @@ from tg_lottery.telegram.creator_required_chats_data import (
     validated_text_changes,
     with_required_chats,
 )
+from tg_lottery.telegram.creator_reuse import reusable_v3_draft
 from tg_lottery.telegram.creator_schedule import quick_draw_at, validate_draw_time
 from tg_lottery.telegram.creator_settings_ui import (
     _back_rows,
@@ -198,11 +200,13 @@ class CreatorSettings:
     async def _set_quick_draw(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         data = await self._required_data(query.from_user.id)
         draw_at = quick_draw_at(grant.action, str(data["timezone"]))
+        validate_gate_time(data, draw_at=draw_at)
         await self._dashboard(query, data | {"draw_mode": "fixed", "draw_at": draw_at.isoformat()})
 
     async def _receive_draw(self, message: Message, data: dict[str, Any]) -> None:
         draw_at = parse_draw_at(message.text or "", str(data["timezone"]))
         validate_draw_time(draw_at)
+        validate_gate_time(data, draw_at=draw_at)
         await self._dashboard_from_message(
             message, data | {"draw_mode": "fixed", "draw_at": draw_at.isoformat()}
         )
@@ -234,6 +238,8 @@ class CreatorSettings:
         current = await self._required_data(query.from_user.id)
         await verify_bonus_action(self._bot, query.from_user.id, current, action=grant.action)
         data = bonus.apply_bonus_action(current, grant.action)
+        if data.get("invite_retention_hours") != current.get("invite_retention_hours"):
+            validate_gate_time(data)
         state = "draft:bonus_input" if data.get("bonus_input_field") else "draft:idle"
         await self._sessions.set(query.from_user.id, state, data)
         text, rows = bonus.bonus_view(data, grant.action)
@@ -423,7 +429,7 @@ class CreatorSettings:
         }
         restored = await restore_required_chats(
             self._bot,
-            ensure_draft_identity(last_draft | protected),
+            reusable_v3_draft(ensure_draft_identity(last_draft | protected)),
             user_id=query.from_user.id,
         )
         await self._dashboard(

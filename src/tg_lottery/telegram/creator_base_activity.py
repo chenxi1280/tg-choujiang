@@ -2,6 +2,7 @@ from typing import Any
 
 from tg_lottery.telegram import creator_base_editor as editor
 from tg_lottery.telegram.creator_bonus_permissions import verify_publication_bonus_permissions
+from tg_lottery.telegram.creator_participation import reject_v3_legacy_gate
 from tg_lottery.telegram.creator_renderer import PanelTarget
 from tg_lottery.telegram.creator_required_chats_data import required_draft_data
 
@@ -34,10 +35,12 @@ class CreatorBaseActivity:
 
     async def show(self, query: Any, _: object) -> None:
         data = await required_draft_data(self._sessions, query.from_user.id)
+        reject_v3_legacy_gate(data)
         await self._render(query, editor.clear_editor(data))
 
     async def handle(self, query: Any, grant: Any) -> None:
         data = await required_draft_data(self._sessions, query.from_user.id)
+        reject_v3_legacy_gate(data)
         changed = editor.apply_action(data, grant.action)
         if grant.action == "draft_base:save":
             await verify_publication_bonus_permissions(self._bot, query.from_user.id, changed)
@@ -55,6 +58,7 @@ class CreatorBaseActivity:
         )
 
     async def receive(self, message: Any, data: dict[str, Any]) -> None:
+        reject_v3_legacy_gate(data)
         changed = editor.receive_value(data, message.text or "")
         await self._sessions.set(message.from_user.id, "draft:base_activity", changed)
         text, rows = self._view(changed)

@@ -9,7 +9,9 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.creator_base_activity import base_rules_text
+from tg_lottery.telegram.creator_behavior_views import admission_summary
 from tg_lottery.telegram.creator_bonus import bonus_summary
+from tg_lottery.telegram.creator_bonus_warnings import bonus_window_warning
 from tg_lottery.telegram.creator_invite_retention import summary as retention_summary
 from tg_lottery.telegram.creator_messages import message_policy_summary
 from tg_lottery.telegram.draft_config import campaign_input, missing_fields
@@ -47,7 +49,7 @@ def preview_text(data: dict[str, Any], *, now: datetime | None = None) -> str:
         f"🌀 开奖方式：{_draw_text(data)}\n\n"
         f"🎅 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}\n\n"
         f"🔔 参与提示：{message_policy_summary(data)}\n\n"
-        f"当前状态：{status}\n"
+        f"当前状态：{status}\n{bonus_window_warning(data, now=now)}"
         "（本页面为预览文案，不是正式效果）"
     )
 
@@ -77,6 +79,8 @@ def dashboard_rows(data: dict[str, Any] | None = None) -> ButtonRows:
             ("奖品内容", "draft_prizes"),
             ("抽奖说明", "draft_description"),
         ],
+        [("抽奖门槛", "draft_gate")],
+        [("每日发言加成", "draft_bonus_activity"), ("邀请加成", "draft_bonus_invite")],
         [("抽奖加成", "draft_rules"), ("开奖方式", "draft_draw"), ("发奖人员", "draft_issuer")],
         [("消息提示", "draft_messages"), ("🎉 发布抽奖", "draft_publish")],
         [("🗑 清空配置", "draft_clear"), ("载入上次抽奖", "draft_load_last")],
@@ -156,4 +160,6 @@ def _prize_lines(prizes: list[dict[str, Any]]) -> str:
 
 
 def _base_summary(data: dict[str, Any]) -> str:
+    if data.get("participation_rules_version") == "v3.0":
+        return admission_summary(data)
     return base_rules_text(data) if data.get("base_activity_rules") else "基础发言门槛：未设置"

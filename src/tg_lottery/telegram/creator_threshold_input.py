@@ -2,7 +2,11 @@ from typing import Any
 
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import MAX_CHAT_MESSAGE_THRESHOLD
-from tg_lottery.telegram.creator_participation import participation_rows, participation_text
+from tg_lottery.telegram.creator_participation import (
+    participation_rows,
+    participation_text,
+    reject_v3_legacy_gate,
+)
 from tg_lottery.telegram.creator_renderer import PanelTarget
 from tg_lottery.telegram.creator_required_chats_data import required_draft_data
 
@@ -14,6 +18,7 @@ class CreatorThresholdInput:
 
     async def show(self, query: Any, grant: Any) -> None:
         data = await required_draft_data(self._sessions, query.from_user.id)
+        reject_v3_legacy_gate(data)
         chat_id = grant.action.rsplit(":", 1)[-1]
         chat = _required_chat(data, chat_id)
         changed = data | {
@@ -43,6 +48,7 @@ class CreatorThresholdInput:
 
 
 def apply_threshold_input(data: dict[str, Any], text: str) -> dict[str, Any]:
+    reject_v3_legacy_gate(data)
     chat_id = str(data["threshold_input_chat"])
     _required_chat(data, chat_id)
     value = text.strip()

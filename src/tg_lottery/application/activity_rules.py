@@ -10,7 +10,7 @@ def activity_chat_ids(campaign: object, main_chat_id: int) -> tuple[int, ...]:
     if not participation:
         return _legacy_activity_chat_ids(main_chat_id, extras)
     rules = CampaignRules.model_validate(getattr(campaign, "rules", {}))
-    if rules.group_activity_rules:
+    if rules.group_activity_rules or rules.participation_rules_version:
         return _configured_activity_ids(rules)
     group_ids = [
         int(chat["id"])
@@ -74,4 +74,8 @@ def activity_min_text_length(rules: CampaignRules, chat_id: int) -> int:
 
 def _configured_activity_ids(rules: CampaignRules) -> tuple[int, ...]:
     enabled = [int(key) for key, rule in rules.group_activity_rules.items() if rule.enabled]
-    return tuple(dict.fromkeys([*enabled, *map(int, rules.base_activity_rules)]))
+    return tuple(
+        dict.fromkeys(
+            [*enabled, *map(int, rules.message_gate_rules), *map(int, rules.message_thresholds)]
+        )
+    )

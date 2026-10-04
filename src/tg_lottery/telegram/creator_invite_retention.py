@@ -25,7 +25,8 @@ def retention_text(hours: int) -> str:
 
 
 def summary(data: dict[str, Any]) -> str:
-    if "invite" not in data.get("bonus_types", []):
+    gate = data.get("admission") or {}
+    if "invite" not in data.get("bonus_types", []) and gate.get("type") != "invite":
         return ""
     return "邀请资格：" + retention_text(retention_hours(data)) + "\n"
 

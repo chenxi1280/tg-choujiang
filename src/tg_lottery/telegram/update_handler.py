@@ -23,6 +23,7 @@ from tg_lottery.telegram import command_input, member_callbacks
 from tg_lottery.telegram.admin_flow import AdminFlow
 from tg_lottery.telegram.bot_permission_reminders import send_bot_permission_reminder
 from tg_lottery.telegram.help_views import DRAFT_UNAVAILABLE_TEXT
+from tg_lottery.telegram.member_activity_landing import open_activity
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.personal_flow import PersonalFlow
 from tg_lottery.telegram.public_projection import public_error_text
@@ -160,7 +161,7 @@ class LotteryUpdateHandler:
 
     async def _start_payload(self, message: Message, payload: str) -> bool:
         if payload.startswith("join_"):
-            await self._member_flow.register(message, payload.removeprefix("join_"))
+            await open_activity(self._member_flow, message, payload.removeprefix("join_"))
             return True
         if payload.startswith("rules_"):
             await self._member_flow.show_rules(message, payload.removeprefix("rules_"))

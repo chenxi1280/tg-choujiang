@@ -4,6 +4,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.admission_qualification import behavior_clause
 from tg_lottery.application.full_draw import record_full_draw_candidate
 from tg_lottery.application.records import add_audit
 from tg_lottery.domain.enums import CampaignState, JobState, QualificationState, UpdateState
@@ -114,7 +115,7 @@ async def _reconcile_full_draw(session: AsyncSession, campaign_id: object, now: 
         select(func.count(Participant.id)).where(
             Participant.campaign_id == campaign.id,
             Participant.qualification_state == QualificationState.ELIGIBLE,
-            Participant.base_qualified.is_(True),
+            behavior_clause(),
         )
     )
     if int(eligible or 0) < rules.participant_target:

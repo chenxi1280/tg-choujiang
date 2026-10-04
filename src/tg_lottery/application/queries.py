@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.admission_qualification import behavior_clause
 from tg_lottery.application.campaign_outcomes import (
     TERMINAL_CAMPAIGN_STATES,
     CampaignOutcomeFacts,
@@ -398,7 +399,7 @@ class QueryService:
                 select(func.count(Participant.id)).where(
                     Participant.campaign_id == campaign_id,
                     Participant.qualification_state == QualificationState.ELIGIBLE,
-                    Participant.base_qualified.is_(True),
+                    behavior_clause(),
                 )
             )
             return int(count or 0)

@@ -8,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tg_lottery.application.campaign_notifications import add_cancelled_campaign_card
 from tg_lottery.application.records import add_outbox, utcnow
 from tg_lottery.application.required_chat_links import project_required_chat_operation
+from tg_lottery.application.rule_publication import project_rule_page
+from tg_lottery.domain.admission import validate_admission_window
 from tg_lottery.domain.enums import CampaignState
+from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import (
     Campaign,
     CampaignParticipationGroup,
@@ -30,6 +33,8 @@ async def project_outbox_success(
     *,
     cipher: SecretCipher,
 ) -> None:
+    if await project_rule_page(session, row):
+        return
     if await project_required_chat_operation(session, row, result, cipher=cipher):
         return
     if row.operation == "send_campaign_card":
@@ -117,6 +122,15 @@ async def _project_multi_group_card(
         )
     )
     if pending is None:
+        try:
+            validate_admission_window(
+                CampaignRules.model_validate(campaign.rules),
+                start_at=utcnow(),
+                cutoff_at=campaign.cutoff_at,
+            )
+        except ValueError as exc:
+            campaign.presentation = campaign.presentation | {"publication_window_error": str(exc)}
+            return
         campaign.state = (
             CampaignState.RUNNING if utcnow() >= campaign.preheat_at else CampaignState.SCHEDULED
         )

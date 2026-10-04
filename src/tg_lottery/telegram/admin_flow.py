@@ -358,7 +358,10 @@ def _issues_text(title: str, issues: tuple[PublicationIssue, ...]) -> str:
         state = _publication_issue_state(issue.state)
         name = chat_title({"id": issue.chat_id, "title": issue.title})
         reason = publication_error_text(issue.error)
-        stage = "生成加入入口" if issue.operation == "create_required_chat_invite" else "发送活动卡"
+        stage = {
+            "create_required_chat_invite": "生成加入入口",
+            "send_campaign_rules": "发送完整规则页",
+        }.get(issue.operation, "发送活动卡")
         lines.append(f"• {name} · {stage}\n  {state}：{reason}")
     return "\n".join(lines)
 
@@ -372,6 +375,8 @@ def _publication_issue_state(state: OutboxState) -> str:
 def _publication_status_note(campaign: object) -> str:
     if campaign.state is not CampaignState.PUBLISHING:
         return ""
+    if campaign.presentation.get("publication_window_error"):
+        return "\n\n发布延迟导致门槛不可完成: " + campaign.presentation["publication_window_error"]
     if campaign.cutoff_at <= utcnow():
         return "\n\n活动已过截止时间，但发布尚未完成。请取消此活动后创建新的抽奖。"
-    return "\n\n全部参与群活动卡确认送达后才正式开始；入口生成异常也会显示在发布异常中。"
+    return "\n\n全部参与群完整规则页和活动卡确认送达后才正式开始；投递异常请查看发布异常。"

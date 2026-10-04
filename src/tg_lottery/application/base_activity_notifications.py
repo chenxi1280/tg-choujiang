@@ -2,18 +2,22 @@ from datetime import timedelta
 
 from sqlalchemy import func, select
 
-from tg_lottery.application.progress_notifications import queue_progress_notice
+from tg_lottery.application.admission_qualification import behavior_clause
+from tg_lottery.application.progress_notifications import (
+    flush_progress_notices,
+    queue_progress_notice,
+)
 from tg_lottery.infrastructure.db import BaseActivityEvent, Participant
 
 
 async def notify_unqualified_at_cutoff(session: object, campaign: object) -> None:
     rules = campaign.rules.get("base_activity_rules") or {}
+    gate = campaign.rules.get("admission") or {}
+    rules = gate.get("groups") or rules
     if not rules:
         return
     participants = await session.scalars(
-        select(Participant).where(
-            Participant.campaign_id == campaign.id, Participant.base_qualified.is_(False)
-        )
+        select(Participant).where(Participant.campaign_id == campaign.id, ~behavior_clause())
     )
     for participant in participants:
         await queue_progress_notice(
@@ -23,9 +27,15 @@ async def notify_unqualified_at_cutoff(session: object, campaign: object) -> Non
             chat_id=int(next(iter(rules))),
             key=f"base_cutoff:{participant.id}",
             text=(
-                "本期报名已截止: 基础发言门槛未完成, 本期不能参与开奖。"
-                "已累计加成保留记录, 本期不生效。"
+                "本期报名已截止: 行为门槛未完成, 本期不能参与开奖。已累计加成保留记录, 本期不生效。"
             ),
+        )
+        await flush_progress_notices(
+            session,
+            campaign=campaign,
+            participant=participant,
+            source_ref="cutoff",
+            event_at=campaign.cutoff_at,
         )
 
 

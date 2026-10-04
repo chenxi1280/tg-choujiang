@@ -1,6 +1,7 @@
 from typing import Any
 
 from tg_lottery.telegram.creator_base_activity import base_rules_text
+from tg_lottery.telegram.creator_behavior_views import admission_summary
 from tg_lottery.telegram.creator_views import preview_text
 from tg_lottery.telegram.draft_config import rules_from_data
 from tg_lottery.telegram.member_condition_views import condition_instruction, human_rule
@@ -13,7 +14,12 @@ def rule_review_pages(data: dict[str, Any]) -> tuple[str, ...]:
     chats = tuple(data.get("participation_groups") or []) + tuple(data.get("required_chats") or [])
     overview = preview_text(data).replace("🎰 抽奖预览", "📋 发布前完整规则")
     overview = overview.replace("（本页面为预览文案，不是正式效果）", "")
-    sections = [overview, base_rules_text(data), "逐项参与条件（必须全部满足）"]
+    gate = (
+        admission_summary(data)
+        if data.get("participation_rules_version")
+        else base_rules_text(data)
+    )
+    sections = [overview, gate, "逐项参与条件（必须全部满足）"]
     sections.extend(condition_instruction(chat, rules) for chat in chats)
     sections.extend(
         [

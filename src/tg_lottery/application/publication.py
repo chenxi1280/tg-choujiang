@@ -4,6 +4,7 @@ from sqlalchemy import select
 
 from tg_lottery.application.campaign_targets import uses_multi_group_contract
 from tg_lottery.application.records import add_outbox
+from tg_lottery.application.rule_publication import prepare_rule_publication
 from tg_lottery.domain.public_refs import new_invite_link_name
 from tg_lottery.infrastructure.db import (
     Campaign,
@@ -59,6 +60,13 @@ def add_campaign_card_outbox(
     bot_username: str,
     prizes: Sequence[Prize],
 ) -> None:
+    payload = campaign_card_payload(campaign, bot_username, prizes)
+    if campaign.rules.get("participation_rules_version") == "v3.0":
+        payload, deferred = prepare_rule_publication(
+            session, campaign=campaign, chat_id=recipient_chat_id, payload=payload
+        )
+        if deferred:
+            return
     add_outbox(
         session,
         operation="send_campaign_card",
@@ -66,7 +74,7 @@ def add_campaign_card_outbox(
         aggregate_id=str(campaign.id),
         recipient_chat_id=recipient_chat_id,
         business_key=(f"publish:{campaign.id}:{campaign.config_revision}:{recipient_chat_id}"),
-        payload=campaign_card_payload(campaign, bot_username, prizes),
+        payload=payload,
     )
 
 
@@ -81,7 +89,12 @@ def campaign_card_payload(
         "draw_at": campaign.draw_at.isoformat(),
         "timezone": campaign.timezone,
         "bot_username": bot_username,
-        "presentation": campaign.presentation,
+        "presentation": {
+            key: value
+            for key, value in campaign.presentation.items()
+            if key
+            not in {"publication_rule_manifest", "rule_state_intents", "publication_card_texts"}
+        },
         "rules": campaign.rules,
         "prizes": [
             {

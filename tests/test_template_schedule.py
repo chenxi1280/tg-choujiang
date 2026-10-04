@@ -14,6 +14,7 @@ from tg_lottery.telegram.draft_config import new_draft
 def _complete_draft():
     return new_draft() | {
         "chat_id": -1001,
+        "admission": {"type": "message", "groups": {"-1001": {"daily_messages": 1}}},
         "group_title": "测试群",
         "title": "旧测试活动",
         "prizes": [{"name": "测试奖品", "winner_count": 1}],

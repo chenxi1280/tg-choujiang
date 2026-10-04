@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from tg_lottery.application.admission_invites import update_invite_admission
 from tg_lottery.application.group_membership_facts import (
     MembershipObservation,
     first_source_matches_invitation,
@@ -21,7 +22,7 @@ from tg_lottery.application.invitation_models import (
     campaign_accepts_attribution,
 )
 from tg_lottery.application.invitation_records import (
-    accepts_bonus,
+    acceptance_reason,
     invalid_candidate,
     is_self_invite,
     link_and_campaign,
@@ -42,6 +43,7 @@ from tg_lottery.application.operational_blocks import (
     has_active_target_block,
 )
 from tg_lottery.application.ports import UnitOfWorkFactory
+from tg_lottery.application.progress_notifications import flush_progress_notices
 from tg_lottery.application.records import add_job
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import CampaignState, InvitationState
@@ -53,6 +55,7 @@ from tg_lottery.infrastructure.db import (
     Group,
     Invitation,
     InviteLink,
+    Participant,
 )
 
 
@@ -88,15 +91,16 @@ class InvitationService:
                     observation=observation,
                     reason="existing_member",
                 )
-            if not await accepts_bonus(
+            reason = await acceptance_reason(
                 uow.session, link=link, campaign=campaign, event_at=observation.event_at
-            ):
+            )
+            if reason:
                 return await invalid_candidate(
                     uow.session,
                     link=link,
                     campaign=campaign,
                     observation=observation,
-                    reason="after_bonus_deadline",
+                    reason=reason,
                 )
             return await upsert_candidate(
                 uow.session,
@@ -137,15 +141,16 @@ class InvitationService:
                 observation=observation,
                 reason="existing_member",
             )
-        if not await accepts_bonus(
+        reason = await acceptance_reason(
             session, link=link, campaign=campaign, event_at=observation.event_at
-        ):
+        )
+        if reason:
             return await invalid_candidate(
                 session,
                 link=link,
                 campaign=campaign,
                 observation=observation,
-                reason="after_bonus_deadline",
+                reason=reason,
             )
         invitation = await upsert_candidate(
             session, link=link, campaign=campaign, observation=observation
@@ -345,16 +350,12 @@ class InvitationService:
             invitation.validation_error = "invitee_activity_not_met"
             invitation.final_reason = "invitee_activity_not_met"
             return invitation
-        await award_invitation_bonus(
+        return await _confirm_valid_invitation(
             session,
             invitation=invitation,
             campaign=campaign,
             rules=rules,
         )
-        invitation.state = InvitationState.VALID
-        invitation.validation_error = None
-        invitation.final_reason = None
-        return invitation
 
     async def _locked_invitation_campaign(
         self, session: object, invitation_id: UUID
@@ -450,3 +451,28 @@ async def _observe_join_membership(
         user_id=observation.invitee_user_id,
         observed_at=observation.event_at,
     )
+
+
+async def _confirm_valid_invitation(session: object, *, invitation, campaign, rules):
+    await award_invitation_bonus(
+        session,
+        invitation=invitation,
+        campaign=campaign,
+        rules=rules,
+    )
+    invitation.state = InvitationState.VALID
+    await session.flush()
+    await update_invite_admission(session, campaign=campaign, invitation=invitation)
+    participant = await session.get(Participant, invitation.inviter_participant_id)
+    if participant is None:
+        raise ValueError("inviter participant is missing")
+    await flush_progress_notices(
+        session,
+        campaign=campaign,
+        participant=participant,
+        source_ref=f"invitation:{invitation.id}:{invitation.validation_version}",
+        event_at=invitation.due_at or invitation.joined_at,
+    )
+    invitation.validation_error = None
+    invitation.final_reason = None
+    return invitation

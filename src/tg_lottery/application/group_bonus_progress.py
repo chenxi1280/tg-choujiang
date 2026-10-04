@@ -177,8 +177,11 @@ def _build_progress(
 ) -> GroupBonusProgress:
     invitations = []
     activities = []
-    for chat_id, rule in rules.group_invite_rules.items():
-        if rule.enabled:
+    invite_ids = set(rules.group_invite_rules)
+    if rules.admission and rules.admission.type == "invite":
+        invite_ids.update(rules.admission.groups)
+    for chat_id in invite_ids:
+        if rules.invite_target_enabled(int(chat_id)):
             group_id = _required_group_id(group_ids, int(chat_id))
             awarded = sum(
                 ticket_totals.get((group_id, source), 0)
@@ -187,8 +190,8 @@ def _build_progress(
             invitations.append(
                 InviteGroupProgress(int(chat_id), invite_counts.get(group_id, 0), awarded)
             )
-    for chat_id, rule in rules.group_activity_rules.items():
-        if rule.enabled:
+    for chat_id in rules.group_activity_rules:
+        if rules.activity_rule_for(int(chat_id)) is not None:
             group_id = _required_group_id(group_ids, int(chat_id))
             progress = daily.get(group_id)
             activities.append(

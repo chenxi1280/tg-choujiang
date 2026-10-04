@@ -3,6 +3,7 @@
 from hashlib import sha256
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 
 from tg_lottery.application.activity import MessageObservation
 from tg_lottery.application.message_rules import (
@@ -10,8 +11,10 @@ from tg_lottery.application.message_rules import (
     normalize_text,
     rejection_reason,
 )
+from tg_lottery.application.message_threshold_notices import notify_threshold_crossing
 from tg_lottery.application.ports import UnitOfWorkFactory
-from tg_lottery.infrastructure.db import UserGroupMessageTotal
+from tg_lottery.application.request_context import current_update_id
+from tg_lottery.infrastructure.db import MessageTotalEvent, UserGroupMessageTotal
 
 
 class MessageStatsService:
@@ -24,6 +27,15 @@ class MessageStatsService:
             return
         content_hash = sha256(normalized.encode()).hexdigest()
         async with self._uow_factory() as uow:
+            await uow.session.execute(
+                insert(UserGroupMessageTotal)
+                .values(
+                    user_id=observation.user_id,
+                    chat_id=observation.chat_id,
+                    total_count=0,
+                )
+                .on_conflict_do_nothing(index_elements=["user_id", "chat_id"])
+            )
             total = await uow.session.scalar(
                 select(UserGroupMessageTotal)
                 .where(
@@ -32,19 +44,26 @@ class MessageStatsService:
                 )
                 .with_for_update()
             )
-            if total is None:
-                total = UserGroupMessageTotal(
-                    user_id=observation.user_id,
+            event_id = await uow.session.scalar(
+                insert(MessageTotalEvent)
+                .values(
                     chat_id=observation.chat_id,
-                    total_count=0,
+                    message_id=observation.message_id,
+                    user_id=observation.user_id,
+                    event_at=observation.event_at,
+                    content_hash=content_hash,
+                    accepted=total.last_content_hash != content_hash,
+                    source_update_id=current_update_id(),
                 )
-                uow.session.add(total)
-                await uow.session.flush()
-            if total.last_content_hash == content_hash:
+                .on_conflict_do_nothing(index_elements=["chat_id", "message_id"])
+                .returning(MessageTotalEvent.id)
+            )
+            if event_id is None or total.last_content_hash == content_hash:
                 return
             total.total_count += 1
             total.last_content_hash = content_hash
             total.last_message_at = observation.event_at
+            await notify_threshold_crossing(uow.session, observation, count=total.total_count)
 
     async def totals(self, user_id: int, chat_ids: tuple[int, ...]) -> dict[int, int]:
         if not chat_ids:

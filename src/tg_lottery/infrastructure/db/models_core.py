@@ -199,6 +199,12 @@ class Participant(Base, UuidPkMixin, TimestampMixin):
     registered_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     registered_source_update_id: Mapped[int | None] = mapped_column(BigInteger)
     base_qualified: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    admission_qualified: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
+    registration_intent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    counting_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    counting_started_update_id: Mapped[int | None] = mapped_column(BigInteger)
     ticket_total_cache: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     registered_via_participation_group_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("campaign_participation_groups.id", ondelete="SET NULL")

@@ -22,6 +22,8 @@ from tg_lottery.telegram.member_bonus_navigation import (
 from tg_lottery.telegram.member_bonus_text import (
     HISTORICAL_CAMPAIGN_STATES,
     bonus_closed_notice,
+    invitation_category_label,
+    invitation_section_title,
     invite_bonus_completed,
     invite_list_prompt,
 )
@@ -78,8 +80,12 @@ async def build_bonus_overview(
         bot_username=bot_username,
         unavailable=unavailable,
     )
-    has_invites = any(rule.enabled for rule in context.rules.group_invite_rules.values())
-    has_activity = any(rule.enabled for rule in context.rules.group_activity_rules.values())
+    has_invites = any(
+        context.rules.invite_target_enabled(int(group["id"])) for group in context.groups
+    )
+    has_activity = any(
+        context.rules.activity_rule_for(int(group["id"])) for group in context.groups
+    )
     if not has_invites and not has_activity:
         raise UserFacingError("本期抽奖没有可展示的逐群加成")
     if has_invites and not has_activity:
@@ -228,7 +234,7 @@ def _category_payload(context: BonusViewContext) -> tuple[str, InlineKeyboardMar
     rows = [
         [
             InlineKeyboardButton(
-                text=f"👥 邀请加成｜{invite_total} 次",
+                text=invitation_category_label(context.rules, invite_total),
                 callback_data=f"member:bonus_invites:{ref}:0",
             )
         ],
@@ -247,13 +253,11 @@ def build_invite_group_list(
     context: BonusViewContext, *, page: int
 ) -> tuple[str, InlineKeyboardMarkup]:
     groups = tuple(
-        group
-        for group in context.groups
-        if context.rules.invite_rule_for(int(group["id"])) is not None
+        group for group in context.groups if context.rules.invite_target_enabled(int(group["id"]))
     )
     visible, selected, total_pages = _visible_page(groups, page)
     lines = [
-        _header(context.campaign, "邀请加成", outcome=context.outcome),
+        _header(context.campaign, invitation_section_title(context.rules), outcome=context.outcome),
         invite_list_prompt(
             context.campaign,
             retention_hours=context.rules.invite.retention_hours,
@@ -351,15 +355,19 @@ def _invite_group_detail(
 ) -> tuple[str, InlineKeyboardMarkup]:
     group = _required_group(context, chat_id)
     rule = context.rules.invite_rule_for(chat_id)
-    if rule is None:
-        raise ValueError("该群未开启邀请加成")
+    if not context.rules.invite_target_enabled(chat_id):
+        raise ValueError("该群未开启邀请门槛或加成")
     status = context.link_statuses.get(chat_id)
     progress = context.invite_progress.get(chat_id)
     deadline = context.campaign.cutoff_at - timedelta(hours=context.rules.invite.retention_hours)
     completed = _invite_bonus_completed(context)
     lines = [
-        _header(context.campaign, f"{group['title']} 邀请加成", outcome=context.outcome),
-        f"规则：每 {rule.invites_per_cycle} 名有效新成员 +1；{_invite_cap(rule)}",
+        _header(
+            context.campaign,
+            f"{group['title']} {invitation_section_title(context.rules)}",
+            outcome=context.outcome,
+        ),
+        _invite_rule_text(rule),
         f"最晚计奖入群：{format_public_time(deadline, context.campaign.timezone)}",
         _invite_progress_line(str(group["title"]), rule, progress, completed=completed),
         _invite_link_note(
@@ -483,3 +491,9 @@ def _invite_bonus_completed(context: BonusViewContext) -> bool:
     return invite_bonus_completed(
         context.campaign, retention_hours=context.rules.invite.retention_hours
     )
+
+
+def _invite_rule_text(rule):
+    if rule is None:
+        return "邀请加成关闭; 有效邀请仍用于本场门槛。"
+    return f"规则：每 {rule.invites_per_cycle} 名有效新成员 +1；{_invite_cap(rule)}"

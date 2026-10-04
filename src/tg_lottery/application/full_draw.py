@@ -4,6 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import exists, func, or_, select
 
+from tg_lottery.application.admission_qualification import behavior_clause
 from tg_lottery.application.campaign_notifications import add_campaign_card_state_fanout
 from tg_lottery.application.campaign_targets import QualificationTarget, qualification_targets
 from tg_lottery.application.campaigns import request_early_cutoff
@@ -134,7 +135,7 @@ async def _fresh_eligible_count(session: object, campaign: Campaign, candidate_a
         select(func.count(Participant.id)).where(
             Participant.campaign_id == campaign.id,
             Participant.qualification_state == QualificationState.ELIGIBLE,
-            Participant.base_qualified.is_(True),
+            behavior_clause(),
             fresh_eligible,
         )
     )

@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from tg_lottery.domain.admission import Admission, validate_admission_window
+
 MAX_ACTIVITY_MESSAGE_THRESHOLD = 10_000
 MAX_ACTIVITY_REWARD_TICKETS = 100
 MAX_CHAT_MESSAGE_THRESHOLD = 500
@@ -97,6 +99,8 @@ class BaseActivityRule(BaseModel, frozen=True):
 
 
 class CampaignRules(BaseModel, frozen=True):
+    participation_rules_version: Literal["v3.0"] | None = None
+    admission: Admission | None = None
     timezone: str = "Asia/Shanghai"
     activity: ActivityRule = ActivityRule()
     invite: InviteRule = InviteRule()
@@ -114,6 +118,50 @@ class CampaignRules(BaseModel, frozen=True):
     message_thresholds: dict[str, int] = Field(default_factory=dict)
     group_invite_rules: dict[str, GroupInviteRule] = Field(default_factory=dict)
     group_activity_rules: dict[str, GroupActivityRule] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_admission_contract(self) -> CampaignRules:
+        if self.participation_rules_version is None:
+            if self.admission is not None:
+                raise ValueError("admission requires an explicit participation rules version")
+            return self
+        if self.admission is None:
+            raise ValueError("V3.0 requires one admission mode")
+        if self.base_activity_rules or self.message_thresholds:
+            raise ValueError("V3.0 cannot combine admission with legacy thresholds")
+        if self.invite.require_activity:
+            raise ValueError("V3.0 invited members do not require activity")
+        self._validate_unlimited_invites()
+        return self
+
+    def _validate_unlimited_invites(self) -> None:
+        if self.invite_bonus_enabled:
+            if self.invite.max_bonus_tickets is not None:
+                raise ValueError("V3.0 invitation bonuses must be unlimited")
+            if any(rule.cap_mode != "unlimited" for rule in self.group_invite_rules.values()):
+                raise ValueError("V3.0 group invitation bonuses must be unlimited")
+
+    @property
+    def message_gate_rules(self) -> dict[str, BaseActivityRule]:
+        if self.admission is None:
+            return self.base_activity_rules
+        if self.admission.type != "message":
+            return {}
+        return {
+            key: BaseActivityRule.model_validate(rule.model_dump())
+            for key, rule in self.admission.groups.items()
+        }
+
+    def invite_target_enabled(self, chat_id: int) -> bool:
+        gate = self.admission
+        return bool(
+            self.invite_rule_for(chat_id)
+            or (gate and gate.type == "invite" and str(chat_id) in gate.groups)
+        )
+
+    @property
+    def invitation_enabled(self) -> bool:
+        return self.invite_bonus_enabled or bool(self.admission and self.admission.type == "invite")
 
     @model_validator(mode="after")
     def validate_message_thresholds(self) -> CampaignRules:
@@ -152,10 +200,14 @@ class CampaignRules(BaseModel, frozen=True):
         return "activity" in self.bonus_types
 
     def invite_rule_for(self, chat_id: int) -> GroupInviteRule | None:
+        if self.admission is not None and not self.invite_bonus_enabled:
+            return None
         rule = self.group_invite_rules.get(str(chat_id))
         return rule if rule is not None and rule.enabled else None
 
     def activity_rule_for(self, chat_id: int) -> GroupActivityRule | None:
+        if self.admission is not None and not self.activity_bonus_enabled:
+            return None
         rule = self.group_activity_rules.get(str(chat_id))
         return rule if rule is not None and rule.enabled else None
 
@@ -193,6 +245,7 @@ class CampaignDraft(BaseModel, frozen=True):
         _validate_group_identity(self.group_id, group_ids)
         _validate_requirement_scope(group_ids, self.rules, self.presentation)
         _validate_bonus_scope(group_ids, self.rules)
+        validate_admission_window(self.rules, start_at=self.preheat_at, cutoff_at=self.cutoff_at)
         return self
 
     @property
@@ -237,6 +290,8 @@ def _validate_bonus_scope(group_ids: tuple[int, ...], rules: CampaignRules) -> N
             *rules.base_activity_rules,
         )
     }
+    if rules.admission is not None:
+        bonus_chat_ids.update(map(int, rules.admission.groups))
     unknown = bonus_chat_ids.difference(group_ids)
     if unknown:
         raise ValueError(f"group bonus rules require participation groups: {sorted(unknown)}")

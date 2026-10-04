@@ -15,20 +15,19 @@ from tg_lottery.infrastructure.db import InviteLink
 from tg_lottery.presentation.draw_messages import draw_result_text as _draw_result_text
 from tg_lottery.presentation.draw_messages import winner_notice_text
 from tg_lottery.presentation.mentions import (
-    CAPTION_UTF16_LIMIT,
-    MESSAGE_UTF16_LIMIT,
-    html_utf16_length,
     user_mention,
 )
 from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
 from tg_lottery.telegram.crypto import SecretCipher
+from tg_lottery.telegram.gateway_card_states import (
+    campaign_state_card_text as _campaign_state_card_text,
+)
 from tg_lottery.telegram.gateway_invite_delivery import invite_delivery_content
 from tg_lottery.telegram.gateway_requests import GatewayRequest
 from tg_lottery.telegram.public_projection import BEIJING_TIMEZONE, public_timezone_label
 from tg_lottery.telegram.remote_serialization import remote_object
 
 _LOGGER = logging.getLogger(__name__)
-_CARD_WINNER_LIMIT = 8
 
 
 @dataclass(frozen=True)
@@ -50,6 +49,8 @@ class TelegramGateway:
     ) -> GatewayResult:
         handlers = {
             "send_campaign_card": self._send_campaign_card,
+            "send_campaign_rules": self._campaign_rules,
+            "edit_campaign_rules": self._campaign_rules,
             "edit_campaign_card_cancelled": self._edit_campaign_card_cancelled,
             "edit_campaign_card_state": self._edit_campaign_card_state,
             "create_invite_link": self._create_invite_link,
@@ -76,6 +77,10 @@ class TelegramGateway:
             f"{mention}\n{html.escape(str(payload['campaign_name']))}\n"
             f"{html.escape(str(payload['text']))}\n{html.escape(str(payload['ticket_status']))}"
         )
+        if payload.get("occurred_at"):
+            from tg_lottery.telegram.public_projection import format_public_time
+
+            text += "\n完成时间: " + format_public_time(payload["occurred_at"], "Asia/Shanghai")
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
             text,
@@ -95,6 +100,11 @@ class TelegramGateway:
         return GatewayResult(
             remote_result=remote_object(message), remote_message_id=message.message_id
         )
+
+    async def _campaign_rules(self, outbox, invite_link):
+        from tg_lottery.telegram.gateway_rule_pages import deliver_rule_page
+
+        return await deliver_rule_page(self._bot, outbox)
 
     async def _send_campaign_card(
         self, outbox: GatewayRequest, _: InviteLink | None
@@ -140,6 +150,8 @@ class TelegramGateway:
         message_id = int(payload["message_id"])
         name = html.escape(str(payload["campaign_name"]))
         text = f"🎰 <b>{name}</b>\n\n活动已取消，报名入口已关闭。"
+        if payload.get("frozen_rules_text"):
+            text = "活动已取消，报名入口已关闭。\n\n" + payload["frozen_rules_text"]
         if payload.get("has_cover"):
             result = await self._bot.edit_message_caption(
                 caption=text,
@@ -301,7 +313,9 @@ def _campaign_deep_link(payload: dict[str, Any], action: str) -> str:
 def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
     rules = payload.get("rules") or {}
     ref = str(payload["campaign_ref"])
-    rows = [[InlineKeyboardButton(text="🎫 立即参与", url=_campaign_deep_link(payload, "join"))]]
+    rows = [
+        [InlineKeyboardButton(text="🎫 查看条件并参与", url=_campaign_deep_link(payload, "join"))]
+    ]
     if _bonus_enabled(rules):
         rows.append([InlineKeyboardButton(text="🔋 我的加成", callback_data=f"member:bonus:{ref}")])
     rows.append(
@@ -329,6 +343,13 @@ def _campaign_conditions(payload: dict[str, Any]) -> tuple[dict[str, Any], ...]:
 
 
 def _campaign_card_text(payload: dict[str, Any]) -> str:
+    if payload.get("rendered_card_text"):
+        return str(payload["rendered_card_text"])
+    if (payload.get("rules") or {}).get("participation_rules_version") == "v3.0":
+        from tg_lottery.presentation.participation_rules import rule_manifest
+
+        text, _ = rule_manifest(payload)
+        return text
     timezone = payload.get("timezone")
     if not timezone:
         raise ValueError("campaign card timezone is required")
@@ -455,34 +476,3 @@ def _bonus_enabled(rules: dict[str, Any]) -> bool:
     if bonus_types is None:
         return rules.get("luck_mode") != "off"
     return bool(set(bonus_types) & {"invite", "activity"})
-
-
-def _campaign_state_card_text(payload: dict[str, Any]) -> str:
-    state = str(payload["card_state"])
-    status = {
-        "settling": "报名已截止，正在复核资格并结算抽奖次数。",
-        "drawn": "本期已经开奖，报名入口已关闭，请查看最新开奖结果。",
-    }.get(state)
-    if status is None:
-        raise ValueError("unsupported campaign card state")
-    name = html.escape(str(payload["campaign_name"]))
-    text = f"🎰 <b>{name}</b>\n\n{status}"
-    return _with_winner_summary(text, payload)
-
-
-def _with_winner_summary(text: str, payload: dict[str, Any]) -> str:
-    winners = payload.get("winners") or []
-    if not winners:
-        return text
-    prefix = text + "\n\n🏆 中奖者：\n"
-    footer = f"共 {len(winners)} 个中奖名额（完整名单见群内结果公告）"
-    limit = CAPTION_UTF16_LIMIT if payload.get("has_cover") else MESSAGE_UTF16_LIMIT
-    rows: list[str] = []
-    for winner in winners[:_CARD_WINNER_LIMIT]:
-        candidate = [*rows, f"• {user_mention(winner)}"]
-        if html_utf16_length(prefix + "\n".join([*candidate, footer])) > limit:
-            break
-        rows = candidate
-    if len(rows) < len(winners):
-        rows.append(footer)
-    return prefix + "\n".join(rows)

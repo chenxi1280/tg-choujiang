@@ -84,14 +84,14 @@ def _validate_request(
     if campaign is None or participant is None or target is None:
         raise UserFacingError("仅合格参与者可获取本活动群邀请链接")
     rules = CampaignRules.model_validate(campaign.rules)
-    if rules.invite_rule_for(chat_id) is None:
-        raise UserFacingError("该群未开启邀请加成")
+    if not rules.invite_target_enabled(target.chat_id_snapshot):
+        raise UserFacingError("该群未开启邀请门槛或邀请加成")
     deadline = campaign.cutoff_at - timedelta(hours=rules.invite.retention_hours)
     now = utcnow()
     if now > deadline:
         raise UserFacingError("本期最晚计奖入群时间已过\n仍可通过普通入口加入群聊")
     if not campaign_accepts_attribution(campaign, now):
-        raise UserFacingError("活动当前不接受新增邀请加成入口")
+        raise UserFacingError("活动当前不接受新增邀请入口")
 
 
 async def _require_target_available(session: object, request: GroupInviteLinkRequest) -> None:

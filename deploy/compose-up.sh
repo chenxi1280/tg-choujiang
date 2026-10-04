@@ -22,6 +22,10 @@ export RELEASE_SHA="${RELEASE_SHA:-${RELEASE_ID##*_}}"
 echo "==> Pulling application image"
 compose pull app worker migrate
 
+# Inspect executable image capability before migrations or runtime replacement.
+rule_capabilities="$(compose run --rm --no-deps -T app python -m tg_lottery.rule_capabilities --describe)"
+compose run --rm --no-deps -T app python -m tg_lottery.rule_capabilities --check "$rule_capabilities"
+
 echo "==> Backing up application database"
 APP_DIR="$APP_DIR" BASE_DIR="$BASE_DIR" ENV_FILE="$ENV_FILE" IMAGE_ENV_FILE="$IMAGE_ENV_FILE" \
   bash "$SCRIPT_DIR/backup-database.sh"

@@ -175,7 +175,7 @@ async def show_bonus_message(
 async def _bonus_payload(
     flow: "MemberFlow", campaign: object, rules: CampaignRules, *, user_id: int
 ) -> tuple[str, InlineKeyboardMarkup]:
-    if rules.group_invite_rules or rules.group_activity_rules:
+    if rules.admission or rules.group_invite_rules or rules.group_activity_rules:
         unavailable = await inspect_bonus_permissions(flow._bot, rules)
         return await build_bonus_overview(
             campaign,
@@ -185,7 +185,7 @@ async def _bonus_payload(
             bot_username=flow._bot_username,
             unavailable=unavailable,
         )
-    if not rules.invite_bonus_enabled:
+    if not rules.invitation_enabled:
         raise UserFacingError("本期抽奖没有可展示的加成")
     return await flow._invite_link_payload(campaign, user_id)
 
@@ -193,7 +193,7 @@ async def _bonus_payload(
 async def _registered_for_bonus(
     flow: "MemberFlow", campaign: object, rules: CampaignRules, *, user_id: int
 ) -> bool:
-    if rules.group_invite_rules or rules.group_activity_rules:
+    if rules.admission or rules.group_invite_rules or rules.group_activity_rules:
         participant = await flow._participants.eligible_participant(campaign.id, user_id)
         return participant is not None
     link = await flow._queries.invite_link_for_participant(campaign.id, user_id)

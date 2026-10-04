@@ -8,6 +8,7 @@ from tg_lottery.application.campaign_targets import QualificationTarget
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import QualificationState
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.presentation.participation_rules import gate_lines
 from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
 from tg_lottery.telegram.member_popups import failure_reply_text
 
@@ -31,6 +32,10 @@ def draw_rule(rules: CampaignRules) -> str:
 
 
 def human_rule(rules: CampaignRules, chats: tuple[dict[str, object], ...] = ()) -> str:
+    if rules.admission is not None:
+        return "\n".join(
+            (*gate_lines(rules, chats), "独立加成:", *per_group_bonus_lines(rules, chats))
+        )
     if not rules.bonus_types:
         return "抽奖加成: 关闭，仅计算基础抽奖次数\n" + "\n".join(
             per_group_bonus_lines(rules, chats)
@@ -82,8 +87,6 @@ def condition_summary(campaign: object) -> str:
     for chat in conditions(campaign):
         suffix = " (加入入口已关闭)" if chat.get("invite_revoked_at") else ""
         labels.append(f"{chat['title']}{suffix}")
-    if len(labels) > 3:
-        return f"参与条件: 共 {len(labels)} 项（请点击查看加入入口）"
     return "参与条件: " + ("、".join(labels) if labels else "无额外条件")
 
 

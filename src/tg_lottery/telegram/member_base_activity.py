@@ -16,12 +16,13 @@ async def base_registration_reply(
     detail = await queries.participant_campaign_detail(user_id, campaign.public_ref)
     if detail is None:
         raise ValueError("registration progress is missing")
+    label = "行为门槛" if campaign.rules.get("admission") else "基础发言门槛"
     chat_type = getattr(getattr(message, "chat", None), "type", None)
     if callback is not None and chat_type != "private":
         text = (
-            f"已登记参与，基础门槛已达标，当前共 {detail.total} 次抽奖机会"
+            f"已登记参与，{label}已达标，当前共 {detail.total} 次抽奖机会"
             if detail.base_qualified
-            else "已登记，基础发言门槛未完成，请在群内发言达标"
+            else f"已登记，{label}未完成，请查看本场任务进度"
         )
         await member_callbacks.safe_answer(callback, text, alert=False)
         return
@@ -31,11 +32,11 @@ async def base_registration_reply(
         reply_markup=member_keyboard(
             campaign.public_ref,
             bool(rules.bonus_types),
-            invite_enabled=rules.invite_bonus_enabled,
+            invite_enabled=rules.invitation_enabled,
         ),
     )
     if callback is not None:
-        await member_callbacks.safe_answer(callback, "已更新你的基础门槛进度", alert=False)
+        await member_callbacks.safe_answer(callback, "已更新你的行为门槛进度", alert=False)
 
 
 async def reply_existing(
@@ -47,7 +48,7 @@ async def reply_existing(
     queries: object,
     user_id: int | None = None,
 ) -> None:
-    if campaign.rules.get("base_activity_rules"):
+    if campaign.rules.get("base_activity_rules") or campaign.rules.get("admission"):
         target_user_id = user_id or getattr(participant, "user_id", None)
         if target_user_id is None and callback is not None and callback.from_user:
             target_user_id = callback.from_user.id

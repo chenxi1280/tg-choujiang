@@ -85,7 +85,8 @@ def participation_rows(data: dict[str, Any]) -> ButtonRows:
             ]
         )
     start = page * PARTICIPATION_PAGE_SIZE
-    rows.extend(_threshold_rows(data, chats[start : start + PARTICIPATION_PAGE_SIZE]))
+    if data.get("participation_rules_version") != "v3.0":
+        rows.extend(_threshold_rows(data, chats[start : start + PARTICIPATION_PAGE_SIZE]))
     rows.append([("↩ 返回上一层", "draft_back")])
     return rows
 
@@ -116,6 +117,7 @@ def validate_main_threshold(data: dict[str, Any], main_chat: dict[str, Any]) -> 
 
 
 def apply_threshold(data: dict[str, Any], action: str) -> dict[str, Any]:
+    reject_v3_legacy_gate(data)
     _, chat_id, op = action.split(":")
     thresholds = apply_threshold_action(
         dict(data.get("chat_message_thresholds") or {}), chat_id, op
@@ -214,3 +216,8 @@ def _participation_intro(data: dict[str, Any]) -> list[str]:
     if data.get("folder_link"):
         lines.append("组合分享链接：已设置（仍逐项核验）")
     return lines
+
+
+def reject_v3_legacy_gate(data):
+    if data.get("participation_rules_version") == "v3.0":
+        raise UserFacingError("新活动请在抽奖门槛中选择发言数或邀请好友；旧门槛编辑入口已失效")

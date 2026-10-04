@@ -57,8 +57,8 @@ def per_group_bonus_lines(
             title = chat_title(by_id.get(key, {}))
             lines.append(f"{title}：" + "；".join(parts))
     lines.extend(base_rule_lines(rules, by_id))
-    if rules.invite_bonus_enabled:
-        lines.append("邀请资格：" + retention_text(rules.invite.retention_hours))
+    if rules.invitation_enabled:
+        lines.append("有效邀请要求：" + retention_text(rules.invite.retention_hours))
     return tuple(lines)
 
 

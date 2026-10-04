@@ -7,21 +7,29 @@ from tg_lottery.domain.rules import CampaignRules
 
 
 async def inspect_bonus_permissions(bot: Bot, rules: CampaignRules) -> dict[int, str]:
-    kinds: dict[int, set[str]] = {}
-    for chat_id, rule in rules.group_invite_rules.items():
-        if rule.enabled:
-            kinds.setdefault(int(chat_id), set()).add("invite")
-    for chat_id, rule in rules.group_activity_rules.items():
-        if rule.enabled:
-            kinds.setdefault(int(chat_id), set()).add("activity")
-    for chat_id in rules.base_activity_rules:
-        kinds.setdefault(int(chat_id), set()).add("activity")
     errors = {}
-    for chat_id, group_kinds in kinds.items():
+    for chat_id, group_kinds in _permission_targets(rules).items():
         reason = await _permission_error(bot, chat_id, group_kinds)
         if reason:
             errors[chat_id] = reason
     return errors
+
+
+def _permission_targets(rules: CampaignRules) -> dict[int, set[str]]:
+    kinds: dict[int, set[str]] = {}
+    for chat_id in rules.group_invite_rules:
+        if rules.invite_rule_for(int(chat_id)) is not None:
+            kinds.setdefault(int(chat_id), set()).add("invite")
+    for chat_id in rules.group_activity_rules:
+        if rules.activity_rule_for(int(chat_id)) is not None:
+            kinds.setdefault(int(chat_id), set()).add("activity")
+    for chat_id in rules.base_activity_rules:
+        kinds.setdefault(int(chat_id), set()).add("activity")
+    if rules.admission:
+        kind = "invite" if rules.admission.type == "invite" else "activity"
+        for chat_id in rules.admission.groups:
+            kinds.setdefault(int(chat_id), set()).add(kind)
+    return kinds
 
 
 async def _permission_error(bot: Bot, chat_id: int, kinds: set[str]) -> str | None:

@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.admission_qualification import behavior_clause, behavior_qualified
 from tg_lottery.application.base_activity_views import base_progress_text
 from tg_lottery.application.campaign_outcomes import (
     CampaignOutcomeFacts,
@@ -187,7 +188,7 @@ def _participated_campaigns_statement(user_id: int):
             func.coalesce(ticket_totals.c.tickets, 0),
             Campaign.draw_at,
             Campaign.timezone,
-            Participant.base_qualified,
+            behavior_clause(),
             campaign_outcome_expression().label("outcome_kind"),
         )
         .join(Participant, Participant.campaign_id == Campaign.id)
@@ -228,7 +229,8 @@ def _has_invitation_surface():
             Invitation.inviter_participant_id == Participant.id,
         )
     )
-    return or_(configured, legacy, has_route, has_record)
+    gate = Campaign.rules.op("@>")({"admission": {"type": "invite"}})
+    return or_(configured, legacy, gate, has_route, has_record)
 
 
 def _participated_values(row: object) -> tuple[object, ...]:
@@ -262,7 +264,7 @@ async def load_participant_campaign_detail(
             ),
             outcome=outcome,
             base_progress=await base_progress_text(session, campaign, participant),
-            base_qualified=participant.base_qualified,
+            base_qualified=behavior_qualified(participant, campaign),
             public_ref=campaign.public_ref,
             campaign_name=campaign.name,
             state=campaign.state,
@@ -273,7 +275,7 @@ async def load_participant_campaign_detail(
             invitation=totals.get(TicketSource.INVITATION, 0)
             + totals.get(TicketSource.REVERSAL, 0),
             bonus_enabled=bool(rules.bonus_types),
-            invite_enabled=rules.invite_bonus_enabled,
+            invite_enabled=rules.invitation_enabled,
             draw_at=campaign.draw_at,
             timezone=campaign.timezone,
         )

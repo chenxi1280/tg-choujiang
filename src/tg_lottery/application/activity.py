@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from hashlib import sha256
 from uuid import UUID
@@ -12,11 +12,13 @@ from tg_lottery.application.activity_rules import (
     activity_min_text_length,
     activity_ticket_target,
 )
+from tg_lottery.application.activity_targets import locked_message_campaign, message_rule_chat_id
+from tg_lottery.application.admission_qualification import source_qualification_reason
 from tg_lottery.application.base_activity import record_base_activity
 from tg_lottery.application.group_activity_progress import increment_group_activity_progress
 from tg_lottery.application.message_rules import normalize_text, rejection_reason
 from tg_lottery.application.ports import UnitOfWorkFactory
-from tg_lottery.application.progress_notifications import queue_bonus_notice
+from tg_lottery.application.progress_notifications import flush_progress_notices, queue_bonus_notice
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import (
     CampaignState,
@@ -49,6 +51,11 @@ class MessageObservation:
     is_bot: bool = False
     is_service: bool = False
     is_forwarded: bool = False
+    rule_chat_id: int | None = None
+
+    @property
+    def rule_target(self) -> int:
+        return self.rule_chat_id if self.rule_chat_id is not None else self.chat_id
 
 
 class ActivityService:
@@ -80,9 +87,19 @@ class ActivityService:
         main_chat_id: int,
         observation: MessageObservation,
     ) -> ActivityEvent | InviteeActivityEvent | None:
+        campaign = await locked_message_campaign(session, campaign.id)
+        if campaign.state not in {CampaignState.RUNNING, CampaignState.SETTLING}:
+            return None
         if not campaign.preheat_at <= observation.event_at <= campaign.cutoff_at:
             return None
-        participant = await self._eligible_participant(session, campaign.id, observation.user_id)
+        rules = CampaignRules.model_validate(campaign.rules)
+        observation = replace(
+            observation,
+            rule_chat_id=await message_rule_chat_id(session, campaign.id, observation.chat_id),
+        )
+        participant = await self._eligible_participant(
+            session, campaign.id, observation.user_id, include_registered=bool(rules.admission)
+        )
         if participant is None:
             return await self._record_invitee_activity(session, campaign, observation)
         await record_base_activity(
@@ -97,13 +114,21 @@ class ActivityService:
         )
         if existing:
             return existing
-        return await self._record(
+        event = await self._record(
             session,
             campaign=campaign,
             participant=participant,
             observation=observation,
             activity_chat_ids=activity_chat_ids(campaign, main_chat_id),
         )
+        await flush_progress_notices(
+            session,
+            campaign=campaign,
+            participant=participant,
+            source_ref=f"message:{observation.chat_id}:{observation.message_id}",
+            event_at=observation.event_at,
+        )
+        return event
 
     async def _record_invitee_activity(
         self,
@@ -157,7 +182,7 @@ class ActivityService:
         rules: CampaignRules,
     ) -> InviteeActivityEvent:
         normalized = normalize_text(observation.text)
-        minimum = activity_min_text_length(rules, observation.chat_id)
+        minimum = activity_min_text_length(rules, observation.rule_target)
         reason = rejection_reason(observation, normalized, minimum)
         content_hash = sha256(normalized.encode()).hexdigest()
         duplicate = await self._invitee_duplicate(
@@ -193,8 +218,10 @@ class ActivityService:
         normalized = normalize_text(observation.text)
         content_hash = sha256(normalized.encode()).hexdigest()
         local_date = observation.event_at.astimezone(ZoneInfo(campaign.timezone)).date()
-        minimum = activity_min_text_length(rules, observation.chat_id)
+        minimum = activity_min_text_length(rules, observation.rule_target)
         reason = rejection_reason(observation, normalized, minimum)
+        if rules.admission is not None and reason is None:
+            reason = await source_qualification_reason(session, participant, observation)
         if reason is None:
             reason = await self._duplicate_reason(
                 session,
@@ -204,18 +231,13 @@ class ActivityService:
                 event_at=observation.event_at,
                 rules=rules,
             )
-        event = ActivityEvent(
-            campaign_id=campaign.id,
-            participant_id=participant.id,
-            chat_id=observation.chat_id,
-            message_id=observation.message_id,
-            user_id=observation.user_id,
-            event_at=observation.event_at,
+        event = _activity_event(
+            campaign=campaign,
+            participant=participant,
+            observation=observation,
             local_date=local_date,
             content_hash=content_hash,
-            accepted=reason is None,
-            rejection_reason=reason,
-            source_update_id=current_update_id(),
+            reason=reason,
         )
         session.add(event)
         if reason is None:
@@ -226,7 +248,7 @@ class ActivityService:
                 local_date=local_date,
                 event_at=observation.event_at,
                 rules=rules,
-                chat_id=observation.chat_id,
+                chat_id=observation.rule_target,
                 activity_chat_ids=activity_chat_ids,
             )
         return event
@@ -243,6 +265,8 @@ class ActivityService:
         chat_id: int,
         activity_chat_ids: tuple[int, ...],
     ) -> None:
+        if not rules.activity_bonus_enabled:
+            return
         if rules.activity_rule_for(chat_id) is not None:
             await increment_group_activity_progress(
                 session,
@@ -384,21 +408,24 @@ class ActivityService:
             )
             .order_by(Campaign.id)
         )
-        return tuple(
-            (campaign, main_chat_id)
-            for campaign, main_chat_id in rows.all()
-            if chat_id in activity_chat_ids(campaign, main_chat_id)
-        )
+        targets = []
+        for campaign, main_chat_id in rows.all():
+            rule_chat_id = await message_rule_chat_id(session, campaign.id, chat_id)
+            if rule_chat_id in activity_chat_ids(campaign, main_chat_id):
+                targets.append((campaign, main_chat_id))
+        return tuple(targets)
 
     async def _eligible_participant(
-        self, session: object, campaign_id: UUID, user_id: int
+        self, session: object, campaign_id: UUID, user_id: int, *, include_registered: bool = False
     ) -> Participant | None:
         return await session.scalar(
             select(Participant)
             .where(
                 Participant.campaign_id == campaign_id,
                 Participant.user_id == user_id,
-                Participant.qualification_state == QualificationState.ELIGIBLE,
+                True
+                if include_registered
+                else Participant.qualification_state == QualificationState.ELIGIBLE,
             )
             .with_for_update()
         )
@@ -448,3 +475,19 @@ class ActivityService:
             )
         )
         return duplicate is not None
+
+
+def _activity_event(*, campaign, participant, observation, local_date, content_hash, reason):
+    return ActivityEvent(
+        campaign_id=campaign.id,
+        participant_id=participant.id,
+        chat_id=observation.chat_id,
+        message_id=observation.message_id,
+        user_id=observation.user_id,
+        event_at=observation.event_at,
+        local_date=local_date,
+        content_hash=content_hash,
+        accepted=reason is None,
+        rejection_reason=reason,
+        source_update_id=current_update_id(),
+    )

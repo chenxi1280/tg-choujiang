@@ -37,7 +37,7 @@ async def retry_failed_publication(
                     TelegramOutbox.aggregate_type == "campaign",
                     TelegramOutbox.aggregate_id == str(campaign_id),
                     TelegramOutbox.operation.in_(
-                        ("send_campaign_card", "create_required_chat_invite")
+                        ("send_campaign_card", "send_campaign_rules", "create_required_chat_invite")
                     ),
                     TelegramOutbox.state == OutboxState.PRE_ACCEPT_FAILED,
                 )

@@ -10,6 +10,7 @@ from tg_lottery.telegram.draft_config import new_draft
 
 def _review_data():
     return new_draft(chat_id=-1001) | {
+        "participation_rules_version": None,
         "title": "阅读活动",
         "participation_groups": [{"id": -1001, "type": "supergroup", "title": "读书群"}],
         "required_chats": [{"id": -1002, "type": "channel", "title": "公告频道"}],

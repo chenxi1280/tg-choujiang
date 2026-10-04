@@ -27,8 +27,10 @@ def test_dashboard_uses_compact_three_column_business_buttons() -> None:
     assert rows[0] == [("参与活动的群", "draft_group")]
     assert [label for label, _ in rows[1]] == ["活动标题", "上传封面", "用户限制"]
     assert [label for label, _ in rows[2]] == ["准入条件", "奖品内容", "抽奖说明"]
-    assert [label for label, _ in rows[3]] == ["抽奖加成", "开奖方式", "发奖人员"]
-    assert rows[4] == [
+    assert rows[3] == [("抽奖门槛", "draft_gate")]
+    assert [label for label, _ in rows[4]] == ["每日发言加成", "邀请加成"]
+    assert [label for label, _ in rows[5]] == ["抽奖加成", "开奖方式", "发奖人员"]
+    assert rows[6] == [
         ("消息提示", "draft_messages"),
         ("🎉 发布抽奖", "draft_publish"),
     ]

@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 
+from tg_lottery.application.admission_qualification import behavior_clause
 from tg_lottery.application.campaign_targets import QualificationTarget, qualification_targets
 from tg_lottery.application.full_draw import record_full_draw_candidate
 from tg_lottery.application.group_invite_links import (
@@ -207,6 +208,9 @@ class ParticipantService:
         participant: Participant,
         result: QualificationResult,
     ) -> None:
+        if participant.counting_started_at is None:
+            participant.counting_started_at = result.observed_at
+            participant.counting_started_update_id = current_update_id()
         await self._ensure_registration_ticket(
             session,
             campaign=campaign,
@@ -250,7 +254,7 @@ class ParticipantService:
         await session.flush()
         count = await session.scalar(
             select(func.count(Participant.id)).where(
-                Participant.base_qualified.is_(True),
+                behavior_clause(),
                 Participant.campaign_id == campaign.id,
                 Participant.qualification_state == QualificationState.ELIGIBLE,
             )
@@ -350,6 +354,8 @@ class ParticipantService:
             private_reachable=True,
             qualification_state=QualificationState.PENDING,
             base_qualified=not bool(campaign.rules.get("base_activity_rules")),
+            admission_qualified=campaign.rules.get("participation_rules_version") != "v3.0",
+            registration_intent_at=request.observed_at,
             registered_revision=1,
             registered_source_update_id=current_update_id(),
             registered_via_participation_group_id=await source_participation_group_id(

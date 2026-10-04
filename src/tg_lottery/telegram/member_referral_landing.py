@@ -71,6 +71,8 @@ def _landing_text(
     now: datetime,
     outcome: CampaignOutcomeFacts | None = None,
 ) -> str:
+    if landing.campaign.rules.get("participation_rules_version") == "v3.0":
+        return _v3_landing_text(landing, membership, now=now, outcome=outcome)
     identity = f"{landing.campaign.name}"
     state = _landing_state(landing, membership, now=now, outcome=outcome)
     timezone = landing.campaign.timezone
@@ -196,4 +198,45 @@ def _registration_open(landing: ReferralLanding, now: datetime) -> bool:
         landing.campaign.state
         in {CampaignState.SCHEDULED, CampaignState.RUNNING, CampaignState.PAUSED}
         and now <= landing.campaign.cutoff_at
+    )
+
+
+def _v3_landing_text(
+    landing: ReferralLanding,
+    membership: bool | None,
+    *,
+    now: datetime,
+    outcome: CampaignOutcomeFacts | None,
+) -> str:
+    from tg_lottery.presentation.participation_rules import gate_lines
+    from tg_lottery.telegram.creator_invite_retention import retention_text
+
+    rules = CampaignRules.model_validate(landing.campaign.rules)
+    chat_id = landing.target.chat_id_snapshot
+    gate = bool(
+        rules.admission
+        and rules.admission.type == "invite"
+        and str(chat_id) in rules.admission.groups
+    )
+    bonus = rules.invite_rule_for(chat_id) is not None and rules.invite_bonus_enabled
+    purpose = (
+        "完成邀请门槛并增加邀请加成"
+        if gate and bonus
+        else "完成邀请门槛"
+        if gate
+        else "增加邀请加成"
+    )
+    active = _bonus_active(landing, now)
+    status = "已有成员，本次打开不产生有效新邀请" if membership is True else "仅真实新成员可计入"
+    if not active:
+        status = "本场新增邀请已关闭；现存入口如可用仍可入群"
+    chats = tuple(landing.campaign.presentation.get("participation_groups") or [])
+    return (
+        f"{landing.campaign.name}\n邀请用途: {purpose}\n{status}\n"
+        f"有效邀请要求: {retention_text(rules.invite.retention_hours)}\n"
+        f"最晚有效入群: {format_public_time(_effective_bonus_deadline(landing), rules.timezone)}\n"
+        f"报名截止: {format_public_time(landing.campaign.cutoff_at, rules.timezone)}\n"
+        f"{_draw_time_text(landing, outcome=outcome)}\n"
+        + "\n".join(gate_lines(rules, chats))
+        + "\n受邀人无需完成自己的抽奖门槛；加入群不会自动登记本人抽奖。"
     )

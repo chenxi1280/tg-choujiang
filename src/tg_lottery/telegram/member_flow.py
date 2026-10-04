@@ -27,6 +27,7 @@ from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram import member_callbacks, member_condition_views
 from tg_lottery.telegram.crypto import SecretCipher
+from tg_lottery.telegram.member_activity_landing import show_v3_rules
 from tg_lottery.telegram.member_base_activity import (
     base_registration_reply,
     qualification_retry_reply,
@@ -49,7 +50,6 @@ from tg_lottery.telegram.member_registration import (
     registration_request_from_message,
     required_user,
 )
-from tg_lottery.telegram.public_projection import campaign_state_text, format_public_time
 from tg_lottery.telegram.qualification import (
     QualificationRetryable,
     observe_memberships,
@@ -100,6 +100,10 @@ class MemberFlow:
         campaign = await self._queries.campaign(campaign_id)
         if campaign is None:
             return
+        if campaign.rules.get("participation_rules_version") == "v3.0":
+            detail = await self._queries.participant_campaign_detail(user.id, campaign.public_ref)
+            if detail is None:
+                return
         attempt = await self._participants.begin_registration(
             registration_request(campaign.id, user, observed_at)
         )
@@ -190,7 +194,7 @@ class MemberFlow:
         callback: CallbackQuery | None,
         user_id: int,
     ) -> None:
-        if campaign.rules.get("base_activity_rules"):
+        if campaign.rules.get("base_activity_rules") or campaign.rules.get("admission"):
             await base_registration_reply(
                 message, campaign, user_id=user_id, callback=callback, queries=self._queries
             )
@@ -204,7 +208,7 @@ class MemberFlow:
         keyboard = member_keyboard(
             campaign.public_ref,
             bool(rules.bonus_types),
-            invite_enabled=rules.invite_bonus_enabled,
+            invite_enabled=rules.invitation_enabled,
         )
         if callback is not None:
             await message.edit_text(popup_success(total), reply_markup=keyboard)
@@ -297,20 +301,12 @@ class MemberFlow:
         campaign = await self._queries.campaign_by_reference(campaign_reference)
         if campaign is None:
             raise UserFacingError("活动不存在或已经失效")
-        prizes = await self._queries.prizes(campaign.id)
-        rules = CampaignRules.model_validate(campaign.rules)
-        lines = [
-            f"📋 {campaign.name} 活动规则",
-            f"当前状态: {campaign_state_text(campaign.state)}",
-            "奖品: " + "、".join(f"{item.name} × {item.winner_count}" for item in prizes),
-            f"开奖时间: {format_public_time(campaign.draw_at, campaign.timezone)}",
-            member_condition_views.draw_rule(rules),
-            member_condition_views.human_rule(rules, member_condition_views.conditions(campaign)),
-            f"发奖人员: {member_condition_views.issuer_name(campaign)}",
-            member_condition_views.deletion_rule(campaign),
-            member_condition_views.condition_summary(campaign),
-        ]
-        await message.answer("\n".join(lines), reply_markup=self._condition_keyboard(campaign))
+        if campaign.rules.get("participation_rules_version") == "v3.0":
+            await show_v3_rules(self, message, campaign)
+            return
+        from tg_lottery.telegram.member_activity_landing import show_legacy_rules
+
+        await show_legacy_rules(self, message, campaign)
 
     async def show_condition(
         self, message: Message, campaign_reference: str | UUID, position: int
@@ -468,7 +464,7 @@ class MemberFlow:
         if campaign is None:
             raise UserFacingError("活动不存在或已经失效")
         rules = CampaignRules.model_validate(campaign.rules)
-        if not rules.invite_bonus_enabled:
+        if not rules.invitation_enabled:
             raise UserFacingError("本期抽奖没有开启邀请加成")
         text, markup = await self._invite_link_payload(campaign, user_id, page=page)
         await message.answer(text, reply_markup=markup)

@@ -1,4 +1,5 @@
 from tg_lottery.infrastructure.db.base import Base
+from tg_lottery.infrastructure.db.models_admission import AdmissionProgress, MessageTotalEvent
 from tg_lottery.infrastructure.db.models_base_activity import BaseActivityEvent
 from tg_lottery.infrastructure.db.models_campaign_targets import (
     CampaignOperationalBlock,
@@ -52,6 +53,7 @@ from tg_lottery.infrastructure.db.models_ops import WinnerDesignationOperator
 __all__ = [
     "ActivityEvent",
     "AdminSession",
+    "AdmissionProgress",
     "AuditLog",
     "Base",
     "BaseActivityEvent",
@@ -75,6 +77,7 @@ __all__ = [
     "Invitation",
     "InviteLink",
     "InviteeActivityEvent",
+    "MessageTotalEvent",
     "Participant",
     "PollingOffset",
     "Prize",

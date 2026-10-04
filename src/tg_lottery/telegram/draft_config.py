@@ -41,14 +41,25 @@ def new_draft(
     group_title: str = "",
     timezone: str = "Asia/Shanghai",
 ) -> dict[str, Any]:
-    return {
-        "draft_id": token_urlsafe(18),
-        "draft_revision": 0,
+    return _draft_defaults() | {
         "chat_id": chat_id,
         "group_title": group_title,
-        "participation_group_ids": [chat_id] if chat_id is not None else [],
-        "participation_groups": [],
         "timezone": timezone,
+        "participation_group_ids": [chat_id] if chat_id is not None else [],
+    }
+
+
+def _draft_defaults() -> dict[str, Any]:
+    return {
+        "participation_rules_version": "v3.0",
+        "admission": None,
+        "draft_id": token_urlsafe(18),
+        "draft_revision": 0,
+        "chat_id": None,
+        "group_title": "",
+        "participation_group_ids": [],
+        "participation_groups": [],
+        "timezone": "Asia/Shanghai",
         "title": "",
         "draw_at": "",
         "draw_mode": "fixed",
@@ -74,8 +85,8 @@ def new_draft(
         "invite_reward_tiers": [dict(item) for item in DEFAULT_INVITE_REWARD_TIERS],
         "invite_reward_mode": "ratio",
         "valid_invites_per_ticket": DEFAULT_VALID_INVITES_PER_TICKET,
-        "invite_bonus_cap": DEFAULT_INVITE_BONUS_CAP,
-        "invite_cap_mode": "limited",
+        "invite_bonus_cap": None,
+        "invite_cap_mode": "unlimited",
         "group_invite_rules": {},
         "activity_message_threshold": DEFAULT_ACTIVITY_MESSAGE_THRESHOLD,
         "activity_reward_tickets": DEFAULT_ACTIVITY_REWARD_TICKETS,
@@ -90,6 +101,10 @@ def new_draft(
 def ensure_draft_identity(data: dict[str, Any]) -> dict[str, Any]:
     defaults = new_draft()
     merged = defaults | data
+    if data.get("participation_rules_version") != "v3.0":
+        from tg_lottery.telegram.creator_reuse import reusable_v3_draft
+
+        merged = reusable_v3_draft(merged)
     if data.get("draft_id"):
         return merged
     return merged | {"draft_id": token_urlsafe(18), "draft_revision": 0}
@@ -121,7 +136,22 @@ def campaign_input(
     if cutoff_at <= now:
         raise UserFacingError("开奖时间至少需要晚于当前时间 5 分钟（北京时间）")
     rules = rules_from_data(data)
-    draft = CampaignDraft(
+    try:
+        draft = _campaign_draft(data, now=now, draw_at=draw_at, cutoff_at=cutoff_at, rules=rules)
+    except ValueError as exc:
+        raise UserFacingError(str(exc)) from exc
+    instructions = str(data["claim_instructions"])
+    prizes = tuple(
+        PrizeSpec(str(item["name"]), int(item["winner_count"]), instructions)
+        for item in data["prizes"]
+    )
+    return draft, prizes
+
+
+def _campaign_draft(
+    data: dict, *, now: datetime, draw_at: datetime, cutoff_at: datetime, rules: CampaignRules
+):
+    return CampaignDraft(
         group_id=int(data["chat_id"]),
         participation_group_ids=tuple(
             int(value) for value in data.get("participation_group_ids") or [data["chat_id"]]
@@ -133,12 +163,6 @@ def campaign_input(
         rules=rules,
         presentation=presentation_from_data(data),
     )
-    instructions = str(data["claim_instructions"])
-    prizes = tuple(
-        PrizeSpec(str(item["name"]), int(item["winner_count"]), instructions)
-        for item in data["prizes"]
-    )
-    return draft, prizes
 
 
 def rules_from_data(data: dict[str, Any]) -> CampaignRules:
@@ -153,6 +177,8 @@ def rules_from_data(data: dict[str, Any]) -> CampaignRules:
     )
     invite = _invite_rule(data)
     return CampaignRules(
+        participation_rules_version=data.get("participation_rules_version"),
+        admission=data.get("admission"),
         timezone=BEIJING_TIMEZONE,
         activity=activity,
         invite=invite,
@@ -183,7 +209,13 @@ def rules_from_data(data: dict[str, Any]) -> CampaignRules:
 
 
 def missing_fields(data: dict[str, Any]) -> tuple[str, ...]:
-    return (*_missing_campaign_fields(data), *_missing_group_bonus_fields(data))
+    gate = data.get("admission") or {}
+    missing = (
+        ("抽奖门槛（选择一种并配置群）",)
+        if (data.get("participation_rules_version") == "v3.0" and not gate.get("groups"))
+        else ()
+    )
+    return (*_missing_campaign_fields(data), *missing, *_missing_group_bonus_fields(data))
 
 
 def _missing_campaign_fields(data: dict[str, Any]) -> list[str]:
@@ -219,6 +251,8 @@ def _has_enabled_group_rule(data: dict[str, Any], kind: str) -> bool:
 
 def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
     keys = (
+        "participation_rules_version",
+        "admission",
         "invite_retention_hours",
         "folder_link",
         "cover_file_id",
