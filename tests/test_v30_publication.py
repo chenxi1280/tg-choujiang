@@ -6,7 +6,7 @@ from tg_lottery.application.publication import add_campaign_card_outbox, campaig
 from tg_lottery.application.rule_publication import project_rule_page, queue_rule_states
 from tg_lottery.domain.enums import CampaignState, OutboxState
 from tg_lottery.infrastructure.db import Campaign, Prize, TelegramOutbox
-from tg_lottery.presentation.participation_rules import rule_manifest, utf16_units
+from tg_lottery.presentation.participation_rules import condition_blocks, rule_manifest, utf16_units
 
 
 @pytest.mark.parametrize("cover", [None, "file-id"])
@@ -38,6 +38,32 @@ def test_full_rules_pages_keep_each_condition_and_same_activity_link(cover):
     assert all(f"https://t.me/channel_{i}" in "".join(pages) for i in range(50))
     assert "join_abcdefgh" in card and "join_abcdefgh" in "".join(pages)
     assert "每天 2 条" in "".join(pages)
+    assert "北京时间自然日" in "".join(pages)
+    assert "命令、机器人、服务消息、转发及纯符号消息不计" in "".join(pages)
+
+
+@pytest.mark.parametrize("mode", ["message", "invite"])
+@pytest.mark.parametrize("bonuses", [(), ("activity",), ("invite",), ("activity", "invite")])
+def test_public_counting_explanation_follows_actual_enabled_modules(mode, bonuses):
+    rules = rules_for(mode, bonuses)
+    rules = rules.model_copy(
+        update={"activity": rules.activity.model_copy(update={"duplicate_window_minutes": 11})}
+    )
+    text = "\n".join(
+        condition_blocks(
+            dict(
+                rules=rules.model_dump(mode="json"),
+                presentation={},
+                bot_username="lottery_test_bot",
+                campaign_ref="abcdefgh",
+                cutoff_at=START.isoformat(),
+            )
+        )
+    )
+    speech_enabled = mode == "message" or "activity" in bonuses
+    assert ("北京时间自然日" in text) is speech_enabled
+    assert ("11 分钟内" in text) is speech_enabled
+    assert ("登记前不补采" in text) is speech_enabled
 
 
 async def long_campaign(factory):

@@ -19,6 +19,7 @@ from tg_lottery.application.admission_qualification import SourceQualificationUn
 from tg_lottery.application.invitation_models import JoinObservation
 from tg_lottery.application.invitations import InvitationService
 from tg_lottery.application.participants import ParticipantService
+from tg_lottery.application.queries import QueryService
 from tg_lottery.application.settlement import SettlementService
 from tg_lottery.domain.enums import QualificationState
 from tg_lottery.infrastructure.db import (
@@ -53,6 +54,7 @@ async def test_eight_combinations_gate_rewards_and_final_entries(session_factory
         participant = await session.get(Participant, pid)
         assert not participant.admission_qualified
         assert await SettlementService(None)._eligible_entries(session, cid) == []
+    await _verify_live_query(session_factory, cid, total=0, completed=False)
     await speech(session_factory, at=START + timedelta(seconds=3), count=1, first_id=2)
     await confirm(service, link, 2)
     async with session_factory() as session:
@@ -65,7 +67,21 @@ async def test_eight_combinations_gate_rewards_and_final_entries(session_factory
         assert await session.scalar(select(func.sum(TicketLedger.delta))) == expected
         assert await session.scalar(select(func.count(AdmissionProgress.id))) == 1
 
+    await _verify_live_query(session_factory, cid, total=expected, completed=True)
     await _draw_and_verify(session_factory, cid, pid, expected=expected)
+
+
+async def _verify_live_query(factory, cid, *, total, completed):
+    from tg_lottery.infrastructure.db import Campaign
+
+    async with factory() as session:
+        campaign = await session.get(Campaign, cid)
+        public_ref = campaign.public_ref
+    detail = await QueryService(factory).participant_campaign_detail(201, public_ref)
+    assert detail is not None
+    assert detail.base_qualified is completed
+    assert f"当前有效抽奖次数: {total}" in detail.base_progress
+    assert ("门槛: 已完成" if completed else "门槛: 待完成") in detail.base_progress
 
 
 async def _draw_and_verify(factory, cid, pid, *, expected):

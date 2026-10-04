@@ -60,19 +60,16 @@ async def _group_lines(session, *, campaign, participant, rules, observed_at, re
         for item in campaign.presentation.get("participation_groups", [])
     }
     if gate.type == "invite":
-        counts = dict(
-            await session.execute(
-                select(CampaignParticipationGroup.chat_id_snapshot, func.count(Invitation.id))
-                .join(
-                    Invitation, Invitation.participation_group_id == CampaignParticipationGroup.id
-                )
-                .where(
-                    Invitation.inviter_participant_id == participant.id,
-                    Invitation.state == InvitationState.VALID,
-                )
-                .group_by(CampaignParticipationGroup.chat_id_snapshot)
+        result = await session.execute(
+            select(CampaignParticipationGroup.chat_id_snapshot, func.count(Invitation.id))
+            .join(Invitation, Invitation.participation_group_id == CampaignParticipationGroup.id)
+            .where(
+                Invitation.inviter_participant_id == participant.id,
+                Invitation.state == InvitationState.VALID,
             )
+            .group_by(CampaignParticipationGroup.chat_id_snapshot)
         )
+        counts = dict(result.all())
         return [
             f"{names.get(key, key)}: 已确认 {counts.get(int(key), 0)}"
             f"/{rule.required_valid_invites} 人" + _completed(records, key, timezone)
@@ -105,17 +102,15 @@ def _completed(records: dict, key: str, timezone: object) -> str:
 
 
 async def _completion_records(session, participant_id):
-    records = dict(
-        await session.execute(
-            select(CampaignParticipationGroup.chat_id_snapshot, AdmissionProgress.completed_at)
-            .join(
-                AdmissionProgress,
-                AdmissionProgress.participation_group_id == CampaignParticipationGroup.id,
-            )
-            .where(
-                AdmissionProgress.participant_id == participant_id,
-                AdmissionProgress.qualified.is_(True),
-            )
+    result = await session.execute(
+        select(CampaignParticipationGroup.chat_id_snapshot, AdmissionProgress.completed_at)
+        .join(
+            AdmissionProgress,
+            AdmissionProgress.participation_group_id == CampaignParticipationGroup.id,
+        )
+        .where(
+            AdmissionProgress.participant_id == participant_id,
+            AdmissionProgress.qualified.is_(True),
         )
     )
-    return records
+    return dict(result.all())

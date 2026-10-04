@@ -48,21 +48,41 @@ def condition_blocks(payload: Mapping) -> tuple[str, ...]:
         blocks.append("归属地区: " + html.escape("、".join(rules.allowed_regions)))
     blocks.extend(_chat_condition(chat, link) for chat in chats)
     blocks.extend(html.escape(line) for line in gate_lines(rules, chats))
+    blocks.extend(html.escape(line) for line in message_count_blocks(rules))
     blocks.append("额外抽奖次数（不替代门槛）")
     blocks.extend(html.escape(line) for line in per_group_bonus_lines(rules, chats))
     if not rules.bonus_types:
         blocks.append("两种加成均关闭")
-    if rules.invitation_enabled:
-        deadline = datetime.fromisoformat(str(payload["cutoff_at"])) - timedelta(
-            hours=rules.invite.retention_hours
-        )
-        blocks.extend(
-            [
-                "有效邀请要求: " + retention_text(rules.invite.retention_hours),
-                "最晚有效入群: " + format_public_time(deadline, rules.timezone),
-            ]
-        )
+    blocks.extend(invitation_requirement_blocks(rules, payload))
     return tuple(blocks)
+
+
+def invitation_requirement_blocks(rules: CampaignRules, payload: Mapping) -> tuple[str, ...]:
+    if not rules.invitation_enabled:
+        return ()
+    deadline = datetime.fromisoformat(str(payload["cutoff_at"])) - timedelta(
+        hours=rules.invite.retention_hours
+    )
+    return (
+        "有效邀请要求: " + retention_text(rules.invite.retention_hours),
+        "最晚有效入群: " + format_public_time(deadline, rules.timezone),
+    )
+
+
+def message_count_blocks(rules: CampaignRules) -> tuple[str, ...]:
+    if rules.participation_rules_version != "v3.0":
+        return ()
+    if not rules.message_gate_rules and not rules.activity_bonus_enabled:
+        return ()
+    return (
+        "发言按北京时间自然日统计，00:00 开始新一天；已取得的本场门槛资格和加成保留。",
+        "有效发言：本人发送的文本或非空图片说明，按文字及数字计有效字符；"
+        "空白、标点和表情不计字数。命令、机器人、服务消息、转发及纯符号消息不计。",
+        f"重复文本：同一用户在同一群 {rules.activity.duplicate_window_minutes} 分钟内"
+        "大小写及空白归一后相同的内容，只计第一条有效消息；不同群分别判断。",
+        "统计起点：明确登记且首次通过成员等条件后才开始，登记前不补采，"
+        "报名及行为统计截止后不再累计。",
+    )
 
 
 def _chat_condition(chat, link):
