@@ -7,6 +7,7 @@ from tg_lottery.application.invitation_models import accepts_attribution
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.presentation.invitation_text import invitation_purpose
 from tg_lottery.telegram.member_bonus_text import (
     HISTORICAL_CAMPAIGN_STATES,
     campaign_bonus_completed,
@@ -109,7 +110,7 @@ def unavailable_invite_link_note(link: object, *, now: datetime) -> str | None:
     return None
 
 
-def legacy_invite_note(campaign: object) -> tuple[str, bool]:
+def legacy_invite_note(campaign: object, *, chat_id: int | None = None) -> tuple[str, bool]:
     rules = CampaignRules.model_validate(campaign.rules)
     deadline = campaign.cutoff_at - timedelta(hours=rules.invite.retention_hours)
     now = utcnow()
@@ -121,6 +122,10 @@ def legacy_invite_note(campaign: object) -> tuple[str, bool]:
         cutoff_at=campaign.cutoff_at,
         event_at=now,
     )
+    if rules.participation_rules_version == "v3.0":
+        if chat_id is None:
+            raise ValueError("V3 invitation delivery requires its participation group")
+        return _v3_invite_note(campaign, chat_id=chat_id, active=active, now=now)
     if active:
         return (
             f"最晚计奖入群：{format_public_time(deadline, campaign.timezone)}；"
@@ -132,3 +137,23 @@ def legacy_invite_note(campaign: object) -> tuple[str, bool]:
     if not campaign_bonus_completed(campaign):
         return "最晚计奖入群时间已过；此链接仍可入群，新入群不计加成，仅核验此前邀请。", False
     return "本期已截止；此链接仍可入群，但不再计算本期或以后任何抽奖加成。", False
+
+
+def _v3_invite_note(
+    campaign: object, *, chat_id: int, active: bool, now: datetime
+) -> tuple[str, bool]:
+    rules = CampaignRules.model_validate(campaign.rules)
+    deadline = campaign.cutoff_at - timedelta(hours=rules.invite.retention_hours)
+    purpose = invitation_purpose(rules, chat_id)
+    if active:
+        return (
+            f"邀请用途：{purpose}。\n"
+            f"最晚有效入群：{format_public_time(deadline, campaign.timezone)}；"
+            "真实新成员通过该链接入群并满足留存要求后，才计入本场有效邀请人数。",
+            True,
+        )
+    if not campaign_bonus_completed(campaign) and now < campaign.preheat_at:
+        return f"邀请用途：{purpose}。本场邀请统计尚未开始；当前入群不计有效邀请。", False
+    if not campaign_bonus_completed(campaign):
+        return "最晚有效入群时间已过；新入群不计本场有效邀请，仅核验此前邀请。", False
+    return "本场邀请统计已截止；现存入口如可用仍可入群，不计入以后活动。", False

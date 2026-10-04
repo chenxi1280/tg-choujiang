@@ -13,6 +13,7 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.presentation.invitation_text import invitation_purpose
 from tg_lottery.telegram.member_bonus_text import historical_outcome_status
 from tg_lottery.telegram.public_projection import format_public_time
 
@@ -213,19 +214,7 @@ def _v3_landing_text(
 
     rules = CampaignRules.model_validate(landing.campaign.rules)
     chat_id = landing.target.chat_id_snapshot
-    gate = bool(
-        rules.admission
-        and rules.admission.type == "invite"
-        and str(chat_id) in rules.admission.groups
-    )
-    bonus = rules.invite_rule_for(chat_id) is not None and rules.invite_bonus_enabled
-    purpose = (
-        "完成邀请门槛并增加邀请加成"
-        if gate and bonus
-        else "完成邀请门槛"
-        if gate
-        else "增加邀请加成"
-    )
+    purpose = invitation_purpose(rules, chat_id)
     active = _bonus_active(landing, now)
     status = "已有成员，本次打开不产生有效新邀请" if membership is True else "仅真实新成员可计入"
     if not active:

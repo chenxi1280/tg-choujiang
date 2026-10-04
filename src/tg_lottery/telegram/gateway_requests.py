@@ -9,6 +9,7 @@ from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts, load_
 from tg_lottery.application.records import utcnow
 from tg_lottery.infrastructure.db import (
     Campaign,
+    CampaignParticipationGroup,
     DrawRun,
     DrawSnapshot,
     InviteLink,
@@ -78,8 +79,13 @@ async def _invite_delivery_projection(
     async with session_factory() as session:
         record = (
             await session.execute(
-                select(Campaign, InviteLink)
+                select(Campaign, InviteLink, CampaignParticipationGroup.chat_id_snapshot)
                 .join(InviteLink, InviteLink.campaign_id == Campaign.id)
+                .outerjoin(
+                    CampaignParticipationGroup,
+                    (CampaignParticipationGroup.id == InviteLink.participation_group_id)
+                    & (CampaignParticipationGroup.campaign_id == Campaign.id),
+                )
                 .join(
                     Participant,
                     (Participant.id == InviteLink.participant_id)
@@ -90,11 +96,13 @@ async def _invite_delivery_projection(
         ).one_or_none()
         if record is None:
             raise ValueError("invite delivery recipient does not match its persisted participant")
-        campaign, link = record
+        campaign, link, chat_id = record
         outcome = None
         if campaign.state in HIDDEN_INVITE_STATES:
             outcome = await load_campaign_outcome(session, campaign.id)
-        note, active, visible = _invite_entry_status(campaign, link, outcome=outcome)
+        note, active, visible = _invite_entry_status(
+            campaign, link, outcome=outcome, chat_id=chat_id
+        )
         return {
             "invite_delivery_note": note,
             "invite_bonus_active": active,
@@ -105,7 +113,11 @@ async def _invite_delivery_projection(
 
 
 def _invite_entry_status(
-    campaign: Campaign, link: InviteLink, *, outcome: CampaignOutcomeFacts | None = None
+    campaign: Campaign,
+    link: InviteLink,
+    *,
+    outcome: CampaignOutcomeFacts | None = None,
+    chat_id: int | None = None,
 ) -> tuple[str, bool, bool]:
     historical_status = historical_outcome_status(campaign, outcome=outcome)
     if historical_status is not None:
@@ -113,7 +125,7 @@ def _invite_entry_status(
     unavailable = unavailable_invite_link_note(link, now=utcnow())
     if unavailable is not None:
         return unavailable, False, False
-    note, active = legacy_invite_note(campaign)
+    note, active = legacy_invite_note(campaign, chat_id=chat_id)
     return note, active, True
 
 
