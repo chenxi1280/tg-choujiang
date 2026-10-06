@@ -1,4 +1,5 @@
 from tg_lottery.telegram import creator_behavior_views, creator_group_bonus
+from tg_lottery.telegram.creator_cover import cover_prompt_text, cover_rows
 from tg_lottery.telegram.creator_current_view import current_draft_view
 
 INPUT_LABELS = {
@@ -35,6 +36,13 @@ def resumed_view(data, *, state, module):
         return _resumed_bonus(data, state=state, module=module)
     if module or state not in INPUT_LABELS:
         return data, "draft:idle", current_draft_view(data)
+    if state == "draft:cover":
+        has_cover = bool(data.get("cover_file_id"))
+        return (
+            data,
+            state,
+            (cover_prompt_text(has_cover=has_cover), cover_rows(has_cover=has_cover)),
+        )
     text = "已恢复输入：" + INPUT_LABELS[state] + "\n请发送内容；发送前可取消该字段输入。"
     if state == "draft:prize_count":
         text += "\n本次奖品：" + str(data["pending_prize_name"]) + "（尚未加入奖品清单）"

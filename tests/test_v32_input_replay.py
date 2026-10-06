@@ -66,3 +66,24 @@ async def test_new_input_still_runs_its_normal_receiver():
     with bind_update_context(BOT_ID, SOURCE_ID):
         assert not await recover_applied_input(renderer, _message(), session)
     renderer.edit.assert_not_awaited()
+
+
+@pytest.mark.parametrize("file_id", [None, "saved-synthetic-cover"])
+async def test_cover_input_recovery_keeps_completion_and_truthful_clear_controls(file_id):
+    data = new_draft() | {
+        "panel_message_id": 10,
+        "mutation_source_update_id": SOURCE_ID,
+        "cover_file_id": file_id,
+        "description": "说明保持独立",
+        "creator_path": ["dashboard", "cover"],
+    }
+    renderer = SimpleNamespace(edit=AsyncMock())
+    session = SimpleNamespace(state="draft:cover", data=data)
+    with bind_update_context(BOT_ID, SOURCE_ID):
+        assert await recover_applied_input(renderer, _message(), session)
+    values = renderer.edit.await_args.kwargs
+    actions = [action for row in values["rows"] for _, action in row]
+    assert "draft_back" in actions
+    assert ("draft_cover_clear" in actions) is bool(file_id)
+    assert "当前已设置封面" in values["text"] if file_id else "请发送一张图片" in values["text"]
+    assert session.data == data and session.state == "draft:cover"
