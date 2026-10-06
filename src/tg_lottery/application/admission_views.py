@@ -2,6 +2,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 
+from tg_lottery.application.admission_qualification import effective_ticket_text
 from tg_lottery.application.base_activity import load_base_progress
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import InvitationState, QualificationState
@@ -46,7 +47,8 @@ async def admission_progress_text(session: object, campaign: object, participant
             participant.admission_qualified
             and participant.qualification_state == QualificationState.ELIGIBLE
         )
-        lines.append(f"当前有效抽奖次数: {participant.ticket_total_cache if active else 0}")
+        effective = effective_ticket_text(participant, active=active)
+        lines.append(f"当前有效抽奖次数: {effective}")
         lines.append("未完成门槛时加成暂存; 门槛本场完成一次即可, 每日加成另算。")
     lines.append(_start_text(participant, timezone))
     return "\n".join(lines)

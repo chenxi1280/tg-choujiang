@@ -4,6 +4,7 @@ from typing import Any
 
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.infrastructure.db import Group
+from tg_lottery.telegram.creator_editor_cleanup import retain_group_editors
 from tg_lottery.telegram.required_chats import resolve_required_chat
 
 
@@ -145,39 +146,46 @@ def _with_groups(
         for key, value in (data.get("group_activity_rules") or {}).items()
         if key in selected
     }
-    return data | {
-        "chat_id": int(primary["id"]),
-        "group_title": str(primary["title"]),
-        "timezone": str(primary["timezone"]),
-        "participation_group_ids": [int(item["id"]) for item in records],
-        "participation_groups": records,
-        "group_invite_rules": invite_rules,
-        "base_activity_rules": {
-            k: v for k, v in (data.get("base_activity_rules") or {}).items() if k in selected
+    return retain_group_editors(
+        data
+        | {
+            "chat_id": int(primary["id"]),
+            "group_title": str(primary["title"]),
+            "timezone": str(primary["timezone"]),
+            "participation_group_ids": [int(item["id"]) for item in records],
+            "participation_groups": records,
+            "group_invite_rules": invite_rules,
+            "base_activity_rules": {
+                k: v for k, v in (data.get("base_activity_rules") or {}).items() if k in selected
+            },
+            "group_activity_rules": activity_rules,
+            "admission": _retained_admission(data, selected),
         },
-        "group_activity_rules": activity_rules,
-        "admission": _retained_admission(data, selected),
-    }
+        selected,
+    )
 
 
 def _clear_groups(data: dict[str, Any]) -> dict[str, Any]:
-    return data | {
-        "chat_id": None,
-        "group_title": "",
-        "participation_group_ids": [],
-        "participation_groups": [],
-        "group_invite_rules": {},
-        "group_activity_rules": {},
-        "base_activity_rules": {},
-        "admission": None,
-        "bonus_types": [],
-        "luck_mode": "off",
-    }
+    return retain_group_editors(
+        data
+        | {
+            "chat_id": None,
+            "group_title": "",
+            "participation_group_ids": [],
+            "participation_groups": [],
+            "group_invite_rules": {},
+            "group_activity_rules": {},
+            "base_activity_rules": {},
+            "admission": None,
+        },
+        set(),
+    )
 
 
 def _group_record(group: Group) -> dict[str, Any]:
     return {
         "id": group.chat_id,
+        "group_id": str(group.id),
         "title": group.title,
         "type": "group",
         "timezone": group.timezone,

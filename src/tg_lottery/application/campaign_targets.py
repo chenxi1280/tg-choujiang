@@ -44,6 +44,7 @@ class QualificationTarget:
     encrypted_join_url: bytes | None
     revoked_at: datetime | None
     secret_context: str
+    rule_chat_id: int | None = None
 
 
 async def resolve_draft_groups(
@@ -292,6 +293,7 @@ def _group_target(
         kind="participation_group",
         record_id=row.id,
         chat_id=chat_id,
+        rule_chat_id=row.chat_id_snapshot,
         title=row.title_snapshot,
         chat_type="group",
         private=row.private,
@@ -311,6 +313,7 @@ def _requirement_target(
         kind="requirement",
         record_id=row.id,
         chat_id=current_chat_id or row.chat_id_snapshot,
+        rule_chat_id=row.chat_id_snapshot,
         title=row.title,
         chat_type=row.chat_type,
         private=row.private,

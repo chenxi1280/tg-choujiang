@@ -25,6 +25,7 @@ from tg_lottery.application.qualification_recovery import (
     retry_qualification_review,
 )
 from tg_lottery.application.records import add_audit, add_job, utcnow
+from tg_lottery.domain.action_confirmation import ExpectedCampaign, validate_expected
 from tg_lottery.domain.admission import validate_admission_window
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
@@ -160,9 +161,11 @@ class CampaignService:
         actor_user_id: int,
         target: CampaignState,
         reason: str,
+        expected: ExpectedCampaign | None = None,
     ) -> None:
         async with self._uow_factory() as uow:
             campaign = await self._locked_campaign(uow.session, campaign_id)
+            validate_expected(campaign, expected)
             await require_campaign_admin(
                 uow.session, campaign_id=campaign.id, user_id=actor_user_id
             )
@@ -186,8 +189,12 @@ class CampaignService:
                 reason=reason,
             )
 
-    async def retry_failed_publication(self, campaign_id: UUID, actor_user_id: int) -> int:
-        return await retry_failed_publication(self._uow_factory, campaign_id, actor_user_id)
+    async def retry_failed_publication(
+        self, campaign_id: UUID, actor_user_id: int, *, expected: ExpectedCampaign | None = None
+    ) -> int:
+        return await retry_failed_publication(
+            self._uow_factory, campaign_id, actor_user_id, expected=expected
+        )
 
     async def retry_qualification_review(self, campaign_id: UUID, actor_user_id: int) -> None:
         await retry_qualification_review(self._uow_factory, campaign_id, actor_user_id)
@@ -199,9 +206,11 @@ class CampaignService:
         actor_user_id: int,
         cutoff_at: datetime,
         reason: str,
+        expected: ExpectedCampaign | None = None,
     ) -> None:
         async with self._uow_factory() as uow:
             campaign = await self._locked_campaign(uow.session, campaign_id)
+            validate_expected(campaign, expected)
             await require_campaign_admin(
                 uow.session, campaign_id=campaign.id, user_id=actor_user_id
             )

@@ -22,6 +22,7 @@ from tg_lottery.telegram.creator_admission_picker import (
 )
 from tg_lottery.telegram.creator_bonus_permissions import verify_bonus_action
 from tg_lottery.telegram.creator_cover import CreatorCover
+from tg_lottery.telegram.creator_current_view import current_draft_view
 from tg_lottery.telegram.creator_gate_schedule import validate_gate_time
 from tg_lottery.telegram.creator_messages import (
     MESSAGE_DELAYS,
@@ -31,12 +32,13 @@ from tg_lottery.telegram.creator_messages import (
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer
 from tg_lottery.telegram.creator_required_chats_data import (
     required_draft_data,
-    restore_required_chats,
     validated_text_changes,
     with_required_chats,
 )
-from tg_lottery.telegram.creator_reuse import reusable_v3_draft
+from tg_lottery.telegram.creator_retention_revision import synchronize_retention
+from tg_lottery.telegram.creator_reuse_flow import CreatorReuse
 from tg_lottery.telegram.creator_schedule import quick_draw_at, validate_draw_time
+from tg_lottery.telegram.creator_sections import enter_section, section_view
 from tg_lottery.telegram.creator_settings_ui import (
     _back_rows,
     _message,
@@ -47,13 +49,8 @@ from tg_lottery.telegram.creator_settings_ui import (
     custom_draw_rows,
 )
 from tg_lottery.telegram.creator_threshold_input import CreatorThresholdInput
-from tg_lottery.telegram.creator_views import (
-    dashboard_rows,
-    preview_text,
-)
 from tg_lottery.telegram.draft_config import (
     DEFAULT_CLAIM_INSTRUCTIONS,
-    ensure_draft_identity,
     parse_draw_at,
 )
 from tg_lottery.telegram.issuer import resolve_issuer
@@ -82,6 +79,7 @@ class CreatorSettings:
             bot=bot, sessions=sessions, queries=queries, renderer=renderer
         )
         self._cover = CreatorCover(sessions=sessions, renderer=renderer)
+        self._reuse = CreatorReuse(sessions=sessions, profiles=profiles, renderer=renderer, bot=bot)
         self._threshold_input = CreatorThresholdInput(sessions=sessions, renderer=renderer)
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> bool:
@@ -153,7 +151,8 @@ class CreatorSettings:
             "draft_messages": self._show_messages,
             "draft_messages_on": self._set_messages,
             "draft_messages_off": self._set_messages,
-            "draft_load_last": self._load_last,
+            "draft_load_last": self._reuse.show,
+            "draft_load_last_confirm": self._reuse.confirm,
         }
         handlers.update(
             {
@@ -238,6 +237,10 @@ class CreatorSettings:
         current = await self._required_data(query.from_user.id)
         await verify_bonus_action(self._bot, query.from_user.id, current, action=grant.action)
         data = bonus.apply_bonus_action(current, grant.action)
+        data = synchronize_retention(data)
+        if grant.action in {"draft_bonus_invite", "draft_bonus_activity"}:
+            kind = grant.action.removeprefix("draft_bonus_")
+            data = enter_section(data, "bonus_" + kind) | {"creator_bonus_kind": kind}
         if data.get("invite_retention_hours") != current.get("invite_retention_hours"):
             validate_gate_time(data)
         state = "draft:bonus_input" if data.get("bonus_input_field") else "draft:idle"
@@ -245,7 +248,7 @@ class CreatorSettings:
         text, rows = bonus.bonus_view(data, grant.action)
         if state == "draft:bonus_input":
             text = group_bonus.input_prompt(data)
-            rows = [[("取消输入", "draft_bonus_group_cancel")]]
+            rows = [[("取消输入", "draft_bonus_input_cancel")]]
         await self._render(query, data=data, text=text, rows=rows)
 
     async def _receive_bonus_input(self, message: Message, data: dict[str, Any]) -> None:
@@ -258,15 +261,10 @@ class CreatorSettings:
         await self._update(query, {"cover_file_id": None, "guided": False})
 
     async def _show_user_limits(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:idle")
-        rows = [
-            [("用户名必填", "draft_username_on"), ("用户名可为空", "draft_username_off")],
-            [("设置地区", "draft_regions")],
-            *_back_rows(),
-        ]
-        await self._render(
-            query, data=data, text="🪪 用户限制\n\n可要求用户名，并限制最多 3 个地区。", rows=rows
-        )
+        data = enter_section(await self._set_state(query, "draft:idle"), "user_limits")
+        text, rows = section_view(data, "user_limits")
+        await self._sessions.set(query.from_user.id, "draft:idle", data)
+        await self._render(query, data=data, text=text, rows=rows)
 
     async def _set_username(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         await self._update(query, {"username_required": grant.action.endswith("on")})
@@ -289,7 +287,10 @@ class CreatorSettings:
 
     async def _edit_participation(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._required_data(query.from_user.id)
-        updated = data | {"panel_message_id": _message(query).message_id, "guided": False}
+        updated = enter_section(data, "requirements") | {
+            "panel_message_id": _message(query).message_id,
+            "guided": False,
+        }
         await self._render_participation(query, updated)
 
     async def _render_participation(self, query: CallbackQuery, updated: dict[str, Any]) -> None:
@@ -395,12 +396,10 @@ class CreatorSettings:
         await self._dashboard_from_message(message, data | issuer)
 
     async def _show_messages(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:idle")
+        data = enter_section(await self._set_state(query, "draft:idle"), "messages")
+        await self._sessions.set(query.from_user.id, "draft:idle", data)
         await self._render(
-            query,
-            data=data,
-            text=message_settings_text(data),
-            rows=message_settings_rows(data),
+            query, data=data, text=message_settings_text(data), rows=message_settings_rows(data)
         )
 
     async def _set_messages(self, query: CallbackQuery, grant: CallbackGrant) -> None:
@@ -412,31 +411,6 @@ class CreatorSettings:
     async def _set_message_delay(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         key = grant.action.removeprefix("draft_messages_delay_")
         await self._update(query, {"completion_delete_after_seconds": MESSAGE_DELAYS[key]})
-
-    async def _load_last(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        current = await self._required_data(query.from_user.id)
-        last_draft = await self._profiles.recent_last_draft(query.from_user.id, utcnow())
-        if not last_draft:
-            raise UserFacingError("没有可载入的上次抽奖配置")
-        protected = {
-            key: current[key]
-            for key in (
-                "draft_id",
-                "draft_revision",
-                "panel_message_id",
-                "creator_name",
-            )
-        }
-        restored = await restore_required_chats(
-            self._bot,
-            reusable_v3_draft(ensure_draft_identity(last_draft | protected)),
-            user_id=query.from_user.id,
-        )
-        await self._dashboard(
-            query,
-            restored
-            | {"guided": False, "draw_at": "", "draw_mode": "fixed", "participant_target": None},
-        )
 
     async def _receive_text(
         self,
@@ -455,14 +429,14 @@ class CreatorSettings:
 
     async def _dashboard(self, query: CallbackQuery, data: dict[str, Any]) -> None:
         await self._sessions.set(query.from_user.id, "draft:idle", data)
-        await self._render(query, data=data, text=preview_text(data), rows=dashboard_rows(data))
+        text, rows = current_draft_view(data)
+        await self._render(query, data=data, text=text, rows=rows)
 
     async def _dashboard_from_message(self, message: Message, data: dict[str, Any]) -> None:
         user_id = _user_id(message)
         await self._sessions.set(user_id, "draft:idle", data)
-        await self._renderer.edit(
-            _target(message, data), text=preview_text(data), rows=dashboard_rows(data)
-        )
+        text, rows = current_draft_view(data)
+        await self._renderer.edit(_target(message, data), text=text, rows=rows)
 
     async def _set_state(self, query: CallbackQuery, state: str) -> dict[str, Any]:
         data = await self._required_data(query.from_user.id)

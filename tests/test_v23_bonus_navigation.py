@@ -79,8 +79,8 @@ async def test_v23_bonus_navigation_separates_categories_and_group_details() -> 
     assert invite_keyboard.inline_keyboard[0][0].copy_text.text == (
         "https://t.me/lottery_bot?start=ref_AAAAAAAAAAAAAAAAAAAAAA"
     )
-    assert "每 10 条有效消息 +1 次" in activity_detail
-    assert "每条至少 20 个可计数字符" in activity_detail
+    assert "每10条有效消息增加1次抽奖机会" in activity_detail
+    assert "每条至少" not in activity_detail and "文字、图片、表情均计数" in activity_detail
     assert "距下一次还差 2 条" in activity_detail
     _assert_callback_limit(overview_keyboard, invite_keyboard, activity_keyboard)
 
@@ -316,7 +316,9 @@ async def test_single_bonus_category_keeps_closed_progress_and_group_return_rout
     text, keyboard = await build_bonus_overview(campaign, **common)
     assert "本场已取消" in text
     assert "距下一次还差" not in text
-    assert keyboard.inline_keyboard[0][0].text == "A群"
+    buttons = [button for row in keyboard.inline_keyboard for button in row]
+    assert any(button.text.startswith("返回") for button in buttons)
+    assert not any(button.text == "A群" for button in buttons)
 
 
 async def test_no_enabled_group_bonus_reports_explicit_error() -> None:

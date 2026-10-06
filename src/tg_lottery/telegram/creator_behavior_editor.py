@@ -2,11 +2,12 @@ from typing import Any
 
 from tg_lottery.domain.admission import InviteAdmissionRule, MessageAdmissionRule
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram.creator_retention_revision import checked_retention_editor
 from tg_lottery.telegram.creator_schedule import positive_int
 
 EDITOR_KEY = "admission_editor"
 PAGE_SIZE = 6
-MESSAGE_FIELDS = {"daily_messages", "consecutive_days", "min_text_length"}
+MESSAGE_FIELDS = {"daily_messages", "consecutive_days"}
 INVITE_FIELDS = {"required_valid_invites"}
 
 
@@ -20,6 +21,8 @@ def open_editor(data: dict[str, Any]) -> dict[str, Any]:
         "page": 0,
         "search": "",
         "retention_hours": data.get("invite_retention_hours"),
+        "retention_base": data.get("invite_retention_hours"),
+        "retention_modified": False,
     }
     return data | {EDITOR_KEY: editor}
 
@@ -60,8 +63,7 @@ def apply_action(data: dict[str, Any], action: str) -> dict[str, Any]:
     if operation == "mode":
         if parts[1] not in {"message", "invite"}:
             raise UserFacingError("门槛只能选择发言数或邀请好友")
-        groups = editor["groups"] if editor["type"] == parts[1] else {}
-        return data | {EDITOR_KEY: editor | {"type": parts[1], "groups": groups, "chat_id": None}}
+        return data | {EDITOR_KEY: _select_mode(editor, parts[1])}
     if operation == "save":
         return _save_admission(data, editor)
     if operation == "discard":
@@ -90,9 +92,24 @@ def _edit_action(data: dict, editor: dict, *, parts: list[str]) -> dict:
         return editor | {"chat_id": None, "field": None}
     if operation == "page":
         return editor | {"page": max(0, int(parts[1]))}
+    if operation == "clear_search":
+        return editor | {"search": "", "page": 0, "field": None}
     if operation == "preset":
         return _set_value(editor, field=parts[1], text=parts[2])
     return _save_group(data, editor, operation=operation)
+
+
+def _select_mode(editor: dict, mode: str) -> dict:
+    groups = editor["groups"] if editor["type"] == mode else {}
+    cleared = {key: value for key, value in editor.items() if key not in {"rule", "copy_targets"}}
+    return cleared | {
+        "type": mode,
+        "groups": groups,
+        "chat_id": None,
+        "field": None,
+        "search": "",
+        "page": 0,
+    }
 
 
 def _save_group(data: dict, editor: dict, *, operation: str) -> dict:
@@ -116,6 +133,8 @@ def _copy_action(data: dict, editor: dict, *, operation: str) -> dict:
     if operation == "copy_cancel":
         return {key: value for key, value in editor.items() if key != "copy_targets"}
     if operation == "copy_confirm":
+        if not editor.get("copy_targets"):
+            raise UserFacingError("请先选择要复制的目标群")
         groups = dict(editor["groups"])
         groups.update({key: dict(editor["rule"]) for key in editor.get("copy_targets", [])})
         return {
@@ -183,13 +202,16 @@ def _confirmation_action(data, editor, *, operation):
 
 
 def _save_admission(data, editor):
+    ready_editor = checked_retention_editor(data)
     if editor["type"] not in {"message", "invite"}:
         raise UserFacingError("请先选择一种抽奖门槛")
+    if not editor["groups"]:
+        raise UserFacingError("请至少选择一个参与群并保存本群门槛，再保存整场门槛")
     if group_dirty(data):
         raise UserFacingError("请先保存本群设置，再保存整场门槛")
     return clear(data) | {
         "admission": {"type": editor["type"], "groups": editor["groups"]},
-        "invite_retention_hours": editor["retention_hours"],
+        "invite_retention_hours": ready_editor["retention_hours"],
         "base_activity_rules": {},
         "chat_message_thresholds": {},
     }

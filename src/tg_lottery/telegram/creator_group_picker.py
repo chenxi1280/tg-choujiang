@@ -10,13 +10,16 @@ from tg_lottery.application.callback_tokens import CallbackGrant
 from tg_lottery.application.queries import QueryService
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.infrastructure.db import Group
+from tg_lottery.telegram.creator_current_view import current_draft_view
+from tg_lottery.telegram.creator_editor_cleanup import has_group_edits
 from tg_lottery.telegram.creator_group_availability import (
     GroupAvailability,
     inspect_group_availability,
 )
+from tg_lottery.telegram.creator_group_identity import filter_groups, normalize_draft_groups
 from tg_lottery.telegram.creator_group_selection import selected_chat_ids, toggle_group
+from tg_lottery.telegram.creator_picker_groups import picker_groups
 from tg_lottery.telegram.creator_renderer import GROUP_PAGE_SIZE, CreatorRenderer
-from tg_lottery.telegram.creator_views import dashboard_rows, preview_text
 
 
 class CreatorGroupPicker:
@@ -39,10 +42,35 @@ class CreatorGroupPicker:
         await self._sessions.set(query.from_user.id, "draft:idle", updated)
         await self._render_groups(query, updated)
 
+    async def search(self, query, grant):
+        data = await self._required_data(query.from_user.id)
+        if grant.action == "draft_groups_search_clear":
+            await self._save_and_render(query, data | {"group_search": "", "group_page": 0})
+            return
+        await self._sessions.set(query.from_user.id, "draft:group_search", data)
+        await self._renderer.render(
+            _message(query),
+            user_id=query.from_user.id,
+            text="输入群名或群ID片段搜索。搜索不会移除已选群。",
+            rows=[[("返回群列表", "draft_group")]],
+        )
+
+    async def receive_search(self, message, data):
+        from tg_lottery.telegram.creator_renderer import PanelTarget
+
+        updated = data | {"group_search": (message.text or "").strip(), "group_page": 0}
+        await self._sessions.set(message.from_user.id, "draft:idle", updated)
+        await self._renderer.edit_groups(
+            PanelTarget(message.from_user.id, message.chat.id, int(data["panel_message_id"])),
+            selected_chat_ids=selected_chat_ids(updated),
+            search=updated["group_search"],
+        )
+
     async def toggle(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         chat_id = int(grant.payload["chat_id"])
         data = await self._required_data(query.from_user.id)
         group = await self._required_group(chat_id)
+        chat_id = group.chat_id
         selected = chat_id in selected_chat_ids(data)
         if selected and _group_has_rules(data, chat_id):
             await self._confirm_removal(query, data, [group])
@@ -101,11 +129,12 @@ class CreatorGroupPicker:
         if not selected_chat_ids(data):
             raise UserFacingError("请至少选择一个参与活动的群")
         await self._sessions.set(query.from_user.id, "draft:idle", data)
+        text, rows = current_draft_view(data)
         await self._renderer.render(
             _message(query),
             user_id=query.from_user.id,
-            text=preview_text(data),
-            rows=dashboard_rows(data),
+            text=text,
+            rows=rows,
         )
 
     async def problem(self, query: CallbackQuery, grant: CallbackGrant) -> None:
@@ -130,7 +159,7 @@ class CreatorGroupPicker:
         configured = [group.title for group in groups if _group_has_rules(data, group.chat_id)]
         text = (
             f"移除 {len(groups)} 个参与群？\n\n"
-            f"其中已配置加成的群：{'、'.join(configured)}。确认后将删除这些群的草稿规则。"
+            f"其中包含已保存或编辑中规则的群：{'、'.join(configured)}。确认后清理这些群的已保存规则和编辑引用，其他群不变。"
         )
         rows = [
             [("确认移除并删除设置", "draft_group_remove_confirm")],
@@ -151,11 +180,18 @@ class CreatorGroupPicker:
             user_id=query.from_user.id,
             selected_chat_ids=selected_chat_ids(data),
             page=int(data.get("group_page", 0)),
+            search=str(data.get("group_search", "")),
         )
 
     async def _visible_groups(self, user_id: int, data: dict[str, Any]) -> list[Group]:
-        groups = await self._queries.admin_groups(user_id)
-        page = int(data.get("group_page", 0))
+        groups = filter_groups(
+            await picker_groups(
+                self._queries, user_id=user_id, selected_chat_ids=selected_chat_ids(data)
+            ),
+            data.get("group_search", ""),
+        )
+        maximum = max(0, (len(groups) - 1) // GROUP_PAGE_SIZE)
+        page = min(maximum, max(0, int(data.get("group_page", 0))))
         return groups[page * GROUP_PAGE_SIZE : (page + 1) * GROUP_PAGE_SIZE]
 
     async def _availability(self, chat_id: int, user_id: int) -> GroupAvailability:
@@ -171,7 +207,7 @@ class CreatorGroupPicker:
         session = await self._sessions.get(user_id)
         if session is None or not session.state.startswith("draft:"):
             raise UserFacingError("创建草稿已过期，请发送 /new 重新创建")
-        return dict(session.data)
+        return await normalize_draft_groups(self._queries, dict(session.data))
 
 
 def _remove_groups(data: dict[str, Any], groups: list[Group]) -> dict[str, Any]:
@@ -186,9 +222,13 @@ def _remove_groups(data: dict[str, Any], groups: list[Group]) -> dict[str, Any]:
 
 def _group_has_rules(data: dict[str, Any], chat_id: int) -> bool:
     key = str(chat_id)
-    return key in (data.get("admission") or {}).get("groups", {}) or any(
-        key in (data.get(field) or {})
-        for field in ("group_invite_rules", "group_activity_rules", "base_activity_rules")
+    return (
+        has_group_edits(data, chat_id)
+        or key in (data.get("admission") or {}).get("groups", {})
+        or any(
+            key in (data.get(field) or {})
+            for field in ("group_invite_rules", "group_activity_rules", "base_activity_rules")
+        )
     )
 
 

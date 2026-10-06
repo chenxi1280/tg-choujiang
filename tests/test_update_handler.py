@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from aiogram.types import CallbackQuery, Message
 
+from tests.navigation_helpers import PassthroughAdmin, PassthroughNavigation
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.update_handler import LotteryUpdateHandler, _public_chat_title
 
@@ -58,6 +59,9 @@ class RecordingAdminFlow:
         self.started = False
         self.campaign_reference = None
 
+    async def suspend_draft(self, user_id):
+        return None
+
     async def start_create_message(self, message) -> None:
         self.started = True
 
@@ -106,16 +110,17 @@ class RecordingActivity:
 async def test_verify_callback_registers_clicking_user_not_bot_message_sender() -> None:
     flow = RecordingMemberFlow()
     handler = LotteryUpdateHandler(
+        navigation=PassthroughNavigation(),
         bot=object(),
         default_timezone="Asia/Shanghai",
-        admin_flow=object(),
+        admin_flow=PassthroughAdmin(),
         member_flow=flow,
         personal_flow=PassthroughPersonalFlow(),
         tokens=object(),
         groups=object(),
         activity=object(),
         invitations=object(),
-        queries=object(),
+        queries=SimpleNamespace(campaign_by_reference=AsyncMock(return_value=None)),
         stats=FakeStats(),
     )
     public_ref = "AbCdEfGhIjKlMnOpQrSt-_"
@@ -155,9 +160,10 @@ async def test_join_request_projects_waiting_approval_without_personal_invite() 
     campaign_id = uuid4()
     queries = SimpleNamespace(campaigns_for_mandatory_chat=AsyncMock(return_value=(campaign_id,)))
     handler = LotteryUpdateHandler(
+        navigation=PassthroughNavigation(),
         bot=object(),
         default_timezone="Asia/Shanghai",
-        admin_flow=object(),
+        admin_flow=PassthroughAdmin(),
         member_flow=flow,
         personal_flow=PassthroughPersonalFlow(),
         tokens=object(),
@@ -236,6 +242,7 @@ def test_missing_chat_title_never_falls_back_to_raw_chat_id() -> None:
 async def test_new_command_enters_creation_directly() -> None:
     admin_flow = RecordingAdminFlow()
     handler = LotteryUpdateHandler(
+        navigation=PassthroughNavigation(),
         bot=object(),
         default_timezone="Asia/Shanghai",
         admin_flow=admin_flow,
@@ -245,7 +252,7 @@ async def test_new_command_enters_creation_directly() -> None:
         groups=object(),
         activity=object(),
         invitations=object(),
-        queries=object(),
+        queries=SimpleNamespace(campaign_by_reference=AsyncMock(return_value=None)),
         stats=FakeStats(),
     )
     message = type("PrivateMessage", (), {"text": "/new"})()
@@ -258,6 +265,7 @@ async def test_new_command_enters_creation_directly() -> None:
 async def test_menu_command_redirects_to_unified_index() -> None:
     personal = PassthroughPersonalFlow()
     handler = LotteryUpdateHandler(
+        navigation=PassthroughNavigation(),
         bot=object(),
         default_timezone="Asia/Shanghai",
         admin_flow=RecordingAdminFlow(),
@@ -267,11 +275,13 @@ async def test_menu_command_redirects_to_unified_index() -> None:
         groups=object(),
         activity=object(),
         invitations=object(),
-        queries=object(),
+        queries=SimpleNamespace(campaign_by_reference=AsyncMock(return_value=None)),
         stats=FakeStats(),
     )
 
-    await handler._private_message(type("PrivateMessage", (), {"text": "/menu"})())
+    await handler._private_message(
+        type("PrivateMessage", (), {"text": "/menu", "from_user": SimpleNamespace(id=201)})()
+    )
 
     assert personal.index_shown == 1
 
@@ -354,16 +364,17 @@ async def test_reviewed_validation_message_remains_actionable() -> None:
 
 def _handler(*, member_flow=None) -> LotteryUpdateHandler:
     return LotteryUpdateHandler(
+        navigation=PassthroughNavigation(),
         bot=object(),
         default_timezone="Asia/Shanghai",
-        admin_flow=object(),
+        admin_flow=PassthroughAdmin(),
         member_flow=member_flow or object(),
         personal_flow=PassthroughPersonalFlow(),
         tokens=object(),
         groups=object(),
         activity=object(),
         invitations=object(),
-        queries=object(),
+        queries=SimpleNamespace(campaign_by_reference=AsyncMock(return_value=None)),
         stats=FakeStats(),
     )
 
@@ -402,16 +413,17 @@ def fake_bot():
 def make_handler(fake_bot):
     def _make(*, stats=None, bot_username="") -> LotteryUpdateHandler:
         return LotteryUpdateHandler(
+            navigation=PassthroughNavigation(),
             bot=fake_bot,
             default_timezone="Asia/Shanghai",
-            admin_flow=object(),
+            admin_flow=PassthroughAdmin(),
             member_flow=object(),
             personal_flow=PassthroughPersonalFlow(),
             tokens=object(),
             groups=object(),
             activity=RecordingActivity(),
             invitations=object(),
-            queries=object(),
+            queries=SimpleNamespace(campaign_by_reference=AsyncMock(return_value=None)),
             stats=stats or FakeStats(),
             bot_username=bot_username,
         )
@@ -428,6 +440,9 @@ def _group_message(text=None, chat_id=-100123, user_id=42):
         date=datetime.now(UTC),
         text=text,
         caption=None,
+        photo=None,
+        sticker=None,
+        animation=None,
         forward_origin=None,
         answer=AsyncMock(),
     )

@@ -26,7 +26,7 @@ def group_activity_text(rule: GroupActivityRule) -> str:
     if rule.daily_cap_mode == "limited" and rule.daily_max_cycles == 1:
         return (
             f"每天发言满 {rule.messages_per_cycle} 条 +{rule.reward_tickets} 次，"
-            f"每天只奖励一次，按达标天数累计；每条至少 {rule.min_text_length} 字"
+            "每天只奖励一次，按达标天数累计；文字、图片、表情均计数"
         )
     cap = (
         "每日不设上限"
@@ -35,7 +35,7 @@ def group_activity_text(rule: GroupActivityRule) -> str:
     )
     return (
         f"每日每满 {rule.messages_per_cycle} 条有效消息 +{rule.reward_tickets} 次，"
-        f"每条至少 {rule.min_text_length} 字，{cap}"
+        f"文字、图片、表情均计数，{cap}"
     )
 
 
@@ -56,9 +56,37 @@ def per_group_bonus_lines(
         if parts:
             title = chat_title(by_id.get(key, {}))
             lines.append(f"{title}：" + "；".join(parts))
+    lines.extend(global_bonus_lines(rules))
     lines.extend(base_rule_lines(rules, by_id))
     if rules.invitation_enabled:
         lines.append("有效邀请要求：" + retention_text(rules.invite.retention_hours))
+    return tuple(lines)
+
+
+def global_bonus_lines(rules: CampaignRules) -> tuple[str, ...]:
+    lines = []
+    if rules.activity_bonus_enabled and not rules.group_activity_rules:
+        rule = rules.activity
+        cap = "每天奖励一次" if rule.settle_once_per_day else f"每日最多 {rule.daily_ticket_cap} 次"
+        lines.append(
+            f"每个统计群每天有效发言满 {rule.message_threshold} 条，"
+            f"全部达标 +{rule.reward_tickets} 次；"
+            f"文字、图片、表情均计数；{cap}"
+        )
+    if rules.invite_bonus_enabled and not rules.group_invite_rules:
+        rule = rules.invite
+        if rule.mode == "ratio":
+            reward = f"每邀请 {rule.valid_invites_per_ticket} 个有效新成员 +1 次"
+        else:
+            reward = (
+                "；".join(
+                    f"邀请 {tier.invite_count} 人，累计 +{tier.total_bonus} 次"
+                    for tier in rule.reward_tiers
+                )
+                or f"每个有效邀请 +{rule.reward_tickets} 次"
+            )
+        cap = f"上限 {rule.max_bonus_tickets} 次" if rule.max_bonus_tickets else "不设上限"
+        lines.append(f"{reward}，{cap}")
     return tuple(lines)
 
 
@@ -68,7 +96,7 @@ def base_rule_lines(rules: CampaignRules, by_id: Mapping[str, object]) -> list[s
         title = chat_title(by_id.get(key, {}))
         lines.append(
             f"{title}基础门槛：连续 {rule.consecutive_days} 天，"
-            f"每天 {rule.daily_messages} 条，每条至少 {rule.min_text_length} 字"
+            f"每天 {rule.daily_messages} 条，文字、图片、表情均计数"
         )
     if rules.base_activity_rules:
         lines.append("北京时间每日统计；先报名再累计；全部基础门槛完成前，加成暂存，不能参与开奖。")

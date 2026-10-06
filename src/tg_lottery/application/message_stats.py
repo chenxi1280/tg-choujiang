@@ -7,8 +7,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from tg_lottery.application.activity import MessageObservation
 from tg_lottery.application.message_rules import (
-    MIN_THRESHOLD_TEXT_LENGTH,
-    normalize_text,
+    normalized_content,
     rejection_reason,
 )
 from tg_lottery.application.message_threshold_notices import notify_threshold_crossing
@@ -22,8 +21,8 @@ class MessageStatsService:
         self._uow_factory = uow_factory
 
     async def record(self, observation: MessageObservation) -> None:
-        normalized = normalize_text(observation.text)
-        if rejection_reason(observation, normalized, MIN_THRESHOLD_TEXT_LENGTH):
+        normalized = normalized_content(observation)
+        if rejection_reason(observation):
             return
         content_hash = sha256(normalized.encode()).hexdigest()
         async with self._uow_factory() as uow:

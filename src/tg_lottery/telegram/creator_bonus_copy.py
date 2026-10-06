@@ -227,7 +227,7 @@ def _rule_summary(kind: str, rule: dict[str, Any]) -> str:
     )
     return (
         f"每 {rule['messages_per_cycle']} 条 +{rule.get('reward_tickets', 1)}、"
-        f"至少 {rule['min_text_length']} 字，{cap}"
+        f"文字、图片、表情均计数，{cap}"
     )
 
 

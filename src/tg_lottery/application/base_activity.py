@@ -11,7 +11,7 @@ from tg_lottery.application.admission_qualification import (
 )
 from tg_lottery.application.base_activity_notifications import notify_streak_restart
 from tg_lottery.application.full_draw import record_full_draw_candidate
-from tg_lottery.application.message_rules import normalize_text, rejection_reason
+from tg_lottery.application.message_rules import normalized_content, rejection_reason
 from tg_lottery.application.progress_notifications import queue_progress_notice
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.base_activity import base_progress
@@ -37,7 +37,7 @@ async def record_base_activity(
     )
     if existing is not None:
         return
-    event = await _event(session, participant, observation=observation, rules=rules, rule=rule)
+    event = await _event(session, participant, observation=observation, rules=rules)
     session.add(event)
     await session.flush([event])
     if not event.accepted:
@@ -139,11 +139,11 @@ async def _apply_admission_progress(
 
 
 async def _event(
-    session: object, participant: object, *, observation: object, rules: CampaignRules, rule: object
+    session: object, participant: object, *, observation: object, rules: CampaignRules
 ) -> BaseActivityEvent:
-    normalized = normalize_text(observation.text)
+    normalized = normalized_content(observation)
     content_hash = sha256(normalized.encode()).hexdigest()
-    reason = rejection_reason(observation, normalized, rule.min_text_length)
+    reason = rejection_reason(observation)
     group_id = None
     if rules.admission is not None:
         if reason is None:

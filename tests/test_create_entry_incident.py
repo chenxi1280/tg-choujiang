@@ -85,7 +85,7 @@ async def test_zero_group_creator_opens_saved_draft_with_working_buttons(creator
     assert stored.state == "draft:idle" and stored.data["chat_id"] is None
     text_call = case.edits.call_args if entry == "button" else case.answers.call_args
     markup_call = case.edits.call_args if entry == "button" else case.markup_edits.call_args
-    assert "抽奖预览" in text_call.args[0]
+    assert "编辑草稿" in text_call.args[0]
     assert "活动群" in text_call.args[0]
     keyboard = markup_call.kwargs["reply_markup"]
     button = next(

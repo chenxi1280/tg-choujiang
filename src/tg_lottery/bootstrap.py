@@ -27,6 +27,7 @@ from tg_lottery.telegram.creator_settings import CreatorSettings
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.help_views import HelpLinks
 from tg_lottery.telegram.member_flow import MemberFlow
+from tg_lottery.telegram.member_navigation import MemberNavigation
 from tg_lottery.telegram.personal_flow import PersonalFlow
 from tg_lottery.telegram.update_handler import LotteryUpdateHandler
 
@@ -118,6 +119,7 @@ def build_update_handler(container: Container, bot_username: str) -> LotteryUpda
         ),
     )
     return LotteryUpdateHandler(
+        navigation=_build_member_navigation(container, bot_username),
         bot=container.bot,
         default_timezone=container.settings.timezone,
         admin_flow=admin_flow,
@@ -157,4 +159,15 @@ def _build_creator(container: Container, bot_username: str) -> CampaignCreator:
         renderer=renderer,
         settings=creator_settings,
         profiles=services.profiles,
+    )
+
+
+def _build_member_navigation(container: Container, bot_username: str):
+    return MemberNavigation(
+        bot=container.bot,
+        queries=container.services.queries,
+        cipher=SecretCipher(container.settings.app_encryption_key),
+        tokens=container.services.tokens,
+        profiles=container.services.profiles,
+        bot_username=bot_username,
     )

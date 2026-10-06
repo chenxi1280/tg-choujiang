@@ -1,15 +1,13 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tg_lottery.application.admission_qualification import behavior_clause
 from tg_lottery.application.campaign_outcomes import (
-    TERMINAL_CAMPAIGN_STATES,
     CampaignOutcomeFacts,
     campaign_category_filter,
-    campaign_outcome_expression,
     load_campaign_outcome,
 )
 from tg_lottery.application.campaign_query_targets import (
@@ -26,10 +24,20 @@ from tg_lottery.application.campaign_query_targets import (
 )
 from tg_lottery.application.campaign_references import resolve_campaign_reference
 from tg_lottery.application.campaign_targets import QualificationTarget
+from tg_lottery.application.creator_campaign_pages import load_creator_campaign_page
+from tg_lottery.application.creator_navigation_queries import (
+    load_campaign_for_draft,
+    load_creator_navigation_state,
+)
+from tg_lottery.application.creator_summary import AdminCampaignSummary as AdminCampaignSummary
+from tg_lottery.application.creator_summary import load_creator_summary
+from tg_lottery.application.delivery_purposes import DeliveryPurpose, load_delivery_purposes
 from tg_lottery.application.group_bonus_progress import (
     GroupBonusProgress,
     load_group_bonus_progress,
 )
+from tg_lottery.application.management_details import load_management_details
+from tg_lottery.application.member_gate_queries import load_gate_group_lines
 from tg_lottery.application.participant_records import (
     CampaignInvitationRecords,
     InvitationRecordFilter,
@@ -71,6 +79,8 @@ from tg_lottery.application.query_invites import (
 from tg_lottery.application.query_invites import (
     referral_route_by_reference as load_referral_route_by_reference,
 )
+from tg_lottery.application.winner_queries import WinnerRow as WinnerRow
+from tg_lottery.application.winner_queries import load_winner_page, load_winners
 from tg_lottery.domain.enums import (
     InvitationState,
     OutboxState,
@@ -102,27 +112,12 @@ class CampaignStats:
 
 
 @dataclass(frozen=True)
-class AdminCampaignSummary:
-    total: int
-    active: int
-    drawn: int
-    cancelled: int
-    unconfirmed: int = 0
-
-
-@dataclass(frozen=True)
 class DeliverySummary:
     confirmed: int
     pending: int
     failed: int
     unknown: int
-
-
-@dataclass(frozen=True)
-class WinnerRow:
-    winner: Winner
-    participant: Participant
-    prize: Prize
+    purposes: tuple[DeliveryPurpose, ...] = ()
 
 
 class QueryService:
@@ -136,10 +131,20 @@ class QueryService:
                     select(Group)
                     .join(GroupAdmin, GroupAdmin.group_id == Group.id)
                     .where(GroupAdmin.user_id == user_id, GroupAdmin.active.is_(True))
-                    .order_by(Group.title)
+                    .order_by(Group.title, Group.id)
                 )
             ).all()
             return list(rows)
+
+    async def groups_by_chat_ids(self, chat_ids):
+        async with self._session_factory() as session:
+            return list(
+                await session.scalars(
+                    select(Group).where(
+                        Group.chat_id.in_(chat_ids) | Group.migrated_from_chat_id.in_(chat_ids)
+                    )
+                )
+            )
 
     async def user_ids_by_username(self, username: str) -> tuple[int, ...]:
         normalized = username.removeprefix("@").lower()
@@ -165,28 +170,17 @@ class QueryService:
             ).all()
             return list(rows)
 
+    async def creator_navigation_state(self, user_id: int) -> dict | None:
+        return await load_creator_navigation_state(self._session_factory, user_id)
+
+    async def campaign_for_draft(self, user_id: int, draft_id: str):
+        return await load_campaign_for_draft(self._session_factory, user_id, draft_id)
+
+    async def creator_campaign_page(self, user_id: int, *, options: dict):
+        return await load_creator_campaign_page(self._session_factory, user_id, options=options)
+
     async def admin_campaign_summary(self, user_id: int) -> AdminCampaignSummary:
-        category = case(
-            (Campaign.state.not_in(TERMINAL_CAMPAIGN_STATES), "active"),
-            else_=campaign_outcome_expression(),
-        )
-        categories = (
-            select(category.label("category")).where(Campaign.created_by == user_id).subquery()
-        )
-        async with self._session_factory() as session:
-            rows = (
-                await session.execute(
-                    select(categories.c.category, func.count()).group_by(categories.c.category)
-                )
-            ).all()
-        counts = {kind: int(count) for kind, count in rows}
-        return AdminCampaignSummary(
-            total=sum(counts.values()),
-            active=counts.get("active", 0),
-            drawn=counts.get("drawn", 0),
-            cancelled=counts.get("cancelled", 0),
-            unconfirmed=counts.get("unconfirmed", 0),
-        )
+        return await load_creator_summary(self._session_factory, user_id)
 
     async def participated_campaigns(self, user_id: int) -> list[ParticipatedCampaign]:
         return await load_participated_campaigns(self._session_factory, user_id)
@@ -265,7 +259,11 @@ class QueryService:
 
     async def group_by_chat_id(self, chat_id: int) -> Group | None:
         async with self._session_factory() as session:
-            group = await session.scalar(select(Group).where(Group.chat_id == chat_id))
+            group = await session.scalar(
+                select(Group).where(
+                    (Group.chat_id == chat_id) | (Group.migrated_from_chat_id == chat_id)
+                )
+            )
             if group:
                 session.expunge(group)
             return group
@@ -426,9 +424,9 @@ class QueryService:
             return DeliverySummary(
                 confirmed=counts.get(OutboxState.CONFIRMED, 0),
                 pending=pending,
-                failed=counts.get(OutboxState.PRE_ACCEPT_FAILED, 0)
-                + counts.get(OutboxState.CANCELLED, 0),
+                failed=counts.get(OutboxState.PRE_ACCEPT_FAILED, 0),
                 unknown=counts.get(OutboxState.UNKNOWN_HOLD, 0),
+                purposes=await load_delivery_purposes(session, aggregate_ids),
             )
 
     async def publication_issues(self, campaign_id: UUID) -> tuple[PublicationIssue, ...]:
@@ -457,15 +455,14 @@ class QueryService:
         identifiers = (campaign_id, *participant_ids, *link_ids, *draw_run_ids, *winner_ids)
         return tuple(str(identifier) for identifier in identifiers)
 
+    async def gate_group_lines(self, *, detail_user_id: int, reference: str):
+        return await load_gate_group_lines(self._session_factory, detail_user_id, reference)
+
+    async def management_details(self, campaign_id: UUID):
+        return await load_management_details(self._session_factory, campaign_id)
+
     async def winners(self, campaign_id: UUID) -> list[WinnerRow]:
-        async with self._session_factory() as session:
-            rows = (
-                await session.execute(
-                    select(Winner, Participant, Prize)
-                    .join(Participant, Participant.id == Winner.participant_id)
-                    .join(Prize, Prize.id == Winner.prize_id)
-                    .where(Prize.campaign_id == campaign_id)
-                    .order_by(Winner.created_at)
-                )
-            ).all()
-            return [WinnerRow(winner, participant, prize) for winner, participant, prize in rows]
+        return await load_winners(self._session_factory, campaign_id)
+
+    async def winners_page(self, campaign_id: UUID, *, page: int = 0):
+        return await load_winner_page(self._session_factory, campaign_id, page)

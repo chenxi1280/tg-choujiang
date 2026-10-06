@@ -67,3 +67,54 @@ def guide_keyboard(links: HelpLinks) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="↩ 返回首页", callback_data="nav:index")],
         ]
     )
+
+
+GUIDE_TOPICS = (
+    ("发起抽奖", "create"),
+    ("参加与条件", "member"),
+    ("邀请与发言", "bonus"),
+    ("开奖与领奖", "results"),
+)
+
+
+def guide_summary(links):
+    rows = [
+        [InlineKeyboardButton(text=label, callback_data="nav:guide:" + key)]
+        for label, key in GUIDE_TOPICS
+    ]
+    return "使用指南\n\n选择你正在办理的事项。", InlineKeyboardMarkup(
+        inline_keyboard=[
+            *rows,
+            *links.rows(),
+            [InlineKeyboardButton(text="返回首页", callback_data="nav:index")],
+        ]
+    )
+
+
+def guide_topic(key: str, *, bot_username: str):
+    markers = {
+        "create": "🎁 发起抽奖",
+        "member": "🎫 参加抽奖",
+        "bonus": "👥 邀请与发言加成",
+        "results": "🏆 开奖与领奖",
+    }
+    marker = markers[key]
+    text = GUIDE_TEXT[GUIDE_TEXT.index(marker) :].split("\n\n", 2)
+    text = "\n\n".join(text[:2])
+    rows = []
+    if key == "create":
+        rows = [
+            [
+                InlineKeyboardButton(
+                    text="添加到群组", url=f"https://t.me/{bot_username}?startgroup=lottery"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="添加到频道", url=f"https://t.me/{bot_username}?startchannel=lottery"
+                )
+            ],
+            [InlineKeyboardButton(text="创建/继续草稿", callback_data="nav:create")],
+        ]
+    rows.append([InlineKeyboardButton(text="返回使用指南", callback_data="nav:help")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)

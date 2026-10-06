@@ -10,6 +10,7 @@ PARTICIPATION_RULES_VERSION = "v3.0"
 class MessageAdmissionRule(BaseModel, frozen=True, extra="forbid"):
     daily_messages: int = Field(default=20, ge=1)
     consecutive_days: int = Field(default=1, ge=1)
+    # Retained only to read frozen legacy rules; message counting ignores this value.
     min_text_length: int = Field(default=4, ge=1)
 
 

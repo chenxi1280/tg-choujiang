@@ -67,11 +67,6 @@ def group_activity_ticket_target(
     return cycles * rule.reward_tickets
 
 
-def activity_min_text_length(rules: CampaignRules, chat_id: int) -> int:
-    rule = rules.activity_rule_for(chat_id)
-    return rule.min_text_length if rule is not None else rules.activity.min_text_length
-
-
 def _configured_activity_ids(rules: CampaignRules) -> tuple[int, ...]:
     enabled = [int(key) for key, rule in rules.group_activity_rules.items() if rule.enabled]
     return tuple(

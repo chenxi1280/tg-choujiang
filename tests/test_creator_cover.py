@@ -54,7 +54,7 @@ def flow():
         bot=object(),
         bot_username="test_bot",
         campaigns=object(),
-        queries=object(),
+        queries=SimpleNamespace(campaign_for_draft=AsyncMock(return_value=None)),
         profiles=object(),
     )
     return SimpleNamespace(sessions=sessions, renderer=renderer, creator=creator)
@@ -115,7 +115,7 @@ async def test_confirmation_returns_to_preview_preserving_cover(flow, monkeypatc
     await flow.creator.handle_grant(query, SimpleNamespace(action=action))
     assert flow.sessions.state == "draft:idle"
     assert flow.sessions.data["cover_file_id"] == "new-cover"
-    assert "封面设置：\u3010已设置\u3011" in flow.renderer.render.call_args.kwargs["text"]  # noqa: RUF001
+    assert "封面\uff1a已设置" in flow.renderer.render.call_args.kwargs["text"]
 
 
 async def test_cover_buttons_offer_no_duplicate_or_noop_actions(flow, monkeypatch):
@@ -213,6 +213,7 @@ async def test_expired_buttons_on_current_panel_can_still_recover(flow, monkeypa
 
 
 async def test_new_command_sends_preview_then_binds_buttons_to_new_panel(flow, monkeypatch):
+    flow.sessions.state = "draft:idle"
     original = dict(flow.sessions.data)
     answer = AsyncMock(return_value=_message(message_id=30))
     monkeypatch.setattr(Message, "answer", answer)
@@ -225,7 +226,7 @@ async def test_new_command_sends_preview_then_binds_buttons_to_new_panel(flow, m
 
     flow.renderer.keyboard_for.side_effect = keyboard
     await flow.creator.start_message(_message(message_id=29))
-    assert "抽奖预览" in answer.call_args.args[0]
+    assert "编辑草稿" in answer.call_args.args[0]
     assert "正在准备" not in answer.call_args.args[0]
     assert flow.sessions.data["title"] == original["title"]
     markup.assert_awaited_once_with(reply_markup="KEYBOARD")
@@ -247,4 +248,4 @@ async def test_old_panel_continue_button_opens_preserved_draft(flow, monkeypatch
     assert flow.sessions.data["panel_message_id"] == 31
     assert flow.sessions.data["cover_file_id"] == original["cover_file_id"]
     assert flow.sessions.data["title"] == original["title"]
-    assert "抽奖预览" in flow.renderer.render.call_args.kwargs["text"]
+    assert "草稿已保留" in flow.renderer.render.call_args.kwargs["text"]

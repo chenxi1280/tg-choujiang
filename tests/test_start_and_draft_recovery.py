@@ -24,6 +24,7 @@ def _handler() -> LotteryUpdateHandler:
         handle_command=AsyncMock(return_value=False),
     )
     handler._admin_flow = SimpleNamespace(
+        suspend_draft=AsyncMock(),
         start_create_message=AsyncMock(),
         handle_text=AsyncMock(return_value=True),
         recover_draft_callback=AsyncMock(return_value=False),
@@ -32,12 +33,13 @@ def _handler() -> LotteryUpdateHandler:
         register=AsyncMock(),
         _queries=SimpleNamespace(campaign_by_reference=AsyncMock(return_value=None)),
     )
+    handler._queries = handler._member_flow._queries
     return handler
 
 
 async def test_plain_start_opens_short_home_without_full_guide() -> None:
     handler = _handler()
-    message = SimpleNamespace(text="/start")
+    message = SimpleNamespace(from_user=SimpleNamespace(id=USER_ID), text="/start")
 
     await handler._private_message(message)
 
@@ -47,7 +49,7 @@ async def test_plain_start_opens_short_home_without_full_guide() -> None:
 
 async def test_start_deep_link_keeps_registration_route() -> None:
     handler = _handler()
-    message = SimpleNamespace(text="/start join_campaign")
+    message = SimpleNamespace(from_user=SimpleNamespace(id=USER_ID), text="/start join_campaign")
 
     await handler._private_message(message)
 
@@ -57,7 +59,7 @@ async def test_start_deep_link_keeps_registration_route() -> None:
 
 async def test_other_command_never_triggers_start_registration() -> None:
     handler = _handler()
-    message = SimpleNamespace(text="/starting join_campaign")
+    message = SimpleNamespace(from_user=SimpleNamespace(id=USER_ID), text="/starting join_campaign")
 
     await handler._private_message(message)
 
@@ -68,7 +70,9 @@ async def test_other_command_never_triggers_start_registration() -> None:
 @pytest.mark.parametrize("name", ["start", "new", "menu", "help", "region"])
 async def test_command_for_other_bot_never_enters_current_draft(name: str) -> None:
     handler = _handler()
-    message = SimpleNamespace(text=f"/{name}@other_bot join_campaign")
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=USER_ID), text=f"/{name}@other_bot join_campaign"
+    )
 
     await handler._private_message(message)
 
@@ -100,7 +104,7 @@ def test_command_parser_preserves_exact_name_and_recipient(
 async def test_current_bot_mentioned_commands_keep_navigation(name: str) -> None:
     handler = _handler()
     handler._admin_flow.start_create_message = AsyncMock()
-    message = SimpleNamespace(text=f"/{name}@LOTTERY_BOT")
+    message = SimpleNamespace(from_user=SimpleNamespace(id=USER_ID), text=f"/{name}@LOTTERY_BOT")
 
     await handler._private_message(message)
 

@@ -7,6 +7,11 @@ from tg_lottery.telegram.creator_gate_schedule import validate_gate_time
 from tg_lottery.telegram.creator_invite_retention import view as retention_view
 from tg_lottery.telegram.creator_renderer import PanelTarget
 from tg_lottery.telegram.creator_required_chats_data import required_draft_data
+from tg_lottery.telegram.creator_retention_revision import (
+    resolve_retention,
+    retention_conflict_view,
+    synchronize_retention,
+)
 
 
 class CreatorBehaviorAdmission:
@@ -15,11 +20,15 @@ class CreatorBehaviorAdmission:
 
     async def show(self, query: Any, _: object) -> None:
         data = await required_draft_data(self._sessions, query.from_user.id)
-        await self._render(query, editor.open_editor(data))
+        opened = data if editor.EDITOR_KEY in data else editor.open_editor(data)
+        await self._render(query, synchronize_retention(opened))
 
     async def handle(self, query: Any, grant: Any) -> bool:
         data = await required_draft_data(self._sessions, query.from_user.id)
         action = grant.action
+        if action in {"draft_gate:retention_saved", "draft_gate:retention_edited"}:
+            await self._render(query, resolve_retention(data, use_saved=action.endswith("saved")))
+            return False
         if action == "draft_gate:leave" and editor.dirty(data):
             await self._unsaved_warning(query)
             return False
@@ -63,9 +72,13 @@ class CreatorBehaviorAdmission:
         )
 
     async def _render(self, query: Any, data: dict) -> None:
-        updated = data | {"panel_message_id": query.message.message_id}
+        updated = synchronize_retention(data) | {"panel_message_id": query.message.message_id}
         await self._sessions.set(query.from_user.id, "draft:behavior_admission", updated)
-        text, rows = views.view(updated)
+        text, rows = (
+            retention_conflict_view(updated)
+            if updated[editor.EDITOR_KEY].get("retention_conflict")
+            else views.view(updated)
+        )
         await self._renderer.render(query.message, user_id=query.from_user.id, text=text, rows=rows)
 
     async def _retention(self, query: Any, data: dict, *, action: str) -> None:
@@ -73,7 +86,10 @@ class CreatorBehaviorAdmission:
         if action == "draft_gate:retention":
             changed = data
         else:
-            staged = staged | {"retention_hours": int(action.rsplit(":", 1)[-1])}
+            staged = staged | {
+                "retention_hours": int(action.rsplit(":", 1)[-1]),
+                "retention_modified": True,
+            }
             changed = data | {editor.EDITOR_KEY: staged}
             gate = dict(type=staged["type"], groups=staged["groups"])
             validate_gate_time(

@@ -78,7 +78,7 @@ async def test_group_upgrade_keeps_gate_and_rules_route(session_factory):
         assert await session.scalar(select(func.count(BaseActivityEvent.id))) == 2
 
 
-@pytest.mark.parametrize("text", ["短", "/start", "!!!", None])
+@pytest.mark.parametrize("text", ["/start", " ", None])
 async def test_invalid_text_does_not_complete_gate(session_factory, text):
     _cid, pid = await seed_v3(session_factory, rules_for("message"))
     service = ActivityService(partial(UnitOfWork, session_factory))

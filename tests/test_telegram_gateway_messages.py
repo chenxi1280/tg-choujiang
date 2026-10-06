@@ -116,10 +116,11 @@ def test_campaign_card_separates_rules_registration_and_join_links() -> None:
 
     assert "member:join:AbCdEfGhIjKlMnOpQrSt-_" not in datas
     assert "member:rules:AbCdEfGhIjKlMnOpQrSt-_" not in datas
-    assert "https://t.me/lottery_test_bot?start=rules_AbCdEfGhIjKlMnOpQrSt-_" in urls
+    assert (
+        "https://t.me/lottery_test_bot?start=rules_AbCdEfGhIjKlMnOpQrSt-_"
+        in _campaign_card_text(payload)
+    )
     assert urls == [
-        "https://t.me/lottery_test_bot?start=join_AbCdEfGhIjKlMnOpQrSt-_",
-        "https://t.me/lottery_test_bot?start=rules_AbCdEfGhIjKlMnOpQrSt-_",
         "https://t.me/lottery_test_bot?start=join_AbCdEfGhIjKlMnOpQrSt-_",
     ]
 
@@ -143,13 +144,13 @@ def test_campaign_card_explains_per_group_messages_and_channel_following() -> No
 
     text = _campaign_card_text(payload)
 
-    assert "加入-主活动群" in text
-    assert "加入-协作群" in text
-    assert "关注-公告频道" in text
-    assert text.count("入口见下方按钮") == 3
+    assert "主活动群</a>" in text
+    assert "协作群</a>" in text
+    assert "🎫 关注-<a href=" in text and "公告频道</a>" in text
+    assert text.count('href="https://t.me/lottery_test_bot?start=join_') == 3
     assert text.count("累计发言至少 <b>10</b> 条") == 2
-    assert "🔋 <b>抽奖加成" in text
-    assert "每日发言满10条+2次" in text
+    assert "🔋 <b>人品加成" in text
+    assert "每日发言加成" in text and ">规则</a>" in text
 
 
 def test_draw_result_keeps_internal_hash_out_of_public_message() -> None:
@@ -364,26 +365,28 @@ async def test_campaign_card_matches_lotterybest_format() -> None:
     text = bot.sent[0][1][1]
     assert operation == "send_message"
     assert "🎰 <b>周末抽奖 &lt;福利场&gt;</b>" in text
-    assert "📮 <b>参与群与准入条件" in text
+    assert "📮 <b>参与条件" in text
     assert "🌏️ 归属地" in text
     assert "广东" in text
-    assert "🪪 必须设置用户名" in text
+    assert "🪪 必须设置 Telegram 用户名" in text
     assert '🎫 加入-<a href="https://t.me/welfare_group">福利群</a>' in text
     assert "累计发言至少 <b>10</b> 条" in text
     assert "🎁 <b>奖品内容" in text
     assert "💰️ 一等奖" in text
     assert "<b>2</b>" in text
-    assert "🔋 <b>抽奖加成" in text
-    assert "每日发言满10条+2次" in text
+    assert "🔋 <b>人品加成" in text
+    assert "每日发言加成、邀请加成" in text
+    assert ">规则</a>" in text
     assert "📅 <b>开奖日期" in text
     assert "2026年08月08日 11时25分00秒" in text
     assert kwargs["parse_mode"] == "HTML"
+    assert kwargs["protect_content"] is False
     assert kwargs["link_preview_options"].is_disabled is True
     assert bot.pinned[0][:2] == (-1001, SENT_MESSAGE_ID)
     assert bot.pinned[0][2]["disable_notification"] is True
 
 
-async def test_campaign_keyboard_uses_private_rules_link() -> None:
+async def test_campaign_keyboard_emphasizes_participation_with_rules_in_body() -> None:
     bot = FakeCardBot()
     gateway = TelegramGateway(bot, object())
 
@@ -392,14 +395,11 @@ async def test_campaign_keyboard_uses_private_rules_link() -> None:
     keyboard = bot.sent[0][2]["reply_markup"]
     buttons = [row[0] for row in keyboard.inline_keyboard]
 
-    assert len(buttons) == 4
+    assert len(buttons) == 1
+    assert buttons[0].text == "👉 点击参与抽奖"
     assert buttons[0].url == _campaign_deep_link(_lotterybest_card_payload(), "join")
     assert buttons[0].callback_data is None
-    assert buttons[1].callback_data.startswith("member:bonus:")
-    assert "?start=rules_" in buttons[2].url
-    assert "?start=join_" in buttons[3].url
-    assert buttons[2].callback_data is None
-    assert buttons[3].callback_data is None
+    assert _campaign_deep_link(_lotterybest_card_payload(), "rules") in bot.sent[0][1][1]
 
 
 async def test_pin_failure_does_not_fail_delivery() -> None:

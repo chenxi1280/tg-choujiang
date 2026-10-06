@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 
 from tg_lottery.application.admission_qualification import behavior_clause
+from tg_lottery.application.campaign_sharing import CampaignShareRequest, request_campaign_share
 from tg_lottery.application.campaign_targets import QualificationTarget, qualification_targets
 from tg_lottery.application.full_draw import record_full_draw_candidate
 from tg_lottery.application.group_invite_links import (
@@ -88,6 +89,13 @@ class ParticipantService:
         self._uow_factory = uow_factory
         self._invite_name_factory = invite_name_factory
         self._referral_ref_factory = referral_ref_factory
+
+    async def request_share_card(
+        self, campaign_id: UUID, user_id: int, *, bot_username: str
+    ) -> None:
+        await request_campaign_share(
+            self._uow_factory, CampaignShareRequest(campaign_id, user_id, bot_username)
+        )
 
     async def begin_registration(self, request: RegistrationRequest) -> RegistrationAttempt:
         async with self._uow_factory() as uow:

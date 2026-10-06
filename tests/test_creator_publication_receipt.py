@@ -40,7 +40,12 @@ async def test_finish_edits_original_panel_with_forwardable_link_before_clearing
     await publisher._finish(_panel_query(), {}, uuid4())
     text = edit.await_args.args[0]
     keyboard = edit.await_args.kwargs["reply_markup"]
-    assert keyboard.inline_keyboard[0][0].url in text
+    assert any(
+        button.url in text
+        for row in keyboard.inline_keyboard
+        for button in row
+        if button.url and "start=join_" in button.url
+    )
     assert "join_abc" in text
     sessions.clear.assert_awaited_once_with(201)
 

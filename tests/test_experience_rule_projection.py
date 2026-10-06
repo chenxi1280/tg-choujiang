@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from tg_lottery.domain.enums import QualificationState
 from tg_lottery.domain.rules import CampaignRules, GroupActivityRule, GroupInviteRule
+from tg_lottery.presentation.participation_rules import public_rule_blocks
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.creator_group_availability import GroupAvailability
 from tg_lottery.telegram.creator_renderer import _group_button_text
@@ -37,6 +38,7 @@ def test_card_and_private_rules_render_each_frozen_group_bonus() -> None:
         "campaign_ref": "AbCdEfGhIjKlMnOpQrSt-_",
         "name": "周末阅读",
         "timezone": "Asia/Shanghai",
+        "cutoff_at": "2026-09-06T11:55:00+00:00",
         "draw_at": "2026-09-06T12:00:00+00:00",
         "prizes": [],
         "presentation": {"participation_groups": CHATS[:2], "required_chats": CHATS[2:]},
@@ -44,17 +46,19 @@ def test_card_and_private_rules_render_each_frozen_group_bonus() -> None:
     }
     card = _campaign_card_text(payload)
     private = human_rule(rules, CHATS)
-    for text in (card, private):
+    complete_rules = "\n".join(public_rule_blocks(payload))
+    for text in (complete_rules, private):
         assert "每邀请 3 个有效新成员 +1 次" in text
         assert "每邀请 5 个有效新成员 +1 次" in text
         assert "上限 7 次" in text
         assert "每天发言满 20 条 +2 次" in text
         assert "每天只奖励一次" in text
         assert "按达标天数累计" in text
-        assert "每条至少 8 字" in text
+        assert "每条至少" not in text and "文字、图片、表情均计数" in text
         assert "-100" not in text
-    assert "关注-公告频道" in card
+    assert "公告频道</a>" in card and "🎫 关注-<a" in card
     assert "累计发言至少 <b>50</b> 条" in card
+    assert "每日发言加成、邀请加成" in card and "规则</a>" in card
     assert "全部达标" not in private
 
 

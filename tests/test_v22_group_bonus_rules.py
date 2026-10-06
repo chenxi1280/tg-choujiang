@@ -10,7 +10,6 @@ from tests.helpers import seed_campaign
 from tests.v22_bonus_test_helpers import draft_data as _draft_data
 from tests.v22_bonus_test_helpers import picker_query as _picker_query
 from tg_lottery.application.activity_rules import (
-    activity_min_text_length,
     group_activity_ticket_target,
 )
 from tg_lottery.application.callback_tokens import CallbackGrant
@@ -115,7 +114,7 @@ def test_legacy_ratio_invite_bonus_can_be_explicitly_uncapped() -> None:
     assert rule.max_bonus_tickets is None
 
 
-def test_group_activity_targets_and_minimum_lengths_are_independent() -> None:
+def test_group_activity_targets_are_independent() -> None:
     rules = CampaignRules(
         bonus_types=("activity",),
         group_activity_rules={
@@ -137,8 +136,6 @@ def test_group_activity_targets_and_minimum_lengths_are_independent() -> None:
 
     assert group_activity_ticket_target(counts, -1001, rules) == 1
     assert group_activity_ticket_target(counts, -1002, rules) == 22
-    assert activity_min_text_length(rules, -1001) == 20
-    assert activity_min_text_length(rules, -1002) == 5
 
 
 @pytest.mark.parametrize(
@@ -457,7 +454,15 @@ async def test_removing_configured_group_requires_confirmation() -> None:
     data = _draft_data() | {"group_invite_rules": {"-1001": source}}
     sessions = PickerSessions(data)
     group = Group(chat_id=-1001, title="A群", timezone="Asia/Shanghai")
-    queries = SimpleNamespace(group_by_chat_id=AsyncMock(return_value=group))
+    queries = SimpleNamespace(
+        group_by_chat_id=AsyncMock(
+            side_effect=lambda chat_id: (
+                group
+                if chat_id == -1001
+                else Group(chat_id=chat_id, title="B群", timezone="Asia/Shanghai")
+            )
+        )
+    )
     renderer = SimpleNamespace(render=AsyncMock(), render_groups=AsyncMock())
     picker = CreatorGroupPicker(
         bot=SimpleNamespace(),
@@ -471,7 +476,8 @@ async def test_removing_configured_group_requires_confirmation() -> None:
 
     assert sessions.data["participation_group_ids"] == [-1001, -1002]
     assert sessions.data["pending_group_removal_ids"] == [-1001]
-    assert "确认后将删除" in renderer.render.await_args.kwargs["text"]
+    assert "编辑中规则" in renderer.render.await_args.kwargs["text"]
+    assert "其他群不变" in renderer.render.await_args.kwargs["text"]
     await picker.confirm_remove(query, CallbackGrant("draft_group_remove_confirm", None, {}))
     assert sessions.data["participation_group_ids"] == [-1002]
     assert sessions.data["group_invite_rules"] == {}

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup
 
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import UserFacingError
@@ -14,28 +14,23 @@ from tg_lottery.telegram.creator_bonus import bonus_summary
 from tg_lottery.telegram.creator_bonus_warnings import bonus_window_warning
 from tg_lottery.telegram.creator_invite_retention import summary as retention_summary
 from tg_lottery.telegram.creator_messages import message_policy_summary
+from tg_lottery.telegram.creator_sections import next_draft_action
 from tg_lottery.telegram.draft_config import campaign_input, missing_fields
+from tg_lottery.telegram.home_views import home_keyboard
 from tg_lottery.telegram.public_projection import format_public_time
 
 ButtonRows = list[list[tuple[str, str]]]
 
 
 def main_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🎁 抽奖管理", callback_data="nav:index")],
-            [InlineKeyboardButton(text="创建/继续抽奖", callback_data="nav:create")],
-            [InlineKeyboardButton(text="我参加的抽奖", callback_data="nav:join")],
-            [InlineKeyboardButton(text="设置归属地区", callback_data="nav:region")],
-            [InlineKeyboardButton(text="📖 使用指南", callback_data="nav:help")],
-        ]
-    )
+    return home_keyboard()
 
 
 def preview_text(data: dict[str, Any], *, now: datetime | None = None) -> str:
     status = _preview_status(data, now or utcnow())
     return (
-        "🎰 抽奖预览\n\n"
+        "创建抽奖 · 编辑草稿（未发布）\n"
+        f"下一项：{next_draft_action(data)[0]}\n\n"
         f"🎰 抽奖标题：{data.get('title') or '【等待设置】'}\n\n"
         f"🏞️ 封面设置：{'【已设置】' if data.get('cover_file_id') else '【等待设置】'}\n\n"
         f"🪪 用户限制：{_user_limits(data)}\n\n"
@@ -46,7 +41,7 @@ def preview_text(data: dict[str, Any], *, now: datetime | None = None) -> str:
         f"🎁 奖品内容：\n{_prize_lines(data.get('prizes', []))}\n"
         f"⚠️ 抽奖说明：{data.get('description') or '【等待设置】'}\n\n"
         f"🔋 抽奖加成：{bonus_summary(data)}\n{retention_summary(data)}\n"
-        f"🌀 开奖方式：{_draw_text(data)}\n\n"
+        f"🌀 开奖时间：{_draw_text(data)}\n\n"
         f"🎅 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}\n\n"
         f"🔔 参与提示：{message_policy_summary(data)}\n\n"
         f"当前状态：{status}\n{bonus_window_warning(data, now=now)}"
@@ -66,25 +61,13 @@ def _preview_status(data: dict[str, Any], now: datetime) -> str:
 
 
 def dashboard_rows(data: dict[str, Any] | None = None) -> ButtonRows:
-    cover_label = "替换封面" if (data or {}).get("cover_file_id") else "上传封面"
     return [
-        [("参与活动的群", "draft_group")],
-        [
-            ("活动标题", "draft_title"),
-            (cover_label, "draft_cover"),
-            ("用户限制", "draft_user_limits"),
-        ],
-        [
-            ("准入条件", "draft_participation"),
-            ("奖品内容", "draft_prizes"),
-            ("抽奖说明", "draft_description"),
-        ],
-        [("抽奖门槛", "draft_gate")],
-        [("每日发言加成", "draft_bonus_activity"), ("邀请加成", "draft_bonus_invite")],
-        [("抽奖加成", "draft_rules"), ("开奖方式", "draft_draw"), ("发奖人员", "draft_issuer")],
-        [("消息提示", "draft_messages"), ("🎉 发布抽奖", "draft_publish")],
-        [("🗑 清空配置", "draft_clear"), ("载入上次抽奖", "draft_load_last")],
-        [("↩ 返回首页", "draft_home")],
+        [("活动标题", "draft_title"), ("奖品与领奖", "draft_prizes")],
+        [("参与群", "draft_group"), ("开奖时间", "draft_draw")],
+        [("参与条件", "draft_conditions"), ("加成设置", "draft_rules")],
+        [("封面与说明", "draft_cover_summary"), ("更多设置", "draft_more")],
+        [next_draft_action(data or {})],
+        [("返回首页（草稿保留）", "draft_home")],
     ]
 
 

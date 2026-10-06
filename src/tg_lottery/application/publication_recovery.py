@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from tg_lottery.application.campaign_targets import require_campaign_admin
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import add_audit, utcnow
+from tg_lottery.domain.action_confirmation import ExpectedCampaign, validate_expected
 from tg_lottery.domain.enums import CampaignState, OutboxState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.infrastructure.db import (
@@ -19,12 +20,17 @@ from tg_lottery.infrastructure.db import (
 
 
 async def retry_failed_publication(
-    uow_factory: UnitOfWorkFactory, campaign_id: UUID, actor_user_id: int
+    uow_factory: UnitOfWorkFactory,
+    campaign_id: UUID,
+    actor_user_id: int,
+    *,
+    expected: ExpectedCampaign | None = None,
 ) -> int:
     async with uow_factory() as uow:
         campaign = await uow.session.get(Campaign, campaign_id, with_for_update=True)
         if campaign is None:
             raise UserFacingError("活动不存在或已经失效")
+        validate_expected(campaign, expected)
         await require_campaign_admin(uow.session, campaign_id=campaign_id, user_id=actor_user_id)
         if campaign.state is not CampaignState.PUBLISHING:
             raise UserFacingError("活动当前不在投放中, 不能重试发布")

@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts, load_campaign_outcome
 from tg_lottery.application.records import utcnow
+from tg_lottery.domain.enums import CampaignState
 from tg_lottery.infrastructure.db import (
     Campaign,
     CampaignParticipationGroup,
@@ -17,9 +18,11 @@ from tg_lottery.infrastructure.db import (
     TelegramOutbox,
     Winner,
 )
+from tg_lottery.presentation.campaign_card import campaign_link
 from tg_lottery.telegram.member_bonus_text import historical_outcome_status
 from tg_lottery.telegram.member_group_invites import HIDDEN_INVITE_STATES
 from tg_lottery.telegram.member_invites import legacy_invite_note, unavailable_invite_link_note
+from tg_lottery.telegram.public_projection import campaign_state_text
 
 
 @dataclass(frozen=True)
@@ -55,10 +58,12 @@ async def build_gateway_request(
     outbox: TelegramOutbox,
 ) -> GatewayRequest:
     payload = dict(outbox.payload)
-    if outbox.operation == "send_campaign_card":
+    if outbox.operation in {"send_campaign_card", "send_campaign_share_card"}:
         campaign = await _campaign_projection(session_factory, outbox, payload)
         payload["timezone"] = _payload_timezone(payload) or campaign.timezone
         payload["campaign_ref"] = campaign.public_ref
+        if outbox.operation == "send_campaign_share_card":
+            payload = _share_card_state(payload, campaign)
     if outbox.operation == "send_winner_notice" and "issuer_user_id" not in payload:
         payload = payload | await _winner_notice_issuer(session_factory, outbox)
     if outbox.operation == "send_invite_link":
@@ -68,6 +73,22 @@ async def build_gateway_request(
         recipient_chat_id=outbox.recipient_chat_id,
         payload=payload,
     )
+
+
+def _share_card_state(payload: dict[str, Any], campaign: Campaign) -> dict[str, Any]:
+    open_state = campaign.state in {CampaignState.RUNNING, CampaignState.SCHEDULED}
+    closed = not open_state or utcnow() > campaign.cutoff_at
+    if not closed:
+        return payload
+    status = "报名已截止" if open_state else campaign_state_text(campaign.state)
+    prefix = f"本期当前状态：{status}；参与入口已关闭，请查看规则及结果。\n\n"
+    footer = "🔗 点击链接参与抽奖（长按本消息可转发）：\n" + campaign_link(payload)
+    historical = "🔗 查看活动规则与结果：\n" + campaign_link(payload, "rules")
+    text = payload["rendered_card_text"].replace(footer, historical)
+    return payload | {
+        "share_closed": True,
+        "rendered_card_text": prefix + text,
+    }
 
 
 async def _invite_delivery_projection(

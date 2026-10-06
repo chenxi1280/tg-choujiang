@@ -6,10 +6,13 @@ from aiogram.exceptions import TelegramAPIError
 from tg_lottery.domain.rules import CampaignRules
 
 
-async def inspect_bonus_permissions(bot: Bot, rules: CampaignRules) -> dict[int, str]:
+async def inspect_bonus_permissions(
+    bot: Bot, rules: CampaignRules, *, targets: tuple = ()
+) -> dict[int, str]:
     errors = {}
+    current_ids = {(target.rule_chat_id or target.chat_id): target.chat_id for target in targets}
     for chat_id, group_kinds in _permission_targets(rules).items():
-        reason = await _permission_error(bot, chat_id, group_kinds)
+        reason = await _permission_error(bot, current_ids.get(chat_id, chat_id), group_kinds)
         if reason:
             errors[chat_id] = reason
     return errors

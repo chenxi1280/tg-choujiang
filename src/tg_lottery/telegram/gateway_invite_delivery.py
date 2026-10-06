@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.infrastructure.db import InviteLink
 from tg_lottery.telegram.gateway_requests import GatewayRequest
@@ -21,7 +21,7 @@ def invite_delivery_content(
     return (
         f"🔗 你的「{title}」入群入口已就绪。\n\n{note}\n\n{link}\n\n"
         "此入口仅归因到当前活动和群聊，不计入下次抽奖。",
-        invite_link_keyboard(link, title, active=request.payload["invite_bonus_active"]),
+        _delivery_keyboard(request, link, title),
     )
 
 
@@ -32,3 +32,15 @@ def _delivery_link(request: GatewayRequest, invite_link: InviteLink, *, cipher: 
     if invite_link.encrypted_url is None:
         raise ValueError("send_invite_link requires an encrypted URL")
     return cipher.decrypt(invite_link.encrypted_url, context=f"invite-link:{invite_link.id}")
+
+
+def _delivery_keyboard(request, link, title):
+    keyboard = invite_link_keyboard(link, title, active=request.payload["invite_bonus_active"])
+    reference = str(request.payload["campaign_ref"])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            *keyboard.inline_keyboard,
+            [InlineKeyboardButton(text="邀请记录", callback_data=f"member:invites:{reference}:0")],
+            [InlineKeyboardButton(text="返回本场活动", callback_data=f"m:detail:{reference}")],
+        ]
+    )

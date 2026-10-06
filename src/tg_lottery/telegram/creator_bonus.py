@@ -10,6 +10,7 @@ from tg_lottery.domain.rules import (
 from tg_lottery.telegram import creator_bonus_copy as bonus_copy
 from tg_lottery.telegram import creator_group_bonus as group_bonus
 from tg_lottery.telegram import creator_invite_retention as retention
+from tg_lottery.telegram.creator_bonus_menu import bonus_menu_view
 
 ButtonRows = list[list[tuple[str, str]]]
 
@@ -54,7 +55,11 @@ def bonus_text(data: dict[str, Any]) -> str:
 
 
 def bonus_summary(data: dict[str, Any]) -> str:
-    if data.get("participation_groups") and data.get("bonus_types"):
+    if _all_closed(data):
+        return "两类加成均关闭（已保存参数仍保留）"
+    if data.get("bonus_types") and (
+        data.get("participation_groups") or data.get("participation_rules_version") == "v3.0"
+    ):
         return _configured_group_summary(data)
     if data.get("group_invite_rules") or data.get("group_activity_rules"):
         return group_bonus.summary(data)
@@ -210,16 +215,31 @@ def bonus_view(data: dict[str, Any], action: str) -> tuple[str, ButtonRows]:
     working = data.get("bonus_working_copy")
     if isinstance(working, dict):
         return group_bonus.editor_view(data, working)
+    group_view = _group_navigation_view(data, action)
+    return group_view if group_view is not None else _legacy_bonus_view(data, action)
+
+
+def _all_closed(data: dict) -> bool:
+    return data.get("participation_rules_version") == "v3.0" and not data.get("bonus_types")
+
+
+def _group_navigation_view(data: dict, action: str):
     if action == "draft_bonus_copy_confirm":
-        kind = str(data.get("bonus_copy_result_kind") or "invite")
-        return group_bonus.list_view(data, kind)
-    if action in {"draft_bonus_invite", "draft_bonus_invite_save"}:
-        return group_bonus.list_view(data, "invite")
-    if action in {"draft_bonus_activity", "draft_bonus_activity_save"}:
-        return group_bonus.list_view(data, "activity")
+        return group_bonus.list_view(data, str(data.get("bonus_copy_result_kind") or "invite"))
+    kinds = {
+        "draft_bonus_invite": "invite",
+        "draft_bonus_invite_save": "invite",
+        "draft_bonus_activity": "activity",
+        "draft_bonus_activity_save": "activity",
+    }
+    if action in kinds:
+        return group_bonus.list_view(data, kinds[action])
     if action.startswith("draft_bonus_group_page:"):
         return group_bonus.list_view(data, group_bonus.page_kind(action))
-    return _legacy_bonus_view(data, action)
+    kind = str(data.get("creator_bonus_kind") or "")
+    if kind in {"invite", "activity"} and action != "draft_bonus_menu":
+        return group_bonus.list_view(data, kind)
+    return None
 
 
 def _legacy_bonus_view(data: dict[str, Any], action: str) -> tuple[str, ButtonRows]:
@@ -227,7 +247,7 @@ def _legacy_bonus_view(data: dict[str, Any], action: str) -> tuple[str, ButtonRo
         return invite_bonus_text(data), invite_bonus_rows(data)
     if action.startswith("draft_bonus_activity"):
         return activity_bonus_text(data), activity_bonus_rows(data)
-    return bonus_text(data), bonus_rows(data)
+    return bonus_menu_view(data, summary=bonus_summary(data))
 
 
 def _toggle_type(data: dict[str, Any], bonus_type: str) -> dict[str, Any]:

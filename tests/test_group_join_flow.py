@@ -8,6 +8,7 @@ from aiogram.exceptions import TelegramForbiddenError
 from aiogram.methods import AnswerCallbackQuery, SendMessage
 from aiogram.types import CallbackQuery, User
 
+from tests.navigation_helpers import PassthroughAdmin, PassthroughNavigation
 from tg_lottery.application.participants import RegistrationAttempt
 from tg_lottery.domain.enums import CampaignState, QualificationState
 from tg_lottery.domain.rules import CampaignRules
@@ -301,9 +302,10 @@ class InviteStartFlow:
 
 def _handler(member_flow):
     return LotteryUpdateHandler(
+        navigation=PassthroughNavigation(),
         bot=object(),
         default_timezone="Asia/Shanghai",
-        admin_flow=object(),
+        admin_flow=PassthroughAdmin(),
         member_flow=member_flow,
         personal_flow=PassthroughPersonalFlow(),
         tokens=object(),

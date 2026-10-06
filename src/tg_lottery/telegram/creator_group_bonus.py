@@ -6,6 +6,11 @@ from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import GroupActivityRule, GroupInviteRule
 from tg_lottery.telegram import creator_bonus_copy as bonus_copy
 from tg_lottery.telegram.bonus_rule_text import chat_title
+from tg_lottery.telegram.creator_bonus_activation import activation_notice, save_label
+from tg_lottery.telegram.creator_number_controls import PRESET_PREFIX
+from tg_lottery.telegram.creator_number_controls import mode_row as _mode_row
+from tg_lottery.telegram.creator_number_controls import number_row as _number_row
+from tg_lottery.telegram.creator_number_controls import preset_row as _preset_row
 
 ButtonRows = list[list[tuple[str, str]]]
 PAGE_SIZE = 6
@@ -14,7 +19,6 @@ GROUP_PREFIXES = (
     "draft_bonus_activity_group:",
     "draft_bonus_group_page:",
 )
-PRESET_PREFIX = "draft_bonus_preset:"
 DEFAULT_INVITES_PER_TICKET = 1
 DEFAULT_DAILY_MESSAGES = 4
 DAILY_REWARD_CYCLES = 1
@@ -37,6 +41,7 @@ GROUP_ACTIONS = frozenset(
         "draft_bonus_activity_cap_inc",
         "draft_bonus_activity_save",
         "draft_bonus_group_cancel",
+        "draft_bonus_input_cancel",
         "draft_bonus_continue_editing",
         "draft_bonus_group_disable",
         "draft_bonus_input_cycle",
@@ -57,6 +62,8 @@ def handles_action(action: str) -> bool:
 
 
 def apply_action(data: dict[str, Any], action: str) -> dict[str, Any]:
+    if "length" in action:
+        raise UserFacingError("字数设置已移除，请重新打开发言加成编辑页")
     _validate_v3_invite_action(data, action)
     direct = _apply_direct_action(data, action)
     if direct is not None:
@@ -81,6 +88,8 @@ def _apply_direct_action(data: dict[str, Any], action: str) -> dict[str, Any] | 
         return data | {"bonus_working_copy": _new_working_copy(data, kind, chat_id)}
     if action == "draft_bonus_group_cancel":
         return _without_editor(data)
+    if action == "draft_bonus_input_cancel":
+        return data | {"bonus_input_field": None}
     if action == "draft_bonus_continue_editing":
         return dict(data)
     if action == "draft_bonus_group_disable":
@@ -93,7 +102,7 @@ def _apply_direct_action(data: dict[str, Any], action: str) -> dict[str, Any] | 
 def receive_input(data: dict[str, Any], text: str) -> dict[str, Any]:
     working = dict(data.get("bonus_working_copy") or {})
     field = str(data.get("bonus_input_field") or "")
-    if not working or field not in {"cycle", "length", "cap"}:
+    if not working or field not in {"cycle", "cap"}:
         raise UserFacingError("当前没有待输入的加成字段")
     if (
         data.get("participation_rules_version") == "v3.0"
@@ -102,15 +111,19 @@ def receive_input(data: dict[str, Any], text: str) -> dict[str, Any]:
     ):
         raise UserFacingError("新活动邀请加成不限累计上限，请重新打开邀请加成编辑页")
     rule = dict(working["rule"])
-    rule[_input_rule_key(str(working["kind"]), field)] = _positive_integer(text)
+    key = _input_rule_key(str(working["kind"]), field)
+    rule[key] = _positive_integer(text)
+    changed = working | {"rule": rule}
+    if field == "cap":
+        changed = changed | {"last_cap": rule[key]}
     return data | {
-        "bonus_working_copy": working | {"rule": rule},
+        "bonus_working_copy": changed,
         "bonus_input_field": None,
     }
 
 
 def input_prompt(data: dict[str, Any]) -> str:
-    labels = {"cycle": "每轮数量", "length": "每条最低字数", "cap": "上限次数"}
+    labels = {"cycle": "每轮数量", "cap": "上限次数"}
     label = labels[str(data.get("bonus_input_field"))]
     return f"请输入{label}（正整数）："
 
@@ -146,6 +159,8 @@ def list_view(data: dict[str, Any], kind: str) -> tuple[str, ButtonRows]:
         for group in visible
     ]
     rows.extend(_page_rows(kind, page, len(groups)))
+    if not groups:
+        rows.append([("选择参与活动的群", "draft_group")])
     enabled = kind in data.get("bonus_types", [])
     rows.append([("关闭本加成" if enabled else "开启本加成", f"draft_bonus_toggle_{kind}")])
     if kind == "invite":
@@ -153,6 +168,8 @@ def list_view(data: dict[str, Any], kind: str) -> tuple[str, ButtonRows]:
     rows.append([("↩ 返回加成设置", "draft_bonus_menu")])
     title = "邀请" if kind == "invite" else "发言"
     reminder = "机器人必须在每个参与群中且拥有管理员权限。"
+    if not groups:
+        reminder += "\n当前没有参与群，请先选择参与活动的群，再设置本群加成。"
     return f"{title}加成（逐群设置）\n\n{reminder}", rows
 
 
@@ -192,7 +209,8 @@ def _change_working_copy(working: dict[str, Any], action: str) -> dict[str, Any]
         if current is None:
             raise UserFacingError("请先选择设置上限")
         rule[key] = _changed_positive(int(current), delta)
-        return working | {"rule": rule, "last_cap": rule.get(key)}
+        last_cap = rule[key] if key == _cap_keys(str(working["kind"]))[1] else working["last_cap"]
+        return working | {"rule": rule, "last_cap": last_cap}
     if action.endswith("_unlimited"):
         return _unlimited_working(working, rule)
     if action.endswith("_limited"):
@@ -205,8 +223,6 @@ def _numeric_change(action: str) -> tuple[str | None, int]:
     if "cycle" in action:
         key = "invites_per_cycle" if "invite" in action else "messages_per_cycle"
         return key, delta
-    if "length" in action:
-        return "min_text_length", delta
     if "cap" in action:
         key = "max_bonus_tickets" if "invite" in action else "daily_max_cycles"
         return key, delta
@@ -259,15 +275,16 @@ def _invite_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str, 
     rule = working["rule"]
     cap = _cap_label(rule, "invite")
     rows = [_number_row("邀请数", "invite_cycle", rule["invites_per_cycle"])]
-    rows.append(_preset_row("cycle", (1, 2, 3, 5, 10), "人"))
+    rows.append(_preset_row("cycle", (1, 2, 3, 5, 10), "人", selected=rule["invites_per_cycle"]))
     if data.get("participation_rules_version") != "v3.0":
         rows.append(_mode_row("invite", rule["cap_mode"]))
     if rule["cap_mode"] == "limited":
         rows.append(_number_row("上限", "invite_group_cap", cap))
-        rows.append(_preset_row("cap", (1, 5, 10, 20), "次"))
+        rows.append(_preset_row("cap", (1, 5, 10, 20), "次", selected=cap))
     rows.extend(_editor_footer("invite", data, working))
     title = _group_title(data, int(working["chat_id"]))
-    text = f"👥 {title}邀请加成\n\n每 {rule['invites_per_cycle']} 个有效邀请 +1；上限：{cap}"
+    text = f"👥 {title}邀请加成\n\n每 {rule['invites_per_cycle']} 个有效邀请 +1次；上限：{cap}"
+    text += activation_notice(data, "invite", chat_id=int(working["chat_id"]))
     return text, rows
 
 
@@ -275,17 +292,16 @@ def _activity_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str
     rule = working["rule"]
     cap = _cap_label(rule, "activity")
     rows = [_number_row("消息数", "activity_cycle", rule["messages_per_cycle"])]
-    rows.append(_preset_row("cycle", (4, 5, 10, 20), "条"))
-    rows.append(_number_row("字数", "activity_length", rule["min_text_length"]))
-    rows.append(_preset_row("length", (1, 5, 10, 20), "字"))
+    rows.append(_preset_row("cycle", (4, 5, 10, 20), "条", selected=rule["messages_per_cycle"]))
     rows.append(_mode_row("activity", rule["daily_cap_mode"]))
     rows.append([("每天达标一次（按天累计）", "draft_bonus_activity_daily")])
     if rule["daily_cap_mode"] == "limited":
         rows.append(_number_row("上限", "activity_cap", cap))
-        rows.append(_preset_row("cap", (1, 5, 10, 20), "次"))
+        rows.append(_preset_row("cap", (1, 5, 10, 20), "轮", selected=cap))
     rows.extend(_editor_footer("activity", data, working))
     title = _group_title(data, int(working["chat_id"]))
     text = f"💬 {title}发言加成\n\n" + _activity_description(rule, cap)
+    text += activation_notice(data, "activity", chat_id=int(working["chat_id"]))
     return text, rows
 
 
@@ -293,38 +309,16 @@ def _activity_description(rule: dict[str, Any], cap: object) -> str:
     reward = rule["reward_tickets"]
     if rule["daily_cap_mode"] == "limited" and rule["daily_max_cycles"] == DAILY_REWARD_CYCLES:
         counting = (
-            f"每天发言满 {rule['messages_per_cycle']} 条 +{reward} 票；每天只奖励一次，"
+            f"每天发言满 {rule['messages_per_cycle']} 条 +{reward}次；每天只奖励一次，"
             "按实际达标天数累计，不要求连续。"
         )
     else:
-        counting = f"每天每满 {rule['messages_per_cycle']} 条 +{reward} 票；每日上限：{cap} 轮。"
+        counting = f"每天每满 {rule['messages_per_cycle']} 条 +{reward}次；每日上限：{cap} 轮。"
     return (
-        counting + f"\n每条至少 {rule['min_text_length']} 字。"
+        counting + "\n文字、图片、表情均计数，不限制字数。"
         "\n北京时间每天 00:00 更新当天统计，之前获得的加成保留。"
         "\n选择预设或点击“自定义”，保存后生效。"
     )
-
-
-def _number_row(label: str, action: str, value: object) -> list[tuple[str, str]]:
-    field = "length" if "length" in action else "cap" if "cap" in action else "cycle"
-    return [
-        (f"{label} −", f"draft_bonus_{action}_dec"),
-        (f"自定义 · {value}", f"draft_bonus_input_{field}"),
-        ("＋", f"draft_bonus_{action}_inc"),
-    ]
-
-
-def _mode_row(kind: str, mode: str) -> list[tuple[str, str]]:
-    unlimited = "✅ 不设上限" if mode == "unlimited" else "不设上限"
-    limited = "✅ 设置上限" if mode == "limited" else "设置上限"
-    return [
-        (unlimited, f"draft_bonus_{kind}_unlimited"),
-        (limited, f"draft_bonus_{kind}_limited"),
-    ]
-
-
-def _preset_row(field: str, values: tuple[int, ...], unit: str) -> list[tuple[str, str]]:
-    return [(f"{value}{unit}", f"{PRESET_PREFIX}{field}:{value}") for value in values]
 
 
 def _apply_preset(data: dict[str, Any], action: str) -> dict[str, Any]:
@@ -347,26 +341,21 @@ def _editor_footer(kind: str, data: dict[str, Any], working: dict[str, Any]) -> 
     rows = []
     if configured:
         rows.append([("复制设置到其他群", "draft_bonus_copy_start")])
-    rows.append([("✅ 保存设置", f"draft_bonus_{kind}_save")])
+    rows.append([(save_label(data, kind), f"draft_bonus_{kind}_save")])
     if configured:
         rows.append([("关闭该群加成", "draft_bonus_group_disable")])
-    rows.append([("取消", "draft_bonus_group_cancel")])
+    rows.append([("放弃本群修改", "draft_bonus_group_cancel")])
     return rows
 
 
 def _page_rows(kind: str, page: int, count: int) -> ButtonRows:
     total_pages = max(1, (count + PAGE_SIZE - 1) // PAGE_SIZE)
-    if total_pages == 1:
-        return []
-    previous = max(0, page - 1)
-    following = min(total_pages - 1, page + 1)
-    return [
-        [
-            ("上一页", f"draft_bonus_group_page:{kind}:{previous}"),
-            (f"{page + 1}/{total_pages}", f"draft_bonus_group_page:{kind}:{page}"),
-            ("下一页", f"draft_bonus_group_page:{kind}:{following}"),
-        ]
-    ]
+    buttons = []
+    if page:
+        buttons.append(("上一页", f"draft_bonus_group_page:{kind}:{page - 1}"))
+    if page + 1 < total_pages:
+        buttons.append(("下一页", f"draft_bonus_group_page:{kind}:{page + 1}"))
+    return [buttons] if buttons else []
 
 
 def _change_page(data: dict[str, Any], action: str) -> dict[str, Any]:
@@ -397,7 +386,7 @@ def _rule_row_summary(kind: str, rule: dict[str, Any]) -> str:
     cap = (
         "每日不限" if rule["daily_cap_mode"] == "unlimited" else f"日上限{rule['daily_max_cycles']}"
     )
-    return f"{rule['messages_per_cycle']}条/≥{rule['min_text_length']}字｜{cap}"
+    return f"{rule['messages_per_cycle']}条｜{cap}"
 
 
 def _group_title(data: dict[str, Any], chat_id: int) -> str:
@@ -450,10 +439,10 @@ def _positive_integer(text: str) -> int:
 
 
 def _input_rule_key(kind: str, field: str) -> str:
+    if field not in {"cycle", "cap"}:
+        raise UserFacingError("加成字段已失效，请重新打开编辑页")
     if field == "cycle":
         return "invites_per_cycle" if kind == "invite" else "messages_per_cycle"
-    if field == "length":
-        return "min_text_length"
     return "max_bonus_tickets" if kind == "invite" else "daily_max_cycles"
 
 

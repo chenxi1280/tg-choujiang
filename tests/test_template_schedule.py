@@ -6,6 +6,7 @@ import pytest
 from aiogram.types import Chat, Message
 
 from tests.test_creator_settings import RecordingRenderer, ThresholdSessions
+from tg_lottery.application.callback_tokens import CallbackGrant
 from tg_lottery.telegram.creator_settings import CreatorSettings
 from tg_lottery.telegram.creator_views import preview_text
 from tg_lottery.telegram.draft_config import new_draft
@@ -50,7 +51,10 @@ async def test_template_restores_business_config_but_requires_new_draw_time():
     )
     message = Message(message_id=123, date=datetime.now(UTC), chat=Chat(id=101, type="private"))
     query = SimpleNamespace(from_user=SimpleNamespace(id=101), message=message)
-    await settings._load_last(query, None)
+    await settings.handle_grant(query, CallbackGrant("draft_load_last", None, {}))
+    assert sessions.data == current
+    assert "确认复用" in renderer.text
+    await settings.handle_grant(query, CallbackGrant("draft_load_last_confirm", None, {}))
     assert sessions.data["draw_at"] == ""
     assert sessions.data["title"] == previous["title"]
     assert sessions.data["prizes"] == previous["prizes"]

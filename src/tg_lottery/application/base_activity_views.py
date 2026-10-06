@@ -1,6 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from tg_lottery.application.admission_qualification import effective_ticket_text
 from tg_lottery.application.base_activity import load_base_progress
 from tg_lottery.application.campaign_outcomes import (
     TERMINAL_CAMPAIGN_STATES,
@@ -53,7 +54,8 @@ async def _legacy_progress_text(session, campaign, participant, *, rules):
         participant.base_qualified
         and participant.qualification_state == QualificationState.ELIGIBLE
     )
-    lines.append(f"当前有效抽奖次数: {participant.ticket_total_cache if active else 0}")
+    effective = effective_ticket_text(participant, active=active)
+    lines.append(f"当前有效抽奖次数: {effective}")
     lines.append("未达标时加成暂存; 缺勤会中断连续进度; 完成一次后保留本期达标资格。")
     return "\n".join(lines)
 

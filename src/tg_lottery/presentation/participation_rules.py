@@ -3,6 +3,18 @@ from collections.abc import Mapping
 from datetime import datetime, timedelta
 
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.presentation.campaign_card import (
+    bonus_block,
+    campaign_link,
+    card_blocks,
+    condition_chats,
+    description_blocks,
+    footer_blocks,
+    membership_blocks,
+    prize_blocks,
+    time_blocks,
+)
+from tg_lottery.presentation.mentions import html_utf16_length
 from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
 from tg_lottery.telegram.creator_invite_retention import retention_text
 from tg_lottery.telegram.public_projection import format_public_time
@@ -26,7 +38,7 @@ def gate_lines(rules: CampaignRules, chats: tuple) -> tuple[str, ...]:
         if gate.type == "message":
             value = (
                 f"连续 {rule.consecutive_days} 天，每天 {rule.daily_messages} 条，"
-                f"每条至少 {rule.min_text_length} 个有效字符"
+                "文字、图片、表情均计数"
             )
         else:
             value = f"已确认有效新成员 {rule.required_valid_invites} 人"
@@ -37,16 +49,8 @@ def gate_lines(rules: CampaignRules, chats: tuple) -> tuple[str, ...]:
 
 def condition_blocks(payload: Mapping) -> tuple[str, ...]:
     rules = CampaignRules.model_validate(payload["rules"])
-    chats = tuple(payload["presentation"].get("participation_groups") or []) + tuple(
-        payload["presentation"].get("required_chats") or []
-    )
-    link = activity_link(payload)
-    blocks = ["参与条件（必须全部满足）"]
-    if rules.username_required:
-        blocks.append("必须设置 Telegram 用户名")
-    if rules.allowed_regions:
-        blocks.append("归属地区: " + html.escape("、".join(rules.allowed_regions)))
-    blocks.extend(_chat_condition(chat, link) for chat in chats)
+    chats = condition_chats(payload)
+    blocks = list(membership_blocks(payload))
     blocks.extend(html.escape(line) for line in gate_lines(rules, chats))
     blocks.extend(html.escape(line) for line in message_count_blocks(rules))
     blocks.append("额外抽奖次数（不替代门槛）")
@@ -76,46 +80,30 @@ def message_count_blocks(rules: CampaignRules) -> tuple[str, ...]:
         return ()
     return (
         "发言按北京时间自然日统计，00:00 开始新一天；已取得的本场门槛资格和加成保留。",
-        "有效发言：本人发送的文本或非空图片说明，按文字及数字计有效字符；"
-        "空白、标点和表情不计字数。命令、机器人、服务消息、转发及纯符号消息不计。",
-        f"重复文本：同一用户在同一群 {rules.activity.duplicate_window_minutes} 分钟内"
-        "大小写及空白归一后相同的内容，只计第一条有效消息；不同群分别判断。",
+        "有效发言：本人发送的文字、图片、表情、贴纸及 GIF 表情均计数，不限制字数；"
+        "图片无需文字说明。命令、机器人、服务消息、转发及空白消息不计。",
+        f"重复内容：同一用户在同一群 {rules.activity.duplicate_window_minutes} 分钟内"
+        "大小写及空白归一后相同的文字，或文件标识及说明相同的媒体，"
+        "只计第一条有效消息；不同群分别判断。",
         "统计起点：明确登记且首次通过成员等条件后才开始，登记前不补采，"
         "报名及行为统计截止后不再累计。",
     )
 
 
-def _chat_condition(chat, link):
-    action = "关注" if chat.get("type") == "channel" else "加入"
-    url = str(link if chat.get("private") else chat.get("join_url") or link)
-    return f'{action} <a href="{html.escape(url, quote=True)}">{html.escape(chat_title(chat))}</a>'
-
-
 def public_rule_blocks(payload: Mapping) -> tuple[str, ...]:
-    timezone = str(payload["timezone"])
-    blocks = [
+    return (
         f"🎰 <b>{html.escape(str(payload['name']))}</b>",
-        "开奖时间: " + format_public_time(payload["draw_at"], timezone),
-        "报名及行为统计截止: " + format_public_time(payload["cutoff_at"], timezone),
         *condition_blocks(payload),
-        "奖品:",
-    ]
-    blocks.extend(
-        f"{html.escape(str(item['name']))} × {item['winner_count']} 人"
-        for item in payload.get("prizes") or []
+        *prize_blocks(payload),
+        *description_blocks(payload),
+        bonus_block(payload),
+        *time_blocks(payload),
+        *footer_blocks(payload),
     )
-    description = payload["presentation"].get("description")
-    if description:
-        blocks.append(html.escape(str(description)))
-    blocks.append(
-        f'<a href="{html.escape(activity_link(payload), quote=True)}">查看条件并参与本场抽奖</a>'
-    )
-    return tuple(blocks)
 
 
 def activity_link(payload: Mapping) -> str:
-    username = str(payload["bot_username"]).removeprefix("@")
-    return f"https://t.me/{username}?start=join_{payload['campaign_ref']}"
+    return campaign_link(payload)
 
 
 def split_rule_blocks(blocks: tuple[str, ...]) -> tuple[str, ...]:
@@ -136,16 +124,15 @@ def split_rule_blocks(blocks: tuple[str, ...]) -> tuple[str, ...]:
 
 def rule_manifest(payload: Mapping) -> tuple[str, tuple[str, ...]]:
     blocks = public_rule_blocks(payload)
-    text = "\n\n".join(blocks)
+    text = "\n\n".join(card_blocks(payload))
     limit = CAPTION_UNITS if payload["presentation"].get("cover_file_id") else TEXT_PAGE_UNITS
-    if utf16_units(text) <= limit:
-        return text, ()
     pages = split_rule_blocks(blocks)
+    if html_utf16_length(text) <= limit:
+        return text, ()
     summary = (
-        f"🎰 {html.escape(str(payload['name']))}\n"
-        f"参与条件见本群完整规则消息（共 {len(pages)} 页）。\n"
-        f"截止: {format_public_time(payload['cutoff_at'], str(payload['timezone']))}\n"
-        f"开奖: {format_public_time(payload['draw_at'], str(payload['timezone']))}\n"
+        f"🎰 <b>{html.escape(str(payload['name']))}</b>\n\n"
+        f"📮 <b>参与条件：</b>正文较长，请查看完整规则（共 {len(pages)} 页）。\n\n"
+        f"{bonus_block(payload)}\n\n" + "\n\n".join(time_blocks(payload)) + "\n\n"
         f"本场链接: {html.escape(activity_link(payload))}"
     )
     return summary, pages

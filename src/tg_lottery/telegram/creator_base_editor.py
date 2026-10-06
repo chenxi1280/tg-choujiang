@@ -8,11 +8,9 @@ from tg_lottery.telegram.creator_schedule import positive_int
 ACTION_PREFIX = "draft_base:"
 DEFAULT_MESSAGES = 4
 DEFAULT_DAYS = 1
-DEFAULT_MIN_LENGTH = 1
 FIELDS = {
     "daily_messages": ("每天发言条数", "条", (4, 5, 10)),
     "consecutive_days": ("连续天数", "天", (1, 3, 7)),
-    "min_text_length": ("每条最低字数", "字", (1, 5, 10)),
 }
 EDITOR_KEY = "base_activity_editor"
 
@@ -59,7 +57,7 @@ def receive_value(data: dict[str, Any], text: str) -> dict[str, Any]:
     editor = dict(data.get(EDITOR_KEY) or {})
     field = editor.get("field")
     if field not in FIELDS:
-        raise UserFacingError("请点击需要自定义的条数、天数或字数")
+        raise UserFacingError("请点击需要自定义的条数或天数")
     group_for(data, editor["chat_id"])
     return _set_value(data, editor, field=field, text=text)
 
@@ -72,7 +70,6 @@ def _open_group(data: dict[str, Any], chat_id: str) -> dict[str, Any]:
         or BaseActivityRule(
             consecutive_days=DEFAULT_DAYS,
             daily_messages=DEFAULT_MESSAGES,
-            min_text_length=DEFAULT_MIN_LENGTH,
         ).model_dump()
     )
     return data | {EDITOR_KEY: {"chat_id": chat_id, "rule": dict(rule), "field": None}}
@@ -120,7 +117,7 @@ def editor_view(data: dict[str, Any]) -> tuple[str, list]:
     text = (
         f"💬 {title} · 基础发言门槛\n\n"
         f"连续 {rule['consecutive_days']} 天，每天至少 {rule['daily_messages']} 条，"
-        f"每条至少 {rule['min_text_length']} 字。\n"
+        "文字、图片、表情均计数。\n"
         "点击参与链接登记后开始统计；全部配置群达标后获得抽奖资格。\n"
         "北京时间每天 00:00 更新当天统计，完成后保留本场资格。\n\n"
         "选择预设或自定义数值，点击保存后生效。"

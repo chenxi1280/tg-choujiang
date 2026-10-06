@@ -19,6 +19,7 @@ class ActivityRule(BaseModel, frozen=True):
     message_threshold: int = Field(default=10, ge=1)
     reward_tickets: int = Field(default=1, ge=1)
     daily_ticket_cap: int = Field(default=1, ge=1)
+    # Retained only to read frozen legacy rules; message counting ignores this value.
     min_text_length: int = Field(default=5, ge=1)
     duplicate_window_minutes: int = Field(default=5, ge=1)
     settle_once_per_day: bool = False
@@ -81,6 +82,7 @@ class GroupInviteRule(BaseModel, frozen=True):
 class GroupActivityRule(BaseModel, frozen=True):
     enabled: bool = True
     messages_per_cycle: int = Field(default=10, ge=1)
+    # Retained only to read frozen legacy rules; message counting ignores this value.
     min_text_length: int = Field(default=5, ge=1)
     reward_tickets: int = Field(default=1, ge=1)
     daily_cap_mode: Literal["limited", "unlimited"] = "limited"
@@ -95,6 +97,7 @@ class GroupActivityRule(BaseModel, frozen=True):
 class BaseActivityRule(BaseModel, frozen=True):
     consecutive_days: int = Field(default=7, ge=1)
     daily_messages: int = Field(default=5, ge=1)
+    # Retained only to read frozen legacy rules; message counting ignores this value.
     min_text_length: int = Field(default=5, ge=1)
 
 

@@ -11,22 +11,27 @@ from aiogram.types import (
     Update,
 )
 
-from tg_lottery.application.activity import ActivityService, MessageObservation
+from tg_lottery.application.activity import ActivityService
 from tg_lottery.application.callback_tokens import CallbackTokenService
 from tg_lottery.application.groups import GroupService, TelegramAdmin
 from tg_lottery.application.invitations import InvitationService, JoinObservation
 from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
-from tg_lottery.domain.errors import DomainError, RecoverableDraftCallback
+from tg_lottery.domain.errors import (
+    DomainError,
+    RecoverableDraftCallback,
+    RecoverableMemberCallback,
+)
 from tg_lottery.telegram import command_input, member_callbacks
 from tg_lottery.telegram.admin_flow import AdminFlow
 from tg_lottery.telegram.bot_permission_reminders import send_bot_permission_reminder
 from tg_lottery.telegram.help_views import DRAFT_UNAVAILABLE_TEXT
-from tg_lottery.telegram.member_activity_landing import open_activity
 from tg_lottery.telegram.member_flow import MemberFlow
+from tg_lottery.telegram.message_observation import observe_message
 from tg_lottery.telegram.personal_flow import PersonalFlow
 from tg_lottery.telegram.public_projection import public_error_text
+from tg_lottery.telegram.start_payloads import dispatch_start_payload
 
 
 class LotteryUpdateHandler:
@@ -45,6 +50,7 @@ class LotteryUpdateHandler:
         queries: QueryService,
         stats: MessageStatsService,
         bot_username: str = "",
+        navigation,
     ) -> None:
         self._bot = bot
         self._default_timezone = default_timezone
@@ -58,6 +64,7 @@ class LotteryUpdateHandler:
         self._queries = queries
         self._stats = stats
         self._bot_username = bot_username
+        self._navigation = navigation
         self._logger = logging.getLogger(__name__)
 
     async def handle(self, update: Update) -> None:
@@ -89,16 +96,7 @@ class LotteryUpdateHandler:
         if text.startswith("/"):
             await self._group_command(message, text)
             return
-        observation = MessageObservation(
-            chat_id=message.chat.id,
-            message_id=message.message_id,
-            user_id=message.from_user.id,
-            event_at=message.date,
-            text=message.text or message.caption,
-            is_bot=message.from_user.is_bot,
-            is_service=message.text is None and message.caption is None,
-            is_forwarded=message.forward_origin is not None,
-        )
+        observation = observe_message(message)
         await self._stats.record(observation)
         await self._activity.record_message(observation)
 
@@ -130,6 +128,14 @@ class LotteryUpdateHandler:
     async def _private_message(self, message: Message) -> None:
         text = (message.text or "").strip()
         try:
+            command = command_input.parse_bot_command(text)
+            if (
+                command is not None
+                and command.addressed_to(self._bot_username)
+                and command.name
+                in {"/start", "/menu", "/help", "/region", "/myid", "/join", "/index"}
+            ):
+                await self._admin_flow.suspend_draft(message.from_user.id)
             if await self._private_navigation(message, text):
                 return
             if await self._personal_flow.handle_command(message, text):
@@ -160,35 +166,15 @@ class LotteryUpdateHandler:
         return True
 
     async def _start_payload(self, message: Message, payload: str) -> bool:
-        if payload.startswith("join_"):
-            await open_activity(self._member_flow, message, payload.removeprefix("join_"))
-            return True
-        if payload.startswith("rules_"):
-            await self._member_flow.show_rules(message, payload.removeprefix("rules_"))
-            return True
-        if payload.startswith("invite_"):
-            await self._member_flow.show_invite_link(
-                message, payload.removeprefix("invite_"), user_id=message.from_user.id
-            )
-            return True
-        if payload.startswith("bonus_"):
-            await member_callbacks.show_bonus_message(
-                self._member_flow,
-                message,
-                payload.removeprefix("bonus_"),
-                user_id=message.from_user.id,
-            )
-            return True
-        if payload.startswith("ref_"):
-            await self._member_flow.show_referral_landing(message, payload.removeprefix("ref_"))
-            return True
-        if not payload.startswith("condition_"):
-            return False
-        reference, separator, position = payload.removeprefix("condition_").rpartition("_")
-        if not separator or not position.isdecimal():
-            raise ValueError("invalid participation condition payload")
-        await self._member_flow.show_condition(message, reference, int(position))
-        return True
+        if payload.startswith(("join_", "rules_")):
+            reference = payload.split("_", 1)[1]
+            campaign = await self._queries.campaign_by_reference(reference)
+            if campaign is not None and campaign.rules.get("participation_rules_version") == "v3.0":
+                await self._navigation.open_message(
+                    message, reference, rules_only=payload.startswith("rules_")
+                )
+                return True
+        return await dispatch_start_payload(self._member_flow, message, payload)
 
     async def _callback(self, query: CallbackQuery) -> None:
         data = query.data or ""
@@ -197,6 +183,8 @@ class LotteryUpdateHandler:
         if not isinstance(query.message, Message):
             return
         try:
+            if data.startswith(("nav:", "m:", "member:")) and data not in {"nav:create", "nav:new"}:
+                await self._admin_flow.suspend_draft(query.from_user.id)
             await self._dispatch_callback(query, data)
         except (DomainError, ValueError) as exc:
             await self._callback_error(query, exc)
@@ -223,7 +211,12 @@ class LotteryUpdateHandler:
         message = query.message
         if not isinstance(message, Message):
             return
+        if await self._navigation.handle_route(query, data=data, personal=self._personal_flow):
+            return
         if await self._personal_flow.handle_callback(query, data):
+            return
+        if data == "nav:new":
+            await self._admin_flow.start_new(query)
             return
         if data == "nav:create":
             await self._admin_flow.start_create(query)
@@ -332,10 +325,19 @@ class LotteryUpdateHandler:
                 owner_user_id=query.from_user.id,
                 chat_id=message.chat.id,
             )
+        except RecoverableMemberCallback as exc:
+            await member_callbacks.safe_answer(query, str(exc), alert=True)
+            await self._navigation.recover(query, exc.payload, personal=self._personal_flow)
+            return
         except RecoverableDraftCallback:
             recovered = await self._admin_flow.recover_draft_callback(query)
             text = "请使用最新草稿面板或下方继续按钮" if recovered else DRAFT_UNAVAILABLE_TEXT
             await member_callbacks.safe_answer(query, text, alert=True)
+            return
+        if not grant.action.startswith("draft_"):
+            await self._admin_flow.suspend_draft(query.from_user.id)
+        if grant.action in {"member:navigate", "member:region_set"}:
+            await self._navigation.handle_grant(query, grant, personal=self._personal_flow)
             return
         await self._admin_flow.handle_grant(query, grant)
 

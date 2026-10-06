@@ -9,7 +9,10 @@ DEFERRED_CALLBACK_PREFIXES = (
     "member:rules:",
     "member:tickets",
     "member:invites",
-    "m:ir:",
+    "m:",
+    "nav:joined:",
+    "member:bonus_invites:",
+    "member:bonus_activity:",
 )
 
 

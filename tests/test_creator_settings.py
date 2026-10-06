@@ -305,7 +305,11 @@ async def test_issuer_is_resolved_and_frozen_before_publication() -> None:
 
 
 def test_index_keyboard_contains_real_group_and_channel_links() -> None:
-    keyboard = _index_keyboard("lottery_test_bot")
+    from tg_lottery.telegram.help_views import guide_topic
+
+    home = _index_keyboard("lottery_test_bot")
+    assert sum(len(row) for row in home.inline_keyboard) == 5
+    _, keyboard = guide_topic("create", bot_username="lottery_test_bot")
     buttons = [button for row in keyboard.inline_keyboard for button in row]
     urls = {button.text: button.url for button in buttons if button.url}
 

@@ -10,6 +10,7 @@ from sqlalchemy.exc import MultipleResultsFound
 
 from tests.helpers import seed_campaign
 from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts, load_campaign_outcome
+from tg_lottery.application.creator_campaign_pages import CreatorCampaignPage
 from tg_lottery.application.queries import AdminCampaignSummary, QueryService
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.infrastructure.db import AuditLog, Campaign, DrawRun, DrawSnapshot
@@ -121,10 +122,14 @@ async def test_multiple_completed_runs_are_exposed_and_never_multiply_summary(se
 async def test_homepage_exposes_unconfirmed_terminal_count_only_when_present(unconfirmed):
     summary = AdminCampaignSummary(1, 0, 0, 0, unconfirmed)
     message = SimpleNamespace(from_user=SimpleNamespace(id=OWNER_ID), answer=AsyncMock())
-    queries = SimpleNamespace(admin_campaign_summary=AsyncMock(return_value=summary))
+    queries = SimpleNamespace(
+        creator_campaign_page=AsyncMock(
+            return_value=CreatorCampaignPage("active", 0, 1, 1, (), unconfirmed=summary.unconfirmed)
+        )
+    )
 
-    await PersonalFlow(profiles=None, queries=queries, bot_username="lottery_bot").show_index(
-        message
+    await PersonalFlow(profiles=None, queries=queries, bot_username="lottery_bot")._show_created(
+        message, "active"
     )
 
     text = message.answer.await_args.args[0]
@@ -136,17 +141,24 @@ async def test_homepage_exposes_unconfirmed_terminal_count_only_when_present(unc
 @pytest.mark.parametrize("category,label", [("drawn", "已开奖"), ("cancelled", "已取消")])
 async def test_archived_created_buttons_keep_fact_classification(category, label):
     campaign = SimpleNamespace(
-        name="历史活动", state=CampaignState.ARCHIVED, public_ref="archived-test-reference"
+        name="历史活动",
+        state=CampaignState.ARCHIVED,
+        public_ref="archived-test-reference",
+        draw_at=datetime.now(UTC),
+        timezone="Asia/Shanghai",
     )
     message = SimpleNamespace(from_user=SimpleNamespace(id=OWNER_ID), answer=AsyncMock())
-    queries = SimpleNamespace(created_campaigns=AsyncMock(return_value=[campaign]))
+    queries = SimpleNamespace(
+        creator_campaign_page=AsyncMock(
+            return_value=CreatorCampaignPage(category, 0, 1, 1, (campaign,))
+        )
+    )
 
     await PersonalFlow(profiles=None, queries=queries, bot_username="lottery_bot")._show_created(
         message, category
     )
 
-    keyboard = message.answer.await_args.kwargs["reply_markup"]
-    assert keyboard.inline_keyboard[0][0].text == f"历史活动｜{label} · 已归档"
+    assert f"历史活动｜{label} · 已归档" in message.answer.await_args.args[0]
 
 
 async def _seed_summary_cases(session):

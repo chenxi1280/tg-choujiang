@@ -22,21 +22,27 @@ from tg_lottery.telegram.creator_group_selection import (
     bind_initial_group,
     selected_chat_ids,
 )
-from tg_lottery.telegram.creator_participation import parse_positions
+from tg_lottery.telegram.creator_message_context import callback_message as _message
+from tg_lottery.telegram.creator_message_context import message_user as _user
+from tg_lottery.telegram.creator_message_context import panel_target as _target
+from tg_lottery.telegram.creator_prizes import PRIZE_ACTIONS, CreatorPrizes
 from tg_lottery.telegram.creator_publication import CreatorPublisher
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
-from tg_lottery.telegram.creator_schedule import positive_int
+from tg_lottery.telegram.creator_sections import (
+    SECTION_ACTIONS,
+    current_section,
+    enter_section,
+    section_view,
+)
 from tg_lottery.telegram.creator_settings import CreatorSettings
+from tg_lottery.telegram.creator_suspension import CreatorSuspension, resume_view, suspend_draft
 from tg_lottery.telegram.creator_views import (
     dashboard_rows,
-    main_keyboard,
     preview_text,
-    prize_count_text,
-    prize_prompt_text,
-    prizes_text,
     title_prompt_text,
 )
 from tg_lottery.telegram.draft_config import ensure_draft_identity, new_draft
+from tg_lottery.telegram.home_views import home_keyboard, home_text
 from tg_lottery.telegram.issuer import creator_issuer
 
 
@@ -57,6 +63,8 @@ class CampaignCreator:
         self._queries = queries
         self._renderer = renderer
         self._settings = settings
+        self._suspension = CreatorSuspension(sessions=sessions, renderer=renderer)
+        self._prizes = CreatorPrizes(sessions=sessions, renderer=renderer)
         self._behavior_admission = CreatorBehaviorAdmission(
             sessions=sessions, renderer=renderer, bot=bot
         )
@@ -78,6 +86,9 @@ class CampaignCreator:
             renderer=renderer,
         )
 
+    async def suspend(self, user_id: int) -> None:
+        await suspend_draft(self._sessions, user_id)
+
     async def start(self, query: CallbackQuery) -> None:
         await self._open(query.from_user, _message(query))
 
@@ -89,6 +100,18 @@ class CampaignCreator:
             if existing is not None and existing.state.startswith("draft:")
             else await self._new_draft(user, message.message_id)
         ) | {"creator_name": user.full_name, "guided": False}
+        campaign = await self._recover_campaign(user.id, data)
+        if campaign is not None:
+            panel = await message.answer("正在恢复原活动的发布状态。")
+            await self._publisher.resume_message(
+                panel, user_id=user.id, data=data, campaign=campaign
+            )
+            return
+        if existing is not None and existing.state != "draft:idle":
+            data = data | {"suspended_state": data.get("suspended_state", existing.state)}
+            panel = await message.answer("正在恢复草稿。")
+            await self._show_resume(user.id, panel, data)
+            return
         panel = await message.answer(preview_text(data))
         updated = data | {"panel_message_id": panel.message_id}
         await self._sessions.set(user.id, "draft:idle", updated)
@@ -119,7 +142,10 @@ class CampaignCreator:
             "panel_message_id": message.message_id,
             "creator_name": query.from_user.full_name,
         }
-        await self._render_dashboard(query.from_user.id, message, data)
+        if existing.state == "draft:suspended":
+            await self._show_resume(query.from_user.id, message, data)
+        else:
+            await self._render_dashboard(query.from_user.id, message, data)
         return True
 
     async def _open(self, user: User, message: Message) -> None:
@@ -129,11 +155,49 @@ class CampaignCreator:
                 "panel_message_id": message.message_id,
                 "creator_name": user.full_name,
             }
+            campaign = await self._recover_campaign(user.id, data)
+            if campaign is not None:
+                await self._publisher.resume_message(
+                    message, user_id=user.id, data=data, campaign=campaign
+                )
+                return
+            if existing.state != "draft:idle":
+                data = data | {"suspended_state": data.get("suspended_state", existing.state)}
+                await self._show_resume(user.id, message, data)
+                return
             await self._sessions.set(user.id, "draft:idle", data)
             await self._render_dashboard(user.id, message, data)
             return
         data = await self._new_draft(user, message.message_id)
         await self._render_dashboard(user.id, message, data)
+
+    async def _show_resume(self, user_id, message, data):
+        updated = data | {"panel_message_id": message.message_id}
+        await self._sessions.set(user_id, "draft:suspended", updated)
+        text, rows = resume_view(updated)
+        await self._renderer.render(message, user_id=user_id, text=text, rows=rows)
+
+    async def _recover_campaign(self, user_id: int, data: dict):
+        campaign = await self._queries.campaign_for_draft(user_id, str(data["draft_id"]))
+        if data.get("published_campaign_id") and campaign is None:
+            raise UserFacingError(
+                "原发布活动的身份暂未核实，请从我发起的抽奖核查，不能重新创建同一场"
+            )
+        return campaign
+
+    async def start_new(self, query: CallbackQuery) -> None:
+        message = _message(query)
+        if message.chat.type != "private" or message.chat.id != query.from_user.id:
+            raise UserFacingError("只能在本人私聊中创建新抽奖")
+        existing = await self._sessions.get(query.from_user.id)
+        if existing is not None and existing.state.startswith("draft:"):
+            data = ensure_draft_identity(dict(existing.data))
+            campaign = await self._recover_campaign(query.from_user.id, data)
+            if campaign is None:
+                await self._confirm_clear(query, None)
+                return
+        data = await self._new_draft(query.from_user, message.message_id)
+        await self._render_dashboard(query.from_user.id, message, data)
 
     async def _new_draft(self, user: User, panel_message_id: int) -> dict[str, Any]:
         groups = await self._queries.admin_groups(user.id)
@@ -157,9 +221,17 @@ class CampaignCreator:
         return await self.handle_text(message, session.state, dict(session.data))
 
     async def handle_text(self, message: Message, state: str, data: dict[str, Any]) -> bool:
+        if state == "draft:group_search":
+            await self._group_picker.receive_search(message, data)
+            return True
+        if state == "draft:suspended":
+            return False
+        if state in {"draft:prize_name", "draft:prize_count", "draft:prize_delete"}:
+            await self._prizes.receive(message, state=state, data=data)
+            return True
         if state == "draft:behavior_admission":
             await self._behavior_admission.receive(message, data)
-            return
+            return True
         if state == "draft:base_activity":
             await self._base_activity.receive(message, data)
             return True
@@ -170,9 +242,6 @@ class CampaignCreator:
             return True
         handlers = {
             "draft:title": self._receive_title,
-            "draft:prize_name": self._receive_prize_name,
-            "draft:prize_count": self._receive_prize_count,
-            "draft:prize_delete": self._receive_prize_delete,
         }
         handler = handlers.get(state)
         if handler is not None:
@@ -184,6 +253,18 @@ class CampaignCreator:
         return True
 
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        if grant.action.startswith("draft_content_page:"):
+            await self._renderer.page(query, grant)
+            return
+        if grant.action in PRIZE_ACTIONS:
+            await self._prizes.handle(query, grant)
+            return
+        if grant.action in SECTION_ACTIONS:
+            await self._show_section(query, SECTION_ACTIONS[grant.action])
+            return
+        if grant.action == "draft_gate:choose_groups":
+            await self._group_picker.show(query, grant)
+            return
         if grant.action.startswith("draft_gate:"):
             closed = await self._behavior_admission.handle(query, grant)
             if closed:
@@ -201,17 +282,23 @@ class CampaignCreator:
 
     def handles_action(self, action: str) -> bool:
         return (
-            action.startswith(("draft_base:", "draft_gate:"))
+            action in PRIZE_ACTIONS
+            or action in SECTION_ACTIONS
+            or action.startswith(("draft_base:", "draft_gate:", "draft_content_page:"))
             or action in self._grant_handlers()
             or self._settings.handles_action(action)
         )
 
     def _grant_handlers(self):
         return {
+            "draft_resume_input": self._suspension.resume,
+            "draft_resume_module": self._suspension.resume,
             "draft_gate": self._behavior_admission.show,
             "draft_base_activity": self._base_activity.show,
             "draft_folder_link": self._folder_link.show,
             "draft_folder_clear": self._folder_link.clear,
+            "draft_groups_search": self._group_picker.search,
+            "draft_groups_search_clear": self._group_picker.search,
             "draft_group": self._group_picker.show,
             "draft_group_problem": self._group_picker.problem,
             "draft_toggle_group": self._group_picker.toggle,
@@ -224,10 +311,6 @@ class CampaignCreator:
             "draft_groups_refresh": self._group_picker.page,
             "draft_groups_done": self._group_picker.done,
             "draft_title": self._edit_title,
-            "draft_prizes": self._show_prize_prompt,
-            "draft_add_prize": self._show_prize_prompt,
-            "draft_delete_prize": self._delete_prize,
-            "draft_clear_prizes": self._clear_prizes,
             "draft_back": self._show_dashboard,
             "draft_clear": self._confirm_clear,
             "draft_clear_confirm": self._clear,
@@ -249,94 +332,19 @@ class CampaignCreator:
             rows=_back_rows(),
         )
 
-    async def _show_prize_prompt(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:prize_name", guided=False)
-        rows = _back_rows()
-        if data.get("prizes"):
-            rows = [
-                [("删除指定奖品", "draft_delete_prize"), ("清空奖品", "draft_clear_prizes")],
-                *rows,
-            ]
-        await self._render_text(
-            query.from_user.id,
-            _message(query),
-            data=data,
-            text=prize_prompt_text(data),
-            rows=rows,
-        )
-
-    async def _receive_prize_name(self, message: Message, data: dict[str, Any]) -> None:
-        name = (message.text or "").strip()
-        if not 1 <= len(name) <= 120:
-            raise UserFacingError("奖品名称长度必须为 1–120 字")
-        updated = data | {"pending_prize_name": name}
-        await self._sessions.set(_user(message).id, "draft:prize_count", updated)
-        await self._edit_from_text(
-            message, data=updated, text=prize_count_text(updated), rows=_back_rows()
-        )
-
-    async def _receive_prize_count(self, message: Message, data: dict[str, Any]) -> None:
-        count = positive_int(message.text or "", "中奖人数")
-        prize = {"name": str(data["pending_prize_name"]), "winner_count": count}
-        updated = data | {"prizes": [*data.get("prizes", []), prize]}
-        updated.pop("pending_prize_name", None)
-        await self._sessions.set(_user(message).id, "draft:idle", updated)
-        if updated.get("guided"):
-            await self._advance_guided(message, updated)
-            return
-        await self._render_prizes_from_text(message, updated)
-
-    async def _advance_guided(self, message: Message, data: dict[str, Any]) -> None:
-        if data.get("chat_id") is None:
-            await self._render_groups_from_text(message, data)
-            return
-        if not data.get("title"):
-            await self._prompt_title_from_text(message, data)
-            return
-        if not data.get("draw_at"):
-            await self._render_draw_from_text(message, data)
-            return
-        await self._render_dashboard_from_text(message, data | {"guided": False})
-
     async def _receive_title(self, message: Message, data: dict[str, Any]) -> None:
         title = (message.text or "").strip()
         if not 1 <= len(title) <= 80:
             raise UserFacingError("抽奖标题长度必须为 1–80 字")
         updated = data | {"title": title}
         await self._sessions.set(_user(message).id, "draft:idle", updated)
-        if updated.get("guided") and not updated.get("draw_at"):
-            await self._render_draw_from_text(message, updated)
-            return
         await self._render_dashboard_from_text(message, updated | {"guided": False})
 
-    async def _delete_prize(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:prize_delete", guided=False)
-        lines = ["🎁 删除指定奖品", ""]
-        lines.extend(
-            f"{index}. {prize['name']} × {prize['winner_count']} 人"
-            for index, prize in enumerate(data.get("prizes", []), start=1)
-        )
-        lines.append("\n请回复要删除的编号，多个编号用逗号分隔。")
-        await self._render_text(
-            query.from_user.id, _message(query), data=data, text="\n".join(lines), rows=_back_rows()
-        )
-
-    async def _receive_prize_delete(self, message: Message, data: dict[str, Any]) -> None:
-        prizes = data.get("prizes", [])
-        positions = parse_positions(message.text or "", len(prizes))
-        updated = data | {
-            "prizes": [
-                prize for index, prize in enumerate(prizes, start=1) if index not in positions
-            ]
-        }
-        await self._sessions.set(_user(message).id, "draft:idle", updated)
-        await self._render_prizes_from_text(message, updated)
-
-    async def _clear_prizes(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        await self._update_and_prizes(query, {"prizes": []})
-
-    async def _show_dashboard(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:idle", guided=False)
+    async def _show_dashboard(self, query: CallbackQuery, grant: CallbackGrant) -> None:
+        session = await self._sessions.get(query.from_user.id)
+        if session is None:
+            raise UserFacingError("创建草稿已过期，请发送/new重新创建")
+        data = dict(session.data)
         if group_bonus.working_copy_dirty(data):
             rows = [
                 [("放弃修改", "draft_bonus_group_cancel")],
@@ -352,7 +360,30 @@ class CampaignCreator:
             return
         if data.get("bonus_working_copy"):
             data = group_bonus.apply_action(data, "draft_bonus_group_cancel")
+        path = list(data.get("creator_path") or ["dashboard"])
+        input_states = {
+            "draft:regions",
+            "draft:description",
+            "draft:issuer",
+            "draft:claim",
+            "draft:cover",
+        }
+        if grant.action == "draft_back" and session.state not in input_states and len(path) > 1:
+            path = path[:-1]
+        data = data | {"creator_path": path}
+        if current_section(data) != "dashboard":
+            await self._show_section(query, current_section(data), data=data)
+            return
         await self._render_dashboard(query.from_user.id, _message(query), data)
+
+    async def _show_section(self, query, section: str, *, data: dict | None = None) -> None:
+        current = data if data is not None else await self._required_session(query.from_user.id)
+        updated = enter_section(current, section) | {"panel_message_id": _message(query).message_id}
+        text, rows = section_view(updated, section)
+        await self._sessions.set(query.from_user.id, "draft:idle", updated)
+        await self._renderer.render(
+            _message(query), user_id=query.from_user.id, text=text, rows=rows
+        )
 
     async def _confirm_clear(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:idle", guided=False)
@@ -370,9 +401,9 @@ class CampaignCreator:
         await self._render_dashboard(query.from_user.id, _message(query), data)
 
     async def _home(self, query: CallbackQuery, _: CallbackGrant) -> None:
-        data = await self._set_state(query, "draft:idle", guided=False)
-        await self._sessions.set(query.from_user.id, "draft:idle", data)
-        await _message(query).edit_text("请选择操作：", reply_markup=main_keyboard())
+        data = await self._required_session(query.from_user.id)
+        await suspend_draft(self._sessions, query.from_user.id)
+        await _message(query).edit_text(home_text(data), reply_markup=home_keyboard(data))
 
     async def _render_dashboard(self, user_id: int, message: Message, data: dict[str, Any]) -> None:
         updated = data | {"guided": False}
@@ -385,34 +416,11 @@ class CampaignCreator:
             rows=dashboard_rows(updated),
         )
 
-    async def _render_prizes_from_text(self, message: Message, data: dict[str, Any]) -> None:
-        rows = [
-            [("继续添加", "draft_add_prize")],
-            [("删除指定奖品", "draft_delete_prize"), ("清空奖品", "draft_clear_prizes")],
-            *_back_rows(),
-        ]
-        await self._edit_from_text(message, data=data, text=prizes_text(data), rows=rows)
-
     async def _render_groups_from_text(self, message: Message, data: dict[str, Any]) -> None:
         await self._renderer.edit_groups(
             _target(message, data),
             selected_chat_ids=selected_chat_ids(data),
             page=int(data.get("group_page", 0)),
-        )
-
-    async def _prompt_title_from_text(self, message: Message, data: dict[str, Any]) -> None:
-        await self._sessions.set(_user(message).id, "draft:title", data)
-        await self._edit_from_text(
-            message, data=data, text=title_prompt_text(data), rows=_back_rows()
-        )
-
-    async def _render_draw_from_text(self, message: Message, data: dict[str, Any]) -> None:
-        await self._sessions.set(_user(message).id, "draft:idle", data)
-        await self._edit_from_text(
-            message,
-            data=data,
-            text="🌀 请选择开奖方式：",
-            rows=[[("定时开奖", "draft_draw_fixed")]],
         )
 
     async def _render_dashboard_from_text(self, message: Message, data: dict[str, Any]) -> None:
@@ -425,22 +433,6 @@ class CampaignCreator:
     async def _update_and_dashboard(self, query: CallbackQuery, changes: dict[str, Any]) -> None:
         data = await self._required_session(query.from_user.id)
         await self._render_dashboard(query.from_user.id, _message(query), data | changes)
-
-    async def _update_and_prizes(self, query: CallbackQuery, changes: dict[str, Any]) -> None:
-        data = await self._required_session(query.from_user.id) | changes
-        await self._sessions.set(query.from_user.id, "draft:idle", data)
-        rows = [
-            [("继续添加", "draft_add_prize")],
-            [("删除指定奖品", "draft_delete_prize"), ("清空奖品", "draft_clear_prizes")],
-            *_back_rows(),
-        ]
-        await self._render_text(
-            query.from_user.id,
-            _message(query),
-            data=data,
-            text=prizes_text(data),
-            rows=rows,
-        )
 
     async def _set_state(self, query: CallbackQuery, state: str, *, guided: bool) -> dict[str, Any]:
         data = await self._required_session(query.from_user.id)
@@ -474,26 +466,6 @@ class CampaignCreator:
         rows: ButtonRows,
     ) -> None:
         await self._renderer.edit(_target(message, data), text=text, rows=rows)
-
-
-def _message(query: CallbackQuery) -> Message:
-    if not isinstance(query.message, Message):
-        raise ValueError("callback message is no longer accessible")
-    return query.message
-
-
-def _user(message: Message):
-    if message.from_user is None:
-        raise ValueError("无法识别当前用户")
-    return message.from_user
-
-
-def _target(message: Message, data: dict[str, Any]) -> PanelTarget:
-    return PanelTarget(
-        user_id=_user(message).id,
-        chat_id=message.chat.id,
-        message_id=int(data["panel_message_id"]),
-    )
 
 
 def _back_rows() -> list[list[tuple[str, str]]]:

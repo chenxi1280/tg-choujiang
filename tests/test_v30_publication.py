@@ -52,7 +52,7 @@ def test_full_rules_pages_keep_each_condition_and_same_activity_link(cover):
     assert "join_abcdefgh" in card and "join_abcdefgh" in "".join(pages)
     assert "每天 2 条" in "".join(pages)
     assert "北京时间自然日" in "".join(pages)
-    assert "命令、机器人、服务消息、转发及纯符号消息不计" in "".join(pages)
+    assert "命令、机器人、服务消息、转发及空白消息不计" in "".join(pages)
 
 
 @pytest.mark.parametrize("mode", ["message", "invite"])

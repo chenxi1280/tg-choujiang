@@ -47,7 +47,9 @@ async def test_creator_buttons_match_the_draft_lifetime() -> None:
 
 async def test_new_campaign_opens_preview_dashboard_directly() -> None:
     sessions = SimpleNamespace(get=AsyncMock(return_value=None), set=AsyncMock())
-    group = SimpleNamespace(chat_id=-1001, title="活动群", timezone="Asia/Shanghai")
+    group = SimpleNamespace(
+        id="stable-test-group", chat_id=-1001, title="活动群", timezone="Asia/Shanghai"
+    )
     queries = SimpleNamespace(admin_groups=AsyncMock(return_value=[group]))
     renderer = SimpleNamespace(render=AsyncMock())
     creator = CampaignCreator(
@@ -68,4 +70,4 @@ async def test_new_campaign_opens_preview_dashboard_directly() -> None:
     assert sessions.set.await_args.args[1] == "draft:idle"
     data = sessions.set.await_args.args[2]
     assert data["chat_id"] == -1001 and data["prizes"] == []
-    assert renderer.render.await_args.kwargs["text"].startswith("🎰 抽奖预览")
+    assert renderer.render.await_args.kwargs["text"].startswith("创建抽奖 · 编辑草稿")

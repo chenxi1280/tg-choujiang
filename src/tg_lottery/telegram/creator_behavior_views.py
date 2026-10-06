@@ -7,15 +7,14 @@ from tg_lottery.telegram.creator_behavior_editor import EDITOR_KEY, PAGE_SIZE
 FIELD_LABELS = {
     "daily_messages": "每日条数",
     "consecutive_days": "连续天数",
-    "min_text_length": "最低有效字数",
     "required_valid_invites": "有效邀请人数",
 }
 PRESETS = {
     "daily_messages": (2, 20, 34),
     "consecutive_days": (1, 3, 7),
-    "min_text_length": (1, 4, 5),
     "required_valid_invites": (1, 2, 5),
 }
+MODE_LABELS = {"message": "发言数", "invite": "邀请好友"}
 
 
 def admission_summary(data: dict[str, Any]) -> str:
@@ -23,10 +22,12 @@ def admission_summary(data: dict[str, Any]) -> str:
     groups = gate.get("groups") or {}
     names = {str(item["id"]): chat_title(item) for item in data.get("participation_groups") or []}
     title = "发言数" if gate.get("type") == "message" else "邀请好友"
-    if not gate.get("type") or not groups:
+    if not gate.get("type"):
         return "🎟 抽奖门槛：请选一种类型并配置至少一个群\n" + "\n".join(
             data.get("import_notes") or []
         )
+    if not groups:
+        return f"🎟 抽奖门槛：{title}（请配置至少一个群）"
     lines = [f"🎟 抽奖门槛：{title}（配置群必须分别全部达标）"]
     lines.extend(
         f"· {names.get(key, key)}：{rule_text(rule, gate['type'])}" for key, rule in groups.items()
@@ -42,7 +43,7 @@ def rule_text(rule: dict, mode: str) -> str:
     parsed = MessageAdmissionRule.model_validate(rule)
     return (
         f"连续 {parsed.consecutive_days} 天，每天 {parsed.daily_messages} 条，"
-        f"每条至少 {parsed.min_text_length} 个有效字符；北京时间自然日"
+        "文字、图片、表情均计数；北京时间自然日"
     )
 
 
@@ -75,14 +76,31 @@ def _list_view(data, editor):
     mode = editor.get("type")
     gate = {"type": mode, "groups": editor.get("groups") or {}}
     text = "抽奖门槛（只能选择一种）\n\n" + admission_summary(data | {"admission": gate})
+    text += "\n\n" + _selection_hint(data, mode)
+    text += _search_summary(data, editor)
     original = (data.get("admission") or {}).get("type")
     if original and original != mode:
         text += "\n保存将替换原门槛；两种加成保持独立设置。"
-    rows = [[("发言数", "draft_gate:mode:message"), ("邀请好友", "draft_gate:mode:invite")]]
+    rows = [
+        [
+            (("✅ " if mode == value else "") + label, f"draft_gate:mode:{value}")
+            for value, label in MODE_LABELS.items()
+        ]
+    ]
     rows.extend(_group_rows(data, editor))
     if mode == "invite":
         rows.append([("有效邀请要求", "draft_gate:retention")])
-    return text, [*rows, [("保存门槛", "draft_gate:save")], [("返回预览", "draft_gate:leave")]]
+    return text, [*rows, [("保存本场门槛", "draft_gate:save")], [("返回预览", "draft_gate:leave")]]
+
+
+def _selection_hint(data: dict, mode: str | None) -> str:
+    if mode is None:
+        return "当前尚未选择类型，请点击「发言数」或「邀请好友」。"
+    selected = f"当前选择：{MODE_LABELS[mode]}。"
+    if not data.get("participation_groups"):
+        return selected + "\n请点击「选择参与活动的群」，选好群后回来设置门槛。"
+    fields = "每日条数和连续天数" if mode == "message" else "有效邀请人数"
+    return selected + f"\n请点击下方群名设置{fields}，保存本群后再保存整场门槛。"
 
 
 def _group_view(data: dict, editor: dict) -> tuple[str, list]:
@@ -90,17 +108,13 @@ def _group_view(data: dict, editor: dict) -> tuple[str, list]:
         item for item in data["participation_groups"] if str(item["id"]) == editor["chat_id"]
     )
     mode = editor["type"]
-    fields = tuple(PRESETS)[:3] if mode == "message" else ("required_valid_invites",)
-    rows = [
-        [
-            *((str(value), f"draft_gate:preset:{field}:{value}") for value in PRESETS[field]),
-            ("自定义" + FIELD_LABELS[field], f"draft_gate:input:{field}"),
-        ]
-        for field in fields
-    ]
+    fields = (
+        ("daily_messages", "consecutive_days") if mode == "message" else ("required_valid_invites",)
+    )
+    rows = [_field_preset_row(editor, field) for field in fields]
     rows.extend(
         [
-            [("保存本群", "draft_gate:group_save")],
+            [("本群暂存到编辑稿", "draft_gate:group_save")],
             [("移除本群门槛", "draft_gate:disable")],
             [("复制到选定群", "draft_gate:copy_open")],
             [("返回群列表", "draft_gate:list")],
@@ -115,12 +129,15 @@ def _visible_groups(data: dict, editor: dict):
         item
         for item in data.get("participation_groups") or []
         if keyword in chat_title(item).casefold()
+        and ("copy_targets" not in editor or str(item["id"]) != editor["chat_id"])
     ]
     page = min(int(editor.get("page", 0)), max(0, (len(groups) - 1) // PAGE_SIZE))
     return groups[page * PAGE_SIZE : (page + 1) * PAGE_SIZE], page, len(groups)
 
 
 def _group_rows(data: dict, editor: dict) -> list:
+    if not data.get("participation_groups"):
+        return [[("选择参与活动的群", "draft_gate:choose_groups")]]
     groups, page, count = _visible_groups(data, editor)
     rows = [
         [
@@ -138,8 +155,26 @@ def _group_rows(data: dict, editor: dict) -> list:
     if (page + 1) * PAGE_SIZE < count:
         navigation.append(("下一页", f"draft_gate:page:{page + 1}"))
     rows.extend([navigation] if navigation else [])
-    rows.append([("搜索群", "draft_gate:search"), ("刷新", f"draft_gate:page:{page}")])
+    rows.extend(_search_rows(editor, page))
     return rows
+
+
+def _search_rows(editor: dict, page: int) -> list:
+    rows = [[("搜索群", "draft_gate:search"), ("刷新", f"draft_gate:page:{page}")]]
+    if editor.get("search"):
+        rows.append([("清除搜索", "draft_gate:clear_search")])
+    return rows
+
+
+def _search_summary(data: dict, editor: dict) -> str:
+    keyword = editor.get("search")
+    if not keyword:
+        return ""
+    _, _, count = _visible_groups(data, editor)
+    text = f"\n搜索：{keyword}"
+    if not count:
+        text += "\n没有匹配的群，请清除搜索后重新选择。"
+    return text
 
 
 def _copy_view(data: dict, editor: dict) -> tuple[str, list]:
@@ -153,12 +188,12 @@ def _copy_view(data: dict, editor: dict) -> tuple[str, list]:
             )
         ]
         for item in groups
-        if str(item["id"]) != editor["chat_id"]
     ]
     if page:
         rows.append([("上一页", f"draft_gate:page:{page - 1}")])
     if (page + 1) * PAGE_SIZE < count:
         rows.append([("下一页", f"draft_gate:page:{page + 1}")])
+    rows.extend(_search_rows(editor, page))
     rows.extend(
         [[("确认覆盖选定群", "draft_gate:copy_confirm")], [("取消复制", "draft_gate:copy_cancel")]]
     )
@@ -168,4 +203,20 @@ def _copy_view(data: dict, editor: dict) -> tuple[str, list]:
         f"将覆盖 {len(selected)} 个选定群的同类门槛（加成不变）：\n"
         + "、".join(names[key] for key in selected)
     )
+    text += _search_summary(data, editor)
+    if not count and not editor.get("search"):
+        text += "\n没有其他参与群可复制，请取消复制返回本群设置。"
     return text, rows
+
+
+def _field_preset_row(editor: dict, field: str) -> list:
+    units = {"daily_messages": "条/天", "consecutive_days": "天", "required_valid_invites": "人"}
+    current = editor.get("rule", {}).get(field)
+    values = [
+        (
+            f"{'✓ ' if value == current else ''}{value}{units[field]}",
+            f"draft_gate:preset:{field}:{value}",
+        )
+        for value in PRESETS[field]
+    ]
+    return [*values, ("自定义" + FIELD_LABELS[field], f"draft_gate:input:{field}")]

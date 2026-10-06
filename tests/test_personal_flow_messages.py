@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from tests.helpers import seed_campaign
+from tg_lottery.application.creator_campaign_pages import CreatorCampaignPage
 from tg_lottery.application.participant_records import ParticipatedCampaignPage
 from tg_lottery.application.queries import ParticipatedCampaign, QueryService
 from tg_lottery.domain.enums import CampaignState, QualificationState
@@ -46,6 +47,19 @@ class PersonalQueries:
         rows = tuple(await self.participated_campaigns(0)) if category == "active" else ()
         return ParticipatedCampaignPage(category, page, 1, rows)
 
+    async def creator_navigation_state(self, user_id):
+        return None
+
+    async def creator_campaign_page(self, user_id, *, options):
+        return CreatorCampaignPage(
+            options["category"],
+            options["page"],
+            1,
+            1,
+            tuple(await self.created_campaigns(user_id, options["category"])),
+            options["managed"],
+        )
+
     async def created_campaigns(self, _: int, __: str) -> list[object]:
         return [
             SimpleNamespace(
@@ -81,8 +95,8 @@ async def test_personal_lists_render_business_states_and_local_time() -> None:
     assert "running" not in rendered
     assert "eligible" not in rendered
     assert "+00:00" not in rendered
-    button = message.reply_markups[-1].inline_keyboard[0][0]
-    assert button.callback_data == "nav:campaign:AbCdEfGhIjKlMnOpQrSt-_"
+    button = message.reply_markups[-1].inline_keyboard[1][0]
+    assert button.callback_data == "nav:campaign:AbCdEfGhIjKlMnOpQrSt-_:c:a:0"
     joined_button = message.reply_markups[0].inline_keyboard[1][0]
     assert joined_button.callback_data == "nav:joined:AbCdEfGhIjKlMnOpQrSt-_"
     category_callbacks = {

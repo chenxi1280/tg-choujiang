@@ -9,14 +9,13 @@ from sqlalchemy.dialects.postgresql import insert
 
 from tg_lottery.application.activity_rules import (
     activity_chat_ids,
-    activity_min_text_length,
     activity_ticket_target,
 )
 from tg_lottery.application.activity_targets import locked_message_campaign, message_rule_chat_id
 from tg_lottery.application.admission_qualification import source_qualification_reason
 from tg_lottery.application.base_activity import record_base_activity
 from tg_lottery.application.group_activity_progress import increment_group_activity_progress
-from tg_lottery.application.message_rules import normalize_text, rejection_reason
+from tg_lottery.application.message_rules import normalized_content, rejection_reason
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.progress_notifications import flush_progress_notices, queue_bonus_notice
 from tg_lottery.application.request_context import current_update_id
@@ -52,6 +51,7 @@ class MessageObservation:
     is_service: bool = False
     is_forwarded: bool = False
     rule_chat_id: int | None = None
+    media_key: str | None = None
 
     @property
     def rule_target(self) -> int:
@@ -181,9 +181,8 @@ class ActivityService:
         observation: MessageObservation,
         rules: CampaignRules,
     ) -> InviteeActivityEvent:
-        normalized = normalize_text(observation.text)
-        minimum = activity_min_text_length(rules, observation.rule_target)
-        reason = rejection_reason(observation, normalized, minimum)
+        normalized = normalized_content(observation)
+        reason = rejection_reason(observation)
         content_hash = sha256(normalized.encode()).hexdigest()
         duplicate = await self._invitee_duplicate(
             session,
@@ -215,11 +214,10 @@ class ActivityService:
         activity_chat_ids: tuple[int, ...],
     ) -> ActivityEvent:
         rules = CampaignRules.model_validate(campaign.rules)
-        normalized = normalize_text(observation.text)
+        normalized = normalized_content(observation)
         content_hash = sha256(normalized.encode()).hexdigest()
         local_date = observation.event_at.astimezone(ZoneInfo(campaign.timezone)).date()
-        minimum = activity_min_text_length(rules, observation.rule_target)
-        reason = rejection_reason(observation, normalized, minimum)
+        reason = rejection_reason(observation)
         if rules.admission is not None and reason is None:
             reason = await source_qualification_reason(session, participant, observation)
         if reason is None:

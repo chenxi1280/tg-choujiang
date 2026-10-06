@@ -15,6 +15,9 @@ from tg_lottery.telegram.creator_group_availability import (
     GroupAvailability,
     inspect_group_availability,
 )
+from tg_lottery.telegram.creator_group_identity import filter_groups
+from tg_lottery.telegram.creator_picker_groups import picker_groups
+from tg_lottery.telegram.panel_pagination import creator_page_rows, titled_pages
 
 TOKEN_LIFETIME = timedelta(hours=24)
 GROUP_PAGE_SIZE = 6
@@ -52,6 +55,7 @@ class CreatorRenderer:
         parse_mode: str | None = None,
     ) -> None:
         target = PanelTarget(user_id, message.chat.id, message.message_id)
+        text, rows = await self._paginate(target, text=text, rows=rows, parse_mode=parse_mode)
         keyboard = await self._keyboard(target, rows)
         await message.edit_text(text, reply_markup=keyboard, parse_mode=parse_mode)
 
@@ -62,6 +66,7 @@ class CreatorRenderer:
         text: str,
         rows: ButtonRows,
     ) -> None:
+        text, rows = await self._paginate(target, text=text, rows=rows)
         keyboard = await self._keyboard(target, rows)
         await self._bot.edit_message_text(
             text,
@@ -69,6 +74,47 @@ class CreatorRenderer:
             message_id=target.message_id,
             reply_markup=keyboard,
         )
+
+    async def _paginate(self, target, *, text, rows, parse_mode=None):
+        if parse_mode is not None:
+            return text, rows
+        pages = titled_pages(text, title=text.split("\n", 1)[0])
+        if len(pages) == 1:
+            return text, rows
+        session = await self._sessions.get(target.user_id)
+        serialized = [
+            [item if isinstance(item, tuple) else item.model_dump(mode="json") for item in row]
+            for row in rows
+        ]
+        await self._sessions.set(
+            target.user_id,
+            session.state,
+            dict(session.data)
+            | {
+                "content_pages": list(pages),
+                "content_rows": serialized,
+            },
+        )
+        return pages[0], creator_page_rows(rows, page=0, total=len(pages))
+
+    async def page(self, query, grant):
+        session = await self._sessions.get(query.from_user.id)
+        pages = session.data["content_pages"]
+        page = int(grant.action.removeprefix("draft_content_page:"))
+        if page < 0 or page >= len(pages):
+            raise ValueError("内容页已失效")
+        rows = [
+            [
+                InlineKeyboardButton.model_validate(item) if isinstance(item, dict) else tuple(item)
+                for item in row
+            ]
+            for row in session.data["content_rows"]
+        ]
+        target = PanelTarget(query.from_user.id, query.message.chat.id, query.message.message_id)
+        keyboard = await self._keyboard(
+            target, creator_page_rows(rows, page=page, total=len(pages))
+        )
+        await query.message.edit_text(pages[page], reply_markup=keyboard)
 
     async def keyboard_for(
         self,
@@ -85,11 +131,13 @@ class CreatorRenderer:
         user_id: int,
         selected_chat_ids: tuple[int, ...] = (),
         page: int = 0,
+        search: str = "",
     ) -> None:
         await self.edit_groups(
             PanelTarget(user_id, message.chat.id, message.message_id),
             selected_chat_ids=selected_chat_ids,
             page=page,
+            search=search,
         )
 
     async def edit_groups(
@@ -98,10 +146,15 @@ class CreatorRenderer:
         *,
         selected_chat_ids: tuple[int, ...] = (),
         page: int = 0,
+        search: str = "",
     ) -> None:
-        groups = await self._queries.admin_groups(target.user_id)
+        groups, selected_chat_ids = await self._picker_group_state(
+            target.user_id, selected_chat_ids=selected_chat_ids, search=search
+        )
         maximum = max(0, (len(groups) - 1) // GROUP_PAGE_SIZE)
+        requested_page = page
         page = min(maximum, max(0, page))
+        await self._store_group_page(target.user_id, page)
         visible = groups[page * GROUP_PAGE_SIZE : (page + 1) * GROUP_PAGE_SIZE]
         context = await self._sessions.issue_panel_context(target.user_id, target.message_id)
         rows = await self._group_buttons(
@@ -112,16 +165,41 @@ class CreatorRenderer:
         )
         back = await self._keyboard(
             target,
-            _group_navigation(page=page, maximum=maximum, has_groups=bool(groups)),
+            _group_navigation(
+                page=page, maximum=maximum, has_groups=bool(groups), searching=bool(search)
+            ),
             context=context,
         )
         rows.extend(back.inline_keyboard)
         await self._bot.edit_message_text(
-            _group_picker_text(selected_count=len(selected_chat_ids), has_groups=bool(groups)),
+            _group_picker_text(selected_count=len(selected_chat_ids), has_groups=bool(groups))
+            + ("\n页码已随当前群列表调整。" if page != requested_page else "")
+            + ("\n搜索：" + search if search else "")
+            + "\n\n"
+            + "\n".join(
+                f"{page * GROUP_PAGE_SIZE + i}. {g.title}（{g.chat_id}）"
+                for i, g in enumerate(visible, start=1)
+            ),
             chat_id=target.chat_id,
             message_id=target.message_id,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
         )
+
+    async def _picker_group_state(self, user_id, *, selected_chat_ids, search):
+        groups = await picker_groups(
+            self._queries, user_id=user_id, selected_chat_ids=selected_chat_ids
+        )
+        selected = set(selected_chat_ids)
+        for group in groups:
+            if group.migrated_from_chat_id in selected:
+                selected = (selected - {group.migrated_from_chat_id}) | {group.chat_id}
+        return filter_groups(groups, search), tuple(selected)
+
+    async def _store_group_page(self, user_id, page):
+        session = await self._sessions.get(user_id)
+        if session is None:
+            raise ValueError("admin draft session expired")
+        await self._sessions.set(user_id, session.state, dict(session.data) | {"group_page": page})
 
     async def _group_buttons(
         self,
@@ -140,8 +218,14 @@ class CreatorRenderer:
         ]
         requests = tuple(
             CallbackRequest(
-                "draft_toggle_group" if status.selectable else "draft_group_problem",
-                payload={"chat_id": group.chat_id, "reason": status.reason},
+                "draft_toggle_group"
+                if status.selectable or group.chat_id in selected_chat_ids
+                else "draft_group_problem",
+                payload={
+                    "chat_id": group.chat_id,
+                    "group_id": str(group.id),
+                    "reason": status.reason,
+                },
             )
             for group, status in zip(groups, availability, strict=True)
         )
@@ -216,7 +300,9 @@ class CreatorRenderer:
         )
 
 
-def _group_navigation(*, page: int, maximum: int, has_groups: bool) -> ButtonRows:
+def _group_navigation(
+    *, page: int, maximum: int, has_groups: bool, searching: bool = False
+) -> ButtonRows:
     selection = (
         [
             [("全选本页", "draft_groups_select_page"), ("清空本页", "draft_groups_clear_page")],
@@ -227,6 +313,11 @@ def _group_navigation(*, page: int, maximum: int, has_groups: bool) -> ButtonRow
     return [
         *_group_page_rows(page, maximum),
         *selection,
+        *(
+            [[("搜索群名/ID", "draft_groups_search"), ("清除搜索", "draft_groups_search_clear")]]
+            if has_groups or searching
+            else []
+        ),
         [("🔄 刷新群列表", "draft_groups_refresh")],
         *([[("✅ 完成选择", "draft_groups_done")]] if has_groups else []),
         [("↩ 返回上一层", "draft_back")],
@@ -255,20 +346,18 @@ def _group_button_text(
     parallel_count: int,
 ) -> str:
     title = chat_title({"id": group.chat_id, "title": group.title})
+    title = title[:28] + f" · {str(group.chat_id)[-6:]}"
     if not status.selectable:
-        return f"⚠ {title}｜{status.status}"
+        return f"✅ 已选 · {title}｜点此移除" if selected else f"⚠ {title}｜{status.status}"
     prefix = "✅ " if selected else "⬜ "
     parallel = f"｜另有 {parallel_count} 个进行中活动" if parallel_count else ""
     return prefix + title + parallel
 
 
 def _group_page_rows(page: int, maximum: int) -> ButtonRows:
-    if not maximum:
-        return []
-    return [
-        [
-            ("上一页", "draft_groups_prev"),
-            (f"{page + 1}/{maximum + 1}", "draft_groups_refresh"),
-            ("下一页", "draft_groups_next"),
-        ]
-    ]
+    rows = []
+    if page:
+        rows.append(("上一页", "draft_groups_prev"))
+    if page < maximum:
+        rows.append(("下一页", "draft_groups_next"))
+    return [rows] if rows else []

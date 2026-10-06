@@ -1,5 +1,4 @@
 # ruff: noqa: RUF001
-
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -10,6 +9,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, Teleg
 from aiogram.methods import AnswerCallbackQuery, SendMessage
 from aiogram.types import CallbackQuery, Chat, Message, User
 
+from tests.navigation_helpers import PassthroughAdmin, PassthroughNavigation
 from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts
 from tg_lottery.application.participant_records import (
     ParticipantCampaignDetail,
@@ -303,9 +303,10 @@ def _query(*, chat_id=GROUP_ID, chat_type="supergroup"):
 
 def _handler(flow, queries):
     return LotteryUpdateHandler(
+        navigation=PassthroughNavigation(),
         bot=flow._bot,
         default_timezone="Asia/Shanghai",
-        admin_flow=None,
+        admin_flow=PassthroughAdmin(),
         member_flow=flow,
         personal_flow=PersonalFlow(profiles=None, queries=queries, bot_username="lottery_bot"),
         tokens=None,

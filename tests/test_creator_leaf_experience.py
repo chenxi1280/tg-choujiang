@@ -1,12 +1,14 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from aiogram.types import Chat, Message, User
 
 from tests.test_creator_settings import RecordingRenderer, RecordingSessions
 from tg_lottery.domain.errors import UserFacingError
-from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_folder_link import CreatorFolderLink, validated_folder_link
+from tg_lottery.telegram.creator_prizes import CreatorPrizes
 from tg_lottery.telegram.draft_config import new_draft, presentation_from_data
 from tg_lottery.telegram.gateway import _campaign_keyboard
 
@@ -65,8 +67,7 @@ async def test_folder_link_preserves_all_independent_participation_conditions() 
 
 async def test_delete_specific_prizes_preserves_remaining_order_and_draft() -> None:
     sessions, renderer = RecordingSessions(), RecordingRenderer()
-    creator = object.__new__(CampaignCreator)
-    creator._sessions, creator._renderer = sessions, renderer
+    creator = CreatorPrizes(sessions=sessions, renderer=renderer)
     data = {
         "panel_message_id": 9,
         "prizes": [
@@ -76,8 +77,11 @@ async def test_delete_specific_prizes_preserves_remaining_order_and_draft() -> N
             {"name": "第四奖", "winner_count": 4},
         ],
     }
-    await creator._receive_prize_delete(_message().model_copy(update={"text": "3,1"}), data)
+    await creator.receive_delete(_message().model_copy(update={"text": "3,1"}), data)
+    assert len(sessions.data["prizes"]) == 4
+    sessions.get = AsyncMock(return_value=SimpleNamespace(state="draft:idle", data=sessions.data))
+    await creator.commit_delete(SimpleNamespace(message=_message(), from_user=_message().from_user))
     assert [p["name"] for p in sessions.data["prizes"]] == ["第二奖", "第四奖"]
     assert len(data["prizes"]) == 4
     with pytest.raises(UserFacingError, match="编号必须"):
-        await creator._receive_prize_delete(_message().model_copy(update={"text": "9"}), data)
+        await creator.receive_delete(_message().model_copy(update={"text": "9"}), data)

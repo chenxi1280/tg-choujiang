@@ -9,7 +9,11 @@ from sqlalchemy import select
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.request_context import current_update_id
-from tg_lottery.domain.errors import AuthorizationDenied, RecoverableDraftCallback
+from tg_lottery.domain.errors import (
+    AuthorizationDenied,
+    RecoverableDraftCallback,
+    RecoverableMemberCallback,
+)
 from tg_lottery.infrastructure.db import AdminSession, CallbackToken
 
 _TOKEN_TTL_MINUTES = 10
@@ -96,6 +100,20 @@ class CallbackTokenService:
         if not row.action.startswith("draft_"):
             return
         admin_session = await session.get(AdminSession, row.owner_user_id, with_for_update=True)
+        if (
+            admin_session is not None
+            and admin_session.state == "draft:suspended"
+            and row.action
+            not in {
+                "draft_resume_input",
+                "draft_resume_module",
+                "draft_gate",
+                "draft_gate:discard",
+                "draft_bonus_continue_editing",
+                "draft_bonus_group_cancel",
+            }
+        ):
+            raise RecoverableDraftCallback("draft input is suspended; resume explicitly")
         payload = row.payload
         if admin_session is None or admin_session.expires_at <= now:
             raise RecoverableDraftCallback("draft callback session is expired")
@@ -120,4 +138,6 @@ def _hash(token: str) -> bytes:
 def _raise_expired(row: CallbackToken, message: str) -> None:
     if row.action.startswith("draft_"):
         raise RecoverableDraftCallback(message)
+    if row.action == "member:navigate":
+        raise RecoverableMemberCallback(dict(row.payload))
     raise AuthorizationDenied(message)

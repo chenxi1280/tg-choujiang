@@ -26,7 +26,8 @@ def test_base_buttons_save_four_messages_and_cancel_custom_without_mutating_save
     assert "保存后生效" in text
     saved = base.apply_action(editor, "draft_base:save")
     rule = rules_from_data(saved).base_activity_rules["-1001"]
-    assert (rule.consecutive_days, rule.daily_messages, rule.min_text_length) == (1, 4, 1)
+    assert (rule.consecutive_days, rule.daily_messages) == (1, 4)
+    assert "字数" not in str(rows) and "文字、图片、表情均计数" in text
     before = deepcopy(saved)
     editing = base.apply_action(saved, "draft_base:group:-1001")
     editing = base.apply_action(editing, "draft_base:input:daily_messages")
@@ -76,10 +77,10 @@ def test_group_bonus_defaults_and_custom_five_messages_use_daily_mode():
     editing = apply_action(editing, "draft_bonus_input_cycle")
     editing = receive_input(editing, "5")
     text, rows = editor_view(editing, editing["bonus_working_copy"])
-    assert "每天发言满 5 条 +1 票" in text
+    assert "每天发言满 5 条 +1次" in text
     assert "每天只奖励一次" in text
     assert "北京时间每天 00:00" in text
-    assert "自定义 · 5" in [label for row in rows for label, _ in row]
+    assert "自定义 · 5条" in [label for row in rows for label, _ in row]
     saved = apply_action(editing, "draft_bonus_activity_save")
     rule = rules_from_data(saved).activity_rule_for(-1001)
     assert rule.daily_cap_mode == "limited" and rule.daily_max_cycles == 1

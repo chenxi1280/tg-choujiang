@@ -7,7 +7,9 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.telegram.command_input import parse_bot_command
-from tg_lottery.telegram.help_views import GUIDE_TEXT, HelpLinks, guide_keyboard
+from tg_lottery.telegram.creator_list_views import creator_list_view
+from tg_lottery.telegram.help_views import HelpLinks, guide_summary, guide_topic
+from tg_lottery.telegram.home_views import home_keyboard, home_text, settings_keyboard
 from tg_lottery.telegram.member_records import show_ticket_record
 from tg_lottery.telegram.participant_list_views import (
     build_participated_campaign_list,
@@ -73,11 +75,9 @@ class PersonalFlow:
         self._default_timezone = default_timezone
         self._help_links = help_links
 
-    async def show_guide(self, message: Message) -> None:
-        await message.answer(
-            GUIDE_TEXT,
-            reply_markup=guide_keyboard(self._help_links),
-        )
+    async def show_guide(self, message: Message, *, edit: bool = False) -> None:
+        text, keyboard = guide_summary(self._help_links)
+        await _respond(message, text, keyboard=keyboard, edit=edit)
 
     async def handle_command(self, message: Message, text: str) -> bool:
         command = parse_bot_command(text)
@@ -85,7 +85,7 @@ class PersonalFlow:
             return False
         handlers = {
             "/help": self.show_guide,
-            "/index": self.show_index,
+            "/index": self.show_created,
             "/join": self.show_joined,
             "/region": self.show_regions,
             "/myid": self.show_user_id,
@@ -100,8 +100,16 @@ class PersonalFlow:
         message = _personal_callback_message(query, data)
         if message is None:
             return False
+        if data.startswith("nav:guide:"):
+            await self._show_guide_topic(message, data)
+            return True
         if data.startswith("nav:created:"):
-            await self._show_created(message, data.removeprefix("nav:created:"))
+            await self._show_created(message, data.removeprefix("nav:created:"), edit=True)
+            return True
+        if data.startswith("nav:managed:"):
+            await self._show_created(
+                message, data.removeprefix("nav:managed:"), managed=True, edit=True
+            )
             return True
         if data.startswith("nav:joined:"):
             await show_ticket_record(
@@ -113,11 +121,11 @@ class PersonalFlow:
             return True
         if data.startswith("nav:join:"):
             category, page = parse_campaign_list_callback(data.removeprefix("nav:join:"))
-            await self.show_joined(message, category=category, page=page)
+            await self.show_joined(message, category=category, page=page, edit=True)
             return True
         if data.startswith("nav:invites:"):
             category, page = parse_campaign_list_callback(data.removeprefix("nav:invites:"))
-            await self.show_invitation_campaigns(message, category=category, page=page)
+            await self.show_invitation_campaigns(message, category=category, page=page, edit=True)
             return True
         if data.startswith("profile:region:"):
             await self._set_region(query, data.removeprefix("profile:region:"))
@@ -129,28 +137,39 @@ class PersonalFlow:
             "nav:invites": self.show_invitation_campaigns,
             "nav:region": self.show_regions,
             "nav:myid": self.show_user_id,
+            "nav:created": self.show_created,
+            "nav:managed": self.show_managed,
+            "nav:settings": self.show_settings,
         }
         handler = handlers.get(data)
         if handler is None:
             return False
-        await handler(message)
+        await handler(message, edit=True)
         return True
 
-    async def show_index(self, message: Message) -> None:
-        user = _user(message)
-        summary = await self._queries.admin_campaign_summary(user.id)
-        unconfirmed = f"\n未确认（待核查）：{summary.unconfirmed}" if summary.unconfirmed else ""
-        await message.answer(
-            "🎁 抽奖管理\n\n"
-            f"累计创建：{summary.total}\n"
-            f"进行中：{summary.active}\n"
-            f"已开奖：{summary.drawn}\n"
-            f"已取消：{summary.cancelled}{unconfirmed}",
-            reply_markup=_index_keyboard(self._bot_username, self._help_links),
+    async def _show_guide_topic(self, message, data):
+        text, keyboard = guide_topic(
+            data.removeprefix("nav:guide:"), bot_username=self._bot_username
+        )
+        await _respond(message, text, keyboard=keyboard, edit=True)
+
+    async def show_index(self, message: Message, *, edit: bool = False) -> None:
+        data = await self._queries.creator_navigation_state(_user(message).id)
+        await _respond(message, home_text(data), keyboard=home_keyboard(data), edit=edit)
+
+    async def show_settings(self, message: Message, *, edit: bool = False) -> None:
+        await _respond(
+            message, "个人设置\n\n资料设置不自动登记活动。", keyboard=settings_keyboard(), edit=edit
         )
 
+    async def show_created(self, message: Message, *, edit: bool = False) -> None:
+        await self._show_created(message, "active:0", edit=edit)
+
+    async def show_managed(self, message: Message, *, edit: bool = False) -> None:
+        await self._show_created(message, "active:0", managed=True, edit=edit)
+
     async def show_joined(
-        self, message: Message, *, category: str = "active", page: int = 0
+        self, message: Message, *, category: str = "active", page: int = 0, edit: bool = False
     ) -> None:
         result = await self._queries.participated_campaign_page(
             _user(message).id,
@@ -158,10 +177,12 @@ class PersonalFlow:
             page=page,
         )
         text, keyboard = build_participated_campaign_list(result, invitation_only=False)
-        await message.answer(text, reply_markup=keyboard)
+        if result.page != page:
+            text += "\n当前页超出记录范围，已显示有效页。"
+        await _respond(message, text, keyboard=keyboard, edit=edit)
 
     async def show_invitation_campaigns(
-        self, message: Message, *, category: str = "active", page: int = 0
+        self, message: Message, *, category: str = "active", page: int = 0, edit: bool = False
     ) -> None:
         result = await self._queries.participated_campaign_page(
             _user(message).id,
@@ -170,42 +191,53 @@ class PersonalFlow:
             invitation_only=True,
         )
         text, keyboard = build_participated_campaign_list(result, invitation_only=True)
-        await message.answer(text, reply_markup=keyboard)
+        await _respond(message, text, keyboard=keyboard, edit=edit)
 
-    async def show_regions(self, message: Message) -> None:
+    async def show_regions(self, message: Message, *, edit: bool = False) -> None:
         profile = await self._profiles.get(_user(message).id)
         current = profile.region or "未设置"
-        await message.answer(
-            f"🌏 设置归属地区\n\n当前地区：{current}\n首次设置后 5 分钟内可修改，随后锁定 30 天。",
-            reply_markup=_region_keyboard(),
+        text = (
+            f"🌏 设置归属地区\n\n当前地区：{current}\n首次设置后 5 分钟内可修改，随后锁定 30 天。"
+        )
+        keyboard = _region_keyboard()
+        if (
+            profile.region_locked_until is not None
+            and profile.region_editable_until is not None
+            and profile.region_editable_until < utcnow() < profile.region_locked_until
+        ):
+            text += "\n当前锁定至：" + profile.region_locked_until.astimezone(
+                ZoneInfo(self._default_timezone)
+            ).strftime("%Y年%m月%d日 %H:%M")
+            keyboard = settings_keyboard()
+        await _respond(
+            message,
+            text,
+            keyboard=keyboard,
+            edit=edit,
         )
 
-    async def show_user_id(self, message: Message) -> None:
-        await message.answer(f"你的 Telegram 用户 ID：{_user(message).id}")
-
-    async def _show_created(self, message: Message, category: str) -> None:
-        campaigns = await self._queries.created_campaigns(_user(message).id, category)
-        title = {"active": "进行中的抽奖", "drawn": "已开奖", "cancelled": "已取消"}.get(category)
-        if title is None:
-            raise ValueError("抽奖分类无效")
-        if not campaigns:
-            await message.answer(
-                f"{title}：暂无记录", reply_markup=_index_keyboard(self._bot_username)
-            )
-            return
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    text=f"{item.name}｜{_created_campaign_label(item.state, category)}",
-                    callback_data=f"nav:campaign:{item.public_ref}",
-                )
-            ]
-            for item in campaigns
-        ]
-        await message.answer(
-            f"🎁 {title}\n\n点击活动查看详情与当前可用操作。",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+    async def show_user_id(self, message: Message, *, edit: bool = False) -> None:
+        await _respond(
+            message,
+            f"你的 Telegram 用户 ID：{_user(message).id}",
+            keyboard=settings_keyboard(),
+            edit=edit,
         )
+
+    async def _show_created(
+        self, message: Message, payload: str, *, managed: bool = False, edit: bool = False
+    ) -> None:
+        category, separator, raw_page = payload.partition(":")
+        options = {
+            "category": category,
+            "page": int(raw_page) if separator else 0,
+            "managed": managed,
+        }
+        result = await self._queries.creator_campaign_page(_user(message).id, options=options)
+        text, keyboard = creator_list_view(result)
+        if result.page != options["page"]:
+            text += "\n当前页超出记录范围，已显示有效页。"
+        await _respond(message, text, keyboard=keyboard, edit=edit)
 
     async def _set_region(self, query: CallbackQuery, region: str) -> None:
         if region not in REGIONS:
@@ -216,7 +248,9 @@ class PersonalFlow:
         profile = await self._profiles.set_region(query.from_user.id, region, utcnow())
         if profile.region_editable_until is None or profile.region_locked_until is None:
             raise RuntimeError("region lock deadlines are missing")
-        await message.edit_text(_region_success_text(profile, self._default_timezone))
+        await message.edit_text(
+            _region_success_text(profile, self._default_timezone), reply_markup=_region_keyboard()
+        )
 
 
 def _created_campaign_label(state: CampaignState, category: str) -> str:
@@ -229,28 +263,14 @@ def _created_campaign_label(state: CampaignState, category: str) -> str:
 def _index_keyboard(
     bot_username: str, links: HelpLinks = _DEFAULT_HELP_LINKS
 ) -> InlineKeyboardMarkup:
-    group_url = f"https://t.me/{bot_username}?startgroup=lottery"
-    channel_url = f"https://t.me/{bot_username}?startchannel=lottery"
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="我参加的抽奖", callback_data="nav:join"),
-                InlineKeyboardButton(text="我的邀请记录", callback_data="nav:invites"),
-            ],
-            [InlineKeyboardButton(text="发起抽奖活动", callback_data="nav:create")],
-            [
-                InlineKeyboardButton(text="进行中", callback_data="nav:created:active"),
-                InlineKeyboardButton(text="已开奖", callback_data="nav:created:drawn"),
-                InlineKeyboardButton(text="已取消", callback_data="nav:created:cancelled"),
-            ],
-            [
-                InlineKeyboardButton(text="添加到群组", url=group_url),
-                InlineKeyboardButton(text="添加到频道", url=channel_url),
-            ],
-            [InlineKeyboardButton(text="📖 使用指南", callback_data="nav:help")],
-            *links.rows(),
-        ]
-    )
+    return home_keyboard()
+
+
+async def _respond(message, text: str, *, keyboard, edit: bool) -> None:
+    if edit:
+        await message.edit_text(text, reply_markup=keyboard)
+        return
+    await message.answer(text, reply_markup=keyboard)
 
 
 def _region_keyboard() -> InlineKeyboardMarkup:
@@ -262,6 +282,7 @@ def _region_keyboard() -> InlineKeyboardMarkup:
         buttons[index : index + _REGION_COLUMNS]
         for index in range(0, len(buttons), _REGION_COLUMNS)
     ]
+    rows.append([InlineKeyboardButton(text="返回个人设置", callback_data="nav:settings")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

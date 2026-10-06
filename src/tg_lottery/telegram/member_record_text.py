@@ -1,7 +1,6 @@
 from tg_lottery.application.participant_records import ParticipantCampaignDetail
 from tg_lottery.application.participant_results import ParticipantAward
 from tg_lottery.domain.enums import CampaignState
-from tg_lottery.presentation.mentions import MESSAGE_UTF16_LIMIT
 from tg_lottery.telegram.public_projection import (
     campaign_history_state_text,
     format_public_time,
@@ -89,21 +88,6 @@ def _ticket_summary(detail: ParticipantCampaignDetail) -> str:
 
 
 def _record_pages(blocks: list[str]) -> tuple[str, ...]:
-    pages: list[str] = []
-    current = ""
-    for block in blocks:
-        if _utf16_length(block) > MESSAGE_UTF16_LIMIT:
-            raise ValueError("a participant record section exceeds the Telegram message limit")
-        candidate = "\n\n".join((current, block)) if current else block
-        if _utf16_length(candidate) > MESSAGE_UTF16_LIMIT:
-            pages.append(current)
-            current = block
-            continue
-        current = candidate
-    if current:
-        pages.append(current)
-    return tuple(pages)
+    from tg_lottery.telegram.panel_pagination import text_pages
 
-
-def _utf16_length(text: str) -> int:
-    return len(text.encode("utf-16-le")) // 2
+    return text_pages("\n\n".join(blocks))

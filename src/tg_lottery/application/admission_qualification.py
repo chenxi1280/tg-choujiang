@@ -76,3 +76,9 @@ async def source_qualification_reason(session: object, participant: object, obse
             f"participant {participant.id}: qualification at source update {source} is unknown"
         )
     return None if check.state == QualificationState.ELIGIBLE else "membership_ineligible"
+
+
+def effective_ticket_text(participant, *, active: bool):
+    if participant.qualification_state is QualificationState.UNKNOWN:
+        return "待核查"
+    return str(participant.ticket_total_cache if active else 0)

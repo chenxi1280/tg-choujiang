@@ -10,6 +10,7 @@ from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts
 from tg_lottery.application.query_invites import GroupInviteLinkStatus
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.presentation.target_identity import distinct_group_names
 from tg_lottery.telegram.member_bonus_navigation import (
     group_detail_row as _group_detail_row,
 )
@@ -19,6 +20,15 @@ from tg_lottery.telegram.member_bonus_navigation import (
 from tg_lottery.telegram.member_bonus_navigation import (
     visible_page as _visible_page,
 )
+from tg_lottery.telegram.member_bonus_task_views import (
+    activity_group_detail as _activity_group_detail,
+)
+from tg_lottery.telegram.member_bonus_task_views import (
+    invite_detail_navigation as _invite_detail_navigation,
+)
+from tg_lottery.telegram.member_bonus_task_views import (
+    required_group as _required_group,
+)
 from tg_lottery.telegram.member_bonus_text import (
     HISTORICAL_CAMPAIGN_STATES,
     bonus_closed_notice,
@@ -26,9 +36,6 @@ from tg_lottery.telegram.member_bonus_text import (
     invitation_section_title,
     invite_bonus_completed,
     invite_list_prompt,
-)
-from tg_lottery.telegram.member_bonus_text import (
-    activity_cap as _activity_cap,
 )
 from tg_lottery.telegram.member_bonus_text import (
     bonus_header as _header,
@@ -191,14 +198,20 @@ async def _load_context(
 def _groups_with_join_urls(
     groups: tuple[dict[str, object], ...], *, targets: tuple[object, ...], cipher: object
 ) -> tuple[dict[str, object], ...]:
-    by_chat = {target.chat_id: target for target in targets if target.kind == "participation_group"}
-    return tuple(
-        group
-        | {
-            "join_url": _target_join_url(by_chat.get(int(group["id"])), cipher)
-            or group.get("join_url")
-        }
-        for group in groups
+    by_chat = {
+        getattr(target, "rule_chat_id", None) or target.chat_id: target
+        for target in targets
+        if target.kind == "participation_group"
+    }
+    return distinct_group_names(
+        tuple(
+            group
+            | {
+                "join_url": _target_join_url(by_chat.get(int(group["id"])), cipher)
+                or group.get("join_url")
+            }
+            for group in groups
+        )
     )
 
 
@@ -244,7 +257,8 @@ def _category_payload(context: BonusViewContext) -> tuple[str, InlineKeyboardMar
                 callback_data=f"member:bonus_activity:{ref}:0",
             )
         ],
-        [InlineKeyboardButton(text="🎟 抽奖次数明细", callback_data=f"member:tickets:{ref}")],
+        [InlineKeyboardButton(text="返回活动详情", callback_data=f"member:tickets:{ref}")],
+        [InlineKeyboardButton(text="返回首页", callback_data="nav:index")],
     ]
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -255,6 +269,8 @@ def build_invite_group_list(
     groups = tuple(
         group for group in context.groups if context.rules.invite_target_enabled(int(group["id"]))
     )
+    if len(groups) == 1:
+        return _invite_group_detail(context, int(groups[0]["id"]), return_page=0)
     visible, selected, total_pages = _visible_page(groups, page)
     lines = [
         _header(context.campaign, invitation_section_title(context.rules), outcome=context.outcome),
@@ -291,7 +307,7 @@ def build_invite_group_list(
     rows.append(
         [
             InlineKeyboardButton(
-                text="返回我的加成", callback_data=f"m:bo:{context.campaign.public_ref}"
+                text="返回活动详情", callback_data=f"member:tickets:{context.campaign.public_ref}"
             )
         ]
     )
@@ -306,6 +322,8 @@ def build_activity_group_list(
         for group in context.groups
         if context.rules.activity_rule_for(int(group["id"])) is not None
     )
+    if len(groups) == 1:
+        return _activity_group_detail(context, int(groups[0]["id"]), return_page=0)
     visible, selected, total_pages = _visible_page(groups, page)
     lines = [
         _header(context.campaign, "发言加成", outcome=context.outcome),
@@ -316,19 +334,7 @@ def build_activity_group_list(
         lines[1] = bonus_closed_notice(context.campaign, category="发言", outcome=context.outcome)
     rows = []
     for group in visible:
-        chat_id = int(group["id"])
-        rule = context.rules.activity_rule_for(chat_id)
-        progress = context.activity_progress.get(chat_id)
-        if rule is None or progress is None:
-            continue
-        lines.append(
-            _activity_progress_line(
-                str(group["title"]),
-                rule,
-                progress,
-                completed=completed,
-            )
-        )
+        lines.append(_activity_list_line(context, group, completed=completed))
         rows.append(
             _group_detail_row(context.campaign.public_ref, "activity", group, group_page=selected)
         )
@@ -343,7 +349,7 @@ def build_activity_group_list(
     rows.append(
         [
             InlineKeyboardButton(
-                text="返回我的加成", callback_data=f"m:bo:{context.campaign.public_ref}"
+                text="返回活动详情", callback_data=f"member:tickets:{context.campaign.public_ref}"
             )
         ]
     )
@@ -387,69 +393,6 @@ def _invite_group_detail(
     ), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _invite_detail_navigation(
-    context: BonusViewContext, chat_id: int, *, return_page: int
-) -> list[list[InlineKeyboardButton]]:
-    reference = context.campaign.public_ref
-    return [
-        [
-            InlineKeyboardButton(
-                text="邀请记录",
-                callback_data=f"m:ir:{reference}:{chat_id}:{return_page}:all:0",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="刷新本群状态",
-                callback_data=f"m:id:{reference}:{chat_id}:{return_page}",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="返回邀请群列表",
-                callback_data=f"member:bonus_invites:{reference}:{return_page}",
-            )
-        ],
-    ]
-
-
-def _activity_group_detail(
-    context: BonusViewContext, chat_id: int, *, return_page: int
-) -> tuple[str, InlineKeyboardMarkup]:
-    group = _required_group(context, chat_id)
-    rule = context.rules.activity_rule_for(chat_id)
-    progress = context.activity_progress.get(chat_id)
-    if rule is None or progress is None:
-        raise ValueError("该群未开启发言加成")
-    completed = campaign_bonus_completed(context.campaign)
-    lines = [
-        _header(context.campaign, f"{group['title']} 发言加成", outcome=context.outcome),
-        f"规则：每 {rule.messages_per_cycle} 条有效消息 +{rule.reward_tickets} 次",
-        f"每条至少 {rule.min_text_length} 个可计数字符；{_activity_cap(rule)}",
-        _activity_progress_line(str(group["title"]), rule, progress, completed=completed),
-        bonus_closed_notice(context.campaign, category="发言", outcome=context.outcome),
-    ]
-    if chat_id in context.unavailable:
-        lines.append(f"⚠ {context.unavailable[chat_id]}")
-    rows = [
-        [
-            InlineKeyboardButton(
-                text="刷新发言进度",
-                callback_data=f"m:ad:{context.campaign.public_ref}:{chat_id}:{return_page}",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text="返回发言群列表",
-                callback_data=(
-                    f"member:bonus_activity:{context.campaign.public_ref}:{return_page}"
-                ),
-            )
-        ],
-    ]
-    return "\n".join([*lines, context.base_progress]), InlineKeyboardMarkup(inline_keyboard=rows)
-
-
 def _available_invite_rows(
     context: BonusViewContext,
     group: dict[str, object],
@@ -480,13 +423,6 @@ def _available_invite_rows(
     )
 
 
-def _required_group(context: BonusViewContext, chat_id: int) -> dict[str, object]:
-    group = next((item for item in context.groups if int(item["id"]) == chat_id), None)
-    if group is None:
-        raise ValueError("参与群不存在或已移除")
-    return group
-
-
 def _invite_bonus_completed(context: BonusViewContext) -> bool:
     return invite_bonus_completed(
         context.campaign, retention_hours=context.rules.invite.retention_hours
@@ -497,3 +433,12 @@ def _invite_rule_text(rule):
     if rule is None:
         return "邀请加成关闭; 有效邀请仍用于本场门槛。"
     return f"规则：每 {rule.invites_per_cycle} 名有效新成员 +1；{_invite_cap(rule)}"
+
+
+def _activity_list_line(context, group: dict, *, completed: bool) -> str:
+    chat_id = int(group["id"])
+    rule = context.rules.activity_rule_for(chat_id)
+    progress = context.activity_progress.get(chat_id)
+    if progress is None:
+        return str(group["title"]) + "：当前进度待核查，不能视为0条或已完成"
+    return _activity_progress_line(str(group["title"]), rule, progress, completed=completed)

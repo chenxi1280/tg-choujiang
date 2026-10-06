@@ -65,7 +65,7 @@ async def test_help_is_accessible_by_command_and_includes_configured_channels() 
     links = HelpLinks(guide="https://t.me/test_guide", navigation="https://t.me/test_nav")
     flow = PersonalFlow(profiles=None, queries=None, bot_username="lottery_bot", help_links=links)
     assert await flow.handle_command(message, "/help")
-    assert "必须全部满足" in message.answer.call_args.args[0]
+    assert "选择你正在办理的事项" in message.answer.call_args.args[0]
     markup = message.answer.call_args.kwargs["reply_markup"]
     urls = [button.url for row in markup.inline_keyboard for button in row if button.url]
     assert urls == [links.guide, links.navigation]

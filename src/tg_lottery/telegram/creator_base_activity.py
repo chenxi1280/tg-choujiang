@@ -16,7 +16,7 @@ def base_rules_text(data: dict[str, Any]) -> str:
         value = (
             (
                 f"连续 {rule['consecutive_days']} 天，每天 {rule['daily_messages']} 条，"
-                f"每条至少 {rule['min_text_length']} 字"
+                "文字、图片、表情均计数"
             )
             if rule
             else "未设置"

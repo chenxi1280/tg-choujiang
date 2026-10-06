@@ -1,22 +1,15 @@
+import pytest
+
 from tg_lottery.application.activity import MessageObservation
 from tg_lottery.application.message_rules import (
-    MIN_THRESHOLD_TEXT_LENGTH,
     normalize_text,
+    normalized_content,
     rejection_reason,
 )
 
 
 def _obs(text, **kw):
-    base = dict(
-        chat_id=1,
-        message_id=1,
-        user_id=1,
-        event_at=None,
-        text=text,
-        is_bot=False,
-        is_service=False,
-        is_forwarded=False,
-    )
+    base = dict(chat_id=1, message_id=1, user_id=1, event_at=None, text=text)
     return MessageObservation(**(base | kw))
 
 
@@ -24,16 +17,34 @@ def test_normalize_collapses_whitespace_and_case():
     assert normalize_text("  Hello   World ") == "hello world"
 
 
-def test_threshold_length_is_four():
-    assert MIN_THRESHOLD_TEXT_LENGTH == 4
+@pytest.mark.parametrize(
+    ("text", "flags", "reason"),
+    [
+        ("x", {"is_bot": True}, "bot"),
+        ("x", {"is_service": True}, "service"),
+        ("x", {"is_forwarded": True}, "forwarded"),
+        ("/getid", {}, "command"),
+        ("/start", {"media_key": "photo:one"}, "command"),
+        (" ", {}, "empty"),
+        (None, {}, "empty"),
+    ],
+)
+def test_rejection_reason_matrix(text, flags, reason):
+    assert rejection_reason(_obs(text, **flags)) == reason
 
 
-def test_rejection_reason_matrix():
-    assert rejection_reason(_obs("x", is_bot=True), "x", 4) == "bot"
-    assert rejection_reason(_obs("x", is_service=True), "x", 4) == "service"
-    assert rejection_reason(_obs("x", is_forwarded=True), "x", 4) == "forwarded"
-    assert rejection_reason(_obs("/getid"), "/getid", 4) == "command"
-    assert rejection_reason(_obs("abc"), "abc", 4) == "too_short"
-    assert rejection_reason(_obs("🎉🎉🎉🎉"), "🎉🎉🎉🎉", 4) == "emoji_or_symbols_only"
-    assert rejection_reason(_obs("a🎉🎉🎉"), "a🎉🎉🎉", 4) == "too_short"
-    assert rejection_reason(_obs("这是有效发言"), "这是有效发言", 4) is None
+@pytest.mark.parametrize("text", ["短", "a", "🎉", "a🎉", "!!!", "这是有效发言"])
+def test_any_nonempty_text_counts(text):
+    assert rejection_reason(_obs(text)) is None
+
+
+def test_media_content_uses_stable_identity_and_caption():
+    photo = _obs(None, media_key="photo:one")
+    assert rejection_reason(photo) is None
+    assert normalized_content(photo) == normalized_content(_obs(" ", media_key="photo:one"))
+    assert normalized_content(photo) != normalized_content(_obs(None, media_key="photo:two"))
+    assert normalized_content(photo) != normalized_content(_obs(None, media_key="sticker:one"))
+    assert normalized_content(photo) != normalized_content(_obs("说明", media_key="photo:one"))
+    assert normalized_content(_obs(" HELLO ", media_key="photo:one")) == normalized_content(
+        _obs("hello", media_key="photo:one")
+    )

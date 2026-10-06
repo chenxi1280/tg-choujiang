@@ -7,12 +7,14 @@ from tg_lottery.application.campaign_notifications import add_campaign_card_stat
 from tg_lottery.application.campaign_targets import (
     participation_chat_ids,
     release_participation_groups,
+    require_campaign_admin,
 )
 from tg_lottery.application.draw_commitments import draw_seed
 from tg_lottery.application.operational_blocks import has_active_campaign_block
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.application.records import add_outbox, utcnow
+from tg_lottery.domain.action_confirmation import ExpectedCampaign, validate_expected
 from tg_lottery.domain.draw import ALGORITHM_VERSION, Selection, WeightedEntry, select_weighted
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
@@ -62,22 +64,21 @@ class DrawingService:
     def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = uow_factory
 
-    async def run(self, campaign_id: UUID, actor_user_id: int | None = None) -> DrawRun:
+    async def run(
+        self,
+        campaign_id: UUID,
+        actor_user_id: int | None = None,
+        *,
+        expected: ExpectedCampaign | None = None,
+    ) -> DrawRun:
         async with self._uow_factory() as uow:
-            campaign = await uow.session.scalar(
-                select(Campaign).where(Campaign.id == campaign_id).with_for_update()
+            campaign = await self._confirmed_campaign(
+                uow.session, campaign_id=campaign_id, actor_user_id=actor_user_id, expected=expected
             )
-            if campaign is None:
-                raise ValueError("campaign not found")
             snapshot = await self._snapshot(uow.session, campaign.id)
             prizes = await self._prizes(uow.session, campaign.id)
             self._validate_prize_plan(campaign, snapshot, prizes)
-            existing = await uow.session.scalar(
-                select(DrawRun).where(
-                    DrawRun.snapshot_id == snapshot.id,
-                    DrawRun.algorithm_version == ALGORITHM_VERSION,
-                )
-            )
+            existing = await self._existing_run(uow.session, snapshot.id)
             if existing:
                 return existing
             if await has_active_campaign_block(uow.session, campaign.id):
@@ -307,6 +308,24 @@ class DrawingService:
         current_hash = prize_plan_hash(prizes)
         if current_hash != frozen_hash or snapshot.prize_plan_hash != frozen_hash:
             raise ValueError("campaign prize plan changed after publication")
+
+    async def _existing_run(self, session, snapshot_id):
+        return await session.scalar(
+            select(DrawRun).where(
+                DrawRun.snapshot_id == snapshot_id, DrawRun.algorithm_version == ALGORITHM_VERSION
+            )
+        )
+
+    async def _confirmed_campaign(self, session, *, campaign_id, actor_user_id, expected):
+        campaign = await session.scalar(
+            select(Campaign).where(Campaign.id == campaign_id).with_for_update()
+        )
+        if campaign is None:
+            raise ValueError("campaign not found")
+        validate_expected(campaign, expected)
+        if actor_user_id is not None:
+            await require_campaign_admin(session, campaign_id=campaign.id, user_id=actor_user_id)
+        return campaign
 
     async def _snapshot(self, session: object, campaign_id: UUID) -> DrawSnapshot:
         snapshot = await session.scalar(

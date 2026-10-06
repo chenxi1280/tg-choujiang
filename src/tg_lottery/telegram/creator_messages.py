@@ -49,7 +49,7 @@ def _explanation_label(data: dict[str, Any]) -> str:
 
 def message_settings_rows(data: dict[str, Any]) -> ButtonRows:
     expanded = bool(data.get("message_tips", True))
-    return [
+    rows = [
         [
             (("✅ " if expanded else "") + "显示扩展说明", "draft_messages_on"),
             (("✅ " if not expanded else "") + "精简说明", "draft_messages_off"),
@@ -64,4 +64,19 @@ def message_settings_rows(data: dict[str, Any]) -> ButtonRows:
         [("30分钟", "draft_messages_delay_30m"), ("60分钟", "draft_messages_delay_60m")],
         [("不删除", "draft_messages_delay_never")],
         [("↩ 返回上一层", "draft_back")],
+    ]
+
+    selected = {
+        "draft_messages_trigger_on"
+        if data.get("delete_trigger_message")
+        else "draft_messages_trigger_off"
+    }
+    selected.update(
+        "draft_messages_delay_" + key
+        for key, value in MESSAGE_DELAYS.items()
+        if value == data.get("completion_delete_after_seconds")
+    )
+    return [
+        [(("✅ " if action in selected else "") + label, action) for label, action in row]
+        for row in rows
     ]

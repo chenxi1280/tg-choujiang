@@ -4,17 +4,20 @@ from typing import Any
 from uuid import UUID
 
 from aiogram import Bot
-from aiogram.types import CallbackQuery, Message, User
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, User
 
 from tg_lottery.application.admin_sessions import AdminSessionService
 from tg_lottery.application.campaigns import CampaignService, DraftSource
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
+from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram.campaign_authorization import verify_campaign_admin
 from tg_lottery.telegram.creator_bonus_permissions import (
     verify_publication_bonus_permissions,
 )
+from tg_lottery.telegram.creator_group_identity import normalize_draft_groups
 from tg_lottery.telegram.creator_group_selection import (
     configured_activity_chat_ids,
     resolve_participation_groups,
@@ -27,6 +30,7 @@ from tg_lottery.telegram.creator_rule_review import review_navigation, rule_revi
 from tg_lottery.telegram.creator_share import publication_receipt
 from tg_lottery.telegram.draft_config import campaign_input, presentation_from_data
 from tg_lottery.telegram.issuer import resolve_issuer
+from tg_lottery.telegram.public_projection import campaign_state_text
 
 
 class CreatorPublisher:
@@ -54,6 +58,7 @@ class CreatorPublisher:
         if data.get("published_campaign_id"):
             await self._finish(query, data, UUID(str(data["published_campaign_id"])))
             return
+        data = await normalize_draft_groups(self._queries, data)
         _require_fixed_draw(data)
         now = utcnow()
         campaign_input(data, now=now)
@@ -101,6 +106,34 @@ class CreatorPublisher:
             text=f"全部规则 · 第 {page + 1}/{len(pages)} 页\n\n{pages[page]}",
             rows=review_navigation(page, len(pages)),
         )
+
+    async def resume_message(self, message: Message, *, user_id: int, data: dict, campaign) -> None:
+        await verify_campaign_admin(
+            self._bot, self._queries, campaign_id=campaign.id, user_id=user_id
+        )
+        restored = data | {"published_campaign_id": str(campaign.id)}
+        await self._sessions.set(user_id, "draft:publishing", restored)
+        if campaign.state in {CampaignState.DRAFT, CampaignState.PUBLISHING}:
+            await self._campaigns.publish(campaign.id, user_id, self._bot_username)
+        campaign = await self._queries.campaign(campaign.id)
+        if campaign is None:
+            raise UserFacingError("原活动状态暂未核实，请从我发起的抽奖核查")
+        text = (
+            f"已恢复同一活动：{campaign.name}\n状态：{campaign_state_text(campaign.state)}\n"
+            "不会创建第二场。发布请求与各目标实际送达分开核对，请查看当前状态。"
+        )
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="查看当前活动状态", callback_data=f"nav:campaign:{campaign.public_ref}"
+                    )
+                ],
+                [InlineKeyboardButton(text="我发起的抽奖", callback_data="nav:created")],
+                [InlineKeyboardButton(text="返回首页", callback_data="nav:index")],
+            ]
+        )
+        await message.edit_text(text, reply_markup=keyboard)
 
     async def _finish(self, query: CallbackQuery, data: dict[str, Any], campaign_id: UUID) -> None:
         await self._campaigns.publish(campaign_id, query.from_user.id, self._bot_username)

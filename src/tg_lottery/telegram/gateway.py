@@ -4,27 +4,25 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
 
-from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import InviteLink
+from tg_lottery.presentation.campaign_card import campaign_link
 from tg_lottery.presentation.draw_messages import draw_result_text as _draw_result_text
 from tg_lottery.presentation.draw_messages import winner_notice_text
 from tg_lottery.presentation.mentions import (
     user_mention,
 )
-from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
+from tg_lottery.presentation.participation_rules import rule_manifest
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway_card_states import (
     campaign_state_card_text as _campaign_state_card_text,
 )
 from tg_lottery.telegram.gateway_invite_delivery import invite_delivery_content
 from tg_lottery.telegram.gateway_requests import GatewayRequest
-from tg_lottery.telegram.public_projection import BEIJING_TIMEZONE, public_timezone_label
 from tg_lottery.telegram.remote_serialization import remote_object
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,6 +47,7 @@ class TelegramGateway:
     ) -> GatewayResult:
         handlers = {
             "send_campaign_card": self._send_campaign_card,
+            "send_campaign_share_card": self._send_campaign_share_card,
             "send_campaign_rules": self._campaign_rules,
             "edit_campaign_rules": self._campaign_rules,
             "edit_campaign_card_cancelled": self._edit_campaign_card_cancelled,
@@ -106,29 +105,8 @@ class TelegramGateway:
 
         return await deliver_rule_page(self._bot, outbox)
 
-    async def _send_campaign_card(
-        self, outbox: GatewayRequest, _: InviteLink | None
-    ) -> GatewayResult:
-        payload = outbox.payload
-        keyboard = _campaign_keyboard(payload)
-        text = _campaign_card_text(payload)
-        cover = payload.get("presentation", {}).get("cover_file_id")
-        if cover:
-            message = await self._bot.send_photo(
-                outbox.recipient_chat_id,
-                cover,
-                caption=text,
-                reply_markup=keyboard,
-                parse_mode="HTML",
-            )
-        else:
-            message = await self._bot.send_message(
-                outbox.recipient_chat_id,
-                text,
-                reply_markup=keyboard,
-                parse_mode="HTML",
-                link_preview_options=LinkPreviewOptions(is_disabled=True),
-            )
+    async def _send_campaign_card(self, outbox, invite_link) -> GatewayResult:
+        message = await self._deliver_card(outbox)
         try:
             await self._bot.pin_chat_message(
                 outbox.recipient_chat_id, message.message_id, disable_notification=True
@@ -139,8 +117,37 @@ class TelegramGateway:
                 extra={"chat_id": outbox.recipient_chat_id, "error": str(exc)},
             )
         return GatewayResult(
-            remote_result=remote_object(message),
-            remote_message_id=message.message_id,
+            remote_result=remote_object(message), remote_message_id=message.message_id
+        )
+
+    async def _send_campaign_share_card(self, outbox, invite_link) -> GatewayResult:
+        if outbox.recipient_chat_id <= 0:
+            raise ValueError("share cards must be delivered to the requesting private chat")
+        message = await self._deliver_card(outbox)
+        return GatewayResult(
+            remote_result=remote_object(message), remote_message_id=message.message_id
+        )
+
+    async def _deliver_card(self, outbox):
+        payload = outbox.payload
+        text = _campaign_card_text(payload)
+        options = dict(
+            reply_markup=_campaign_keyboard(payload), parse_mode="HTML", protect_content=False
+        )
+        cover = payload.get("presentation", {}).get("cover_file_id")
+        if cover:
+            return await self._bot.send_photo(
+                outbox.recipient_chat_id,
+                cover,
+                caption=text,
+                show_caption_above_media=False,
+                **options,
+            )
+        return await self._bot.send_message(
+            outbox.recipient_chat_id,
+            text,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+            **options,
         )
 
     async def _edit_campaign_card_cancelled(
@@ -307,172 +314,24 @@ class TelegramGateway:
 
 
 def _campaign_deep_link(payload: dict[str, Any], action: str) -> str:
-    return f"https://t.me/{payload['bot_username']}?start={action}_{payload['campaign_ref']}"
+    return campaign_link(payload, action)
 
 
 def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
-    rules = payload.get("rules") or {}
-    ref = str(payload["campaign_ref"])
-    rows = [
-        [InlineKeyboardButton(text="🎫 查看条件并参与", url=_campaign_deep_link(payload, "join"))]
-    ]
-    if _bonus_enabled(rules):
-        rows.append([InlineKeyboardButton(text="🔋 我的加成", callback_data=f"member:bonus:{ref}")])
-    rows.append(
-        [InlineKeyboardButton(text="📜 活动规则", url=_campaign_deep_link(payload, "rules"))]
-    )
-    rows.append(
-        [InlineKeyboardButton(text="查看加入入口", url=_campaign_deep_link(payload, "join"))]
-    )
+    closed = bool(payload.get("share_closed"))
+    text = "查看活动状态与规则" if closed else "👉 点击参与抽奖"
+    action = "rules" if closed else "join"
+    rows = [[InlineKeyboardButton(text=text, url=_campaign_deep_link(payload, action))]]
     folder_link = payload.get("presentation", {}).get("folder_link")
-    if folder_link:
+    if folder_link and not closed:
         rows.append([InlineKeyboardButton(text="🗂 一键加入群和频道", url=str(folder_link))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def _campaign_conditions(payload: dict[str, Any]) -> tuple[dict[str, Any], ...]:
-    presentation = payload.get("presentation", {})
-    participation = presentation.get("participation_groups") or []
-    main = presentation.get("main_chat")
-    extras = presentation.get("required_chats") or []
-    values = list(participation) + list(extras)
-    if not participation and isinstance(main, dict):
-        values.insert(0, main)
-    unique = {int(item["id"]): item for item in values if isinstance(item, dict)}
-    return tuple(unique.values())
 
 
 def _campaign_card_text(payload: dict[str, Any]) -> str:
     if payload.get("rendered_card_text"):
         return str(payload["rendered_card_text"])
-    if (payload.get("rules") or {}).get("participation_rules_version") == "v3.0":
-        from tg_lottery.presentation.participation_rules import rule_manifest
-
-        text, _ = rule_manifest(payload)
-        return text
-    timezone = payload.get("timezone")
-    if not timezone:
+    if not payload.get("timezone"):
         raise ValueError("campaign card timezone is required")
-    lines = [
-        f"🎰 <b>{html.escape(str(payload['name']))}</b>",
-        "",
-        "📮 <b>参与群与准入条件（必须全部满足）：</b>",
-    ]
-    lines.extend(_requirement_lines(payload))
-    lines += ["", "🎁 <b>奖品内容：</b>"]
-    lines += [
-        f"💰️ {html.escape(str(item['name']))} × <b>{item['winner_count']}</b>"
-        for item in payload.get("prizes", [])
-    ]
-    description = payload.get("presentation", {}).get("description")
-    if description:
-        lines += ["", "⚠️ <b>抽奖说明：</b>", html.escape(str(description))]
-    bonus = _bonus_line(payload)
-    if bonus:
-        lines += ["", f"🔋 <b>抽奖加成：</b>{bonus}"]
-    lines += ["", *_draw_lines(payload)]
-    issuer = _campaign_issuer(payload)
-    if issuer != "活动创建者":
-        lines += ["", f"🎁 发奖人员：{html.escape(issuer)}"]
-    link = html.escape(_campaign_deep_link(payload, "join"))
-    lines += ["", "🔗 点击链接参与抽奖（长按本消息可转发）：", link]
-    return "\n".join(lines)
-
-
-def _requirement_lines(payload: dict[str, Any]) -> list[str]:
-    rules = payload.get("rules", {})
-    lines = []
-    regions = rules.get("allowed_regions") or []
-    if regions:
-        lines.append("🌏️ 归属地：" + "、".join(str(region) for region in regions))
-    if rules.get("username_required"):
-        lines.append("🪪 必须设置用户名")
-    thresholds = {int(k): int(v) for k, v in (rules.get("message_thresholds") or {}).items()}
-    for chat in _campaign_conditions(payload):
-        lines.extend(_chat_requirement_lines(chat, thresholds))
-    return lines or ["（无额外条件）"]
-
-
-def _chat_requirement_lines(chat: dict[str, Any], thresholds: dict[int, int]) -> list[str]:
-    label = html.escape(chat_title(chat))
-    url = chat.get("join_url")
-    verb = "关注" if chat.get("type") == "channel" else "加入"
-    if url:
-        safe_url = html.escape(str(url), quote=True)
-        lines = [f'🎫 {verb}-<a href="{safe_url}">{label}</a>']
-    else:
-        lines = [f"🎫 {verb}-{label}（入口见下方按钮）"]
-    need = thresholds.get(int(chat["id"]))
-    if need and chat.get("type") != "channel":
-        lines.append(f"└ 🎟️ 累计发言至少 <b>{need}</b> 条")
-    return lines
-
-
-def _draw_time(payload: dict[str, Any]) -> str:
-    zone = ZoneInfo(str(payload["timezone"]))
-    moment = datetime.fromisoformat(str(payload["draw_at"]))
-    if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=zone)
-    else:
-        moment = moment.astimezone(zone)
-    return moment.astimezone(ZoneInfo(BEIJING_TIMEZONE)).strftime("%Y年%m月%d日 %H时%M分%S秒")
-
-
-def _bonus_line(payload: dict[str, Any]) -> str:
-    rules = payload.get("rules", {})
-    if any(
-        rules.get(key)
-        for key in ("group_invite_rules", "group_activity_rules", "base_activity_rules")
-    ):
-        lines = per_group_bonus_lines(
-            CampaignRules.model_validate(rules), _campaign_conditions(payload)
-        )
-        return "\n" + "\n".join(html.escape(line) for line in lines) if lines else ""
-    bonus_types = rules.get("bonus_types") or ()
-    parts = []
-    if "invite" in bonus_types:
-        parts.append(_invite_bonus_text(rules.get("invite") or {}))
-    if "activity" in bonus_types:
-        parts.append(_activity_bonus_text(rules.get("activity") or {}))
-    return "；".join(parts)
-
-
-def _invite_bonus_text(invite: dict[str, Any]) -> str:
-    if invite.get("mode") == "ratio":
-        count = invite.get("valid_invites_per_ticket")
-        cap = invite.get("max_bonus_tickets")
-        return f"每邀请{count}个有效新成员+1次（上限{cap}）"
-    tiers = ", ".join(
-        f"{tier['invite_count']}人+{tier['total_bonus']}次"
-        for tier in invite.get("reward_tiers") or []
-    )
-    base = "邀请 " + tiers if tiers else "每个有效邀请+1次"
-    cap = invite.get("max_bonus_tickets")
-    return base + (f"（上限{cap}）" if cap else "")
-
-
-def _activity_bonus_text(activity: dict[str, Any]) -> str:
-    threshold = activity.get("message_threshold", 10)
-    reward = activity.get("reward_tickets", 1)
-    return f"每日发言满{threshold}条+{reward}次"
-
-
-def _draw_lines(payload: dict[str, Any]) -> list[str]:
-    rules = payload.get("rules", {})
-    if rules.get("draw_mode") == "full":
-        return ["🎊 <b>满人开奖：</b>", f"达到 {rules['participant_target']} 人参与后立刻开奖"]
-    moment_line = _draw_time(payload)
-    label = public_timezone_label(BEIJING_TIMEZONE)
-    return [f"📅 <b>开奖日期：</b>（{label}）", moment_line]
-
-
-def _campaign_issuer(payload: dict[str, Any]) -> str:
-    presentation = payload.get("presentation", {})
-    return str(presentation.get("issuer_name") or "活动创建者")
-
-
-def _bonus_enabled(rules: dict[str, Any]) -> bool:
-    bonus_types = rules.get("bonus_types")
-    if bonus_types is None:
-        return rules.get("luck_mode") != "off"
-    return bool(set(bonus_types) & {"invite", "activity"})
+    text, _pages = rule_manifest(payload)
+    return text

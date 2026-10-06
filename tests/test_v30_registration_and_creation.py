@@ -23,6 +23,7 @@ from tg_lottery.infrastructure.db import (
     TicketLedger,
 )
 from tg_lottery.infrastructure.db.uow import UnitOfWork
+from tg_lottery.presentation.participation_rules import public_rule_blocks
 from tg_lottery.telegram.draft_config import campaign_input, new_draft
 from tg_lottery.telegram.member_activity_landing import open_activity
 from tg_lottery.telegram.member_flow import MemberFlow
@@ -135,7 +136,11 @@ async def test_v3_creator_persists_frozen_rules_and_complete_publication_text(
             select(TelegramOutbox).where(TelegramOutbox.operation == "send_campaign_card")
         )
         text = outbox.payload["rendered_card_text"]
-        expected = "每天 2 条" if mode == "message" else "新成员 2 人"
-        assert expected in text and "全部达标" in text
+        expected = "有效发言满 <b>2</b> 条" if mode == "message" else "有效邀请满 <b>2</b> 人"
+        assert expected in text and "必须全部满足" in text
         assert "https://t.me/test_group" in text
         assert f"start=join_{frozen.public_ref}" in text
+        assert f"start=rules_{frozen.public_ref}" in text
+        full_rules = "\n".join(public_rule_blocks(outbox.payload))
+        assert ("每天 2 条" if mode == "message" else "新成员 2 人") in full_rules
+        assert outbox.payload["rules"] == frozen.rules

@@ -71,7 +71,7 @@ class RecordingMessage:
         self.chat = SimpleNamespace(id=201)
         self.message_id = 77
 
-    async def answer(self, text, *, reply_markup=None):
+    async def answer(self, text, *, reply_markup=None, parse_mode=None):
         self.texts.append(text)
         self.reply_markup = reply_markup
         return SimpleNamespace(chat=self.chat, message_id=88)
@@ -149,6 +149,7 @@ async def test_rules_remain_visible_after_private_condition_link_is_revoked() ->
         public_ref=PUBLIC_REF,
         name="测试活动",
         state=CampaignState.DRAWN,
+        cutoff_at=datetime.now(UTC),
         draw_at=datetime.now(UTC),
         timezone="Asia/Shanghai",
         rules=CampaignRules().model_dump(mode="json"),
@@ -175,7 +176,7 @@ async def test_rules_remain_visible_after_private_condition_link_is_revoked() ->
 
     await flow.show_rules(message, PUBLIC_REF)
 
-    assert "私有参与群 (加入入口已关闭)" in message.texts[-1]
+    assert "私有参与群</a> (加入入口已关闭)" in message.texts[-1]
     button = message.reply_markup.inline_keyboard[0][0]
     assert button.url == f"https://t.me/?start=join_{PUBLIC_REF}"
 

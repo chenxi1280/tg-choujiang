@@ -135,9 +135,24 @@ def test_publication_receipt_keeps_join_link_when_forwarded_without_buttons():
     from urllib.parse import parse_qs, urlparse
 
     text, keyboard = publication_receipt(SimpleNamespace(name="抽奖", public_ref="abc"), "test_bot")
-    link = keyboard.inline_keyboard[0][0].url
+    link = next(
+        button.url
+        for row in keyboard.inline_keyboard
+        for button in row
+        if button.url and "start=join_" in button.url
+    )
     assert link == "https://t.me/test_bot?start=join_abc"
     assert link in text and "长按" in text
     assert "发布请求已提交" in text and "确认送达后" in text
-    share_query = parse_qs(urlparse(keyboard.inline_keyboard[1][0].url).query)
-    assert share_query["url"] == [link]
+    share_query = parse_qs(
+        urlparse(
+            next(
+                b.url
+                for row in keyboard.inline_keyboard
+                for b in row
+                if b.url and "start=share_" in b.url
+            )
+        ).query
+    )
+    assert share_query["start"] == ["share_abc"]
+    assert "分享活动卡片" in text
