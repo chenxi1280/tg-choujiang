@@ -31,19 +31,8 @@ def has_field_input(state, data):
 def resumed_view(data, *, state, module):
     if state == "draft:behavior_admission":
         return _resumed_gate(data, module=module)
-    if state == "draft:bonus_input" and data.get("bonus_working_copy"):
-        updated = {key: value for key, value in data.items() if key != "bonus_input_field"}
-        if module:
-            return (
-                updated,
-                "draft:idle",
-                creator_group_bonus.editor_view(updated, updated["bonus_working_copy"]),
-            )
-        return (
-            data,
-            state,
-            (creator_group_bonus.input_prompt(data), [[("取消输入", "draft_bonus_input_cancel")]]),
-        )
+    if state in {"draft:bonus_input", "draft:idle"} and data.get("bonus_working_copy"):
+        return _resumed_bonus(data, state=state, module=module)
     if module or state not in INPUT_LABELS:
         return data, "draft:idle", current_draft_view(data)
     text = "已恢复输入：" + INPUT_LABELS[state] + "\n请发送内容；发送前可取消该字段输入。"
@@ -70,3 +59,18 @@ def _resumed_gate(data, *, module):
         else creator_behavior_views.view(updated)
     )
     return updated, "draft:behavior_admission", view
+
+
+def _resumed_bonus(data, *, state, module):
+    updated = {key: value for key, value in data.items() if key != "bonus_input_field"}
+    if module or state == "draft:idle":
+        return (
+            updated,
+            "draft:idle",
+            creator_group_bonus.editor_view(updated, updated["bonus_working_copy"]),
+        )
+    return (
+        data,
+        state,
+        (creator_group_bonus.input_prompt(data), [[("取消输入", "draft_bonus_input_cancel")]]),
+    )

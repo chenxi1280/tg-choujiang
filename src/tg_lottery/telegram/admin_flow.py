@@ -81,6 +81,9 @@ class AdminFlow:
     async def start_create_message(self, message: Message) -> None:
         await self._creator.start_message(message)
 
+    async def recover_applied_draft_callback(self, query: CallbackQuery) -> None:
+        await self._creator.recover_applied_callback(query)
+
     async def recover_draft_callback(self, query: CallbackQuery) -> bool:
         return await self._creator.recover_expired_panel(query)
 

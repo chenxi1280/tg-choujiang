@@ -31,6 +31,10 @@ class RecoverableDraftCallback(AuthorizationDenied):
     pass
 
 
+class AppliedDraftCallback(RecoverableDraftCallback):
+    """The same source already committed a draft mutation; only redraw its recorded state."""
+
+
 class RecoverableMemberCallback(AuthorizationDenied):
     def __init__(self, payload: dict):
         super().__init__("本人导航按钮已过期或已使用, 请重新打开当前记录")

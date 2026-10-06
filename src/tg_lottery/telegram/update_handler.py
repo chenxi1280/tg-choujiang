@@ -1,7 +1,6 @@
 import logging
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
     CallbackQuery,
     ChatMemberUpdated,
@@ -19,6 +18,7 @@ from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import (
+    AppliedDraftCallback,
     DomainError,
     RecoverableDraftCallback,
     RecoverableMemberCallback,
@@ -26,6 +26,7 @@ from tg_lottery.domain.errors import (
 from tg_lottery.telegram import command_input, member_callbacks
 from tg_lottery.telegram.admin_flow import AdminFlow
 from tg_lottery.telegram.bot_permission_reminders import send_bot_permission_reminder
+from tg_lottery.telegram.callback_feedback import answer_callback
 from tg_lottery.telegram.help_views import DRAFT_UNAVAILABLE_TEXT
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.message_observation import observe_message
@@ -179,7 +180,7 @@ class LotteryUpdateHandler:
     async def _callback(self, query: CallbackQuery) -> None:
         data = query.data or ""
         if not data.startswith(command_input.DEFERRED_CALLBACK_PREFIXES):
-            await self._answer_callback(query)
+            await answer_callback(query, self._logger)
         if not isinstance(query.message, Message):
             return
         try:
@@ -325,6 +326,9 @@ class LotteryUpdateHandler:
                 owner_user_id=query.from_user.id,
                 chat_id=message.chat.id,
             )
+        except AppliedDraftCallback:
+            await self._admin_flow.recover_applied_draft_callback(query)
+            return
         except RecoverableMemberCallback as exc:
             await member_callbacks.safe_answer(query, str(exc), alert=True)
             await self._navigation.recover(query, exc.payload, personal=self._personal_flow)
@@ -340,15 +344,6 @@ class LotteryUpdateHandler:
             await self._navigation.handle_grant(query, grant, personal=self._personal_flow)
             return
         await self._admin_flow.handle_grant(query, grant)
-
-    async def _answer_callback(self, query: CallbackQuery) -> None:
-        try:
-            await query.answer()
-        except TelegramBadRequest as exc:
-            self._logger.warning(
-                "callback acknowledgement rejected by Telegram",
-                extra={"callback_query_id": query.id, "error": str(exc)},
-            )
 
     async def _join_request(self, event: object) -> None:
         invite = getattr(event, "invite_link", None)

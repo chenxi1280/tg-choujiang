@@ -10,6 +10,7 @@ from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.errors import (
+    AppliedDraftCallback,
     AuthorizationDenied,
     RecoverableDraftCallback,
     RecoverableMemberCallback,
@@ -17,6 +18,33 @@ from tg_lottery.domain.errors import (
 from tg_lottery.infrastructure.db import AdminSession, CallbackToken
 
 _TOKEN_TTL_MINUTES = 10
+_DRAFT_MUTATION_ACTIONS = frozenset(
+    {
+        "draft_toggle_group",
+        "draft_group_remove_confirm",
+        "draft_clear_confirm",
+        "draft_load_last_confirm",
+        "draft_clear_prizes_confirm",
+        "draft_delete_prize_confirm",
+        "draft_bonus_toggle_invite",
+        "draft_bonus_toggle_activity",
+        "draft_bonus_invite_save",
+        "draft_bonus_activity_save",
+        "draft_gate:save",
+        "draft_gate:group_save",
+        "draft_gate:confirm_change",
+        "draft_base:save",
+    }
+)
+_DRAFT_MUTATION_PREFIXES = (
+    "draft_bonus_preset:",
+    "draft_gate:preset:",
+    "draft_base:preset:",
+    "draft_chat_threshold:",
+    "draft_admission:select:",
+    "draft_gate:copy_toggle:",
+    "draft_bonus_copy_toggle:",
+)
 
 
 @dataclass(frozen=True)
@@ -84,6 +112,7 @@ class CallbackTokenService:
             update_id = current_update_id()
             if row.consumed_at is not None:
                 if update_id is not None and row.consumed_by_update_id == update_id:
+                    await self._recover_applied_draft(uow.session, row, update_id=update_id)
                     return CallbackGrant(row.action, row.campaign_id, row.payload)
                 _raise_expired(row, "callback token is expired or already used")
             now = utcnow()
@@ -93,6 +122,14 @@ class CallbackTokenService:
             row.consumed_at = now
             row.consumed_by_update_id = update_id
             return CallbackGrant(row.action, row.campaign_id, row.payload)
+
+    async def _recover_applied_draft(self, session, row, *, update_id: int) -> None:
+        if not _changes_draft_parameters(row.action):
+            return
+        draft = await session.get(AdminSession, row.owner_user_id, with_for_update=True)
+        applied = draft.data.get("mutation_source_update_id") if draft is not None else None
+        if applied is not None and int(applied) == update_id:
+            raise AppliedDraftCallback("draft mutation already committed; restore current page")
 
     async def _validate_draft_context(
         self, session: object, row: CallbackToken, *, now: datetime
@@ -141,3 +178,11 @@ def _raise_expired(row: CallbackToken, message: str) -> None:
     if row.action == "member:navigate":
         raise RecoverableMemberCallback(dict(row.payload))
     raise AuthorizationDenied(message)
+
+
+def _changes_draft_parameters(action: str) -> bool:
+    return action.startswith("draft_") and (
+        action.endswith(("_inc", "_dec"))
+        or action in _DRAFT_MUTATION_ACTIONS
+        or action.startswith(_DRAFT_MUTATION_PREFIXES)
+    )

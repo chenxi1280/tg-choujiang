@@ -29,6 +29,7 @@ from tg_lottery.telegram.creator_message_context import panel_target as _target
 from tg_lottery.telegram.creator_prizes import PRIZE_ACTIONS, CreatorPrizes
 from tg_lottery.telegram.creator_publication import CreatorPublisher
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
+from tg_lottery.telegram.creator_resume_views import resumed_view
 from tg_lottery.telegram.creator_sections import (
     SECTION_ACTIONS,
     current_section,
@@ -148,6 +149,28 @@ class CampaignCreator:
         else:
             await self._render_dashboard(query.from_user.id, message, data)
         return True
+
+    async def recover_applied_callback(self, query: CallbackQuery) -> None:
+        message = _message(query)
+        if message.chat.type != "private" or message.chat.id != query.from_user.id:
+            raise UserFacingError("请在本人私聊恢复创建草稿")
+        session = await self._sessions.get(query.from_user.id)
+        if session is None or not session.state.startswith("draft:"):
+            raise UserFacingError("创建草稿已过期，请重新打开创建入口")
+        if session.state == "draft:suspended":
+            await message.edit_text(
+                home_text(session.data), reply_markup=home_keyboard(session.data)
+            )
+            return
+        data, state, (text, rows) = resumed_view(
+            dict(session.data), state=session.state, module=False
+        )
+        await self._sessions.set(query.from_user.id, state, data)
+        await self._renderer.edit(
+            PanelTarget(query.from_user.id, message.chat.id, int(data["panel_message_id"])),
+            text="本次修改已记录，已恢复当前草稿显示\n\n" + text,
+            rows=rows,
+        )
 
     async def _open(self, user: User, message: Message) -> None:
         existing = await self._sessions.get(user.id)
