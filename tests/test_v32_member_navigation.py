@@ -189,3 +189,45 @@ async def test_actual_list_entry_keeps_category_and_page_on_detail_return(
     back = next(request.payload for request in requests if request.payload["back"])
     assert back["route"] == f"nav:join:{category}:{page}"
     assert back["trail"] == []
+
+
+@pytest.mark.parametrize("category,page", [("active", 0), ("pending", 2), ("ended", 1)])
+async def test_actual_invitation_list_entry_keeps_source_on_group_return(
+    monkeypatch, category, page
+):
+    from tg_lottery.application.participant_records import (
+        ParticipatedCampaign,
+        ParticipatedCampaignPage,
+    )
+    from tg_lottery.domain.rules import CampaignRules
+    from tg_lottery.telegram.participant_list_views import build_participated_campaign_list
+
+    monkeypatch.setattr(CallbackQuery, "answer", AsyncMock())
+    monkeypatch.setattr(Message, "edit_text", AsyncMock())
+    row = ParticipatedCampaign(
+        REFERENCE,
+        "本人活动",
+        CampaignState.DRAWN,
+        QualificationState.ELIGIBLE,
+        4,
+        datetime.now(UTC),
+        "Asia/Shanghai",
+    )
+    source = ParticipatedCampaignPage(category, page, page + 1, (row,))
+    _, keyboard = build_participated_campaign_list(source, invitation_only=True)
+    flow, queries, tokens = _navigation()
+    flow._campaign = AsyncMock(
+        return_value=SimpleNamespace(
+            id=REFERENCE,
+            public_ref=REFERENCE,
+            name="本人活动",
+            rules=CampaignRules().model_dump(mode="json"),
+        )
+    )
+    queries.group_bonus_progress = AsyncMock(return_value=SimpleNamespace(invitations=()))
+    route = keyboard.inline_keyboard[1][0].callback_data
+    assert await flow.handle_route(_query(), data=route, personal=object())
+    requests = tokens.create_many.await_args.kwargs["requests"]
+    back = next(request.payload for request in requests if request.payload["back"])
+    assert back["route"] == f"nav:invites:{category}:{page}"
+    assert back["trail"] == []

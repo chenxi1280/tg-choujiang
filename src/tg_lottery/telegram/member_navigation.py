@@ -378,6 +378,10 @@ class MemberNavigation:
 
     async def _record_groups(self, query, context):
         parts = context.route.split(":")
+        if len(parts) > 4:
+            context = replace(
+                context, route=":".join(parts[:4]), trail=(f"nav:invites:{parts[4]}:{parts[5]}",)
+            )
         campaign = await self._campaign(parts[2])
         rules = CampaignRules.model_validate(campaign.rules)
         groups = distinct_group_names(_invite_groups(campaign, rules))

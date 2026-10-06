@@ -76,7 +76,7 @@ def _campaign_button(
     row: object, *, source: ParticipatedCampaignPage, invitation_only: bool, position: int
 ) -> list[InlineKeyboardButton]:
     callback = (
-        f"member:invites:{row.public_ref}:0"
+        f"member:invites:{row.public_ref}:0:{source.category}:{source.page}"
         if invitation_only
         else f"m:detail:{row.public_ref}:{source.category}:{source.page}"
     )
