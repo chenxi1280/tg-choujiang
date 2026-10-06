@@ -14,6 +14,7 @@ from tg_lottery.telegram.member_records import show_ticket_record
 from tg_lottery.telegram.participant_list_views import (
     build_participated_campaign_list,
     parse_campaign_list_callback,
+    parse_invitation_list_callback,
 )
 from tg_lottery.telegram.public_projection import (
     campaign_state_text,
@@ -124,8 +125,7 @@ class PersonalFlow:
             await self.show_joined(message, category=category, page=page, edit=True)
             return True
         if data.startswith("nav:invites:"):
-            category, page = parse_campaign_list_callback(data.removeprefix("nav:invites:"))
-            await self.show_invitation_campaigns(message, category=category, page=page, edit=True)
+            await self._show_invitation_list_callback(message, data)
             return True
         if data.startswith("profile:region:"):
             await self._set_region(query, data.removeprefix("profile:region:"))
@@ -146,6 +146,12 @@ class PersonalFlow:
             return False
         await handler(message, edit=True)
         return True
+
+    async def _show_invitation_list_callback(self, message, data):
+        category, page, parent = parse_invitation_list_callback(data.removeprefix("nav:invites:"))
+        await self.show_invitation_campaigns(
+            message, category=category, page=page, parent=parent, edit=True
+        )
 
     async def _show_guide_topic(self, message, data):
         text, keyboard = guide_topic(
@@ -182,7 +188,13 @@ class PersonalFlow:
         await _respond(message, text, keyboard=keyboard, edit=edit)
 
     async def show_invitation_campaigns(
-        self, message: Message, *, category: str = "active", page: int = 0, edit: bool = False
+        self,
+        message: Message,
+        *,
+        category: str = "active",
+        page: int = 0,
+        parent: tuple[str, int] | None = None,
+        edit: bool = False,
     ) -> None:
         result = await self._queries.participated_campaign_page(
             _user(message).id,
@@ -190,7 +202,9 @@ class PersonalFlow:
             page=page,
             invitation_only=True,
         )
-        text, keyboard = build_participated_campaign_list(result, invitation_only=True)
+        text, keyboard = build_participated_campaign_list(
+            result, invitation_only=True, parent=parent
+        )
         await _respond(message, text, keyboard=keyboard, edit=edit)
 
     async def show_regions(self, message: Message, *, edit: bool = False) -> None:

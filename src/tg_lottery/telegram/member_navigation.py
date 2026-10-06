@@ -380,7 +380,7 @@ class MemberNavigation:
         parts = context.route.split(":")
         if len(parts) > 4:
             context = replace(
-                context, route=":".join(parts[:4]), trail=(f"nav:invites:{parts[4]}:{parts[5]}",)
+                context, route=":".join(parts[:4]), trail=("nav:invites:" + ":".join(parts[4:]),)
             )
         campaign = await self._campaign(parts[2])
         rules = CampaignRules.model_validate(campaign.rules)

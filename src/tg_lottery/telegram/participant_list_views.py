@@ -10,6 +10,9 @@ from tg_lottery.telegram.public_projection import (
     qualification_state_text,
 )
 
+_LIST_ROUTE_FIELDS = 2
+_LIST_ROUTE_WITH_PARENT_FIELDS = 4
+
 _CATEGORY_LABELS = {
     "active": "进行中",
     "pending": "待开奖",
@@ -18,7 +21,7 @@ _CATEGORY_LABELS = {
 
 
 def build_participated_campaign_list(
-    page: ParticipatedCampaignPage, *, invitation_only: bool
+    page: ParticipatedCampaignPage, *, invitation_only: bool, parent: tuple[str, int] | None = None
 ) -> tuple[str, InlineKeyboardMarkup]:
     title = "👥 我的邀请记录" if invitation_only else "🎟 我参加的抽奖"
     empty = "当前分类没有可显示的邀请活动" if invitation_only else "当前分类没有参与记录"
@@ -30,7 +33,9 @@ def build_participated_campaign_list(
     else:
         lines.append(empty)
     lines.extend(["", f"第 {page.page + 1}/{page.total_pages} 页"])
-    return "\n".join(lines), _campaign_list_keyboard(page, invitation_only=invitation_only)
+    return "\n".join(lines), _campaign_list_keyboard(
+        page, invitation_only=invitation_only, parent=parent
+    )
 
 
 def _campaign_line(row: object, *, position: int) -> str:
@@ -42,12 +47,14 @@ def _campaign_line(row: object, *, position: int) -> str:
 
 
 def _campaign_list_keyboard(
-    page: ParticipatedCampaignPage, *, invitation_only: bool
+    page: ParticipatedCampaignPage, *, invitation_only: bool, parent: tuple[str, int] | None = None
 ) -> InlineKeyboardMarkup:
     prefix = "nav:invites" if invitation_only else "nav:join"
-    rows = [_category_row(prefix, page.category)]
+    rows = [_category_row(prefix, page.category, parent=parent)]
     rows.extend(
-        _campaign_button(row, source=page, invitation_only=invitation_only, position=position)
+        _campaign_button(
+            row, source=page, invitation_only=invitation_only, position=position, parent=parent
+        )
         for position, row in enumerate(page.rows, 1)
     )
     navigation = _page_row(
@@ -55,28 +62,43 @@ def _campaign_list_keyboard(
         category=page.category,
         page=page.page,
         total_pages=page.total_pages,
+        parent=parent,
     )
     if navigation:
         rows.append(navigation)
+    if not invitation_only:
+        route = f"nav:invites:{page.category}:0:{page.category}:{page.page}"
+        rows.append([InlineKeyboardButton(text="我的邀请记录", callback_data=route)])
+    elif parent is not None:
+        route = f"nav:join:{parent[0]}:{parent[1]}"
+        rows.append([InlineKeyboardButton(text="返回参与列表", callback_data=route)])
     rows.append([InlineKeyboardButton(text="返回首页", callback_data="nav:index")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _category_row(prefix: str, selected: str) -> list[InlineKeyboardButton]:
+def _category_row(
+    prefix: str, selected: str, *, parent: tuple[str, int] | None
+) -> list[InlineKeyboardButton]:
     return [
         InlineKeyboardButton(
             text=("✅ " if category == selected else "") + label,
-            callback_data=f"{prefix}:{category}:0",
+            callback_data=f"{prefix}:{category}:0" + _parent_suffix(parent),
         )
         for category, label in _CATEGORY_LABELS.items()
     ]
 
 
 def _campaign_button(
-    row: object, *, source: ParticipatedCampaignPage, invitation_only: bool, position: int
+    row: object,
+    *,
+    source: ParticipatedCampaignPage,
+    invitation_only: bool,
+    position: int,
+    parent: tuple[str, int] | None,
 ) -> list[InlineKeyboardButton]:
     callback = (
         f"member:invites:{row.public_ref}:0:{source.category}:{source.page}"
+        + _parent_suffix(parent)
         if invitation_only
         else f"m:detail:{row.public_ref}:{source.category}:{source.page}"
     )
@@ -89,16 +111,22 @@ def _campaign_button(
 
 
 def _page_row(
-    prefix: str, *, category: str, page: int, total_pages: int
+    prefix: str, *, category: str, page: int, total_pages: int, parent: tuple[str, int] | None
 ) -> list[InlineKeyboardButton]:
     buttons = []
     if page > 0:
         buttons.append(
-            InlineKeyboardButton(text="上一页", callback_data=f"{prefix}:{category}:{page - 1}")
+            InlineKeyboardButton(
+                text="上一页",
+                callback_data=f"{prefix}:{category}:{page - 1}" + _parent_suffix(parent),
+            )
         )
     if page + 1 < total_pages:
         buttons.append(
-            InlineKeyboardButton(text="下一页", callback_data=f"{prefix}:{category}:{page + 1}")
+            InlineKeyboardButton(
+                text="下一页",
+                callback_data=f"{prefix}:{category}:{page + 1}" + _parent_suffix(parent),
+            )
         )
     return buttons
 
@@ -108,6 +136,23 @@ def parse_campaign_list_callback(value: str) -> tuple[str, int]:
     if not separator or category not in _CATEGORY_LABELS or not raw_page.isdecimal():
         raise ValueError("参与记录列表按钮参数无效")
     return category, int(raw_page)
+
+
+def parse_invitation_list_callback(value: str) -> tuple[str, int, tuple[str, int] | None]:
+    parts = value.split(":")
+    if len(parts) not in {_LIST_ROUTE_FIELDS, _LIST_ROUTE_WITH_PARENT_FIELDS}:
+        raise ValueError("邀请活动列表按钮参数无效")
+    category, page = parse_campaign_list_callback(":".join(parts[:_LIST_ROUTE_FIELDS]))
+    parent = (
+        parse_campaign_list_callback(":".join(parts[_LIST_ROUTE_FIELDS:]))
+        if len(parts) == _LIST_ROUTE_WITH_PARENT_FIELDS
+        else None
+    )
+    return category, page, parent
+
+
+def _parent_suffix(parent: tuple[str, int] | None) -> str:
+    return f":{parent[0]}:{parent[1]}" if parent is not None else ""
 
 
 def _state_label(row: object) -> str:

@@ -192,8 +192,9 @@ async def test_actual_list_entry_keeps_category_and_page_on_detail_return(
 
 
 @pytest.mark.parametrize("category,page", [("active", 0), ("pending", 2), ("ended", 1)])
+@pytest.mark.parametrize("parent", [None, ("ended", 5)])
 async def test_actual_invitation_list_entry_keeps_source_on_group_return(
-    monkeypatch, category, page
+    monkeypatch, category, page, *, parent
 ):
     from tg_lottery.application.participant_records import (
         ParticipatedCampaign,
@@ -214,7 +215,7 @@ async def test_actual_invitation_list_entry_keeps_source_on_group_return(
         "Asia/Shanghai",
     )
     source = ParticipatedCampaignPage(category, page, page + 1, (row,))
-    _, keyboard = build_participated_campaign_list(source, invitation_only=True)
+    _, keyboard = build_participated_campaign_list(source, invitation_only=True, parent=parent)
     flow, queries, tokens = _navigation()
     flow._campaign = AsyncMock(
         return_value=SimpleNamespace(
@@ -229,5 +230,6 @@ async def test_actual_invitation_list_entry_keeps_source_on_group_return(
     assert await flow.handle_route(_query(), data=route, personal=object())
     requests = tokens.create_many.await_args.kwargs["requests"]
     back = next(request.payload for request in requests if request.payload["back"])
-    assert back["route"] == f"nav:invites:{category}:{page}"
+    suffix = f":{parent[0]}:{parent[1]}" if parent else ""
+    assert back["route"] == f"nav:invites:{category}:{page}" + suffix
     assert back["trail"] == []
