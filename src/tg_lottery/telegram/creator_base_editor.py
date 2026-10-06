@@ -3,13 +3,14 @@ from typing import Any
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import BaseActivityRule
 from tg_lottery.telegram.bonus_rule_text import chat_title
+from tg_lottery.telegram.creator_number_controls import DEFAULT_MESSAGE_COUNT, MESSAGE_COUNT_PRESETS
 from tg_lottery.telegram.creator_schedule import positive_int
 
 ACTION_PREFIX = "draft_base:"
-DEFAULT_MESSAGES = 4
+DEFAULT_MESSAGES = DEFAULT_MESSAGE_COUNT
 DEFAULT_DAYS = 1
 FIELDS = {
-    "daily_messages": ("每天发言条数", "条", (4, 5, 10)),
+    "daily_messages": ("每天发言条数", "条", MESSAGE_COUNT_PRESETS),
     "consecutive_days": ("连续天数", "天", (1, 3, 7)),
 }
 EDITOR_KEY = "base_activity_editor"

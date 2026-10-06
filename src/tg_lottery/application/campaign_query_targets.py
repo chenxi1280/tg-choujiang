@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select, union
 
 from tg_lottery.application.campaign_targets import (
     QualificationTarget,
@@ -111,3 +111,40 @@ async def _legacy_active_campaigns_by_chat(session: object, chat_id: int) -> tup
         .order_by(Campaign.created_at.desc())
     )
     return tuple(rows)
+
+
+async def active_campaign_counts_by_chats(
+    session: object, chat_ids: tuple[int, ...]
+) -> dict[int, int]:
+    if not chat_ids:
+        return {}
+    participation = (
+        select(Group.chat_id.label("chat_id"), Campaign.id.label("campaign_id"))
+        .join(CampaignParticipationGroup, CampaignParticipationGroup.group_id == Group.id)
+        .join(Campaign, Campaign.id == CampaignParticipationGroup.campaign_id)
+        .where(Group.chat_id.in_(chat_ids), Campaign.state.not_in(_TERMINAL_STATES))
+    )
+    snapshots = (
+        select(
+            CampaignParticipationGroup.chat_id_snapshot.label("chat_id"),
+            Campaign.id.label("campaign_id"),
+        )
+        .join(Campaign, Campaign.id == CampaignParticipationGroup.campaign_id)
+        .join(Group, Group.id == CampaignParticipationGroup.group_id)
+        .where(
+            CampaignParticipationGroup.chat_id_snapshot.in_(chat_ids),
+            Campaign.state.not_in(_TERMINAL_STATES),
+        )
+    )
+    primary = (
+        select(Group.chat_id.label("chat_id"), Campaign.id.label("campaign_id"))
+        .join(Campaign, Campaign.group_id == Group.id)
+        .where(Group.chat_id.in_(chat_ids), Campaign.state.not_in(_TERMINAL_STATES))
+    )
+    memberships = union(participation, snapshots, primary).subquery()
+    rows = await session.execute(
+        select(memberships.c.chat_id, func.count(memberships.c.campaign_id)).group_by(
+            memberships.c.chat_id
+        )
+    )
+    return {chat_id: int(count) for chat_id, count in rows}

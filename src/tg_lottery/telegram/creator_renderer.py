@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -209,13 +210,16 @@ class CreatorRenderer:
         selected_chat_ids: tuple[int, ...],
         context: DraftPanelContext,
     ) -> list[list[InlineKeyboardButton]]:
-        availability = [
-            await inspect_group_availability(self._bot, group.chat_id, target.user_id)
-            for group in groups
-        ]
-        parallel_counts = [
-            len(await self._queries.active_campaigns_by_chat(group.chat_id)) for group in groups
-        ]
+        availability, counts = await asyncio.gather(
+            asyncio.gather(
+                *(
+                    inspect_group_availability(self._bot, group.chat_id, target.user_id)
+                    for group in groups
+                )
+            ),
+            self._queries.active_campaign_counts_by_chats(tuple(group.chat_id for group in groups)),
+        )
+        parallel_counts = [counts.get(group.chat_id, 0) for group in groups]
         requests = tuple(
             CallbackRequest(
                 "draft_toggle_group"

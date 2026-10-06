@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 from aiogram import Bot
@@ -11,15 +12,21 @@ async def resolve_required_chat(
     ref: int | str,
     *,
     admin_user_id: int | None = None,
+    require_invites: bool = False,
 ) -> dict[str, Any]:
     chat = await _get_chat(bot, ref)
     if str(chat.type) not in {"group", "supergroup", "channel"}:
         raise UserFacingError("准入条件只能选择群聊或频道")
-    member = await _get_bot_member(bot, chat)
-    _validate_bot_membership(chat, member)
-    if admin_user_id is not None:
-        creator_member = await _get_creator_member(bot, chat, admin_user_id)
+    if admin_user_id is None:
+        member = await _get_bot_member(bot, chat)
+    else:
+        member, creator_member = await asyncio.gather(
+            _get_bot_member(bot, chat), _get_creator_member(bot, chat, admin_user_id)
+        )
         _validate_creator_membership(chat, creator_member)
+    _validate_bot_membership(chat, member)
+    if require_invites and not bool(getattr(member, "can_invite_users", False)):
+        raise UserFacingError(f"参与条件「{_chat_title(chat)}」：请为机器人开启邀请权限后重试")
     username = chat.username
     return {
         "id": chat.id,

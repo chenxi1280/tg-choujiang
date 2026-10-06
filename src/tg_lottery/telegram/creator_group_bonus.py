@@ -7,7 +7,23 @@ from tg_lottery.domain.rules import GroupActivityRule, GroupInviteRule
 from tg_lottery.telegram import creator_bonus_copy as bonus_copy
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.creator_bonus_activation import activation_notice, save_label
-from tg_lottery.telegram.creator_number_controls import PRESET_PREFIX
+from tg_lottery.telegram.creator_bonus_fields import (
+    changed_positive as _changed_positive,
+)
+from tg_lottery.telegram.creator_bonus_fields import (
+    input_label,
+)
+from tg_lottery.telegram.creator_bonus_fields import (
+    positive_integer as _positive_integer,
+)
+from tg_lottery.telegram.creator_bonus_fields import (
+    rule_key as _input_rule_key,
+)
+from tg_lottery.telegram.creator_number_controls import (
+    DEFAULT_MESSAGE_COUNT,
+    MESSAGE_COUNT_PRESETS,
+    PRESET_PREFIX,
+)
 from tg_lottery.telegram.creator_number_controls import mode_row as _mode_row
 from tg_lottery.telegram.creator_number_controls import number_row as _number_row
 from tg_lottery.telegram.creator_number_controls import preset_row as _preset_row
@@ -20,7 +36,7 @@ GROUP_PREFIXES = (
     "draft_bonus_group_page:",
 )
 DEFAULT_INVITES_PER_TICKET = 1
-DEFAULT_DAILY_MESSAGES = 4
+DEFAULT_DAILY_MESSAGES = DEFAULT_MESSAGE_COUNT
 DAILY_REWARD_CYCLES = 1
 GROUP_ACTIONS = frozenset(
     {
@@ -33,6 +49,9 @@ GROUP_ACTIONS = frozenset(
         "draft_bonus_invite_save",
         "draft_bonus_activity_cycle_dec",
         "draft_bonus_activity_cycle_inc",
+        "draft_bonus_activity_group_reward_dec",
+        "draft_bonus_activity_group_reward_inc",
+        "draft_bonus_input_reward",
         "draft_bonus_activity_length_dec",
         "draft_bonus_activity_length_inc",
         "draft_bonus_activity_unlimited",
@@ -102,7 +121,7 @@ def _apply_direct_action(data: dict[str, Any], action: str) -> dict[str, Any] | 
 def receive_input(data: dict[str, Any], text: str) -> dict[str, Any]:
     working = dict(data.get("bonus_working_copy") or {})
     field = str(data.get("bonus_input_field") or "")
-    if not working or field not in {"cycle", "cap"}:
+    if not working or field not in {"cycle", "cap", "reward"}:
         raise UserFacingError("当前没有待输入的加成字段")
     if (
         data.get("participation_rules_version") == "v3.0"
@@ -123,8 +142,8 @@ def receive_input(data: dict[str, Any], text: str) -> dict[str, Any]:
 
 
 def input_prompt(data: dict[str, Any]) -> str:
-    labels = {"cycle": "每轮数量", "cap": "上限次数"}
-    label = labels[str(data.get("bonus_input_field"))]
+    working = data.get("bonus_working_copy") or {}
+    label = input_label(str(working.get("kind")), str(data.get("bonus_input_field")))
     return f"请输入{label}（正整数）："
 
 
@@ -223,6 +242,8 @@ def _numeric_change(action: str) -> tuple[str | None, int]:
     if "cycle" in action:
         key = "invites_per_cycle" if "invite" in action else "messages_per_cycle"
         return key, delta
+    if "group_reward" in action:
+        return "reward_tickets", delta
     if "cap" in action:
         key = "max_bonus_tickets" if "invite" in action else "daily_max_cycles"
         return key, delta
@@ -292,7 +313,10 @@ def _activity_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str
     rule = working["rule"]
     cap = _cap_label(rule, "activity")
     rows = [_number_row("消息数", "activity_cycle", rule["messages_per_cycle"])]
-    rows.append(_preset_row("cycle", (4, 5, 10, 20), "条", selected=rule["messages_per_cycle"]))
+    rows.append(
+        _preset_row("cycle", MESSAGE_COUNT_PRESETS, "条", selected=rule["messages_per_cycle"])
+    )
+    rows.append(_number_row("每轮奖励", "activity_group_reward", rule["reward_tickets"]))
     rows.append(_mode_row("activity", rule["daily_cap_mode"]))
     rows.append([("每天达标一次（按天累计）", "draft_bonus_activity_daily")])
     if rule["daily_cap_mode"] == "limited":
@@ -422,28 +446,6 @@ def _cap_keys(kind: str) -> tuple[str, str]:
 def _cap_label(rule: dict[str, Any], kind: str) -> str:
     mode_key, cap_key = _cap_keys(kind)
     return "不设上限" if rule[mode_key] == "unlimited" else str(rule[cap_key])
-
-
-def _changed_positive(current: int, delta: int) -> int:
-    value = current + delta
-    if value < 1:
-        raise UserFacingError("该数值必须是正整数")
-    return value
-
-
-def _positive_integer(text: str) -> int:
-    value = text.strip()
-    if not value.isdigit() or int(value) < 1:
-        raise UserFacingError("请输入正整数，不能使用 0、负数、小数或空值")
-    return int(value)
-
-
-def _input_rule_key(kind: str, field: str) -> str:
-    if field not in {"cycle", "cap"}:
-        raise UserFacingError("加成字段已失效，请重新打开编辑页")
-    if field == "cycle":
-        return "invites_per_cycle" if kind == "invite" else "messages_per_cycle"
-    return "max_bonus_tickets" if kind == "invite" else "daily_max_cycles"
 
 
 def _without_editor(data: dict[str, Any]) -> dict[str, Any]:

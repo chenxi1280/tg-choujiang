@@ -14,6 +14,9 @@ from tg_lottery.application.campaign_query_targets import (
     active_campaign_by_chat as load_active_campaign_by_chat,
 )
 from tg_lottery.application.campaign_query_targets import (
+    active_campaign_counts_by_chats as load_active_campaign_counts_by_chats,
+)
+from tg_lottery.application.campaign_query_targets import (
     active_campaigns_by_chat as load_active_campaigns_by_chat,
 )
 from tg_lottery.application.campaign_query_targets import (
@@ -285,6 +288,10 @@ class QueryService:
             for campaign in campaigns:
                 session.expunge(campaign)
             return campaigns
+
+    async def active_campaign_counts_by_chats(self, chat_ids: tuple[int, ...]) -> dict[int, int]:
+        async with self._session_factory() as session:
+            return await load_active_campaign_counts_by_chats(session, chat_ids)
 
     async def prizes(self, campaign_id: UUID) -> list[Prize]:
         async with self._session_factory() as session:

@@ -1,17 +1,11 @@
+MESSAGE_COUNT_PRESETS = (5, 10, 20)
+DEFAULT_MESSAGE_COUNT = MESSAGE_COUNT_PRESETS[0]
 PRESET_PREFIX = "draft_bonus_preset:"
 
 
 def number_row(label: str, action: str, value: object) -> list[tuple[str, str]]:
-    field = "cap" if "cap" in action else "cycle"
-    unit = (
-        "轮"
-        if action == "activity_cap"
-        else "次"
-        if field == "cap"
-        else "人"
-        if action.startswith("invite")
-        else "条"
-    )
+    field = "reward" if "reward" in action else "cap" if "cap" in action else "cycle"
+    unit = _number_unit(action)
     return [
         (f"{label} −1{unit}", f"draft_bonus_{action}_dec"),
         (f"自定义 · {value}{unit}", f"draft_bonus_input_{field}"),
@@ -35,3 +29,11 @@ def preset_row(
         (("✅ " if value == selected else "") + f"{value}{unit}", f"{PRESET_PREFIX}{field}:{value}")
         for value in values
     ]
+
+
+def _number_unit(action: str) -> str:
+    if action == "activity_cap":
+        return "轮"
+    if "cap" in action or "reward" in action:
+        return "次"
+    return "人" if action.startswith("invite") else "条"

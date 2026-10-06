@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
 from aiogram import Bot
@@ -15,8 +16,9 @@ class GroupAvailability:
 
 async def inspect_group_availability(bot: Bot, chat_id: int, user_id: int) -> GroupAvailability:
     try:
-        bot_member = await bot.get_chat_member(chat_id, bot.id)
-        creator = await bot.get_chat_member(chat_id, user_id)
+        bot_member, creator = await asyncio.gather(
+            bot.get_chat_member(chat_id, bot.id), bot.get_chat_member(chat_id, user_id)
+        )
     except TelegramAPIError:
         return GroupAvailability(
             False,

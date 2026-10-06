@@ -115,18 +115,23 @@ async def _permission_errors(
     names = {
         int(group["id"]): chat_title(group) for group in data.get("participation_groups") or []
     }
-    for position, (chat_id, kind) in enumerate(dict.fromkeys(targets), start=1):
+    by_chat: dict[int, frozenset[str]] = {}
+    for chat_id, kind in targets:
+        by_chat[chat_id] = by_chat.get(chat_id, frozenset()) | {kind}
+    for position, (chat_id, kinds) in enumerate(by_chat.items(), start=1):
         try:
-            await _verify_target(bot, user_id, chat_id, kind=kind)
+            await _verify_target(bot, user_id, chat_id, kinds=kinds)
         except (AuthorizationDenied, UserFacingError) as exc:
             name = names.get(chat_id, f"第 {position} 个参与群")
             errors.append(f"· {name}：{exc}")
     return errors
 
 
-async def _verify_target(bot: Bot, user_id: int, chat_id: int, *, kind: str) -> None:
-    if kind == "invite":
+async def _verify_target(bot: Bot, user_id: int, chat_id: int, *, kinds: frozenset[str]) -> None:
+    if "activity" not in kinds:
         await verify_chat_admin(bot, chat_id, user_id, require_invites=True)
         return
-    record = await resolve_required_chat(bot, chat_id, admin_user_id=user_id)
+    record = await resolve_required_chat(
+        bot, chat_id, admin_user_id=user_id, require_invites="invite" in kinds
+    )
     validate_activity_target(record, activity_enabled=True)

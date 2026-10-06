@@ -2,6 +2,7 @@ from typing import Any
 
 from tg_lottery.domain.admission import InviteAdmissionRule, MessageAdmissionRule
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram.creator_number_controls import DEFAULT_MESSAGE_COUNT
 from tg_lottery.telegram.creator_retention_revision import checked_retention_editor
 from tg_lottery.telegram.creator_schedule import positive_int
 
@@ -82,7 +83,8 @@ def _edit_action(data: dict, editor: dict, *, parts: list[str]) -> dict:
     operation = parts[0]
     if operation == "group":
         _group(data, parts[1])
-        rule = editor["groups"].get(parts[1]) or _rule_model(editor).model_dump()
+        initial = {"daily_messages": DEFAULT_MESSAGE_COUNT} if editor["type"] == "message" else {}
+        rule = editor["groups"].get(parts[1]) or _rule_model(editor, initial).model_dump()
         return editor | {"chat_id": parts[1], "rule": rule, "field": None}
     if operation in {"input", "search"}:
         return _input_action(editor, parts=parts)

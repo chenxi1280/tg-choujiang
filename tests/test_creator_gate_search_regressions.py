@@ -63,4 +63,4 @@ def test_copy_requires_selected_target_and_preserves_staged_source():
     with pytest.raises(UserFacingError, match="请先选择要复制的目标群"):
         editor.apply_action(data, "draft_gate:copy_confirm")
     assert data[editor.EDITOR_KEY]["copy_targets"] == []
-    assert data[editor.EDITOR_KEY]["rule"]["daily_messages"] == 20
+    assert data[editor.EDITOR_KEY]["rule"]["daily_messages"] == 5

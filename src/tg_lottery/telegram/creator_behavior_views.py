@@ -3,6 +3,7 @@ from typing import Any
 from tg_lottery.domain.admission import InviteAdmissionRule, MessageAdmissionRule
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.creator_behavior_editor import EDITOR_KEY, PAGE_SIZE
+from tg_lottery.telegram.creator_number_controls import MESSAGE_COUNT_PRESETS
 
 FIELD_LABELS = {
     "daily_messages": "每日条数",
@@ -10,7 +11,7 @@ FIELD_LABELS = {
     "required_valid_invites": "有效邀请人数",
 }
 PRESETS = {
-    "daily_messages": (2, 20, 34),
+    "daily_messages": MESSAGE_COUNT_PRESETS,
     "consecutive_days": (1, 3, 7),
     "required_valid_invites": (1, 2, 5),
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from aiogram import Bot
@@ -86,9 +87,16 @@ class CreatorGroupPicker:
     async def select_page(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._required_data(query.from_user.id)
         selected = set(selected_chat_ids(data))
-        for group in await self._visible_groups(query.from_user.id, data):
-            availability = await self._availability(group.chat_id, query.from_user.id)
-            if availability.selectable and group.chat_id not in selected:
+        groups = [
+            group
+            for group in await self._visible_groups(query.from_user.id, data)
+            if group.chat_id not in selected
+        ]
+        statuses = await asyncio.gather(
+            *(self._availability(group.chat_id, query.from_user.id) for group in groups)
+        )
+        for group, availability in zip(groups, statuses, strict=True):
+            if availability.selectable:
                 data = toggle_group(data, group)
                 selected.add(group.chat_id)
         await self._save_and_render(query, data)

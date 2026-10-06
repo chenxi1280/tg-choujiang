@@ -18,15 +18,15 @@ from tg_lottery.telegram.creator_threshold_input import apply_threshold_input
 from tg_lottery.telegram.draft_config import rules_from_data
 
 
-def test_base_buttons_save_four_messages_and_cancel_custom_without_mutating_saved_rule():
+def test_base_buttons_save_five_messages_and_cancel_custom_without_mutating_saved_rule():
     original = draft_data()
     editor = base.apply_action(original, "draft_base:group:-1001")
     text, rows = base.editor_view(editor)
-    assert "4条" in [label for row in rows for label, _ in row]
+    assert "5条" in [label for row in rows for label, _ in row]
     assert "保存后生效" in text
     saved = base.apply_action(editor, "draft_base:save")
     rule = rules_from_data(saved).base_activity_rules["-1001"]
-    assert (rule.consecutive_days, rule.daily_messages) == (1, 4)
+    assert (rule.consecutive_days, rule.daily_messages) == (1, 5)
     assert "字数" not in str(rows) and "文字、图片、表情均计数" in text
     before = deepcopy(saved)
     editing = base.apply_action(saved, "draft_base:group:-1001")
@@ -73,7 +73,7 @@ def test_group_bonus_defaults_and_custom_five_messages_use_daily_mode():
     invite = apply_action(original, "draft_bonus_invite_group:-1001")
     assert invite["bonus_working_copy"]["rule"]["invites_per_cycle"] == 1
     editing = apply_action(original, "draft_bonus_activity_group:-1001")
-    assert editing["bonus_working_copy"]["rule"]["messages_per_cycle"] == 4
+    assert editing["bonus_working_copy"]["rule"]["messages_per_cycle"] == 5
     editing = apply_action(editing, "draft_bonus_input_cycle")
     editing = receive_input(editing, "5")
     text, rows = editor_view(editing, editing["bonus_working_copy"])
