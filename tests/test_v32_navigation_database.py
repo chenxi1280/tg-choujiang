@@ -206,3 +206,37 @@ async def test_group_picker_page_and_page_selection_share_the_same_actual_slice(
     selected = (await sessions.get(CREATOR_ID)).data["participation_group_ids"]
     assert {group.chat_id for group in visible}.issubset(selected)
     assert len(selected) == len(set(selected))
+
+
+async def test_draft_write_records_durable_input_source_for_feedback_retry(session_factory):
+    from tg_lottery.application.request_context import bind_update_context
+
+    sessions = AdminSessionService(partial(UnitOfWork, session_factory))
+    with bind_update_context(999, 100):
+        await sessions.set(
+            CREATOR_ID, "draft:prize_count", new_draft() | {"pending_prize_name": "无价值奖品"}
+        )
+    row = await sessions.get(CREATOR_ID)
+    assert row.data["mutation_source_update_id"] == 100
+    assert row.state == "draft:prize_count"
+    assert row.data["pending_prize_name"] == "无价值奖品"
+    assert row.data["prizes"] == []
+
+
+async def test_older_callback_retry_cannot_reactivate_a_field_after_newer_navigation(
+    session_factory,
+):
+    import pytest
+
+    from tg_lottery.application.request_context import bind_update_context
+    from tg_lottery.domain.errors import UserFacingError
+
+    sessions = AdminSessionService(partial(UnitOfWork, session_factory))
+    with bind_update_context(999, 101):
+        await sessions.set(CREATOR_ID, "draft:suspended", new_draft() | {"title": "最新标题"})
+    with bind_update_context(999, 100), pytest.raises(UserFacingError, match="原请求未再次修改"):
+        await sessions.set(CREATOR_ID, "draft:title", new_draft() | {"title": "旧标题"})
+    row = await sessions.get(CREATOR_ID)
+    assert row.state == "draft:suspended"
+    assert row.data["title"] == "最新标题"
+    assert row.data["mutation_source_update_id"] == 101

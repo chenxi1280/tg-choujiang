@@ -4,7 +4,9 @@ from sqlalchemy import delete
 
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import utcnow
+from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.draft_contract import DRAFT_SESSION_TTL
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.infrastructure.db import AdminSession
 
 
@@ -32,8 +34,12 @@ class AdminSessionService:
             if row is None:
                 row = AdminSession(user_id=user_id, state=state, data={})
                 uow.session.add(row)
+            source = current_update_id()
+            previous = row.data.get("mutation_source_update_id")
+            if source is not None and previous is not None and source < int(previous):
+                raise UserFacingError("草稿已有更新的操作, 原请求未再次修改内容; 请使用当前页面")
             row.state = state
-            row.data = data
+            row.data = data | ({"mutation_source_update_id": source} if source is not None else {})
             row.expires_at = utcnow() + DRAFT_SESSION_TTL
 
     async def get(self, user_id: int) -> AdminSession | None:

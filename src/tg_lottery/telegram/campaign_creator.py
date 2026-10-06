@@ -22,6 +22,7 @@ from tg_lottery.telegram.creator_group_selection import (
     bind_initial_group,
     selected_chat_ids,
 )
+from tg_lottery.telegram.creator_input_replay import recover_applied_input
 from tg_lottery.telegram.creator_message_context import callback_message as _message
 from tg_lottery.telegram.creator_message_context import message_user as _user
 from tg_lottery.telegram.creator_message_context import panel_target as _target
@@ -218,6 +219,8 @@ class CampaignCreator:
         session = await self._sessions.get(_user(message).id)
         if session is None:
             return False
+        if await recover_applied_input(self._renderer, message, session):
+            return True
         return await self.handle_text(message, session.state, dict(session.data))
 
     async def handle_text(self, message: Message, state: str, data: dict[str, Any]) -> bool:
