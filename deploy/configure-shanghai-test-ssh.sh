@@ -20,4 +20,6 @@ Host shanghai-tg-test-db
   IdentityFile $HOME/.ssh/shanghai-test-key
   IdentitiesOnly yes
   StrictHostKeyChecking yes
+  ServerAliveInterval 15
+  ServerAliveCountMax 4
 EOF

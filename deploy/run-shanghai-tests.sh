@@ -20,5 +20,5 @@ COPYFILE_DISABLE=1 tar --format=ustar -cf - \
   pyproject.toml alembic.ini src tests alembic scripts \
   deploy/test-runner.Dockerfile deploy/install_test_dependencies.py \
   deploy/run_remote_tests.py |
-  ssh -o BatchMode=yes "$ssh_target" \
+  ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "$ssh_target" \
     "sudo -n /opt/tg-lottery-test/run.sh '$test_mode' $remote_args"

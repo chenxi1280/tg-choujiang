@@ -26,6 +26,7 @@ from tg_lottery.infrastructure.db import (
 )
 from tg_lottery.infrastructure.heartbeat import run_with_heartbeat
 from tg_lottery.telegram.crypto import SecretCipher
+from tg_lottery.telegram.delivery_failures import failed_before_invite_request
 from tg_lottery.telegram.gateway import GatewayResult, TelegramGateway
 from tg_lottery.telegram.gateway_requests import GatewayCall, build_gateway_call
 from tg_lottery.telegram.outbox_payloads import InviteNameFactory, normalize_pending_invite_name
@@ -118,11 +119,7 @@ class OutboxWorker:
                 | {"certainty": "explicit_rejection", "error_code": type(exc).__name__},
             )
         except _UNKNOWN_ERRORS as exc:
-            await self._unknown(outbox.id, attempt_number, exc)
-            self._logger.error(
-                "Telegram delivery certainty unknown",
-                extra=log_context | {"certainty": "unknown", "error_code": type(exc).__name__},
-            )
+            await self._network_failure(outbox, attempt_number, exc)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -137,6 +134,23 @@ class OutboxWorker:
                 "Telegram delivery confirmed",
                 extra=log_context | {"certainty": "confirmed"},
             )
+
+    async def _network_failure(
+        self, outbox: TelegramOutbox, attempt_number: int, exc: Exception
+    ) -> None:
+        context = delivery_log_context(outbox, attempt_number) | {"error_code": type(exc).__name__}
+        if failed_before_invite_request(outbox.operation, exc):
+            await self._pre_accept_failed(outbox.id, attempt_number, exc)
+            self._logger.error(
+                "Telegram invite request failed before connection; request was not sent",
+                extra=context | {"certainty": "explicit_rejection", "transport_phase": "connect"},
+            )
+            return
+        await self._unknown(outbox.id, attempt_number, exc)
+        self._logger.error(
+            "Telegram delivery certainty unknown",
+            extra=context | {"certainty": "unknown"},
+        )
 
     async def _prepare_gateway_call(self, outbox: TelegramOutbox) -> GatewayCall | None:
         try:

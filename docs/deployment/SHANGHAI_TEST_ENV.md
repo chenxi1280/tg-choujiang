@@ -51,6 +51,9 @@ GitHub Actions 的 `master` 与 `release` 流水线使用同一远端入口。�
 `SHANGHAI_TEST_KNOWN_HOSTS` Secrets。外部 fork 的 PR 无权读取这些凭据，
 其工作流只执行静态检查与镜像构建；同仓库 PR、`master` 和 `release` 执行远端测试。
 
+测试 SSH 使用 `ServerAliveInterval=15`、`ServerAliveCountMax=4`。等待远端 `flock`
+期间也保持连接活动；真实连接丢失仍以 SSH 非零退出暴露，不自动重跑测试或绕过测试锁。
+
 ## 只读核查
 
 ```bash
