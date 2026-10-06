@@ -1,37 +1,34 @@
 from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 
+from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState, QualificationState
+from tg_lottery.telegram.member_detail_actions import (
+    REGISTRATION_STATES,
+    detail_task,
+    invitation_task_available,
+)
 from tg_lottery.telegram.member_record_text import participant_record_pages
+from tg_lottery.telegram.operational_issue_views import operational_issue_text
+from tg_lottery.telegram.public_projection import format_public_time
 
 TERMINAL = frozenset({CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED})
 
 
 def participant_detail_view(detail, *, user_id: int, bot_username: str):
     pages = participant_record_pages(detail)
-    effective = (
-        str(detail.total)
-        if detail.qualification is QualificationState.ELIGIBLE and detail.base_qualified
-        else "待核查"
-        if detail.qualification is QualificationState.UNKNOWN
-        else "0"
-    )
-    if detail.state not in TERMINAL:
-        pages = (pages[0] + f"\n\n我的进度 · 当前有效次数：{effective}", *pages[1:])
-    rows = []
-    if detail.base_progress:
-        rows.append([_callback("查看门槛进度", f"m:gate:{detail.public_ref}")])
-    if detail.bonus_enabled:
-        rows.append([_callback("加成明细", f"m:bo:{detail.public_ref}")])
-    if detail.invite_enabled or detail.invite_gate_enabled:
-        rows.append([_callback("我的邀请链接", f"member:bonus_invites:{detail.public_ref}:0")])
-        rows.append([_callback("邀请记录", f"member:invites:{detail.public_ref}:0")])
+    now = utcnow()
+    pages, primary = _detail_body(detail, pages=pages, now=now)
+    rows = [[primary]] if primary is not None else []
+    rows.extend(_progress_rows(detail, now))
     rows.append(
         [
             _callback("查看参与条件", f"m:conditions:{detail.public_ref}:0"),
             _callback("完整规则", f"m:rules:{detail.public_ref}:0"),
         ]
     )
-    if detail.state not in TERMINAL:
+    if detail.state in REGISTRATION_STATES and (
+        detail.cutoff_at is None or now <= detail.cutoff_at
+    ):
         rows.append(
             [
                 InlineKeyboardButton(
@@ -42,7 +39,56 @@ def participant_detail_view(detail, *, user_id: int, bot_username: str):
         )
     rows.extend(_award_rows(detail, user_id=user_id, bot_username=bot_username))
     rows.extend([[_callback("返回参与列表", "nav:join")], [_callback("返回首页", "nav:index")]])
-    return pages, InlineKeyboardMarkup(inline_keyboard=rows)
+    return pages, InlineKeyboardMarkup(inline_keyboard=_distinct_rows(rows))
+
+
+def _detail_body(detail, *, pages, now):
+    effective = (
+        str(detail.total)
+        if detail.qualification is QualificationState.ELIGIBLE and detail.base_qualified
+        else "待核查"
+        if detail.qualification is QualificationState.UNKNOWN
+        else "0"
+    )
+    if detail.state not in TERMINAL:
+        pages = (pages[0] + f"\n\n我的进度 · 当前有效次数：{effective}", *pages[1:])
+    notice, primary = detail_task(detail, now)
+    if detail.cutoff_at is not None:
+        notice = (
+            f"报名/行为统计截止：{format_public_time(detail.cutoff_at, detail.timezone)}\n" + notice
+        )
+    if detail.operational_issues:
+        notice += "\n" + operational_issue_text(detail.operational_issues)
+    if notice:
+        pages = (pages[0] + "\n\n" + notice, *pages[1:])
+    return pages, primary
+
+
+def _progress_rows(detail, now):
+    rows = []
+    if detail.base_progress:
+        rows.append([_callback("查看门槛进度", f"m:gate:{detail.public_ref}")])
+    if detail.bonus_enabled:
+        rows.append([_callback("加成明细", f"m:bo:{detail.public_ref}")])
+    if detail.invite_enabled or detail.invite_gate_enabled:
+        if invitation_task_available(detail, now):
+            rows.append([_callback("我的邀请链接", f"member:bonus_invites:{detail.public_ref}:0")])
+        rows.append([_callback("邀请记录", f"member:invites:{detail.public_ref}:0")])
+    return rows
+
+
+def _distinct_rows(rows):
+    seen, result = set(), []
+    for row in rows:
+        selected = []
+        for button in row:
+            identity = button.callback_data or button.url or button.text
+            if identity not in seen:
+                seen.add(identity)
+                selected.append(button)
+        if selected:
+            result.append(selected)
+    return result
 
 
 def _award_rows(detail, *, user_id: int, bot_username: str) -> list:

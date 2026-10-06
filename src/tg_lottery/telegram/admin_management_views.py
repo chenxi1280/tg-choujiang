@@ -1,8 +1,10 @@
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
+from tg_lottery.telegram.operational_issue_views import operational_issue_text
 from tg_lottery.telegram.public_projection import campaign_state_text, format_public_time
 
 MANAGEMENT_ACTION_LABELS = {
+    "view_campaign": "刷新活动状态",
     "view_winners": "查看中奖名单/登记已领奖",
     "pause": "暂停",
     "resume": "恢复",
@@ -31,6 +33,11 @@ def management_text(campaign, *, stats, deliveries, details):
         text
         + _publication_status_note(campaign)
         + _management_details_text(details)
+        + (
+            "\n\n" + operational_issue_text(details.operational_issues)
+            if details.operational_issues
+            else ""
+        )
         + _purpose_text(deliveries)
     )
 

@@ -311,7 +311,11 @@ class AdminFlow:
         deliveries = await self._queries.delivery_summary(campaign_id)
         details = await self._queries.management_details(campaign_id)
         issues = await self._load_publication_issues(campaign.id, campaign.state)
-        actions = _campaign_actions(campaign.state) + _publication_actions(campaign.state, issues)
+        actions = (
+            _campaign_actions(campaign.state)
+            + _publication_actions(campaign.state, issues)
+            + (("view_campaign",) if campaign.state is not CampaignState.PUBLISHING else ())
+        )
         if await self._queries.qualification_review_blocked(campaign.id):
             actions += ("retry_qualification",)
         requests = tuple(

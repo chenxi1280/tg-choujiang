@@ -104,13 +104,11 @@ class PersonalFlow:
         if data.startswith("nav:guide:"):
             await self._show_guide_topic(message, data)
             return True
-        if data.startswith("nav:created:"):
-            await self._show_created(message, data.removeprefix("nav:created:"), edit=True)
+        if data.startswith(("nav:created:", "nav:managed:")):
+            await self._show_creator_callback(message, data)
             return True
-        if data.startswith("nav:managed:"):
-            await self._show_created(
-                message, data.removeprefix("nav:managed:"), managed=True, edit=True
-            )
+        if data.startswith(("nav:join_at:", "nav:invites_at:")):
+            await self._show_anchored_list(message, data)
             return True
         if data.startswith("nav:joined:"):
             await show_ticket_record(
@@ -147,10 +145,28 @@ class PersonalFlow:
         await handler(message, edit=True)
         return True
 
+    async def _show_creator_callback(self, message, data):
+        await self._show_created(
+            message, data.split(":", 2)[2], managed=data.startswith("nav:managed:"), edit=True
+        )
+
     async def _show_invitation_list_callback(self, message, data):
         category, page, parent = parse_invitation_list_callback(data.removeprefix("nav:invites:"))
         await self.show_invitation_campaigns(
             message, category=category, page=page, parent=parent, edit=True
+        )
+
+    async def _show_anchored_list(self, message, data):
+        parts = data.split(":")
+        anchor = parts[2]
+        value = ":".join(parts[3:])
+        if parts[1] == "join_at":
+            category, page = parse_campaign_list_callback(value)
+            await self.show_joined(message, category=category, page=page, anchor=anchor, edit=True)
+            return
+        category, page, parent = parse_invitation_list_callback(value)
+        await self.show_invitation_campaigns(
+            message, category=category, page=page, parent=parent, anchor=anchor, edit=True
         )
 
     async def _show_guide_topic(self, message, data):
@@ -175,16 +191,25 @@ class PersonalFlow:
         await self._show_created(message, "active:0", managed=True, edit=edit)
 
     async def show_joined(
-        self, message: Message, *, category: str = "active", page: int = 0, edit: bool = False
+        self,
+        message: Message,
+        *,
+        category: str = "active",
+        page: int = 0,
+        anchor: str | None = None,
+        edit: bool = False,
     ) -> None:
         result = await self._queries.participated_campaign_page(
             _user(message).id,
             category=category,
             page=page,
+            **({"anchor": anchor} if anchor is not None else {}),
         )
         text, keyboard = build_participated_campaign_list(result, invitation_only=False)
         if result.page != page:
-            text += "\n当前页超出记录范围，已显示有效页。"
+            text += "\n列表已变化，已定位到当前活动所在页或有效页。"
+        if result.anchor_missing:
+            text += "\n原活动已不在当前分类或本人可见范围，请查看当前列表。"
         await _respond(message, text, keyboard=keyboard, edit=edit)
 
     async def show_invitation_campaigns(
@@ -194,6 +219,7 @@ class PersonalFlow:
         category: str = "active",
         page: int = 0,
         parent: tuple[str, int] | None = None,
+        anchor: str | None = None,
         edit: bool = False,
     ) -> None:
         result = await self._queries.participated_campaign_page(
@@ -201,10 +227,15 @@ class PersonalFlow:
             category=category,
             page=page,
             invitation_only=True,
+            **({"anchor": anchor} if anchor is not None else {}),
         )
         text, keyboard = build_participated_campaign_list(
             result, invitation_only=True, parent=parent
         )
+        if result.page != page:
+            text += "\n列表已变化，已定位到当前活动所在页或有效页。"
+        if result.anchor_missing:
+            text += "\n原活动已不在当前分类或本人邀请范围，请查看当前列表。"
         await _respond(message, text, keyboard=keyboard, edit=edit)
 
     async def show_regions(self, message: Message, *, edit: bool = False) -> None:
@@ -241,16 +272,22 @@ class PersonalFlow:
     async def _show_created(
         self, message: Message, payload: str, *, managed: bool = False, edit: bool = False
     ) -> None:
-        category, separator, raw_page = payload.partition(":")
+        parts = payload.split(":")
+        if len(parts) not in {1, 2, 3}:
+            raise ValueError("创建列表按钮参数无效")
         options = {
-            "category": category,
-            "page": int(raw_page) if separator else 0,
+            "category": parts[0],
+            "page": int(parts[1]) if len(parts) > 1 else 0,
             "managed": managed,
         }
+        if len(parts) == 3:
+            options["anchor"] = parts[2]
         result = await self._queries.creator_campaign_page(_user(message).id, options=options)
         text, keyboard = creator_list_view(result)
         if result.page != options["page"]:
-            text += "\n当前页超出记录范围，已显示有效页。"
+            text += "\n列表已变化，已定位到当前活动所在页或有效页。"
+        if result.anchor_missing:
+            text += "\n原活动已不在当前分类或可管理范围，请查看当前列表。"
         await _respond(message, text, keyboard=keyboard, edit=edit)
 
     async def _set_region(self, query: CallbackQuery, region: str) -> None:

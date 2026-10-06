@@ -41,6 +41,7 @@ from tg_lottery.application.group_bonus_progress import (
 )
 from tg_lottery.application.management_details import load_management_details
 from tg_lottery.application.member_gate_queries import load_gate_group_lines
+from tg_lottery.application.operational_issue_queries import load_operational_issues
 from tg_lottery.application.participant_records import (
     CampaignInvitationRecords,
     InvitationRecordFilter,
@@ -195,6 +196,7 @@ class QueryService:
         category: ParticipationCategory,
         page: int,
         invitation_only: bool = False,
+        anchor: str | None = None,
     ) -> ParticipatedCampaignPage:
         return await load_participated_campaign_page(
             self._session_factory,
@@ -202,6 +204,7 @@ class QueryService:
             category=category,
             page=page,
             invitation_only=invitation_only,
+            anchor=anchor,
         )
 
     async def created_campaigns(self, user_id: int, category: str) -> list[Campaign]:
@@ -238,6 +241,10 @@ class QueryService:
                 )
             )
             return block_id is not None
+
+    async def operational_issues(self, campaign_id: UUID):
+        async with self._session_factory() as session:
+            return await load_operational_issues(session, campaign_id)
 
     async def campaign_by_reference(self, reference: str | UUID) -> Campaign | None:
         async with self._session_factory() as session:

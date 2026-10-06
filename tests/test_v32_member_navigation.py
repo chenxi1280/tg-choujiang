@@ -187,7 +187,7 @@ async def test_actual_list_entry_keeps_category_and_page_on_detail_return(
     assert await flow.handle_route(_query(), data=route, personal=object())
     requests = tokens.create_many.await_args.kwargs["requests"]
     back = next(request.payload for request in requests if request.payload["back"])
-    assert back["route"] == f"nav:join:{category}:{page}"
+    assert back["route"] == f"nav:join_at:{REFERENCE}:{category}:{page}"
     assert back["trail"] == []
 
 
@@ -231,5 +231,5 @@ async def test_actual_invitation_list_entry_keeps_source_on_group_return(
     requests = tokens.create_many.await_args.kwargs["requests"]
     back = next(request.payload for request in requests if request.payload["back"])
     suffix = f":{parent[0]}:{parent[1]}" if parent else ""
-    assert back["route"] == f"nav:invites:{category}:{page}" + suffix
+    assert back["route"] == f"nav:invites_at:{REFERENCE}:{category}:{page}" + suffix
     assert back["trail"] == []

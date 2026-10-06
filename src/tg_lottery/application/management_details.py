@@ -3,6 +3,10 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 
 from tg_lottery.application.admission_qualification import behavior_clause
+from tg_lottery.application.operational_issue_queries import (
+    OperationalIssue,
+    load_operational_issues,
+)
 from tg_lottery.domain.enums import OutboxState, QualificationState
 from tg_lottery.infrastructure.db import (
     Campaign,
@@ -30,6 +34,7 @@ class ManagementDetails:
     eligible: int
     frozen: int | None
     targets: tuple[TargetPublication, ...]
+    operational_issues: tuple[OperationalIssue, ...] = ()
 
 
 async def load_management_details(factory, campaign_id):
@@ -53,7 +58,8 @@ async def load_management_details(factory, campaign_id):
             else None
         )
         targets = await _target_publications(session, campaign)
-        return ManagementDetails(int(eligible or 0), frozen, targets)
+        issues = await load_operational_issues(session, campaign_id)
+        return ManagementDetails(int(eligible or 0), frozen, targets, issues)
 
 
 async def _target_publications(session, campaign):

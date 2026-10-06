@@ -3,6 +3,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from tg_lottery.application.callback_tokens import CallbackRequest
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram.member_profile_conditions import region_locked
 from tg_lottery.telegram.personal_flow import REGIONS
 from tg_lottery.telegram.public_projection import format_public_time
 
@@ -12,12 +13,7 @@ REGION_COLUMNS = 3
 async def region_view(profiles, tokens, *, user_id: int, context):
     profile = await profiles.get(user_id)
     now = utcnow()
-    locked = (
-        profile.region_editable_until is not None
-        and now > profile.region_editable_until
-        and profile.region_locked_until is not None
-        and now < profile.region_locked_until
-    )
+    locked = region_locked(profile, now)
     text = "本人地区\n当前地区：" + (profile.region or "未设置")
     rows = []
     if locked:
