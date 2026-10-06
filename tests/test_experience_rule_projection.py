@@ -139,4 +139,4 @@ def test_activity_list_uses_readable_positions_and_keeps_callback_identity() -> 
     callbacks = [button.callback_data for row in markup.inline_keyboard for button in row]
     for reference in references:
         assert reference[:6] not in text + labels
-        assert f"nav:joined:{reference}" in callbacks
+        assert f"m:detail:{reference}:active:0" in callbacks

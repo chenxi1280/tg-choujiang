@@ -157,3 +157,35 @@ async def test_private_delivery_forbidden_is_explicit_and_not_acknowledged_as_su
             _query(-100123, kind="supergroup"), data="m:detail:" + REFERENCE, personal=object()
         )
     acknowledgement.assert_not_awaited()
+
+
+@pytest.mark.parametrize("category,page", [("active", 0), ("pending", 2), ("ended", 1)])
+async def test_actual_list_entry_keeps_category_and_page_on_detail_return(
+    monkeypatch, category, page
+):
+    from tg_lottery.application.participant_records import (
+        ParticipatedCampaign,
+        ParticipatedCampaignPage,
+    )
+    from tg_lottery.telegram.participant_list_views import build_participated_campaign_list
+
+    monkeypatch.setattr(CallbackQuery, "answer", AsyncMock())
+    monkeypatch.setattr(Message, "edit_text", AsyncMock())
+    row = ParticipatedCampaign(
+        REFERENCE,
+        "本人活动",
+        CampaignState.DRAWN,
+        QualificationState.ELIGIBLE,
+        4,
+        datetime.now(UTC),
+        "Asia/Shanghai",
+    )
+    source = ParticipatedCampaignPage(category, page, page + 1, (row,))
+    _, keyboard = build_participated_campaign_list(source, invitation_only=False)
+    route = keyboard.inline_keyboard[1][0].callback_data
+    flow, _, tokens = _navigation()
+    assert await flow.handle_route(_query(), data=route, personal=object())
+    requests = tokens.create_many.await_args.kwargs["requests"]
+    back = next(request.payload for request in requests if request.payload["back"])
+    assert back["route"] == f"nav:join:{category}:{page}"
+    assert back["trail"] == []

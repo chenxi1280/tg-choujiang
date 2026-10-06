@@ -47,7 +47,7 @@ def _campaign_list_keyboard(
     prefix = "nav:invites" if invitation_only else "nav:join"
     rows = [_category_row(prefix, page.category)]
     rows.extend(
-        _campaign_button(row, invitation_only=invitation_only, position=position)
+        _campaign_button(row, source=page, invitation_only=invitation_only, position=position)
         for position, row in enumerate(page.rows, 1)
     )
     navigation = _page_row(
@@ -73,10 +73,12 @@ def _category_row(prefix: str, selected: str) -> list[InlineKeyboardButton]:
 
 
 def _campaign_button(
-    row: object, *, invitation_only: bool, position: int
+    row: object, *, source: ParticipatedCampaignPage, invitation_only: bool, position: int
 ) -> list[InlineKeyboardButton]:
     callback = (
-        f"member:invites:{row.public_ref}:0" if invitation_only else f"nav:joined:{row.public_ref}"
+        f"member:invites:{row.public_ref}:0"
+        if invitation_only
+        else f"m:detail:{row.public_ref}:{source.category}:{source.page}"
     )
     return [
         InlineKeyboardButton(

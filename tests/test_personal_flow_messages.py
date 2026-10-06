@@ -98,7 +98,7 @@ async def test_personal_lists_render_business_states_and_local_time() -> None:
     button = message.reply_markups[-1].inline_keyboard[1][0]
     assert button.callback_data == "nav:campaign:AbCdEfGhIjKlMnOpQrSt-_:c:a:0"
     joined_button = message.reply_markups[0].inline_keyboard[1][0]
-    assert joined_button.callback_data == "nav:joined:AbCdEfGhIjKlMnOpQrSt-_"
+    assert joined_button.callback_data == "m:detail:AbCdEfGhIjKlMnOpQrSt-_:active:0"
     category_callbacks = {
         button.callback_data for button in message.reply_markups[0].inline_keyboard[0]
     }
