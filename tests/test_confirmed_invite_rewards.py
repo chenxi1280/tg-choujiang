@@ -205,7 +205,16 @@ async def test_negative_invitation_award_is_rejected_without_ledger_or_notice(se
             )
     async with session_factory() as session:
         assert [row.delta for row in await session.scalars(select(TicketLedger))] == [1]
-        assert len(list(await session.scalars(select(TelegramOutbox)))) == 1
+        notices = list(await session.scalars(select(TelegramOutbox)))
+        durable = [
+            row for row in notices if not row.business_key.startswith("progress_incomplete:")
+        ]
+        incomplete = [row for row in notices if row.business_key.startswith("progress_incomplete:")]
+        assert len(durable) == 1
+        assert len(incomplete) == 1
+        assert incomplete[0].payload["delete_after_seconds"] == 15
+        assert "delete_after_seconds" not in durable[0].payload
+        assert "notice:invalid-deduction" not in {row.business_key for row in notices}
 
 
 async def test_inviter_departure_changes_qualification_but_preserves_earned_bonus(session_factory):

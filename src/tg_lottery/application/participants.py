@@ -32,6 +32,7 @@ from tg_lottery.application.participant_qualification import (
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import add_job
 from tg_lottery.application.request_context import current_update_id
+from tg_lottery.application.temporary_reminders import queue_temporary_reminder
 from tg_lottery.domain.enums import QualificationState, TicketSource
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.public_refs import new_invite_link_name, new_referral_public_ref
@@ -89,6 +90,22 @@ class ParticipantService:
         self._uow_factory = uow_factory
         self._invite_name_factory = invite_name_factory
         self._referral_ref_factory = referral_ref_factory
+
+    async def queue_temporary_reminder(
+        self,
+        *,
+        campaign_id: UUID,
+        recipient_chat_id: int,
+        text: str,
+        business_key: str,
+    ) -> None:
+        await queue_temporary_reminder(
+            self._uow_factory,
+            campaign_id=campaign_id,
+            recipient_chat_id=recipient_chat_id,
+            text=text,
+            business_key=business_key,
+        )
 
     async def request_share_card(
         self, campaign_id: UUID, user_id: int, *, bot_username: str

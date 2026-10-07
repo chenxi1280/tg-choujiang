@@ -8,10 +8,13 @@ from sqlalchemy import func, select
 from tests.test_v30_admission_integration import confirm
 from tests.v30_helpers import FIRST, SECOND, START, invite_link, rules_for, seed_v3, speech
 from tg_lottery.application.activity import ActivityService, MessageObservation
+from tg_lottery.application.groups import GroupService
 from tg_lottery.application.invitations import InvitationService
 from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.request_context import bind_update_context
+from tg_lottery.domain.admission import InviteAdmission, InviteAdmissionRule
 from tg_lottery.domain.enums import CampaignState
+from tg_lottery.domain.rules import CampaignRules, GroupInviteRule, InviteRule
 from tg_lottery.infrastructure.db import (
     BaseActivityEvent,
     Campaign,
@@ -156,6 +159,59 @@ async def test_cancel_between_routing_and_campaign_lock_does_not_accept_message(
         assert await session.scalar(select(func.sum(TicketLedger.delta))) == 1
 
 
+async def test_incomplete_progress_follows_migrated_group_chat(session_factory):
+    await seed_v3(session_factory, rules_for("message", ("activity",)))
+    upgraded = -100999
+    await GroupService(partial(UnitOfWork, session_factory)).migrate_group(FIRST, upgraded)
+    await speech(session_factory, chat_id=upgraded, count=1)
+    async with session_factory() as session:
+        rows = list(
+            await session.scalars(
+                select(TelegramOutbox).where(
+                    TelegramOutbox.business_key.like("progress_incomplete:%")
+                )
+            )
+        )
+        assert rows
+        assert {row.recipient_chat_id for row in rows} == {upgraded}
+        assert all(row.payload["delete_after_seconds"] == 15 for row in rows)
+
+
+def _second_group_without_invite_bonus():
+    return CampaignRules(
+        participation_rules_version="v3.0",
+        admission=InviteAdmission(
+            type="invite",
+            groups={
+                str(FIRST): InviteAdmissionRule(required_valid_invites=2),
+                str(SECOND): InviteAdmissionRule(required_valid_invites=2),
+            },
+        ),
+        bonus_types=("invite",),
+        invite=InviteRule(mode="ratio", valid_invites_per_ticket=2, retention_hours=0),
+        group_invite_rules={str(FIRST): GroupInviteRule(invites_per_cycle=1)},
+    )
+
+
+async def test_closed_group_invite_bonus_does_not_use_campaign_ratio(session_factory):
+    cid, pid = await seed_v3(session_factory, _second_group_without_invite_bonus())
+    service = InvitationService(partial(UnitOfWork, session_factory))
+    await confirm(service, await invite_link(session_factory, cid, pid, chat_id=SECOND), 1)
+    async with session_factory() as session:
+        participant = await session.get(Participant, pid)
+        rows = list(await session.scalars(select(TelegramOutbox)))
+        bonus = [
+            row for row in rows if row.business_key.startswith("progress_incomplete:invite_bonus:")
+        ]
+        gates = [row for row in rows if row.business_key.startswith("progress_incomplete:invite:")]
+        assert not participant.admission_qualified
+        assert participant.ticket_total_cache == 1
+        assert bonus == []
+        assert len(gates) == 1
+        assert "还差 1" in gates[0].payload["text"]
+        assert gates[0].recipient_chat_id == SECOND
+
+
 async def test_concurrent_messages_and_replays_keep_one_gate_and_correct_awards(session_factory):
     _cid, pid = await seed_v3(session_factory, rules_for("message", ("activity",)))
     service = ActivityService(partial(UnitOfWork, session_factory))
@@ -170,5 +226,11 @@ async def test_concurrent_messages_and_replays_keep_one_gate_and_correct_awards(
         participant = await session.get(Participant, pid)
         assert participant.admission_qualified and participant.ticket_total_cache == 3
         assert await session.scalar(select(func.count(BaseActivityEvent.id))) == 4
-        assert await session.scalar(select(func.count(TelegramOutbox.id))) == 2
+        rows = list(await session.scalars(select(TelegramOutbox)))
+        durable = [row for row in rows if not row.business_key.startswith("progress_incomplete:")]
+        incomplete = [row for row in rows if row.business_key.startswith("progress_incomplete:")]
+        assert len(durable) == 2
+        assert incomplete
+        assert all(row.payload["delete_after_seconds"] == 15 for row in incomplete)
+        assert all("delete_after_seconds" not in row.payload for row in durable)
         assert await session.scalar(select(func.sum(TicketLedger.delta))) == 3

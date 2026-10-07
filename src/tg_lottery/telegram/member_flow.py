@@ -476,7 +476,7 @@ class MemberFlow:
         if rules.group_invite_rules:
             participant = await self._participants.eligible_participant(campaign.id, user_id)
             if participant is None:
-                raise UserFacingError("请先点击「立即参与」并完成全部参与群资格校验")
+                raise UserFacingError(member_callbacks.REGISTRATION_REMINDER)
             return await build_group_invite_payload(
                 campaign,
                 user_id=user_id,

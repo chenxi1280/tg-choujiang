@@ -404,7 +404,8 @@ async def test_bonus_callback_without_registration_answers_popup():
     assert len(query.answers) == 1
     text, show_alert = query.answers[0]
     assert show_alert is True
-    assert "立即参与" in text or "先参与" in text
+    assert "参与抽奖" in text
+    assert "立即参与" not in text
 
 
 async def test_bonus_callback_sends_invite_link_to_private_chat():

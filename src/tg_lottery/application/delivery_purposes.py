@@ -14,6 +14,7 @@ PURPOSE_LABELS = {
     "send_invite_link": "个人邀请入口私信",
     "create_required_chat_invite": "群/频道加入入口创建",
     "send_progress_notice": "必要进度通知",
+    "send_temporary_reminder": "临时操作提醒",
     "edit_campaign_card_state": "活动卡状态更新",
     "edit_campaign_card_cancelled": "活动卡取消同步",
     "revoke_invite_link": "邀请入口撤销",

@@ -140,10 +140,14 @@ async def bonus_callback(
         return
     rules = CampaignRules.model_validate(campaign.rules)
     if not rules.bonus_types and not rules.invite_admission_enabled:
-        await safe_answer(query, "本期抽奖没有开启加成", alert=True)
+        if not await _queue_group_reminder(
+            flow, query, campaign, text="本期抽奖没有开启可用的邀请或发言加成。"
+        ):
+            await safe_answer(query, "本期抽奖没有开启加成", alert=True)
         return
     if not await _registered_for_bonus(flow, campaign, rules, user_id=query.from_user.id):
-        await safe_answer(query, "请先点击「立即参与」完成全部参与群资格校验", alert=True)
+        if not await _queue_group_reminder(flow, query, campaign, text=REGISTRATION_REMINDER):
+            await safe_answer(query, REGISTRATION_REMINDER, alert=True)
         return
     try:
         text, markup = await _bonus_payload(flow, campaign, rules, user_id=query.from_user.id)
@@ -167,7 +171,7 @@ async def show_bonus_message(
     if not rules.bonus_types and not rules.invite_admission_enabled:
         raise UserFacingError("本期抽奖没有开启加成")
     if not await _registered_for_bonus(flow, campaign, rules, user_id=user_id):
-        raise UserFacingError("请先点击「立即参与」完成全部参与群资格校验")
+        raise UserFacingError(REGISTRATION_REMINDER)
     text, markup = await _bonus_payload(flow, campaign, rules, user_id=user_id)
     await message.answer(text, reply_markup=markup)
 
@@ -207,12 +211,17 @@ async def group_invite_callback(flow: "MemberFlow", query: CallbackQuery, payloa
     campaign = await flow._queries.campaign_by_reference(reference)
     if campaign is None:
         raise UserFacingError("活动不存在或已经失效")
-    await flow._participants.request_group_invite_link(
-        campaign.id,
-        query.from_user.id,
-        int(raw_chat_id),
-        bot_username=flow._bot_username,
-    )
+    try:
+        await flow._participants.request_group_invite_link(
+            campaign.id,
+            query.from_user.id,
+            int(raw_chat_id),
+            bot_username=flow._bot_username,
+        )
+    except UserFacingError as exc:
+        if await send_public_reminder_for_error(flow, query, campaign, error=exc):
+            return
+        raise
     await safe_answer(query, "链接已提交；明确失败的请求会重新排队", alert=False)
 
 
@@ -220,12 +229,30 @@ async def invite_page_callback(flow: "MemberFlow", query: CallbackQuery, payload
     reference, separator, raw_page = payload.rpartition(":")
     if not separator or not raw_page.isdecimal():
         raise UserFacingError("邀请链接页码无效")
-    await flow.show_invite_link(
-        query.message,
-        reference,
-        user_id=query.from_user.id,
-        page=int(raw_page),
-    )
+    try:
+        await flow.show_invite_link(
+            query.message,
+            reference,
+            user_id=query.from_user.id,
+            page=int(raw_page),
+        )
+    except UserFacingError as exc:
+        campaign = await flow._queries.campaign_by_reference(reference)
+        if campaign is None or not await send_public_reminder_for_error(
+            flow, query, campaign, error=exc
+        ):
+            raise
+
+
+async def invite_link_callback(flow: "MemberFlow", query: CallbackQuery, reference: str) -> None:
+    try:
+        await flow.show_invite_link(query.message, reference, user_id=query.from_user.id)
+    except UserFacingError as exc:
+        campaign = await flow._queries.campaign_by_reference(reference)
+        if campaign is None or not await send_public_reminder_for_error(
+            flow, query, campaign, error=exc
+        ):
+            raise
 
 
 async def bonus_category_callback(
@@ -268,15 +295,8 @@ async def bonus_group_detail_callback(
 
 
 async def bonus_navigation_callback(flow: "MemberFlow", query: CallbackQuery, data: str) -> bool:
-    if data.startswith("m:bo:"):
-        await show_bonus_message(
-            flow,
-            query.message,
-            data.removeprefix("m:bo:"),
-            user_id=query.from_user.id,
-        )
-        return True
     routes = (
+        ("m:bo:", show_bonus_message, None),
         ("member:bonus_invites:", bonus_category_callback, "invites"),
         ("member:bonus_activity:", bonus_category_callback, "activity"),
         ("m:id:", bonus_group_detail_callback, "invites"),
@@ -286,8 +306,77 @@ async def bonus_navigation_callback(flow: "MemberFlow", query: CallbackQuery, da
     if matched is None:
         return False
     prefix, handler, category = matched
-    await handler(flow, query, data.removeprefix(prefix), category=category)
+    payload = data.removeprefix(prefix)
+    reference = payload if category is None else _bonus_error_reference(prefix, payload)
+    try:
+        if category is None:
+            await handler(flow, query.message, payload, user_id=query.from_user.id)
+        else:
+            await handler(flow, query, payload, category=category)
+    except UserFacingError as exc:
+        campaign = await flow._queries.campaign_by_reference(reference)
+        if campaign is None or not await send_public_reminder_for_error(
+            flow, query, campaign, error=exc
+        ):
+            raise
     return True
+
+
+async def send_public_reminder_for_error(
+    flow: "MemberFlow", query: CallbackQuery, campaign: object, *, error: Exception
+) -> bool:
+    message = query.message
+    if not isinstance(message, Message) or message.chat.type == "private":
+        return False
+    text = str(error)
+    if not _temporary_reminder_error(text):
+        return False
+    await _queue_group_reminder(flow, query, campaign, text=text)
+    return True
+
+
+async def _queue_group_reminder(
+    flow: "MemberFlow", query: CallbackQuery, campaign: object, *, text: str
+) -> bool:
+    message = query.message
+    if not isinstance(message, Message) or message.chat.type == "private":
+        return False
+    await flow._participants.queue_temporary_reminder(
+        campaign_id=campaign.id,
+        recipient_chat_id=message.chat.id,
+        text=text,
+        business_key=f"temporary_reminder:{campaign.id}:{query.id}",
+    )
+    await safe_answer(query, text, alert=True)
+    return True
+
+
+REGISTRATION_REMINDER = "请先点击「参与抽奖」完成报名及参与条件校验，再查看邀请或对应加成。"
+
+_TEMPORARY_REMINDER_MESSAGES = frozenset(
+    {
+        REGISTRATION_REMINDER,
+        "仅合格参与者可获取本活动群邀请链接",
+        "该群未开启邀请门槛或邀请加成",
+        "本期抽奖没有开启邀请加成",
+        "本期抽奖没有开启加成",
+        "本期抽奖没有可展示的加成",
+        "本期抽奖没有可展示的逐群加成",
+        "本期专属链接正在创建，或你尚未完成报名，请稍后再点",
+    }
+)
+
+
+def _temporary_reminder_error(text: str) -> bool:
+    return text in _TEMPORARY_REMINDER_MESSAGES
+
+
+def _bonus_error_reference(prefix: str, payload: str) -> str:
+    if prefix.startswith("member:bonus_"):
+        reference, _page = _reference_page(payload, label="加成列表")
+        return reference
+    reference, _chat_id, _return_page = _reference_chat_page(payload, label="加成群")
+    return reference
 
 
 async def rules_callback(
@@ -322,7 +411,7 @@ async def _eligible_bonus_campaign(
         raise UserFacingError("活动不存在或已经失效")
     rules = CampaignRules.model_validate(campaign.rules)
     if not await _registered_for_bonus(flow, campaign, rules, user_id=user_id):
-        raise UserFacingError("请先点击「立即参与」完成全部参与群资格校验")
+        raise UserFacingError(REGISTRATION_REMINDER)
     return campaign, rules
 
 

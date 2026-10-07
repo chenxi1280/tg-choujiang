@@ -244,7 +244,10 @@ class OutboxWorker:
                     result.invite_link,
                     context=f"outbox-result:{row.id}",
                 )
-            if row.operation not in _PROJECTED_OPERATIONS:
+            if (
+                row.operation not in _PROJECTED_OPERATIONS
+                and "delete_after_seconds" not in row.payload
+            ):
                 row.projected_at = utcnow()
             row.last_error = None
             row.lease_owner = None

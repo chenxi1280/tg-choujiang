@@ -260,10 +260,8 @@ class LotteryUpdateHandler:
             )
             return True
         if data.startswith("member:invite:"):
-            await self._member_flow.show_invite_link(
-                message,
-                data.removeprefix("member:invite:"),
-                user_id=query.from_user.id,
+            await member_callbacks.invite_link_callback(
+                self._member_flow, query, data.removeprefix("member:invite:")
             )
             return True
         if data.startswith("member:verify:"):

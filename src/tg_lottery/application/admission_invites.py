@@ -1,7 +1,10 @@
 from sqlalchemy import func, select
 
 from tg_lottery.application.admission_progress import record_group_admission
-from tg_lottery.application.progress_notifications import queue_progress_notice
+from tg_lottery.application.progress_notifications import (
+    queue_incomplete_progress_notice,
+    queue_progress_notice,
+)
 from tg_lottery.domain.enums import InvitationState
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import CampaignParticipationGroup, Invitation, Participant
@@ -22,18 +25,18 @@ async def update_invite_admission(session: object, *, campaign: object, invitati
     )
     if participant is None:
         raise ValueError("inviter participant is missing")
-    count = int(
-        await session.scalar(
-            select(func.count(Invitation.id)).where(
-                Invitation.campaign_id == campaign.id,
-                Invitation.inviter_participant_id == participant.id,
-                Invitation.participation_group_id == target.id,
-                Invitation.state == InvitationState.VALID,
-            )
-        )
-        or 0
+    count = await _valid_group_invites(
+        session, campaign=campaign, participant=participant, target=target
     )
     if count < rule.required_valid_invites:
+        await _queue_incomplete_invite_gate(
+            session,
+            campaign=campaign,
+            participant=participant,
+            target=target,
+            count=count,
+            rule=rule,
+        )
         return
     created = await record_group_admission(
         session,
@@ -52,3 +55,39 @@ async def update_invite_admission(session: object, *, campaign: object, invitati
             key=f"invite_admission:{participant.id}:{target.id}",
             text=f"本群邀请门槛已完成: 已确认 {count}/{rule.required_valid_invites} 名有效新成员。",
         )
+
+
+async def _valid_group_invites(
+    session: object, *, campaign: object, participant: object, target: object
+) -> int:
+    count = await session.scalar(
+        select(func.count(Invitation.id)).where(
+            Invitation.campaign_id == campaign.id,
+            Invitation.inviter_participant_id == participant.id,
+            Invitation.participation_group_id == target.id,
+            Invitation.state == InvitationState.VALID,
+        )
+    )
+    return int(count or 0)
+
+
+async def _queue_incomplete_invite_gate(
+    session: object,
+    *,
+    campaign: object,
+    participant: object,
+    target: object,
+    count: int,
+    rule: object,
+) -> None:
+    await queue_incomplete_progress_notice(
+        session,
+        campaign=campaign,
+        participant=participant,
+        chat_id=target.chat_id_snapshot,
+        key=f"progress_incomplete:invite:{participant.id}:{target.id}:{count}",
+        text=(
+            f"本群邀请进度: 已确认 {count}/{rule.required_valid_invites} 名有效新成员, "
+            f"还差 {rule.required_valid_invites - count} 名。"
+        ),
+    )

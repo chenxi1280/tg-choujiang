@@ -9,6 +9,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
 
+from tg_lottery.application.message_deletion import TEMPORARY_REMINDER_OPERATION
 from tg_lottery.infrastructure.db import InviteLink
 from tg_lottery.presentation.campaign_card import campaign_link
 from tg_lottery.presentation.draw_messages import draw_result_text as _draw_result_text
@@ -60,6 +61,7 @@ class TelegramGateway:
             "send_draw_result": self._send_draw_result,
             "send_winner_notice": self._send_winner_notice,
             "send_progress_notice": self._send_progress_notice,
+            TEMPORARY_REMINDER_OPERATION: self._send_temporary_reminder,
             "delete_message": self._delete_message,
         }
         handler = handlers.get(outbox.operation)
@@ -95,6 +97,18 @@ class TelegramGateway:
                     ]
                 ]
             ),
+        )
+        return GatewayResult(
+            remote_result=remote_object(message), remote_message_id=message.message_id
+        )
+
+    async def _send_temporary_reminder(
+        self, outbox: GatewayRequest, _: InviteLink | None
+    ) -> GatewayResult:
+        message = await self._bot.send_message(
+            outbox.recipient_chat_id,
+            str(outbox.payload["text"]),
+            disable_notification=False,
         )
         return GatewayResult(
             remote_result=remote_object(message), remote_message_id=message.message_id

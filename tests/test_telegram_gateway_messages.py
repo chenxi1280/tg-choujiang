@@ -192,6 +192,30 @@ async def test_delete_message_operation_calls_telegram_with_frozen_target() -> N
     assert result.remote_result == {"ok": True}
 
 
+async def test_temporary_reminder_sends_plain_text_and_returns_message_id() -> None:
+    class ReminderBot:
+        async def send_message(self, chat_id, text, **kwargs):
+            self.call = (chat_id, text, kwargs)
+            return Message(
+                message_id=91,
+                date=datetime.now(UTC),
+                chat=Chat(id=chat_id, type="supergroup"),
+                text=text,
+            )
+
+    bot = ReminderBot()
+    gateway = TelegramGateway(bot, object())
+
+    result = await gateway.execute(
+        GatewayRequest(
+            "send_temporary_reminder", -1001, {"text": "请先参与抽奖", "delete_after_seconds": 15}
+        )
+    )
+
+    assert bot.call == (-1001, "请先参与抽奖", {"disable_notification": False})
+    assert result.remote_message_id == 91
+
+
 async def test_personal_invite_link_remains_joinable_after_campaign_cutoff() -> None:
     class InviteBot:
         async def create_chat_invite_link(self, **values):

@@ -6,6 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tg_lottery.application.campaign_notifications import add_cancelled_campaign_card
+from tg_lottery.application.message_deletion import project_message_deletion
 from tg_lottery.application.records import add_outbox, utcnow
 from tg_lottery.application.required_chat_links import project_required_chat_operation
 from tg_lottery.application.rule_publication import project_rule_page
@@ -33,6 +34,7 @@ async def project_outbox_success(
     *,
     cipher: SecretCipher,
 ) -> None:
+    await project_message_deletion(session, row)
     if await project_rule_page(session, row):
         return
     if await project_required_chat_operation(session, row, result, cipher=cipher):

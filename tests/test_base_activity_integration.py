@@ -54,6 +54,12 @@ async def seed(session_factory, *, days=7, messages=5, second=False):
     return campaign_id, participant_id
 
 
+def _split_progress_notices(notices):
+    incomplete = [row for row in notices if row.business_key.startswith("progress_incomplete:")]
+    durable = [row for row in notices if row not in incomplete]
+    return durable, incomplete
+
+
 async def messages(service, *, day, count=5, chat_id=-100123):
     for number in range(count):
         observation = MessageObservation(
@@ -80,7 +86,11 @@ async def test_seven_days_stashes_bonus_then_enables_same_ledger_and_deduplicate
         assert participant.ticket_total_cache == 7
         assert not await settlement._eligible_entries(session, campaign_id)
         notices = list(await session.scalars(select(TelegramOutbox)))
-        assert len(notices) == 12
+        durable, incomplete = _split_progress_notices(notices)
+        assert len(durable) == 12
+        assert incomplete
+        assert all(item.payload.get("delete_after_seconds") == 15 for item in incomplete)
+        assert all("delete_after_seconds" not in item.payload for item in durable)
         assert all("暂存" in notice.payload["ticket_status"] for notice in notices)
     await messages(service, day=6)
     async with session_factory() as session:
@@ -89,12 +99,43 @@ async def test_seven_days_stashes_bonus_then_enables_same_ledger_and_deduplicate
         entries = await settlement._eligible_entries(session, campaign_id)
         assert [(item.id, weight) for item, weight in entries] == [(participant_id, 8)]
         assert await session.scalar(select(func.count(BaseActivityEvent.id))) == 35
-        assert await session.scalar(select(func.count(TelegramOutbox.id))) == 15
+        durable_count = await session.scalar(
+            select(func.count(TelegramOutbox.id)).where(
+                TelegramOutbox.business_key.notlike("progress_incomplete:%")
+            )
+        )
+        assert durable_count == 15
     detail = await QueryService(session_factory).participant_campaign_detail(
         201, await ref(session_factory, campaign_id)
     )
     assert detail.base_qualified
     assert "已达标" in detail.base_progress
+
+
+async def test_qualified_streak_does_not_remind_a_later_short_day(session_factory):
+    _, participant_id = await seed(session_factory)
+    service = ActivityService(partial(UnitOfWork, session_factory))
+    for day in range(7):
+        await messages(service, day=day)
+    await messages(service, day=7, count=2)
+    async with session_factory() as session:
+        assert (await session.get(Participant, participant_id)).base_qualified
+        notices = list(await session.scalars(select(TelegramOutbox)))
+        later_messages = [
+            row
+            for row in notices
+            if row.business_key.startswith("progress_incomplete:message:")
+            and "2026-09-08" in row.business_key
+        ]
+        later_activity = [
+            row
+            for row in notices
+            if row.business_key.startswith("progress_incomplete:activity:")
+            and "2026-09-08" in row.business_key
+        ]
+        assert later_messages == []
+        assert later_activity
+        assert all(row.payload.get("delete_after_seconds") == 15 for row in later_activity)
 
 
 async def test_each_group_must_qualify_and_gate_only_group_does_not_award_legacy_bonus(
