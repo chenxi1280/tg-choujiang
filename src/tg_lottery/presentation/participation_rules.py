@@ -17,7 +17,6 @@ from tg_lottery.presentation.campaign_card import (
 from tg_lottery.presentation.mentions import html_utf16_length
 from tg_lottery.presentation.rule_pages import contextual_pages
 from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
-from tg_lottery.telegram.creator_invite_retention import retention_text
 from tg_lottery.telegram.public_projection import format_public_time
 
 TEXT_PAGE_UNITS = 3500
@@ -72,10 +71,7 @@ def invitation_requirement_blocks(rules: CampaignRules, payload: Mapping) -> tup
     deadline = datetime.fromisoformat(str(payload["cutoff_at"])) - timedelta(
         hours=rules.invite.retention_hours
     )
-    return (
-        "有效邀请要求: " + retention_text(rules.invite.retention_hours),
-        "最晚有效入群: " + format_public_time(deadline, rules.timezone),
-    )
+    return ("最晚有效入群: " + format_public_time(deadline, rules.timezone),)
 
 
 def message_count_blocks(rules: CampaignRules) -> tuple[str, ...]:
