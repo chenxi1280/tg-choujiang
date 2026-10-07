@@ -1,5 +1,4 @@
 from dataclasses import dataclass, replace
-from html import escape
 
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, User
@@ -8,13 +7,14 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
-from tg_lottery.presentation.participation_rules import public_rule_blocks, split_rule_blocks
+from tg_lottery.presentation.participation_rules import complete_rule_pages
 from tg_lottery.presentation.target_identity import (
     distinct_group_names,
 )
 from tg_lottery.telegram.member_activity_landing import _rules_payload
 from tg_lottery.telegram.member_bonus_context import actual_bonus_context, bonus_eligibility_payload
 from tg_lottery.telegram.member_bonus_permissions import inspect_bonus_permissions
+from tg_lottery.telegram.member_bonus_read import bonus_read_payload, uses_legacy_bonus
 from tg_lottery.telegram.member_bonus_views import (
     build_bonus_category,
     build_bonus_group_detail,
@@ -46,9 +46,12 @@ class MemberMessageTarget:
 
 
 class MemberNavigation:
-    def __init__(self, *, bot, queries, cipher, tokens, profiles, bot_username: str):
+    def __init__(
+        self, *, bot, queries, cipher, tokens, profiles, bot_username: str, relationships=None
+    ):
         self._bot, self._queries, self._cipher = bot, queries, cipher
         self._tokens, self._profiles, self._bot_username = tokens, profiles, bot_username
+        self._relationships = relationships
 
     async def open_message(self, message: Message, reference: str, *, rules_only: bool = False):
         if message.from_user is None:
@@ -147,7 +150,7 @@ class MemberNavigation:
         parts = context.route.split(":")
         campaign = await self._campaign(parts[2])
         prizes = await self._queries.prizes(campaign.id)
-        pages = split_rule_blocks(public_rule_blocks(_rules_payload(self, campaign, prizes)))
+        pages = complete_rule_pages(_rules_payload(self, campaign, prizes))
         number = int(parts[3]) if len(parts) > 3 else 0
         selected = min(max(0, number), len(pages) - 1)
         detail = await self._queries.participant_campaign_detail(
@@ -160,9 +163,7 @@ class MemberNavigation:
             rows.append(navigation)
         rows.append([_button("返回活动详情", f"m:detail:{campaign.public_ref}")])
         text = (
-            f"参与条件 · {escape(campaign.name)}\n"
             f"规则版本：{campaign.config_revision} · 第{selected + 1}/{len(pages)}页\n"
-            f'<a href="https://t.me/{self._bot_username}?start=join_{campaign.public_ref}">同场活动入口</a>\n\n'
             + pages[selected]
             + "\n"
             + window_guidance(campaign, CampaignRules.model_validate(campaign.rules))
@@ -204,6 +205,12 @@ class MemberNavigation:
         if detail is None:
             raise UserFacingError("请先登记本场活动；已有本人记录始终可读，不要求重新报名")
         rules = CampaignRules.model_validate(campaign.rules)
+        if parts[1] == "bo" and uses_legacy_bonus(rules):
+            text, keyboard = await bonus_read_payload(
+                self, campaign, rules, user_id=query.from_user.id
+            )
+            await self._render(query, context, pages=(text,), keyboard=keyboard)
+            return
         targets = await self._queries.qualification_targets(campaign.id)
         unavailable = await inspect_bonus_permissions(self._bot, rules, targets=targets)
         options = dict(
@@ -239,6 +246,8 @@ class MemberNavigation:
         campaign = await self._campaign(context.route.split(":")[2])
         text, keyboard = await condition_check_payload(
             query,
+            relationships=self._relationships,
+            bot_username=self._bot_username,
             campaign=campaign,
             queries=self._queries,
             bot=self._bot,

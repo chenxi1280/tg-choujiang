@@ -26,10 +26,11 @@ from tg_lottery.telegram.creator_input_replay import recover_applied_input
 from tg_lottery.telegram.creator_message_context import callback_message as _message
 from tg_lottery.telegram.creator_message_context import message_user as _user
 from tg_lottery.telegram.creator_message_context import panel_target as _target
+from tg_lottery.telegram.creator_operation_logging import log_creator_action
+from tg_lottery.telegram.creator_panel_recovery import recover_gate_panel, restore_applied_panel
 from tg_lottery.telegram.creator_prizes import PRIZE_ACTIONS, CreatorPrizes
 from tg_lottery.telegram.creator_publication import CreatorPublisher
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
-from tg_lottery.telegram.creator_resume_views import resumed_view
 from tg_lottery.telegram.creator_sections import (
     SECTION_ACTIONS,
     current_section,
@@ -46,6 +47,7 @@ from tg_lottery.telegram.creator_views import (
 from tg_lottery.telegram.draft_config import ensure_draft_identity, new_draft
 from tg_lottery.telegram.home_views import home_keyboard, home_text
 from tg_lottery.telegram.issuer import creator_issuer
+from tg_lottery.telegram.platform_requirements import attach_platform_policy
 
 
 class CampaignCreator:
@@ -65,6 +67,7 @@ class CampaignCreator:
         self._queries = queries
         self._renderer = renderer
         self._settings = settings
+        self._platform_policy = getattr(campaigns, "platform_policy", None)
         self._suspension = CreatorSuspension(sessions=sessions, renderer=renderer)
         self._prizes = CreatorPrizes(sessions=sessions, renderer=renderer)
         self._behavior_admission = CreatorBehaviorAdmission(
@@ -144,6 +147,10 @@ class CampaignCreator:
             "panel_message_id": message.message_id,
             "creator_name": query.from_user.full_name,
         }
+        if await recover_gate_panel(
+            query, sessions=self._sessions, renderer=self._renderer, session=existing, data=data
+        ):
+            return True
         if existing.state == "draft:suspended":
             await self._show_resume(query.from_user.id, message, data)
         else:
@@ -151,26 +158,7 @@ class CampaignCreator:
         return True
 
     async def recover_applied_callback(self, query: CallbackQuery) -> None:
-        message = _message(query)
-        if message.chat.type != "private" or message.chat.id != query.from_user.id:
-            raise UserFacingError("请在本人私聊恢复创建草稿")
-        session = await self._sessions.get(query.from_user.id)
-        if session is None or not session.state.startswith("draft:"):
-            raise UserFacingError("创建草稿已过期，请重新打开创建入口")
-        if session.state == "draft:suspended":
-            await message.edit_text(
-                home_text(session.data), reply_markup=home_keyboard(session.data)
-            )
-            return
-        data, state, (text, rows) = resumed_view(
-            dict(session.data), state=session.state, module=False
-        )
-        await self._sessions.set(query.from_user.id, state, data)
-        await self._renderer.edit(
-            PanelTarget(query.from_user.id, message.chat.id, int(data["panel_message_id"])),
-            text="本次修改已记录，已恢复当前草稿显示\n\n" + text,
-            rows=rows,
-        )
+        await restore_applied_panel(query, sessions=self._sessions, renderer=self._renderer)
 
     async def _open(self, user: User, message: Message) -> None:
         existing = await self._sessions.get(user.id)
@@ -225,7 +213,7 @@ class CampaignCreator:
 
     async def _new_draft(self, user: User, panel_message_id: int) -> dict[str, Any]:
         groups = await self._queries.admin_groups(user.id)
-        data = new_draft()
+        data = attach_platform_policy(new_draft(), self._platform_policy)
         if len(groups) == 1:
             data = bind_initial_group(data, groups[0])
         return (
@@ -278,6 +266,7 @@ class CampaignCreator:
         await message.answer("当前正在创建抽奖，请点击上方草稿中的按钮继续。")
         return True
 
+    @log_creator_action
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         if grant.action.startswith("draft_content_page:"):
             await self._renderer.page(query, grant)
@@ -432,7 +421,7 @@ class CampaignCreator:
         await _message(query).edit_text(home_text(data), reply_markup=home_keyboard(data))
 
     async def _render_dashboard(self, user_id: int, message: Message, data: dict[str, Any]) -> None:
-        updated = data | {"guided": False}
+        updated = attach_platform_policy(data, self._platform_policy) | {"guided": False}
         await self._sessions.set(user_id, "draft:idle", updated)
         await self._render_text(
             user_id,
@@ -450,7 +439,7 @@ class CampaignCreator:
         )
 
     async def _render_dashboard_from_text(self, message: Message, data: dict[str, Any]) -> None:
-        updated = data | {"guided": False}
+        updated = attach_platform_policy(data, self._platform_policy) | {"guided": False}
         await self._sessions.set(_user(message).id, "draft:idle", updated)
         await self._edit_from_text(
             message, data=updated, text=preview_text(updated), rows=dashboard_rows(updated)

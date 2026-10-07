@@ -68,8 +68,13 @@ class SmoothRateLimiter:
         self._sleep = sleep
         self._clock = clock
         self._next_at: float | None = None
+        self._lock = asyncio.Lock()
 
     async def acquire(self) -> None:
+        async with self._lock:
+            await self._acquire_slot()
+
+    async def _acquire_slot(self) -> None:
         now = self._clock()
         if self._next_at is not None and now < self._next_at:
             await self._sleep(self._next_at - now)
@@ -83,6 +88,8 @@ class QualificationObservationResult:
     observed_status: str
     error_code: str | None
     observations: tuple[dict[str, Any], ...]
+    relationship: dict[str, Any] | None = None
+    profile: dict[str, Any] | None = None
 
 
 async def preflight_membership_targets(
@@ -90,13 +97,20 @@ async def preflight_membership_targets(
     *,
     chat_ids: tuple[int, ...],
     limiter: SmoothRateLimiter,
+    admin_chat_ids: tuple[int, ...] = (),
 ) -> tuple[TargetPreflightFailure, ...]:
     if not chat_ids:
         return ()
     bot_id = int(bot.id)
     failures = []
     for chat_id in chat_ids:
-        failure = await _preflight_target(bot, chat_id=chat_id, bot_id=bot_id, limiter=limiter)
+        failure = await _preflight_target(
+            bot,
+            chat_id=chat_id,
+            bot_id=bot_id,
+            limiter=limiter,
+            require_admin=chat_id in admin_chat_ids,
+        )
         if failure is not None:
             failures.append(failure)
     return tuple(failures)
@@ -134,7 +148,7 @@ async def observe_memberships(
 
 
 async def _preflight_target(
-    bot: Bot, *, chat_id: int, bot_id: int, limiter: SmoothRateLimiter
+    bot: Bot, *, chat_id: int, bot_id: int, limiter: SmoothRateLimiter, require_admin=False
 ) -> TargetPreflightFailure | None:
     try:
         await limiter.acquire()
@@ -151,6 +165,8 @@ async def _preflight_target(
         raise QualificationRetryable(str(exc)) from exc
     if not _is_member(member):
         return TargetPreflightFailure(chat_id, "bot_not_member", str(member.status))
+    if require_admin and str(member.status) not in {"administrator", "creator"}:
+        return TargetPreflightFailure(chat_id, "bot_not_admin", str(member.status))
     return None
 
 
@@ -186,13 +202,20 @@ async def _observe_membership(
     except TelegramAPIError as exc:
         raise QualificationRetryable(str(exc)) from exc
     state = QualificationState.ELIGIBLE if _is_member(member) else QualificationState.INELIGIBLE
-    return _observation(
+    observation = _observation(
         chat_id=chat_id,
         state=state,
         status=str(member.status),
         error=None,
         observed_at=observed_at,
     )
+    user = getattr(member, "user", None)
+    if user is None:
+        return observation
+    return observation | {
+        "profile_observed": True,
+        "username": getattr(user, "username", None),
+    }
 
 
 def _observation(

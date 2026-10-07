@@ -205,7 +205,7 @@ class Participant(Base, UuidPkMixin, TimestampMixin):
     registration_intent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     counting_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     counting_started_update_id: Mapped[int | None] = mapped_column(BigInteger)
-    ticket_total_cache: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    ticket_total_cache: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     registered_via_participation_group_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("campaign_participation_groups.id", ondelete="SET NULL")
     )

@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 
 from tests.test_creator_settings import _panel_query
+from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.creator_publication import CreatorPublisher
 
@@ -21,6 +22,8 @@ def publisher_fixture():
                 return_value=SimpleNamespace(
                     name="活动",
                     public_ref="abc",
+                    state=CampaignState.RUNNING,
+                    rules={},
                 )
             )
         ),

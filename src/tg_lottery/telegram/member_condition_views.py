@@ -6,7 +6,9 @@ from aiogram.types import InlineKeyboardButton
 
 from tg_lottery.application.campaign_targets import QualificationTarget
 from tg_lottery.application.records import utcnow
+from tg_lottery.domain.condition_targets import frozen_condition_targets
 from tg_lottery.domain.enums import QualificationState
+from tg_lottery.domain.platform_policy import PlatformPolicy
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.presentation.participation_rules import gate_lines
 from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
@@ -15,14 +17,10 @@ from tg_lottery.telegram.member_popups import failure_reply_text
 
 def conditions(campaign: object) -> tuple[dict[str, object], ...]:
     presentation = getattr(campaign, "presentation", {}) or {}
-    participation = presentation.get("participation_groups") or []
-    main = presentation.get("main_chat")
-    extras = presentation.get("required_chats") or []
-    values = list(participation) + list(extras)
-    if not participation and isinstance(main, dict):
-        values.insert(0, main)
-    unique = {int(item["id"]): item for item in values if isinstance(item, dict)}
-    return tuple(unique.values())
+    policy = (getattr(campaign, "rules", {}) or {}).get("platform_policy")
+    return frozen_condition_targets(
+        presentation, platform_policy=PlatformPolicy.model_validate(policy) if policy else None
+    )
 
 
 def draw_rule(rules: CampaignRules) -> str:
@@ -163,7 +161,9 @@ def missing_targets_text(
     if page[1] > 1:
         lines.append(f"缺失条件第 {page[0]}/{page[1]} 页")
     participation = [item for item in missing if item.kind == "participation_group"]
-    requirements = [item for item in missing if item.kind == "requirement"]
+    requirements = [item for item in missing if item.kind == "requirement" and not item.platform]
+    official = [item for item in missing if item.platform]
+    _append_target_lines(lines, "平台官方频道（全部必需）", official)
     _append_target_lines(lines, "参与群（必须全部加入）", participation)
     _append_target_lines(lines, "准入条件（必须全部满足）", requirements)
     _append_pending_lines(lines, pending)

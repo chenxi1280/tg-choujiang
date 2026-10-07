@@ -7,6 +7,7 @@ from tg_lottery.telegram.creator_bonus_menu import bonus_menu_view
 from tg_lottery.telegram.creator_group_bonus import list_view
 from tg_lottery.telegram.creator_messages import message_settings_rows, message_settings_text
 from tg_lottery.telegram.creator_participation import participation_rows, participation_text
+from tg_lottery.telegram.platform_requirements import platform_summary
 
 ButtonRows = list[list[tuple[str, str]]]
 SECTION_ACTIONS = {
@@ -82,6 +83,7 @@ def _gate_complete(data: dict) -> bool:
 def _conditions(data: dict) -> tuple[str, ButtonRows]:
     text = (
         "参与条件设置\n\n全部参与群都必须加入；额外关注、用户限制和行为门槛分别核验。\n"
+        f"{platform_summary(data)}"
         f"{admission_summary(data)}"
     )
     rows = [

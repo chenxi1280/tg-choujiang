@@ -33,7 +33,7 @@ def _draft():
         "group_invite_rules": {str(CHAT_ID): {"enabled": True, "invites_per_cycle": 2}},
         "group_activity_rules": {
             str(CHAT_ID): GroupActivityRule(
-                messages_per_cycle=MESSAGE_TARGET, daily_max_cycles=DAILY_CYCLES
+                messages_per_cycle=MESSAGE_TARGET, daily_cap_mode="unlimited", daily_max_cycles=None
             ).model_dump()
         },
     }
@@ -46,7 +46,7 @@ def test_reward_controls_have_independent_actions_and_units():
     assert buttons["draft_bonus_input_reward"] == "自定义 · 1次"
     assert "1次" in buttons["draft_bonus_activity_group_reward_inc"]
     assert buttons["draft_bonus_input_cycle"] == "自定义 · 5条"
-    assert buttons["draft_bonus_input_cap"] == "自定义 · 2轮"
+    assert "draft_bonus_input_cap" not in buttons
     incremented = apply_action(editing, "draft_bonus_activity_group_reward_inc")
     restored = apply_action(incremented, "draft_bonus_activity_group_reward_dec")
     assert incremented["bonus_working_copy"]["rule"]["reward_tickets"] == 2
@@ -71,7 +71,7 @@ def test_custom_reward_saves_only_target_field_and_copy_uses_saved_rule():
     assert (rule["reward_tickets"], rule["messages_per_cycle"], rule["daily_max_cycles"]) == (
         REWARD,
         MESSAGE_TARGET,
-        DAILY_CYCLES,
+        None,
     )
     assert saved["admission"] == original["admission"]
     assert saved["group_invite_rules"] == original["group_invite_rules"]

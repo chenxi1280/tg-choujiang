@@ -55,6 +55,10 @@ async def source_qualification_reason(session: object, participant: object, obse
     statement = select(QualificationCheck).where(
         QualificationCheck.participant_id == participant.id,
         QualificationCheck.state != QualificationState.PENDING,
+        or_(
+            QualificationCheck.error_code.is_(None),
+            QualificationCheck.error_code != "behavior_gate_incomplete",
+        ),
         QualificationCheck.observed_at
         < observation.event_at.replace(microsecond=0) + timedelta(seconds=1),
     )

@@ -37,9 +37,10 @@ class GatewayResult:
 
 
 class TelegramGateway:
-    def __init__(self, bot: Bot, cipher: SecretCipher) -> None:
+    def __init__(self, bot: Bot, cipher: SecretCipher, *, bot_username: str | None = None) -> None:
         self._bot = bot
         self._cipher = cipher
+        self._bot_username = bot_username
 
     async def execute(
         self,
@@ -105,10 +106,30 @@ class TelegramGateway:
     async def _send_temporary_reminder(
         self, outbox: GatewayRequest, _: InviteLink | None
     ) -> GatewayResult:
+        payload = outbox.payload
+        options = {"disable_notification": False}
+        text = str(payload["text"])
+        if payload.get("campaign_ref"):
+            if not self._bot_username:
+                raise ValueError("temporary reminder participation link requires a bot username")
+            options["reply_markup"] = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="参与抽奖",
+                            url=campaign_link(payload | {"bot_username": self._bot_username}),
+                        )
+                    ]
+                ]
+            )
+        if payload.get("user_id"):
+            mention = user_mention(payload | {"display_name": "这位成员"})
+            text = mention + "\n" + html.escape(text)
+            options["parse_mode"] = "HTML"
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
-            str(outbox.payload["text"]),
-            disable_notification=False,
+            text,
+            **options,
         )
         return GatewayResult(
             remote_result=remote_object(message), remote_message_id=message.message_id
@@ -336,6 +357,14 @@ def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
     text = "查看活动状态与规则" if closed else "👉 点击参与抽奖"
     action = "rules" if closed else "join"
     rows = [[InlineKeyboardButton(text=text, url=_campaign_deep_link(payload, action))]]
+    if not closed:
+        reference = payload["campaign_ref"]
+        rows.append(
+            [
+                InlineKeyboardButton(text="邀请入口", callback_data=f"member:invite:{reference}"),
+                InlineKeyboardButton(text="我的加成", callback_data=f"member:bonus:{reference}"),
+            ]
+        )
     folder_link = payload.get("presentation", {}).get("folder_link")
     if folder_link and not closed:
         rows.append([InlineKeyboardButton(text="🗂 一键加入群和频道", url=str(folder_link))])

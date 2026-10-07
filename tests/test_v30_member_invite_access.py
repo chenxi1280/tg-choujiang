@@ -9,7 +9,7 @@ from tests.v30_helpers import FIRST, rules_for, seed_v3
 from tg_lottery.application.participants import ParticipantService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.domain.errors import UserFacingError
-from tg_lottery.infrastructure.db import TelegramOutbox
+from tg_lottery.infrastructure.db import Campaign, TelegramOutbox
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.telegram.member_base_activity import base_registration_reply
 from tg_lottery.telegram.member_callbacks import (
@@ -100,6 +100,18 @@ async def test_invite_gate_tools_still_require_registration(session_factory):
     flow, campaign, message = await member_flow(session_factory, ())
     with pytest.raises(UserFacingError, match=REGISTRATION_REMINDER):
         await show_bonus_message(flow, message, campaign.public_ref, user_id=202)
+
+
+async def test_invite_entry_supports_gate_without_any_group_bonus_rules(session_factory):
+    flow, campaign, message = await member_flow(session_factory, ())
+    campaign.rules = campaign.rules | {"group_invite_rules": {}, "group_activity_rules": {}}
+    async with session_factory() as session, session.begin():
+        stored = await session.get(Campaign, campaign.id)
+        stored.rules = campaign.rules
+    await flow.show_invite_link(message, campaign.public_ref, user_id=201)
+    assert f"member:invite_group:{campaign.public_ref}:{FIRST}" in button_callbacks(message)
+    with pytest.raises(UserFacingError, match=REGISTRATION_REMINDER):
+        await flow.show_invite_link(message, campaign.public_ref, user_id=202)
 
 
 def button_labels(message):

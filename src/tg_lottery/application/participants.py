@@ -21,7 +21,6 @@ from tg_lottery.application.operational_blocks import (
 from tg_lottery.application.participant_qualification import (
     accepts_registration,
     apply_check_result,
-    build_draw_check,
     can_apply_registration_result,
     mark_membership_ineligible,
     pending_approval_chat_ids,
@@ -29,6 +28,7 @@ from tg_lottery.application.participant_qualification import (
     store_target_observations,
     target_chat_ids,
 )
+from tg_lottery.application.platform_result import refresh_relationship_result
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import add_job
 from tg_lottery.application.request_context import current_update_id
@@ -77,6 +77,8 @@ class QualificationResult:
     observed_status: str | None = None
     error_code: str | None = None
     observations: tuple[dict[str, Any], ...] = ()
+    relationship: dict[str, Any] | None = None
+    profile: dict[str, Any] | None = None
 
 
 class ParticipantService:
@@ -98,6 +100,7 @@ class ParticipantService:
         recipient_chat_id: int,
         text: str,
         business_key: str,
+        campaign_ref: str | None = None,
     ) -> None:
         await queue_temporary_reminder(
             self._uow_factory,
@@ -105,6 +108,7 @@ class ParticipantService:
             recipient_chat_id=recipient_chat_id,
             text=text,
             business_key=business_key,
+            campaign_ref=campaign_ref,
         )
 
     async def request_share_card(
@@ -202,6 +206,12 @@ class ParticipantService:
                 or check.phase != "registration"
             ):
                 raise ValueError("registration qualification check is missing")
+            current = await uow.session.get(Participant, result.participant_id)
+            if current is None:
+                raise ValueError("registration participant is missing")
+            result = await refresh_relationship_result(
+                uow.session, campaign, result, user_id=current.user_id
+            )
             participant = await uow.session.get(
                 Participant, result.participant_id, with_for_update=True
             )
@@ -305,52 +315,10 @@ class ParticipantService:
             raise ValueError("registration qualification check is missing")
         return row.campaign_id
 
-    async def record_draw_qualification(
-        self,
-        *,
-        participant_id: UUID,
-        state: QualificationState,
-        observed_at: datetime,
-        observed_status: str | None,
-        error_code: str | None,
-        observations: tuple[dict[str, Any], ...] = (),
-    ) -> QualificationCheck:
-        async with self._uow_factory() as uow:
-            participant = await uow.session.scalar(
-                select(Participant).where(Participant.id == participant_id).with_for_update()
-            )
-            if participant is None:
-                raise ValueError("participant not found")
-            check = build_draw_check(
-                participant,
-                state=state,
-                observed_at=observed_at,
-                observed_status=observed_status,
-                error_code=error_code,
-                observations=observations,
-            )
-            participant.qualification_state = state
-            uow.session.add(check)
-            await uow.session.flush()
-            store_target_observations(
-                uow.session,
-                check,
-                QualificationResult(
-                    participant_id=participant.id,
-                    qualification_check_id=check.id,
-                    state=state,
-                    observed_at=observed_at,
-                    observed_status=observed_status,
-                    error_code=error_code,
-                    observations=observations,
-                ),
-            )
-            await project_qualification_blocks(
-                uow.session,
-                campaign_id=participant.campaign_id,
-                observations=observations,
-            )
-            return check
+    async def record_draw_qualification(self, **kwargs):
+        from tg_lottery.application.draw_qualification_write import record_draw_qualification
+
+        return await record_draw_qualification(self._uow_factory, **kwargs)
 
     async def _existing_participant(
         self, session: object, request: RegistrationRequest

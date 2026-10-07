@@ -13,10 +13,13 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.application.user_profiles import UserProfileService
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.domain.platform_policy import PlatformPolicy
+from tg_lottery.domain.rules import canonical_hash
 from tg_lottery.telegram.campaign_authorization import verify_campaign_admin
 from tg_lottery.telegram.creator_bonus_permissions import (
     verify_publication_bonus_permissions,
 )
+from tg_lottery.telegram.creator_bonus_policy import current_bonus_policy
 from tg_lottery.telegram.creator_group_identity import normalize_draft_groups
 from tg_lottery.telegram.creator_group_selection import (
     configured_activity_chat_ids,
@@ -30,6 +33,13 @@ from tg_lottery.telegram.creator_rule_review import review_navigation, rule_revi
 from tg_lottery.telegram.creator_share import publication_receipt
 from tg_lottery.telegram.draft_config import campaign_input, presentation_from_data
 from tg_lottery.telegram.issuer import resolve_issuer
+from tg_lottery.telegram.platform_requirements import (
+    attach_platform_policy,
+    editable_requirement_data,
+    frozen_requirement_data,
+    inspect_official_channels,
+    platform_summary,
+)
 from tg_lottery.telegram.public_projection import campaign_state_text
 
 
@@ -77,6 +87,23 @@ class CreatorPublisher:
             await self._finish(query, data, UUID(str(data["published_campaign_id"])))
             return
         _require_fixed_draw(data)
+        policy = getattr(self._campaigns, "platform_policy", None)
+        if data.get("platform_policy") != (policy.model_dump(mode="json") if policy else None):
+            await self.confirm(query, None)
+            return
+        resolved = await self._resolve(data, query.from_user)
+        if canonical_hash(presentation_from_data(resolved)) != canonical_hash(
+            presentation_from_data(data)
+        ):
+            await self._sessions.set(query.from_user.id, "draft:publish_confirm", resolved)
+            text, rows = confirmation_view(resolved)
+            await self._renderer.render(
+                _message(query),
+                user_id=query.from_user.id,
+                text="参与条件或身份信息已变化，请核对后重新确认。\n\n" + text,
+                rows=rows,
+            )
+            return
         now = utcnow()
         draft, prizes = campaign_input(data, now=now)
         source = DraftSource(str(data["draft_id"]), int(data["draft_revision"]))
@@ -114,6 +141,7 @@ class CreatorPublisher:
         restored = data | {"published_campaign_id": str(campaign.id)}
         await self._sessions.set(user_id, "draft:publishing", restored)
         if campaign.state in {CampaignState.DRAFT, CampaignState.PUBLISHING}:
+            await self._verify_frozen_platform(campaign)
             await self._campaigns.publish(campaign.id, user_id, self._bot_username)
         campaign = await self._queries.campaign(campaign.id)
         if campaign is None:
@@ -136,6 +164,9 @@ class CreatorPublisher:
         await message.edit_text(text, reply_markup=keyboard)
 
     async def _finish(self, query: CallbackQuery, data: dict[str, Any], campaign_id: UUID) -> None:
+        current = await self._queries.campaign(campaign_id)
+        if current and current.state in {CampaignState.DRAFT, CampaignState.PUBLISHING}:
+            await self._verify_frozen_platform(current)
         await self._campaigns.publish(campaign_id, query.from_user.id, self._bot_username)
         accepted = data | {"publish_stage": "publication_accepted"}
         await self._sessions.set(query.from_user.id, "draft:publishing", accepted)
@@ -149,10 +180,20 @@ class CreatorPublisher:
         await _message(query).edit_text(text, reply_markup=keyboard)
         await self._sessions.clear(query.from_user.id)
 
+    async def _verify_frozen_platform(self, campaign):
+        frozen = campaign.rules.get("platform_policy")
+        await inspect_official_channels(
+            self._bot, PlatformPolicy.model_validate(frozen) if frozen else None
+        )
+
     async def _resolve(self, data: dict[str, Any], creator: User) -> dict[str, Any]:
+        policy = getattr(self._campaigns, "platform_policy", None)
+        await inspect_official_channels(self._bot, policy)
+        data = editable_requirement_data(data, policy)
         participation_groups, requirements = await self._review_targets(data, creator.id)
         issuer = await self._resolve_issuer(data, creator)
-        return _resolved_data(data, participation_groups, requirements) | issuer
+        resolved = _resolved_data(data, participation_groups, requirements)
+        return frozen_requirement_data(resolved, requirements, policy) | issuer
 
     async def _review_targets(
         self, data: dict[str, Any], creator_id: int
@@ -195,7 +236,10 @@ class CreatorPublisher:
         session = await self._sessions.get(user_id)
         if session is None or not session.state.startswith("draft:"):
             raise UserFacingError("创建草稿已过期，请发送 /new 重新创建")
-        return dict(session.data)
+        return attach_platform_policy(
+            current_bonus_policy(dict(session.data)),
+            getattr(self._campaigns, "platform_policy", None),
+        )
 
     async def _required_confirmation(self, user_id: int) -> dict[str, Any]:
         session = await self._sessions.get(user_id)
@@ -211,6 +255,7 @@ def confirmation_view(data: dict[str, Any]) -> tuple[str, ButtonRows]:
     activity_unlimited = sum(rule["daily_cap_mode"] == "unlimited" for rule in activity_rules)
     text = (
         "发布前确认\n\n"
+        f"{platform_summary(data)}"
         f"参与群：{len(selected_chat_ids(data))} 个\n"
         f"邀请加成：{len(invite_rules)} 个群开启，其中 {invite_unlimited} 个不设上限\n"
         f"{retention_summary(data)}"

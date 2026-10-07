@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import timedelta
+from time import perf_counter
 from typing import Protocol
 
 from aiogram import Bot
@@ -96,6 +97,10 @@ class InboxProcessor:
             return row
 
     async def _process(self, row: TelegramUpdate) -> bool:
+        started = perf_counter()
+        queue_wait_ms = (
+            (utcnow() - row.created_at).total_seconds() * 1000 if row.created_at else None
+        )
         if row.payload is None:
             await self._mark_failed(
                 row.id, row.attempts, "update payload was pruned before processing"
@@ -110,14 +115,24 @@ class InboxProcessor:
         except Exception as exc:
             self._logger.exception(
                 "durable update processing failed",
-                extra={"bot_id": row.bot_id, "update_id": row.update_id},
+                extra={
+                    "bot_id": row.bot_id,
+                    "update_id": row.update_id,
+                    "elapsed_ms": round((perf_counter() - started) * 1000),
+                    "queue_wait_ms": queue_wait_ms,
+                },
             )
             await self._mark_failed(row.id, row.attempts, f"{type(exc).__name__}: {exc}")
             return False
         await self._mark_processed(row.id, row.attempts)
         self._logger.info(
             "durable update processed",
-            extra={"bot_id": row.bot_id, "update_id": row.update_id},
+            extra={
+                "bot_id": row.bot_id,
+                "update_id": row.update_id,
+                "elapsed_ms": round((perf_counter() - started) * 1000),
+                "queue_wait_ms": queue_wait_ms,
+            },
         )
         return True
 

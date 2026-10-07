@@ -22,6 +22,10 @@ _CONTEXT_FIELDS = (
     "certainty",
     "first_update_id",
     "batch_size",
+    "action",
+    "elapsed_ms",
+    "queue_wait_ms",
+    "completed",
 )
 
 

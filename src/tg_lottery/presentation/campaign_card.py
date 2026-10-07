@@ -5,7 +5,9 @@ from collections.abc import Mapping
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from tg_lottery.domain.condition_targets import frozen_condition_targets
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.presentation.rule_pages import escaped_text_blocks
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.public_projection import BEIJING_TIMEZONE
 
@@ -19,13 +21,9 @@ def campaign_link(payload: Mapping, action: str = "join") -> str:
 
 def condition_chats(payload: Mapping) -> tuple[Mapping, ...]:
     presentation = payload["presentation"]
-    participation = presentation.get("participation_groups") or []
-    main = presentation.get("main_chat")
-    values = [*participation, *(presentation.get("required_chats") or [])]
-    if not participation and main:
-        values.insert(0, main)
-    by_id = {str(chat["id"]): chat for chat in values}
     rules = CampaignRules.model_validate(payload["rules"])
+    values = frozen_condition_targets(presentation, platform_policy=rules.platform_policy)
+    by_id = {str(chat["id"]): chat for chat in values}
     gate_keys = rules.admission.groups if rules.admission else rules.base_activity_rules
     for key in gate_keys:
         if key not in by_id:
@@ -35,7 +33,12 @@ def condition_chats(payload: Mapping) -> tuple[Mapping, ...]:
 
 def chat_condition(chat: Mapping, *, payload: Mapping, rules: CampaignRules) -> str:
     action = "关注" if chat.get("type") == "channel" else "加入"
-    url = campaign_link(payload)
+    position = next(
+        index
+        for index, item in enumerate(condition_chats(payload), 1)
+        if str(item["id"]) == str(chat["id"])
+    )
+    url = campaign_link(payload, "condition") + f"_{position}"
     if not chat.get("private") and chat.get("join_url"):
         url = str(chat["join_url"])
     title = html.escape(chat_title(chat))
@@ -66,6 +69,9 @@ def group_gate_lines(key: str, rules: CampaignRules) -> tuple[str, ...]:
 def membership_blocks(payload: Mapping) -> tuple[str, ...]:
     rules = CampaignRules.model_validate(payload["rules"])
     blocks = ["📮 <b>参与条件（必须全部满足）：</b>"]
+    if rules.platform_policy:
+        url = html.escape(campaign_link(payload), quote=True)
+        blocks.append(f'🤖 <a href="{url}">启动本抽奖机器人</a>，并关注以下三个官方频道')
     if rules.username_required:
         blocks.append("🪪 必须设置 Telegram 用户名")
     if rules.allowed_regions:
@@ -98,11 +104,14 @@ def description_blocks(payload: Mapping) -> tuple[str, ...]:
     description = payload["presentation"].get("description")
     if not description:
         return ()
-    return ("⚠️ <b>抽奖说明：</b>\n" + html.escape(str(description)),)
+    first, *remaining = escaped_text_blocks(str(description))
+    return ("⚠️ <b>抽奖说明：</b>\n" + first, *remaining)
 
 
 def bonus_block(payload: Mapping) -> str:
     rules = CampaignRules.model_validate(payload["rules"])
+    if rules.bonus_policy_version == "unlimited-v1":
+        return unlimited_bonus_block(payload, rules=rules)
     labels = []
     if rules.activity_bonus_enabled:
         labels.append("每日发言加成")
@@ -111,6 +120,13 @@ def bonus_block(payload: Mapping) -> str:
     label = "、".join(labels) or "未开启"
     url = html.escape(campaign_link(payload, "rules"), quote=True)
     return f'🔋 <b>人品加成：</b>{label}　<a href="{url}">规则</a>'
+
+
+def unlimited_bonus_block(payload: Mapping, *, rules: CampaignRules) -> str:
+    activity = "活跃加成，不设上限" if rules.activity_bonus_enabled else "未开启"
+    invite = "不设上限" if rules.invite_bonus_enabled else "未开启"
+    url = html.escape(campaign_link(payload, "rules"), quote=True)
+    return f'🔋 <b>人品加成：</b>{activity}\n👥 <b>邀请加成：</b>{invite}　<a href="{url}">规则</a>'
 
 
 def time_blocks(payload: Mapping) -> tuple[str, ...]:

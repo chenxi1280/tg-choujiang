@@ -116,6 +116,8 @@ def test_campaign_card_separates_rules_registration_and_join_links() -> None:
 
     assert "member:join:AbCdEfGhIjKlMnOpQrSt-_" not in datas
     assert "member:rules:AbCdEfGhIjKlMnOpQrSt-_" not in datas
+    assert "member:invite:AbCdEfGhIjKlMnOpQrSt-_" in datas
+    assert "member:bonus:AbCdEfGhIjKlMnOpQrSt-_" in datas
     assert (
         "https://t.me/lottery_test_bot?start=rules_AbCdEfGhIjKlMnOpQrSt-_"
         in _campaign_card_text(payload)
@@ -147,7 +149,9 @@ def test_campaign_card_explains_per_group_messages_and_channel_following() -> No
     assert "主活动群</a>" in text
     assert "协作群</a>" in text
     assert "🎫 关注-<a href=" in text and "公告频道</a>" in text
-    assert text.count('href="https://t.me/lottery_test_bot?start=join_') == 3
+    assert text.count('href="https://t.me/lottery_test_bot?start=condition_') == 3
+    for position in range(1, 4):
+        assert f"condition_{payload['campaign_ref']}_{position}" in text
     assert text.count("累计发言至少 <b>10</b> 条") == 2
     assert "🔋 <b>人品加成" in text
     assert "每日发言加成" in text and ">规则</a>" in text
@@ -417,12 +421,14 @@ async def test_campaign_keyboard_emphasizes_participation_with_rules_in_body() -
     await gateway.execute(GatewayRequest("send_campaign_card", -1001, _lotterybest_card_payload()))
 
     keyboard = bot.sent[0][2]["reply_markup"]
-    buttons = [row[0] for row in keyboard.inline_keyboard]
+    buttons = [button for row in keyboard.inline_keyboard for button in row]
 
-    assert len(buttons) == 1
+    assert len(buttons) == 3
     assert buttons[0].text == "👉 点击参与抽奖"
     assert buttons[0].url == _campaign_deep_link(_lotterybest_card_payload(), "join")
     assert buttons[0].callback_data is None
+    assert [button.text for button in buttons[1:]] == ["邀请入口", "我的加成"]
+    assert all(len(button.callback_data.encode()) <= 64 for button in buttons[1:])
     assert _campaign_deep_link(_lotterybest_card_payload(), "rules") in bot.sent[0][1][1]
 
 

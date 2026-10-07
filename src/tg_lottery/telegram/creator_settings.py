@@ -69,12 +69,14 @@ class CreatorSettings:
         profiles: UserProfileService,
         queries: QueryService,
         bot: Bot,
+        platform_policy=None,
     ) -> None:
         self._sessions = sessions
         self._renderer = renderer
         self._profiles = profiles
         self._queries = queries
         self._bot = bot
+        self._platform_policy = platform_policy
         self._admission = CreatorAdmissionPicker(
             bot=bot, sessions=sessions, queries=queries, renderer=renderer
         )
@@ -445,7 +447,13 @@ class CreatorSettings:
         return updated
 
     async def _required_data(self, user_id: int) -> dict[str, Any]:
-        return await required_draft_data(self._sessions, user_id)
+        from tg_lottery.telegram.creator_reuse import without_old_platform
+        from tg_lottery.telegram.platform_requirements import attach_platform_policy
+
+        return attach_platform_policy(
+            without_old_platform(await required_draft_data(self._sessions, user_id)),
+            self._platform_policy,
+        )
 
     async def _render(
         self,

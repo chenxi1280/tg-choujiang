@@ -1,8 +1,10 @@
 from typing import Any
 
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import creator_behavior_editor as editor
 from tg_lottery.telegram import creator_behavior_views as views
 from tg_lottery.telegram.creator_bonus_permissions import verify_publication_bonus_permissions
+from tg_lottery.telegram.creator_bonus_policy import uses_unlimited_policy
 from tg_lottery.telegram.creator_gate_schedule import validate_gate_time
 from tg_lottery.telegram.creator_invite_retention import view as retention_view
 from tg_lottery.telegram.creator_renderer import PanelTarget
@@ -30,7 +32,7 @@ class CreatorBehaviorAdmission:
             await self._render(query, resolve_retention(data, use_saved=action.endswith("saved")))
             return False
         if action == "draft_gate:leave" and editor.dirty(data):
-            await self._unsaved_warning(query)
+            await self._unsaved_warning(query, data=data)
             return False
         if action == "draft_gate:continue":
             await self._render(query, data)
@@ -83,6 +85,11 @@ class CreatorBehaviorAdmission:
 
     async def _retention(self, query: Any, data: dict, *, action: str) -> None:
         staged = data[editor.EDITOR_KEY]
+        if uses_unlimited_policy(data) and action not in {
+            "draft_gate:retention",
+            "draft_gate:retention:24",
+        }:
+            raise UserFacingError("新场邀请固定入群满24小时后核验")
         if action == "draft_gate:retention":
             changed = data
         else:
@@ -102,10 +109,14 @@ class CreatorBehaviorAdmission:
             [("留存24小时", "draft_gate:retention:24"), ("留存48小时", "draft_gate:retention:48")],
             [("返回邀请门槛", "draft_gate:list")],
         ]
+        if uses_unlimited_policy(data):
+            rows = [[("返回邀请门槛", "draft_gate:list")]]
         await self._renderer.render(query.message, user_id=query.from_user.id, text=text, rows=rows)
 
-    async def _unsaved_warning(self, query):
+    async def _unsaved_warning(self, query, *, data):
         rows = [[("放弃修改", "draft_gate:discard"), ("继续编辑", "draft_gate:continue")]]
+        if data[editor.EDITOR_KEY].get("groups") and not editor.group_dirty(data):
+            rows.insert(0, [("保存本场门槛并返回预览", "draft_gate:save")])
         await self._renderer.render(
             query.message,
             user_id=query.from_user.id,

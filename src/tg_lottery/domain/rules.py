@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from tg_lottery.domain.admission import Admission, validate_admission_window
+from tg_lottery.domain.platform_policy import PlatformPolicy
 
 MAX_ACTIVITY_MESSAGE_THRESHOLD = 10_000
 MAX_ACTIVITY_REWARD_TICKETS = 100
@@ -102,7 +103,9 @@ class BaseActivityRule(BaseModel, frozen=True):
 
 
 class CampaignRules(BaseModel, frozen=True):
+    platform_policy: PlatformPolicy | None = None
     participation_rules_version: Literal["v3.0"] | None = None
+    bonus_policy_version: Literal["unlimited-v1"] | None = None
     admission: Admission | None = None
     timezone: str = "Asia/Shanghai"
     activity: ActivityRule = ActivityRule()
@@ -143,6 +146,29 @@ class CampaignRules(BaseModel, frozen=True):
                 raise ValueError("V3.0 invitation bonuses must be unlimited")
             if any(rule.cap_mode != "unlimited" for rule in self.group_invite_rules.values()):
                 raise ValueError("V3.0 group invitation bonuses must be unlimited")
+
+    @model_validator(mode="after")
+    def validate_unlimited_bonus_policy(self) -> CampaignRules:
+        if self.bonus_policy_version is None or self.participation_rules_version is None:
+            return self
+        if self.invite.retention_hours != 24:
+            raise ValueError("current invitation retention must be 24 hours")
+        self._validate_current_bonus_targets()
+        if any(
+            rule.enabled
+            and (rule.daily_cap_mode != "unlimited" or rule.daily_max_cycles is not None)
+            for rule in self.group_activity_rules.values()
+        ):
+            raise ValueError("current activity bonuses must be unlimited")
+        return self
+
+    def _validate_current_bonus_targets(self) -> None:
+        for kind, rules in (
+            ("activity", self.group_activity_rules),
+            ("invite", self.group_invite_rules),
+        ):
+            if kind in self.bonus_types and not any(rule.enabled for rule in rules.values()):
+                raise ValueError(f"current {kind} bonus requires configured group rules")
 
     @property
     def message_gate_rules(self) -> dict[str, BaseActivityRule]:
@@ -188,6 +214,30 @@ class CampaignRules(BaseModel, frozen=True):
         ):
             if not chat_id.lstrip("-").isdigit():
                 raise ValueError("group bonus rule chat ids must be numeric")
+        return self
+
+    @model_validator(mode="after")
+    def validate_official_scope(self):
+        if self.platform_policy is None:
+            return self
+        official = set(self.platform_policy.chat_ids)
+        if not official.issubset(self.required_chat_ids):
+            raise ValueError("all frozen official channels must remain qualification targets")
+        behavior_ids = set(
+            map(
+                int,
+                (
+                    *self.group_activity_rules,
+                    *self.group_invite_rules,
+                    *self.base_activity_rules,
+                    *self.message_thresholds,
+                ),
+            )
+        )
+        if self.admission:
+            behavior_ids.update(map(int, self.admission.groups))
+        if official.intersection(behavior_ids):
+            raise ValueError("official channels cannot become bonus or behavior targets")
         return self
 
     @model_validator(mode="before")

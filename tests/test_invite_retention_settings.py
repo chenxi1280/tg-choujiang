@@ -24,8 +24,10 @@ from tg_lottery.telegram.draft_config import new_draft, presentation_from_data, 
         ("draft_retention_two_days", 48),
     ],
 )
-def test_explicit_retention_choice_freezes_without_changing_draft(action, hours) -> None:
+def test_legacy_retention_choice_freezes_without_changing_draft(action, hours) -> None:
     original = new_draft() | {
+        "bonus_policy_version": None,
+        "invite_retention_hours": None,
         "bonus_types": ["invite"],
         "admission": {"type": "message", "groups": {"-1001": {"daily_messages": 2}}},
     }
@@ -43,16 +45,13 @@ def test_explicit_retention_choice_freezes_without_changing_draft(action, hours)
 
 
 def test_existing_retention_preset_is_preserved_and_negative_rejected() -> None:
-    assert (
-        rules_from_data(new_draft() | {"participation_rules_version": None}).invite.retention_hours
-        == 24
-    )
-    assert (
-        rules_from_data(
-            new_draft() | {"participation_rules_version": None, "invite_preset": "strict"}
-        ).invite.retention_hours
-        == 48
-    )
+    legacy = new_draft() | {
+        "participation_rules_version": None,
+        "bonus_policy_version": None,
+        "invite_retention_hours": None,
+    }
+    assert rules_from_data(legacy).invite.retention_hours == 24
+    assert rules_from_data(legacy | {"invite_preset": "strict"}).invite.retention_hours == 48
     with pytest.raises(ValidationError):
         InviteRule(retention_hours=-1)
 

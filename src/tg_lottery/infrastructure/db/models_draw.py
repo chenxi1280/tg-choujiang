@@ -70,7 +70,7 @@ class DrawEntry(Base, UuidPkMixin):
     snapshot_id: Mapped[UUID] = mapped_column(ForeignKey("draw_snapshots.id", ondelete="CASCADE"))
     participant_id: Mapped[UUID] = mapped_column(ForeignKey("participants.id", ondelete="RESTRICT"))
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    weight: Mapped[int] = mapped_column(Integer, nullable=False)
+    weight: Mapped[int] = mapped_column(BigInteger, nullable=False)
     qualification_observation_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("qualification_checks.id", ondelete="RESTRICT")
     )

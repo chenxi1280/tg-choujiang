@@ -8,6 +8,7 @@ from aiogram import Bot
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.bot_relationships import relationship_observation
 from tg_lottery.application.campaign_targets import QualificationTarget, qualification_targets
 from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.operational_blocks import (
@@ -15,6 +16,11 @@ from tg_lottery.application.operational_blocks import (
     resolve_qualification_target_blocks,
 )
 from tg_lottery.application.participants import ParticipantService
+from tg_lottery.application.platform_review import (
+    begin_platform_review,
+    finish_platform_review,
+    reusable_platform_check,
+)
 from tg_lottery.application.records import add_audit, utcnow
 from tg_lottery.domain.enums import CampaignState, QualificationState
 from tg_lottery.domain.rules import CampaignRules
@@ -26,17 +32,25 @@ from tg_lottery.infrastructure.db import (
     ScheduledJob,
 )
 from tg_lottery.jobs.errors import JobRetry
+from tg_lottery.telegram.platform_qualification import observe_campaign_memberships
 from tg_lottery.telegram.qualification import (
     QualificationObservationResult,
     QualificationRateLimited,
     QualificationRetryable,
     SmoothRateLimiter,
     TargetPreflightFailure,
-    observe_memberships,
     preflight_membership_targets,
 )
 
-_TERMINAL_STATES = frozenset({CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED})
+_TERMINAL_STATES = frozenset(
+    {
+        CampaignState.DRAWN,
+        CampaignState.ARCHIVED,
+        CampaignState.CANCELLED,
+        CampaignState.READY_TO_DRAW,
+        CampaignState.DRAWING,
+    }
+)
 
 
 class QualificationReviewService:
@@ -63,9 +77,18 @@ class QualificationReviewService:
         rules = CampaignRules.model_validate(campaign.rules)
         chat_ids = await self._target_chat_ids(campaign, rules, targets=targets)
         limiter = SmoothRateLimiter(self._requests_per_second)
+        if _all_behavior_excluded(rules, campaign):
+            await self._exclude_behavior_candidates(participants)
+            await self._resolve_blocks(campaign_id, chat_ids)
+            await self._finish_platform_review(campaign)
+            return
         try:
             failures = await self._preflight(
-                campaign_id, targets=targets, chat_ids=chat_ids, limiter=limiter
+                campaign_id,
+                targets=targets,
+                chat_ids=chat_ids,
+                limiter=limiter,
+                platform_policy=rules.platform_policy,
             )
             if failures:
                 await self._degrade_review(campaign_id, participants, failures=failures)
@@ -77,11 +100,29 @@ class QualificationReviewService:
                 chat_ids=chat_ids,
                 limiter=limiter,
                 attempt_number=job.attempts,
+                review_id=(campaign.presentation.get("platform_qualification_review") or {}).get(
+                    "id"
+                ),
+            )
+            await self._finish_verified_review(
+                campaign, rules=rules, targets=targets, chat_ids=chat_ids, limiter=limiter
             )
         except QualificationRateLimited as exc:
             raise JobRetry(str(exc), delay_seconds=exc.retry_after) from exc
         except QualificationRetryable as exc:
             raise JobRetry(str(exc)) from exc
+
+    async def _finish_verified_review(self, campaign, *, rules, targets, chat_ids, limiter):
+        if rules.platform_policy is None:
+            return
+        await self._preflight(
+            campaign.id,
+            targets=targets,
+            chat_ids=chat_ids,
+            limiter=limiter,
+            platform_policy=rules.platform_policy,
+        )
+        await self._finish_platform_review(campaign)
 
     async def _preflight(
         self,
@@ -90,13 +131,21 @@ class QualificationReviewService:
         targets: tuple[QualificationTarget, ...],
         chat_ids: tuple[int, ...],
         limiter: SmoothRateLimiter,
+        platform_policy=None,
     ) -> tuple[TargetPreflightFailure, ...]:
-        failures = await preflight_membership_targets(self._bot, chat_ids=chat_ids, limiter=limiter)
+        failures = await preflight_membership_targets(
+            self._bot,
+            chat_ids=chat_ids,
+            limiter=limiter,
+            admin_chat_ids=platform_policy.chat_ids if platform_policy else (),
+        )
         if failures:
             failed_ids = {failure.chat_id for failure in failures}
             recovered = tuple(chat_id for chat_id in chat_ids if chat_id not in failed_ids)
             await self._resolve_blocks(campaign_id, recovered)
             exhausted = await self._record_failures(campaign_id, targets=targets, failures=failures)
+            if platform_policy is not None:
+                raise JobRetry("platform qualification blocked; required targets cannot degrade")
             if exhausted:
                 return failures
             raise JobRetry("qualification target access unavailable")
@@ -138,31 +187,62 @@ class QualificationReviewService:
         chat_ids: tuple[int, ...],
         limiter: SmoothRateLimiter,
         attempt_number: int,
+        review_id=None,
     ) -> None:
-        for participant in participants:
-            observed_at = utcnow()
-            result = await observe_memberships(
-                self._bot,
-                chat_ids=chat_ids,
-                user_id=participant.user_id,
-                observed_at=observed_at,
-                limiter=limiter,
-            )
-            state, observations = await self._merge_thresholds(
-                user_id=participant.user_id,
+        async def review(participant):
+            await self._review_one(
+                participant,
+                targets=targets,
                 rules=rules,
-                result=result,
-                observed_at=observed_at,
+                chat_ids=chat_ids,
+                limiter=limiter,
+                attempt_number=attempt_number,
+                review_id=review_id,
             )
-            tagged = _tag_target_kinds(observations, targets, attempt_number=attempt_number)
-            await self._participants.record_draw_qualification(
-                participant_id=participant.id,
-                state=state,
-                observed_at=observed_at,
-                observed_status=result.observed_status,
-                error_code=result.error_code,
-                observations=tagged,
-            )
+
+        if rules.platform_policy:
+            from tg_lottery.jobs.platform_review_batch import review_batch
+
+            await review_batch(participants, review=review)
+        else:
+            for participant in participants:
+                await review(participant)
+
+    async def _review_one(
+        self, participant, *, targets, rules, chat_ids, limiter, attempt_number, review_id
+    ):
+        if rules.platform_policy and not _behavior_candidate(rules, participant):
+            await self._exclude_behavior_candidates([participant])
+            return
+        observed_at = utcnow()
+        result = await observe_campaign_memberships(
+            self._bot,
+            rules=rules,
+            chat_ids=chat_ids,
+            user_id=participant.user_id,
+            observed_at=observed_at,
+            limiter=limiter,
+            relationship_loader=lambda user_id: self._relationship(rules, user_id),
+            preflighted=rules.platform_policy is not None,
+        )
+        state, observations = await self._merge_thresholds(
+            user_id=participant.user_id,
+            rules=rules,
+            result=result,
+            observed_at=observed_at,
+        )
+        tagged = _tag_target_kinds(observations, targets, attempt_number=attempt_number)
+        await self._participants.record_draw_qualification(
+            participant_id=participant.id,
+            state=state,
+            observed_at=observed_at,
+            observed_status=result.observed_status,
+            error_code=result.error_code,
+            observations=tagged,
+            relationship=result.relationship,
+            profile=result.profile,
+            review_id=review_id,
+        )
 
     async def _record_failures(
         self,
@@ -222,16 +302,63 @@ class QualificationReviewService:
     async def _context(
         self, campaign_id: UUID, *, force: bool
     ) -> tuple[Campaign, tuple[QualificationTarget, ...], list[Participant]]:
-        async with self._session_factory() as session:
-            campaign = await session.get(Campaign, campaign_id)
+        async with self._session_factory() as session, session.begin():
+            campaign = await session.get(Campaign, campaign_id, with_for_update=True)
             if campaign is None:
                 raise ValueError("campaign not found")
             targets = await qualification_targets(session, campaign)
             statement = select(Participant).where(Participant.campaign_id == campaign_id)
-            if not force:
+            if not force and not campaign.rules.get("platform_policy"):
                 statement = statement.where(~_final_check_exists())
             participants = (await session.scalars(statement)).all()
+            if campaign.rules.get("platform_policy") and campaign.state not in _TERMINAL_STATES:
+                cursor = await begin_platform_review(session, campaign, now=utcnow())
+                if cursor is None:
+                    raise JobRetry("platform relationship Inbox watermark not processed")
+                rules = CampaignRules.model_validate(campaign.rules)
+                cursor["potential_user_count"] = sum(
+                    _behavior_candidate(rules, item) for item in participants
+                )
+                campaign.presentation = campaign.presentation | {
+                    "platform_qualification_review": cursor
+                }
+                if not force:
+                    participants = await self._pending_platform_reviews(
+                        session, campaign, participants=participants, cursor=cursor
+                    )
             return campaign, targets, list(participants)
+
+    async def _pending_platform_reviews(self, session, campaign, *, participants, cursor):
+        pending = []
+        for participant in participants:
+            if not await reusable_platform_check(
+                session, campaign, participant, cursor=cursor, now=utcnow()
+            ):
+                pending.append(participant)
+        return pending
+
+    async def _finish_platform_review(self, campaign):
+        async with self._session_factory() as session, session.begin():
+            current = await session.get(Campaign, campaign.id, with_for_update=True)
+            await finish_platform_review(
+                session, current, campaign.presentation["platform_qualification_review"]
+            )
+
+    async def _relationship(self, rules, user_id):
+        async with self._session_factory() as session:
+            return await relationship_observation(
+                session, rules.platform_policy.bot_id, user_id=user_id
+            )
+
+    async def _exclude_behavior_candidates(self, participants):
+        for participant in participants:
+            await self._participants.record_draw_qualification(
+                participant_id=participant.id,
+                state=QualificationState.INELIGIBLE,
+                observed_at=utcnow(),
+                observed_status="behavior_gate_incomplete",
+                error_code="behavior_gate_incomplete",
+            )
 
     async def _target_chat_ids(
         self,
@@ -261,6 +388,19 @@ def _final_check_exists():
                 [QualificationState.ELIGIBLE, QualificationState.INELIGIBLE]
             ),
         )
+    )
+
+
+def _all_behavior_excluded(rules, campaign):
+    cursor = campaign.presentation.get("platform_qualification_review") or {}
+    return rules.platform_policy is not None and cursor.get("potential_user_count") == 0
+
+
+def _behavior_candidate(rules, participant):
+    return (
+        participant.admission_qualified
+        if rules.participation_rules_version
+        else participant.base_qualified
     )
 
 

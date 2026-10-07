@@ -19,6 +19,11 @@ from tg_lottery.telegram.creator_bonus_fields import (
 from tg_lottery.telegram.creator_bonus_fields import (
     rule_key as _input_rule_key,
 )
+from tg_lottery.telegram.creator_bonus_policy import (
+    require_current_bonus_action,
+    unlimited_rule,
+    uses_unlimited_policy,
+)
 from tg_lottery.telegram.creator_number_controls import (
     DEFAULT_MESSAGE_COUNT,
     MESSAGE_COUNT_PRESETS,
@@ -81,6 +86,7 @@ def handles_action(action: str) -> bool:
 
 
 def apply_action(data: dict[str, Any], action: str) -> dict[str, Any]:
+    require_current_bonus_action(data, action)
     if "length" in action:
         raise UserFacingError("字数设置已移除，请重新打开发言加成编辑页")
     _validate_v3_invite_action(data, action)
@@ -121,14 +127,7 @@ def _apply_direct_action(data: dict[str, Any], action: str) -> dict[str, Any] | 
 def receive_input(data: dict[str, Any], text: str) -> dict[str, Any]:
     working = dict(data.get("bonus_working_copy") or {})
     field = str(data.get("bonus_input_field") or "")
-    if not working or field not in {"cycle", "cap", "reward"}:
-        raise UserFacingError("当前没有待输入的加成字段")
-    if (
-        data.get("participation_rules_version") == "v3.0"
-        and working["kind"] == "invite"
-        and field == "cap"
-    ):
-        raise UserFacingError("新活动邀请加成不限累计上限，请重新打开邀请加成编辑页")
+    _validate_input_field(data, working=working, field=field)
     rule = dict(working["rule"])
     key = _input_rule_key(str(working["kind"]), field)
     rule[key] = _positive_integer(text)
@@ -139,6 +138,19 @@ def receive_input(data: dict[str, Any], text: str) -> dict[str, Any]:
         "bonus_working_copy": changed,
         "bonus_input_field": None,
     }
+
+
+def _validate_input_field(data, *, working, field):
+    if not working or field not in {"cycle", "cap", "reward"}:
+        raise UserFacingError("当前没有待输入的加成字段")
+    if field == "cap" and uses_unlimited_policy(data):
+        raise UserFacingError("新场加成不设上限，请返回当前加成设置页")
+    if (
+        data.get("participation_rules_version") == "v3.0"
+        and working["kind"] == "invite"
+        and field == "cap"
+    ):
+        raise UserFacingError("新活动邀请加成不限累计上限，请重新打开邀请加成编辑页")
 
 
 def input_prompt(data: dict[str, Any]) -> str:
@@ -206,6 +218,8 @@ def _new_working_copy(data: dict[str, Any], kind: str, chat_id: int) -> dict[str
     source = data.get(f"group_{kind}_rules") or {}
     stored = source.get(str(chat_id))
     rule = dict(stored or _default_rule(kind))
+    if uses_unlimited_policy(data):
+        rule = unlimited_rule(kind, rule)
     rule["enabled"] = True
     cap_key = "max_bonus_tickets" if kind == "invite" else "daily_max_cycles"
     return {
@@ -297,7 +311,7 @@ def _invite_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str, 
     cap = _cap_label(rule, "invite")
     rows = [_number_row("邀请数", "invite_cycle", rule["invites_per_cycle"])]
     rows.append(_preset_row("cycle", (1, 2, 3, 5, 10), "人", selected=rule["invites_per_cycle"]))
-    if data.get("participation_rules_version") != "v3.0":
+    if data.get("participation_rules_version") != "v3.0" and not uses_unlimited_policy(data):
         rows.append(_mode_row("invite", rule["cap_mode"]))
     if rule["cap_mode"] == "limited":
         rows.append(_number_row("上限", "invite_group_cap", cap))
@@ -317,8 +331,9 @@ def _activity_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str
         _preset_row("cycle", MESSAGE_COUNT_PRESETS, "条", selected=rule["messages_per_cycle"])
     )
     rows.append(_number_row("每轮奖励", "activity_group_reward", rule["reward_tickets"]))
-    rows.append(_mode_row("activity", rule["daily_cap_mode"]))
-    rows.append([("每天达标一次（按天累计）", "draft_bonus_activity_daily")])
+    if not uses_unlimited_policy(data):
+        rows.append(_mode_row("activity", rule["daily_cap_mode"]))
+        rows.append([("每天达标一次（按天累计）", "draft_bonus_activity_daily")])
     if rule["daily_cap_mode"] == "limited":
         rows.append(_number_row("上限", "activity_cap", cap))
         rows.append(_preset_row("cap", (1, 5, 10, 20), "轮", selected=cap))
@@ -331,7 +346,9 @@ def _activity_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str
 
 def _activity_description(rule: dict[str, Any], cap: object) -> str:
     reward = rule["reward_tickets"]
-    if rule["daily_cap_mode"] == "limited" and rule["daily_max_cycles"] == DAILY_REWARD_CYCLES:
+    if rule["daily_cap_mode"] == "unlimited":
+        counting = f"每天每满 {rule['messages_per_cycle']} 条 +{reward}次；不设每日或累计上限。"
+    elif rule["daily_max_cycles"] == DAILY_REWARD_CYCLES:
         counting = (
             f"每天发言满 {rule['messages_per_cycle']} 条 +{reward}次；每天只奖励一次，"
             "按实际达标天数累计，不要求连续。"

@@ -1,6 +1,7 @@
 from typing import Any
 
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram.creator_bonus_policy import current_bonus_policy
 from tg_lottery.telegram.creator_group_selection import selected_chat_ids
 from tg_lottery.telegram.required_chats import resolve_required_chat
 
@@ -42,4 +43,4 @@ async def required_draft_data(sessions: object, user_id: int) -> dict[str, Any]:
     session = await sessions.get(user_id)
     if session is None or not session.state.startswith("draft:"):
         raise UserFacingError("创建草稿已过期，请发送 /new 重新创建")
-    return dict(session.data)
+    return current_bonus_policy(dict(session.data))

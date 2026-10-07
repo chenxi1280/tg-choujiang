@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 
 from tg_lottery.application.invitation_models import campaign_accepts_attribution
+from tg_lottery.application.platform_entry import require_current_platform_entry
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.records import add_outbox, utcnow
 from tg_lottery.domain.enums import OutboxState, QualificationState
@@ -51,6 +52,7 @@ async def request_group_invite_link(
         participant = await _eligible_participant(uow.session, request)
         target = await _participation_group(uow.session, request)
         _validate_request(campaign, participant, target, chat_id=request.chat_id)
+        await require_current_platform_entry(uow.session, campaign, participant)
         await _require_target_available(uow.session, request)
         group = await uow.session.get(Group, target.group_id)
         if group is None:

@@ -12,6 +12,8 @@
 
 首页、创建面板和成员操作见 [V3.2 升级 PRD（R2实现与验证进行中）](docs/development/v3.2-navigation-and-interaction-prd-20261006.md)，统一入口、控件、排版、完整用户路径和此前操作优化，附[控件与体验规范](docs/development/v3.2-controls-and-experience-contract-20261006.md)及创建/成员按钮清单。代码、隔离验证、发布与真实客户端验收分别记录在[实现与验收记录](docs/development/v3.2-implementation-and-acceptance-20261006.md)。
 
+[V3.3 统一 PRD：平台必备条件、双加成及完整使用体验（R5）](docs/development/v3.3-unified-participation-and-reputation-prd-20261007.md)是本版唯一规范入口。按用户最新要求，新创建/复用的活跃（人品）与邀请加成都不设每日或累计奖励上限，邀请固定入群满24小时核验、同群同人只计一次；历史已发布规则不追改。公告按条件→奖品→说明→加成→开奖排列，长封面卡保留奖品区；本轮同时修复门槛默认值误判、暂存/保存返回、无目标复制及旧按钮恢复，证据见[修复记录](docs/development/v3.3-creator-response-and-card-repair-20261007.md)。R5进一步补齐群内人品查询/本场活跃入账排行、平台冻结与资格链路、长页/旧模板/历史启动和64位权重，见[再次修复记录](docs/development/v3.3-prd-r5-gap-repair-20261008.md)。平台策略默认关闭，正式频道配置与生产业务验收尚未完成，本地实现未发布。
+
 ## 首页与创建草稿
 
 私聊 `/start`、`/menu` 或返回首页显示简短导航，提供创建、本人参与记录、邀请记录和使用指南入口；详细说明通过 `/help` 或“使用指南”查看。活动报名、邀请等 `/start` 参数仍进入对应活动流程。

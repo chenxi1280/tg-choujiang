@@ -1,10 +1,12 @@
 from typing import Any
 
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.domain.platform_policy import OfficialChannel
 from tg_lottery.telegram.creator_group_selection import selected_chat_ids
 from tg_lottery.telegram.creator_participation import message_chat_refs, participation_add_text
 from tg_lottery.telegram.creator_renderer import GROUP_PAGE_SIZE, PanelTarget
 from tg_lottery.telegram.creator_required_chats_data import required_draft_data, with_required_chats
+from tg_lottery.telegram.platform_requirements import official_channel_for_ref
 from tg_lottery.telegram.required_chats import resolve_required_chat
 
 PREFIX = "draft_admission:"
@@ -17,7 +19,12 @@ async def add_admission_chats(bot, data: dict[str, Any], *, refs, user_id: int) 
     existing = {int(chat["id"]) for chat in chats}
     participating = set(selected_chat_ids(data))
     for ref in refs:
-        chat = await resolve_required_chat(bot, ref, admin_user_id=user_id)
+        official = official_channel_for_ref(data, ref)
+        chat = (
+            OfficialChannel.model_validate(official).record() | {"sources": ["creator"]}
+            if official
+            else await resolve_required_chat(bot, ref, admin_user_id=user_id)
+        )
         chat_id = int(chat["id"])
         if chat_id in participating:
             raise UserFacingError("该目标已经是参与活动的群，不能同时作为准入条件")

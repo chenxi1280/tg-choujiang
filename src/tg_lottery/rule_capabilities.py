@@ -9,7 +9,9 @@ from sqlalchemy import text
 
 from tg_lottery.infrastructure.db.session import create_engine
 
-SUPPORTED_RULE_VERSIONS = frozenset({"legacy", "v3.0"})
+SUPPORTED_RULE_VERSIONS = frozenset(
+    {"legacy", "v3.0", "platform:official-v1", "bonus:unlimited-v1"}
+)
 
 
 def require_capabilities(required, supported):
@@ -26,6 +28,10 @@ async def check_database(supported):
                 text(
                     "SELECT DISTINCT COALESCE(rules->>'participation_rules_version', 'legacy') "
                     "FROM campaigns"
+                    " UNION SELECT 'platform:' || (rules->'platform_policy'->>'version') "
+                    "FROM campaigns WHERE rules->'platform_policy'->>'version' IS NOT NULL"
+                    " UNION SELECT 'bonus:' || (rules->>'bonus_policy_version') "
+                    "FROM campaigns WHERE rules->>'bonus_policy_version' IS NOT NULL"
                 )
             )
             require_capabilities(versions, supported)

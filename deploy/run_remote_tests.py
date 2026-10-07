@@ -32,30 +32,38 @@ def _run(command: list[str], environment: dict[str, str]) -> None:
     subprocess.run(command, env=environment, check=True, timeout=TEST_TIMEOUT_SECONDS)
 
 
+def _run_test_shards(environment: dict[str, str]) -> None:
+    collected = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only"],
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=TEST_TIMEOUT_SECONDS,
+    )
+    nodes = tuple(line for line in collected.stdout.splitlines() if "::" in line)
+    for index in range(SHARD_COUNT):
+        selected = nodes[index::SHARD_COUNT]
+        if not selected:
+            raise RuntimeError(f"pytest shard {index}/{SHARD_COUNT} is empty")
+        print(f"pytest shard {index + 1}/{SHARD_COUNT}: {len(selected)} nodes", flush=True)
+        _run([sys.executable, "-m", "pytest", "-q", *selected], environment)
+
+
 def main() -> None:
     mode = sys.argv[1] if len(sys.argv) > 1 else "all"
     if mode not in {"all", "migrate", "pytest"}:
         raise ValueError(f"unknown test mode: {mode}")
     environment = _environment()
-    if mode in {"all", "migrate"}:
+    if mode in {"all", "migrate", "pytest"}:
         _run(["alembic", "upgrade", "head"], environment)
         _run(["alembic", "check"], environment)
+    if mode in {"all", "migrate"}:
         _run(["alembic", "downgrade", "base"], environment)
         _run(["alembic", "upgrade", "head"], environment)
         _run(["alembic", "check"], environment)
     if mode == "all":
-        for index in range(SHARD_COUNT):
-            _run(
-                [
-                    sys.executable,
-                    "scripts/run_pytest_shard.py",
-                    "--index",
-                    str(index),
-                    "--count",
-                    str(SHARD_COUNT),
-                ],
-                environment,
-            )
+        _run_test_shards(environment)
     if mode == "pytest":
         _run([sys.executable, "-m", "pytest", *sys.argv[2:]], environment)
 

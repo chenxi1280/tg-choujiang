@@ -99,14 +99,15 @@ def test_reuse_legacy_does_not_invent_gate_and_capability_guard_rejects_old_imag
         }
     )
     assert reused["admission"] is None
-    assert reused["invite_bonus_cap"] is None and len(reused["import_notes"]) == 3
+    assert reused["invite_bonus_cap"] is None
+    assert any("新场活跃和邀请加成都不设上限" in note for note in reused["import_notes"])
     with pytest.raises(RuntimeError, match=r"v3\.0"):
         require_capabilities(["legacy", "v3.0"], ["legacy"])
     require_capabilities(["legacy", "v3.0"], ["legacy", "v3.0"])
 
 
-def test_retention_edits_are_staged_and_discard_keeps_shared_saved_requirement():
-    data = draft() | {"invite_retention_hours": 24}
+def test_legacy_retention_edits_are_staged_and_discard_keeps_shared_saved_requirement():
+    data = draft() | {"invite_retention_hours": 24, "bonus_policy_version": None}
     opened = editor.open_editor(data)
     changed = opened | {editor.EDITOR_KEY: opened[editor.EDITOR_KEY] | {"retention_hours": 0}}
     assert editor.dirty(changed)

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from tg_lottery.application.activity import ActivityService
 from tg_lottery.application.admin_sessions import AdminSessionService
+from tg_lottery.application.bot_relationships import BotRelationshipService
 from tg_lottery.application.callback_tokens import CallbackTokenService
 from tg_lottery.application.campaigns import CampaignService
 from tg_lottery.application.drawing import DrawingService
@@ -64,7 +65,7 @@ def build_container(settings: Settings) -> Container:
     uow_factory = partial(UnitOfWork, session_factory)
     services = Services(
         groups=GroupService(uow_factory),
-        campaigns=CampaignService(uow_factory),
+        campaigns=CampaignService(uow_factory, platform_policy=settings.platform_policy),
         participants=ParticipantService(uow_factory),
         activity=ActivityService(uow_factory),
         message_stats=MessageStatsService(uow_factory),
@@ -106,6 +107,9 @@ def build_update_handler(container: Container, bot_username: str) -> LotteryUpda
         stats=services.message_stats,
         invitations=services.invitations,
         bot_username=bot_username,
+        relationships=BotRelationshipService(
+            partial(UnitOfWork, container.session_factory), bot_id=container.settings.bot_id
+        ),
     )
     personal_flow = PersonalFlow(
         profiles=services.profiles,
@@ -149,6 +153,7 @@ def _build_creator(container: Container, bot_username: str) -> CampaignCreator:
         profiles=services.profiles,
         queries=services.queries,
         bot=container.bot,
+        platform_policy=container.settings.platform_policy,
     )
     return CampaignCreator(
         bot=container.bot,
@@ -164,6 +169,9 @@ def _build_creator(container: Container, bot_username: str) -> CampaignCreator:
 
 def _build_member_navigation(container: Container, bot_username: str):
     return MemberNavigation(
+        relationships=BotRelationshipService(
+            partial(UnitOfWork, container.session_factory), bot_id=container.settings.bot_id
+        ),
         bot=container.bot,
         queries=container.services.queries,
         cipher=SecretCipher(container.settings.app_encryption_key),

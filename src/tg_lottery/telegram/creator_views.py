@@ -17,6 +17,7 @@ from tg_lottery.telegram.creator_messages import message_policy_summary
 from tg_lottery.telegram.creator_sections import next_draft_action
 from tg_lottery.telegram.draft_config import campaign_input, missing_fields
 from tg_lottery.telegram.home_views import home_keyboard
+from tg_lottery.telegram.platform_requirements import platform_summary
 from tg_lottery.telegram.public_projection import format_public_time
 
 ButtonRows = list[list[tuple[str, str]]]
@@ -37,6 +38,7 @@ def preview_text(data: dict[str, Any], *, now: datetime | None = None) -> str:
         f"🌏️ 地区限制：{_region_limits(data)}\n\n"
         f"👥 参与活动的群：{_participation_groups(data)}\n"
         f"📮 准入条件：{_requirements(data)}\n\n"
+        f"{platform_summary(data)}"
         f"{_base_summary(data)}\n\n"
         f"🎁 奖品内容：\n{_prize_lines(data.get('prizes', []))}\n"
         f"⚠️ 抽奖说明：{data.get('description') or '【等待设置】'}\n\n"

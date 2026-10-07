@@ -1,6 +1,8 @@
 from typing import Any
 
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import InviteRule
+from tg_lottery.telegram.creator_bonus_policy import uses_unlimited_policy
 
 HOURS_BY_ACTION = {
     "draft_retention_now": 0,
@@ -11,6 +13,8 @@ ACTIONS = frozenset({"draft_retention", *HOURS_BY_ACTION})
 
 
 def retention_hours(data: dict[str, Any]) -> int:
+    if uses_unlimited_policy(data):
+        return 24
     if data.get("invite_retention_hours") is not None:
         return InviteRule(retention_hours=data["invite_retention_hours"]).retention_hours
     return HOURS_BY_ACTION[
@@ -32,6 +36,8 @@ def summary(data: dict[str, Any]) -> str:
 
 
 def apply_action(data: dict[str, Any], action: str) -> dict[str, Any]:
+    if uses_unlimited_policy(data) and action not in {"draft_retention", "draft_retention_day"}:
+        raise UserFacingError("新场邀请固定入群满24小时后核验，请使用当前邀请设置页")
     if action == "draft_retention":
         return dict(data)
     return data | {"invite_retention_hours": HOURS_BY_ACTION[action]}
@@ -50,4 +56,6 @@ def view(data: dict[str, Any]) -> tuple[str, list[list[tuple[str, str]]]]:
         [("留存 24 小时", "draft_retention_day"), ("留存 48 小时", "draft_retention_two_days")],
         [("返回邀请加成", "draft_bonus_invite")],
     ]
+    if uses_unlimited_policy(data):
+        rows = [[("返回邀请加成", "draft_bonus_invite")]]
     return text, rows

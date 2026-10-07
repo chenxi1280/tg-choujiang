@@ -19,6 +19,7 @@ from tg_lottery.application.message_rules import normalized_content, rejection_r
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.progress_notifications import flush_progress_notices, queue_bonus_notice
 from tg_lottery.application.request_context import current_update_id
+from tg_lottery.application.unregistered_reminders import remind_unregistered_speaker
 from tg_lottery.domain.enums import (
     CampaignState,
     InvitationState,
@@ -101,7 +102,7 @@ class ActivityService:
             session, campaign.id, observation.user_id, include_registered=bool(rules.admission)
         )
         if participant is None:
-            return await self._record_invitee_activity(session, campaign, observation)
+            return await self._record_unregistered_activity(session, campaign, observation)
         await record_base_activity(
             session, campaign=campaign, participant=participant, observation=observation
         )
@@ -130,12 +131,13 @@ class ActivityService:
         )
         return event
 
-    async def _record_invitee_activity(
+    async def _record_unregistered_activity(
         self,
         session: object,
         campaign: Campaign,
         observation: MessageObservation,
     ) -> InviteeActivityEvent | None:
+        await remind_unregistered_speaker(session, campaign, observation)
         rules = CampaignRules.model_validate(campaign.rules)
         if not rules.invite.require_activity:
             return None

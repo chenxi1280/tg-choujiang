@@ -22,7 +22,7 @@ async def run() -> None:
     stop = stop_event()
     job_owner = owner_id("jobs")
     try:
-        await validate_bot(container.bot, settings.bot_id)
+        bot_username = await validate_bot(container.bot, settings.bot_id)
         await ensure_maintenance_jobs(container.session_factory, utcnow())
         await queue_legacy_commitment_notice_cleanup(container.session_factory)
         handlers = JobHandlers(
@@ -44,9 +44,10 @@ async def run() -> None:
         )
         cipher = SecretCipher(settings.app_encryption_key)
         outbox = OutboxWorker(
+            bot_id=settings.bot_id,
             owner_id=owner_id("outbox"),
             session_factory=container.session_factory,
-            gateway=TelegramGateway(container.bot, cipher),
+            gateway=TelegramGateway(container.bot, cipher, bot_username=bot_username),
             cipher=cipher,
         )
         async with asyncio.TaskGroup() as tasks:

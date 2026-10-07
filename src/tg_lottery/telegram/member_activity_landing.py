@@ -5,7 +5,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignRules
-from tg_lottery.presentation.participation_rules import public_rule_blocks, split_rule_blocks
+from tg_lottery.presentation.participation_rules import complete_rule_pages, public_rule_blocks
 from tg_lottery.telegram import member_condition_views
 from tg_lottery.telegram.public_projection import campaign_state_text
 
@@ -21,8 +21,8 @@ async def open_activity(flow: Any, message: Any, reference: str) -> None:
 async def show_v3_rules(flow: Any, message: Any, campaign: Any) -> None:
     prizes = await flow._queries.prizes(campaign.id)
     payload = _rules_payload(flow, campaign, prizes)
-    pages = split_rule_blocks(
-        ("当前状态: " + campaign_state_text(campaign.state), *public_rule_blocks(payload))
+    pages = complete_rule_pages(
+        payload, ("当前状态: " + campaign_state_text(campaign.state), *public_rule_blocks(payload))
     )
     await _send_rule_pages(message, pages, rows=_v3_rules_rows(flow, campaign))
 
@@ -77,13 +77,15 @@ def _v3_rules_rows(flow, campaign):
 async def show_legacy_rules(flow, message, campaign):
     prizes = await flow._queries.prizes(campaign.id)
     rules = CampaignRules.model_validate(campaign.rules)
-    pages = split_rule_blocks(
+    payload = _rules_payload(flow, campaign, prizes)
+    pages = complete_rule_pages(
+        payload,
         (
             "当前状态: " + campaign_state_text(campaign.state),
-            *public_rule_blocks(_rules_payload(flow, campaign, prizes)),
+            *public_rule_blocks(payload),
             html.escape(member_condition_views.draw_rule(rules)),
             html.escape(member_condition_views.deletion_rule(campaign)),
-        )
+        ),
     )
     await _send_rule_pages(
         message, pages, rows=flow._condition_keyboard(campaign).inline_keyboard, label="规则"

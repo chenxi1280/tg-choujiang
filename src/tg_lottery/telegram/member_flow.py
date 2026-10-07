@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -16,7 +15,6 @@ from tg_lottery.application.invitations import InvitationService
 from tg_lottery.application.message_stats import MessageStatsService
 from tg_lottery.application.participants import (
     ParticipantService,
-    QualificationResult,
     RegistrationAttempt,
 )
 from tg_lottery.application.queries import QueryService
@@ -37,8 +35,9 @@ from tg_lottery.telegram.member_base_activity import (
 from tg_lottery.telegram.member_group_invites import build_group_invite_payload
 from tg_lottery.telegram.member_invites import legacy_invite_link_payload, member_keyboard
 from tg_lottery.telegram.member_missing_targets import build_missing_targets_reply
-from tg_lottery.telegram.member_observation import apply_message_thresholds
+from tg_lottery.telegram.member_platform_feedback import platform_feedback
 from tg_lottery.telegram.member_popups import popup_success
+from tg_lottery.telegram.member_private_feedback import send_qualification_detail
 from tg_lottery.telegram.member_record_delivery import private_record_message
 from tg_lottery.telegram.member_records import (
     show_invitation_groups,
@@ -52,8 +51,6 @@ from tg_lottery.telegram.member_registration import (
 )
 from tg_lottery.telegram.qualification import (
     QualificationRetryable,
-    observe_memberships,
-    with_pending_approvals,
 )
 
 
@@ -68,6 +65,7 @@ class MemberFlow:
         stats: MessageStatsService | None = None,
         invitations: InvitationService | None = None,
         bot_username: str = "",
+        relationships=None,
     ) -> None:
         self._bot = bot
         self._participants = participants
@@ -76,6 +74,7 @@ class MemberFlow:
         self._stats = stats
         self._invitations = invitations
         self._bot_username = bot_username
+        self._relationships = relationships
 
     async def show_referral_landing(self, message: Message, public_ref: str) -> None:
         await show_referral_landing(self, message, public_ref)
@@ -140,7 +139,7 @@ class MemberFlow:
             raise UserFacingError("活动不存在或已经失效")
         user = user or required_user(message)
         existing = await self._participants.eligible_participant(campaign.id, user.id)
-        if existing is not None:
+        if existing is not None and not campaign.rules.get("platform_policy"):
             await reply_existing(
                 message, campaign, participant=existing, callback=callback, queries=self._queries
             )
@@ -250,52 +249,12 @@ class MemberFlow:
             run_at=now + timedelta(seconds=int(seconds)),
         )
 
-    async def _complete_observation(
-        self,
-        attempt: RegistrationAttempt,
-        *,
-        user_id: int,
-        main_chat_id: int,
-        campaign: object,
-    ) -> tuple[QualificationState, tuple[dict[str, object], ...], int]:
-        chat_ids = tuple(dict.fromkeys((main_chat_id, *attempt.required_chat_ids)))
-        observed_at = utcnow()
-        result = await observe_memberships(
-            self._bot,
-            chat_ids=chat_ids,
-            user_id=user_id,
-            observed_at=observed_at,
+    async def _complete_observation(self, attempt, *, user_id, main_chat_id, campaign):
+        from tg_lottery.telegram.member_registration_observation import complete_observation
+
+        return await complete_observation(
+            self, attempt, user_id=user_id, main_chat_id=main_chat_id, campaign=campaign
         )
-        pending_chat_ids = await self._participants.pending_approval_chat_ids(
-            attempt.participant_id
-        )
-        rules = CampaignRules.model_validate(campaign.rules)
-        thresholds = {int(key): int(value) for key, value in rules.message_thresholds.items()}
-        observations = member_condition_views.with_target_kinds(
-            with_pending_approvals(result.observations, pending_chat_ids),
-            attempt.target_kinds,
-        )
-        state, observations = await apply_message_thresholds(
-            self._stats,
-            result.state,
-            observations,
-            attempt=attempt,
-            user_id=user_id,
-            observed_at=observed_at,
-            thresholds=thresholds,
-        )
-        participant = await self._participants.complete_registration(
-            QualificationResult(
-                participant_id=attempt.participant_id,
-                qualification_check_id=attempt.qualification_check_id,
-                state=state,
-                observed_at=observed_at,
-                observed_status=result.observed_status,
-                error_code=result.error_code,
-                observations=observations,
-            )
-        )
-        return participant.qualification_state, observations, participant.ticket_total_cache
 
     async def show_rules(self, message: Message, campaign_reference: str | UUID) -> None:
         campaign = await self._queries.campaign_by_reference(campaign_reference)
@@ -361,17 +320,14 @@ class MemberFlow:
         callback: CallbackQuery | None,
     ) -> None:
         text, keyboard = await self._qualification_reply(campaign, state, observations, page=page)
+        text, keyboard = await platform_feedback(
+            self, campaign, user_id=user_id, text=text, keyboard=keyboard
+        )
         chat_type = getattr(getattr(message, "chat", None), "type", None)
         if callback is not None:
             if chat_type == "private":
                 await member_callbacks.alert_failure(
                     callback, campaign, state, observations=observations
-                )
-            else:
-                await member_callbacks.safe_answer(
-                    callback,
-                    "尚未满足参与条件，请私聊机器人查看详情",
-                    alert=True,
                 )
         if callback is not None and chat_type == "private":
             await message.edit_text(text, reply_markup=keyboard)
@@ -379,10 +335,9 @@ class MemberFlow:
         if chat_type in {None, "private"}:
             await message.answer(text, reply_markup=keyboard)
             return
-        try:
-            await self._bot.send_message(user_id, text, reply_markup=keyboard)
-        except TelegramAPIError:
-            return
+        await send_qualification_detail(
+            self._bot, user_id=user_id, text=text, keyboard=keyboard, callback=callback
+        )
 
     async def _qualification_reply(
         self,
@@ -473,7 +428,7 @@ class MemberFlow:
         self, campaign: object, user_id: int, *, page: int = 0
     ) -> tuple[str, InlineKeyboardMarkup]:
         rules = CampaignRules.model_validate(campaign.rules)
-        if rules.group_invite_rules:
+        if rules.group_invite_rules or rules.invite_admission_enabled:
             participant = await self._participants.eligible_participant(campaign.id, user_id)
             if participant is None:
                 raise UserFacingError(member_callbacks.REGISTRATION_REMINDER)
@@ -483,6 +438,7 @@ class MemberFlow:
                 page=page,
                 queries=self._queries,
                 cipher=self._cipher,
+                bot_username=self._bot_username,
             )
         return await legacy_invite_link_payload(
             campaign,

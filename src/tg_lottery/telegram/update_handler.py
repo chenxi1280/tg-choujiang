@@ -27,6 +27,7 @@ from tg_lottery.telegram import command_input, member_callbacks
 from tg_lottery.telegram.admin_flow import AdminFlow
 from tg_lottery.telegram.bot_permission_reminders import send_bot_permission_reminder
 from tg_lottery.telegram.callback_feedback import answer_callback
+from tg_lottery.telegram.group_reputation import GroupReputation
 from tg_lottery.telegram.help_views import DRAFT_UNAVAILABLE_TEXT
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.message_observation import observe_message
@@ -67,6 +68,7 @@ class LotteryUpdateHandler:
         self._bot_username = bot_username
         self._navigation = navigation
         self._logger = logging.getLogger(__name__)
+        self._reputation = GroupReputation(queries=queries, bot_username=bot_username)
 
     async def handle(self, update: Update) -> None:
         if update.callback_query:
@@ -96,6 +98,8 @@ class LotteryUpdateHandler:
         text = (message.text or "").strip()
         if text.startswith("/"):
             await self._group_command(message, text)
+            return
+        if await self._reputation.message(message, text):
             return
         observation = observe_message(message)
         await self._stats.record(observation)
@@ -127,24 +131,9 @@ class LotteryUpdateHandler:
             )
 
     async def _private_message(self, message: Message) -> None:
-        text = (message.text or "").strip()
-        try:
-            command = command_input.parse_bot_command(text)
-            if (
-                command is not None
-                and command.addressed_to(self._bot_username)
-                and command.name
-                in {"/start", "/menu", "/help", "/region", "/myid", "/join", "/index"}
-            ):
-                await self._admin_flow.suspend_draft(message.from_user.id)
-            if await self._private_navigation(message, text):
-                return
-            if await self._personal_flow.handle_command(message, text):
-                return
-            if not await self._admin_flow.handle_text(message):
-                await self._personal_flow.show_index(message)
-        except (DomainError, ValueError) as exc:
-            await self._send_operation_error(message, exc)
+        from tg_lottery.telegram.private_update_navigation import private_message
+
+        await private_message(self, message)
 
     async def _private_navigation(self, message: Message, text: str) -> bool:
         command = command_input.parse_bot_command(text)
@@ -195,6 +184,8 @@ class LotteryUpdateHandler:
         if isinstance(message, Message) and message.chat.type == "private":
             await self._send_operation_error(message, exc)
             return
+        if await member_callbacks.send_bonus_navigation_reminder(self._member_flow, query, exc):
+            return
         await member_callbacks.safe_answer(
             query, public_error_text(exc, self._default_timezone), alert=True
         )
@@ -212,9 +203,9 @@ class LotteryUpdateHandler:
         message = query.message
         if not isinstance(message, Message):
             return
-        if await self._navigation.handle_route(query, data=data, personal=self._personal_flow):
-            return
-        if await self._personal_flow.handle_callback(query, data):
+        from tg_lottery.telegram.private_update_navigation import read_callback
+
+        if await read_callback(self, query, data=data):
             return
         if data == "nav:new":
             await self._admin_flow.start_new(query)
@@ -453,6 +444,15 @@ class LotteryUpdateHandler:
         )
 
     async def _my_chat_member(self, event: ChatMemberUpdated) -> None:
+        if event.chat.type == "private":
+            relationships = getattr(self._member_flow, "_relationships", None)
+            if relationships is not None:
+                await relationships.record(
+                    event.chat.id,
+                    event.date,
+                    blocked=str(event.new_chat_member.status) in {"kicked", "left"},
+                )
+            return
         await send_bot_permission_reminder(self._bot, event)
         if not _is_admin(event.new_chat_member):
             await self._groups.deactivate_group(event.chat.id, event.date)

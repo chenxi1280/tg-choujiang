@@ -2,6 +2,7 @@ from typing import Any
 
 from tg_lottery.domain.admission import InviteAdmissionRule, MessageAdmissionRule
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram.creator_bonus_policy import uses_unlimited_policy
 from tg_lottery.telegram.creator_number_controls import DEFAULT_MESSAGE_COUNT
 from tg_lottery.telegram.creator_retention_revision import checked_retention_editor
 from tg_lottery.telegram.creator_schedule import positive_int
@@ -45,8 +46,14 @@ def group_dirty(data: dict) -> bool:
     editor = data.get(EDITOR_KEY) or {}
     if not editor.get("chat_id"):
         return False
-    saved = editor["groups"].get(editor["chat_id"])
-    return editor.get("rule") != saved
+    baseline = editor.get("rule_baseline")
+    if baseline is None:
+        initial = (
+            {"daily_messages": DEFAULT_MESSAGE_COUNT} if editor.get("type") == "message" else {}
+        )
+        saved = editor["groups"].get(editor["chat_id"]) or initial
+        baseline = _rule_model(editor, saved).model_dump()
+    return _rule_model(editor, editor.get("rule")).model_dump() != baseline
 
 
 def clear(data: dict[str, Any]) -> dict[str, Any]:
@@ -57,7 +64,7 @@ def apply_action(data: dict[str, Any], action: str) -> dict[str, Any]:
     parts = action.removeprefix("draft_gate:").split(":")
     editor = dict(data.get(EDITOR_KEY) or open_editor(data)[EDITOR_KEY])
     operation = parts[0]
-    if operation in {"confirm_change", "keep_editing"}:
+    if operation in {"confirm_change", "keep_editing", "save_and_continue"}:
         return _confirmation_action(data, editor, operation=operation)
     if _needs_confirmation(data, operation, parts):
         return data | {EDITOR_KEY: editor | {"pending_action": action}}
@@ -84,8 +91,14 @@ def _edit_action(data: dict, editor: dict, *, parts: list[str]) -> dict:
     if operation == "group":
         _group(data, parts[1])
         initial = {"daily_messages": DEFAULT_MESSAGE_COUNT} if editor["type"] == "message" else {}
-        rule = editor["groups"].get(parts[1]) or _rule_model(editor, initial).model_dump()
-        return editor | {"chat_id": parts[1], "rule": rule, "field": None}
+        saved = editor["groups"].get(parts[1]) or initial
+        rule = _rule_model(editor, saved).model_dump()
+        return editor | {
+            "chat_id": parts[1],
+            "rule": rule,
+            "rule_baseline": dict(rule),
+            "field": None,
+        }
     if operation in {"input", "search"}:
         return _input_action(editor, parts=parts)
     if operation == "cancel_input":
@@ -137,6 +150,8 @@ def _copy_action(data: dict, editor: dict, *, operation: str) -> dict:
     if operation == "copy_confirm":
         if not editor.get("copy_targets"):
             raise UserFacingError("请先选择要复制的目标群")
+        for target in editor["copy_targets"]:
+            _group(data, target)
         groups = dict(editor["groups"])
         groups.update({key: dict(editor["rule"]) for key in editor.get("copy_targets", [])})
         return {
@@ -187,12 +202,16 @@ def toggle_copy(data: dict, chat_id: str) -> dict:
 
 
 def _confirmation_action(data, editor, *, operation):
+    if operation == "save_and_continue":
+        return _save_and_continue(data, editor)
     if operation == "confirm_change":
         pending = editor.get("pending_action")
+        if not isinstance(pending, str):
+            raise UserFacingError("切换确认已失效，请返回门槛设置")
         cleaned = {
             key: value
             for key, value in editor.items()
-            if key not in {"pending_action", "chat_id", "rule", "field"}
+            if key not in {"pending_action", "chat_id", "rule", "rule_baseline", "field"}
         }
         if pending.startswith("draft_gate:mode:"):
             cleaned = cleaned | {"type": None, "groups": {}}
@@ -203,8 +222,19 @@ def _confirmation_action(data, editor, *, operation):
         }
 
 
+def _save_and_continue(data, editor):
+    pending = str(editor.get("pending_action") or "")
+    if pending != "draft_gate:list" and not pending.startswith("draft_gate:group:"):
+        raise UserFacingError("本次切换不能暂存后继续，请明确选择门槛类型")
+    changed = _save_group(data, editor, operation="group_save")
+    changed.pop("pending_action", None)
+    return apply_action(data | {EDITOR_KEY: changed}, pending)
+
+
 def _save_admission(data, editor):
     ready_editor = checked_retention_editor(data)
+    if uses_unlimited_policy(data) and ready_editor["retention_hours"] != 24:
+        raise UserFacingError("新场邀请留存固定24小时，请返回当前门槛设置页")
     if editor["type"] not in {"message", "invite"}:
         raise UserFacingError("请先选择一种抽奖门槛")
     if not editor["groups"]:

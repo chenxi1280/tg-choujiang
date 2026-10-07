@@ -1,3 +1,5 @@
+import asyncio
+
 from aiogram import Bot
 
 from tg_lottery.domain.errors import AuthorizationDenied
@@ -6,8 +8,9 @@ from tg_lottery.domain.errors import AuthorizationDenied
 async def verify_chat_admin(
     bot: Bot, chat_id: int, user_id: int, *, require_invites: bool = False
 ) -> None:
-    user = await bot.get_chat_member(chat_id, user_id)
-    bot_member = await bot.get_chat_member(chat_id, bot.id)
+    user, bot_member = await asyncio.gather(
+        bot.get_chat_member(chat_id, user_id), bot.get_chat_member(chat_id, bot.id)
+    )
     if not _is_admin(user):
         raise AuthorizationDenied("当前 Telegram 管理员身份无效：你不是该群管理员")
     if not _is_admin(bot_member):

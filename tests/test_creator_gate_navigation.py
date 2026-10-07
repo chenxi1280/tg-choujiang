@@ -66,7 +66,7 @@ async def test_choose_groups_then_resume_invite_editor_and_save(monkeypatch):
     query = _query()
     await creator.handle_grant(query, CallbackGrant("draft_gate", None, {}))
     await creator.handle_grant(query, _grant("mode:invite"))
-    await creator.handle_grant(query, _grant("retention:0"))
+    await creator.handle_grant(query, _grant("retention:24"))
 
     await creator.handle_grant(query, _grant("choose_groups"))
     renderer.render_groups.assert_awaited_once()
@@ -77,7 +77,7 @@ async def test_choose_groups_then_resume_invite_editor_and_save(monkeypatch):
     await creator.handle_grant(query, CallbackGrant("draft_groups_done", None, {}))
     await creator.handle_grant(query, CallbackGrant("draft_gate", None, {}))
     assert "当前选择\N{FULLWIDTH COLON}邀请好友" in renderer.text
-    assert sessions.data[editor.EDITOR_KEY]["retention_hours"] == 0
+    assert sessions.data[editor.EDITOR_KEY]["retention_hours"] == 24
     await creator.handle_grant(query, _grant(f"group:{FIRST}"))
     await creator.handle_grant(query, _grant("input:required_valid_invites"))
     assert await creator.handle_message(_message("5")) is True
@@ -95,6 +95,6 @@ async def test_choose_groups_then_resume_invite_editor_and_save(monkeypatch):
         "type": "invite",
         "groups": {str(FIRST): {"required_valid_invites": 5}},
     }
-    assert sessions.data["invite_retention_hours"] == 0
+    assert sessions.data["invite_retention_hours"] == 24
     assert editor.EDITOR_KEY not in sessions.data
     verify.assert_awaited_once()

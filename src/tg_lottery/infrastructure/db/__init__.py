@@ -1,6 +1,7 @@
 from tg_lottery.infrastructure.db.base import Base
 from tg_lottery.infrastructure.db.models_admission import AdmissionProgress, MessageTotalEvent
 from tg_lottery.infrastructure.db.models_base_activity import BaseActivityEvent
+from tg_lottery.infrastructure.db.models_bot_relationship import BotRelationship
 from tg_lottery.infrastructure.db.models_campaign_targets import (
     CampaignOperationalBlock,
     CampaignParticipationGroup,
@@ -57,6 +58,7 @@ __all__ = [
     "AuditLog",
     "Base",
     "BaseActivityEvent",
+    "BotRelationship",
     "BotRuntimeLease",
     "CallbackToken",
     "Campaign",

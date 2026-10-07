@@ -17,6 +17,7 @@ from tg_lottery.domain.rules import (
     InviteRewardTier,
     InviteRule,
 )
+from tg_lottery.telegram.creator_bonus_policy import current_bonus_policy, policy_version
 from tg_lottery.telegram.creator_invite_retention import retention_hours
 from tg_lottery.telegram.public_projection import BEIJING_TIMEZONE
 
@@ -41,12 +42,15 @@ def new_draft(
     group_title: str = "",
     timezone: str = "Asia/Shanghai",
 ) -> dict[str, Any]:
-    return _draft_defaults() | {
-        "chat_id": chat_id,
-        "group_title": group_title,
-        "timezone": timezone,
-        "participation_group_ids": [chat_id] if chat_id is not None else [],
-    }
+    return current_bonus_policy(
+        _draft_defaults()
+        | {
+            "chat_id": chat_id,
+            "group_title": group_title,
+            "timezone": timezone,
+            "participation_group_ids": [chat_id] if chat_id is not None else [],
+        }
+    )
 
 
 def _draft_defaults() -> dict[str, Any]:
@@ -99,15 +103,17 @@ def _draft_defaults() -> dict[str, Any]:
 
 
 def ensure_draft_identity(data: dict[str, Any]) -> dict[str, Any]:
+    if data.get("published_campaign_id") or data.get("publish_snapshot"):
+        return dict(data)
     defaults = new_draft()
     merged = defaults | data
     if data.get("participation_rules_version") != "v3.0":
         from tg_lottery.telegram.creator_reuse import reusable_v3_draft
 
         merged = reusable_v3_draft(merged)
-    if data.get("draft_id"):
-        return merged
-    return merged | {"draft_id": token_urlsafe(18), "draft_revision": 0}
+    if not data.get("draft_id"):
+        merged |= {"draft_id": token_urlsafe(18), "draft_revision": 0}
+    return current_bonus_policy(merged)
 
 
 def parse_draw_at(value: str, timezone: str) -> datetime:
@@ -177,13 +183,15 @@ def rules_from_data(data: dict[str, Any]) -> CampaignRules:
     )
     invite = _invite_rule(data)
     return CampaignRules(
+        platform_policy=data.get("platform_policy"),
         participation_rules_version=data.get("participation_rules_version"),
+        bonus_policy_version=policy_version(data),
         admission=data.get("admission"),
         timezone=BEIJING_TIMEZONE,
         activity=activity,
         invite=invite,
         required_channel_id=data.get("required_channel_id"),
-        required_chat_ids=tuple(int(value) for value in data.get("required_chat_ids", [])),
+        required_chat_ids=_required_ids(data),
         username_required=bool(data.get("username_required")),
         allowed_regions=tuple(str(value) for value in data.get("allowed_regions", [])),
         draw_mode=str(data.get("draw_mode", "fixed")),
@@ -205,6 +213,18 @@ def rules_from_data(data: dict[str, Any]) -> CampaignRules:
             str(key): GroupActivityRule.model_validate(value)
             for key, value in (data.get("group_activity_rules") or {}).items()
         },
+    )
+
+
+def _required_ids(data):
+    official = (data.get("platform_policy") or {}).get("channels", [])
+    return tuple(
+        dict.fromkeys(
+            [
+                *(int(value) for value in data.get("required_chat_ids", [])),
+                *(item["chat_id"] for item in official),
+            ]
+        )
     )
 
 
@@ -251,7 +271,9 @@ def _has_enabled_group_rule(data: dict[str, Any], kind: str) -> bool:
 
 def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
     keys = (
+        "platform_policy",
         "participation_rules_version",
+        "bonus_policy_version",
         "admission",
         "invite_retention_hours",
         "folder_link",

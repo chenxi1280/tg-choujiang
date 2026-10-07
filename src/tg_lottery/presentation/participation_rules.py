@@ -15,6 +15,7 @@ from tg_lottery.presentation.campaign_card import (
     time_blocks,
 )
 from tg_lottery.presentation.mentions import html_utf16_length
+from tg_lottery.presentation.rule_pages import contextual_pages
 from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
 from tg_lottery.telegram.creator_invite_retention import retention_text
 from tg_lottery.telegram.public_projection import format_public_time
@@ -48,9 +49,13 @@ def gate_lines(rules: CampaignRules, chats: tuple) -> tuple[str, ...]:
 
 
 def condition_blocks(payload: Mapping) -> tuple[str, ...]:
+    return (*membership_blocks(payload), *detail_rule_blocks(payload))
+
+
+def detail_rule_blocks(payload: Mapping) -> tuple[str, ...]:
     rules = CampaignRules.model_validate(payload["rules"])
     chats = condition_chats(payload)
-    blocks = list(membership_blocks(payload))
+    blocks = []
     blocks.extend(html.escape(line) for line in gate_lines(rules, chats))
     blocks.extend(html.escape(line) for line in message_count_blocks(rules))
     blocks.append("额外抽奖次数（不替代门槛）")
@@ -93,12 +98,14 @@ def message_count_blocks(rules: CampaignRules) -> tuple[str, ...]:
 def public_rule_blocks(payload: Mapping) -> tuple[str, ...]:
     return (
         f"🎰 <b>{html.escape(str(payload['name']))}</b>",
-        *condition_blocks(payload),
+        *membership_blocks(payload),
         *prize_blocks(payload),
         *description_blocks(payload),
         bonus_block(payload),
         *time_blocks(payload),
         *footer_blocks(payload),
+        "📖 完整统计与加成规则",
+        *detail_rule_blocks(payload),
     )
 
 
@@ -106,13 +113,13 @@ def activity_link(payload: Mapping) -> str:
     return campaign_link(payload)
 
 
-def split_rule_blocks(blocks: tuple[str, ...]) -> tuple[str, ...]:
+def split_rule_blocks(blocks: tuple[str, ...], *, limit=TEXT_PAGE_UNITS) -> tuple[str, ...]:
     pages, current = [], ""
     for block in blocks:
-        if utf16_units(block) > TEXT_PAGE_UNITS:
+        if html_utf16_length(block) > limit:
             raise ValueError("单条条件或规则超过 Telegram 消息容量，请调整该项内容")
         candidate = current + "\n\n" + block if current else block
-        if utf16_units(candidate) > TEXT_PAGE_UNITS:
+        if html_utf16_length(candidate) > limit:
             pages.append(current)
             current = block
         else:
@@ -122,17 +129,70 @@ def split_rule_blocks(blocks: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(pages)
 
 
+def complete_rule_pages(payload: Mapping, blocks=None) -> tuple[str, ...]:
+    return contextual_pages(
+        split_rule_blocks(blocks or public_rule_blocks(payload), limit=3200),
+        name=str(payload["name"]),
+        url=campaign_link(payload),
+    )
+
+
 def rule_manifest(payload: Mapping) -> tuple[str, tuple[str, ...]]:
     blocks = public_rule_blocks(payload)
     text = "\n\n".join(card_blocks(payload))
     limit = CAPTION_UNITS if payload["presentation"].get("cover_file_id") else TEXT_PAGE_UNITS
-    pages = split_rule_blocks(blocks)
+    pages = complete_rule_pages(payload, blocks)
     if html_utf16_length(text) <= limit:
         return text, ()
-    summary = (
-        f"🎰 <b>{html.escape(str(payload['name']))}</b>\n\n"
-        f"📮 <b>参与条件：</b>正文较长，请查看完整规则（共 {len(pages)} 页）。\n\n"
-        f"{bonus_block(payload)}\n\n" + "\n\n".join(time_blocks(payload)) + "\n\n"
-        f"本场链接: {html.escape(activity_link(payload))}"
+    compact = compact_card(payload)
+    if html_utf16_length(compact) <= limit:
+        return compact, pages
+    return summary_card(payload, page_count=len(pages), limit=limit), pages
+
+
+def compact_card(payload: Mapping) -> str:
+    rule_url = html.escape(campaign_link(payload, "rules"), quote=True)
+    return "\n\n".join(
+        (
+            f"🎰 <b>{html.escape(str(payload['name']))}</b>",
+            "\n".join(membership_blocks(payload)),
+            "\n".join(prize_blocks(payload)),
+            f'⚠️ <b>抽奖说明：</b>正文较长，<a href="{rule_url}">查看完整说明与规则</a>',
+            bonus_block(payload),
+            *time_blocks(payload),
+            *footer_blocks(payload),
+        )
     )
-    return summary, pages
+
+
+def summary_card(payload: Mapping, *, page_count: int, limit: int) -> str:
+    prefix = (
+        f"🎰 <b>{html.escape(str(payload['name']))}</b>\n\n"
+        f"📮 <b>参与条件：</b>正文较长，完整清单见规则消息（共 {page_count} 页）。\n\n"
+        "🎁 <b>奖品内容：</b>"
+    )
+    url = html.escape(campaign_link(payload, "rules"), quote=True)
+    remainder = f'<a href="{url}">查看全部奖品、条件与说明</a>'
+    tail = "\n\n".join((bonus_block(payload), *time_blocks(payload), *footer_blocks(payload)))
+    visible = []
+    total = len(payload.get("prizes") or [])
+    base = "\n".join((prefix, *_remaining_prizes(total), remainder)) + "\n\n" + tail
+    if html_utf16_length(base) > limit:
+        tail = "\n\n".join(
+            (bonus_block(payload), *time_blocks(payload), footer_blocks(payload)[-1])
+        )
+    for prize in prize_blocks(payload)[1:]:
+        remaining = _remaining_prizes(total - len(visible) - 1)
+        candidate = "\n".join((prefix, *visible, prize, *remaining, remainder)) + "\n\n" + tail
+        if html_utf16_length(candidate) > limit:
+            break
+        visible.append(prize)
+    visible.extend(_remaining_prizes(total - len(visible)))
+    text = "\n".join((prefix, *visible, remainder)) + "\n\n" + tail
+    if html_utf16_length(text) > limit:
+        raise ValueError("公告摘要仍超过容量，请缩短活动名称或奖品设置")
+    return text
+
+
+def _remaining_prizes(count: int) -> tuple[str, ...]:
+    return (f"另有 {count} 项奖品，完整名称与名额见规则。",) if count else ()

@@ -54,7 +54,7 @@ def _delivery_worker(session_factory, bot: NoticeBot) -> OutboxWorker:
     return OutboxWorker(
         owner_id="notice-delivery-worker",
         session_factory=session_factory,
-        gateway=TelegramGateway(bot, cipher),
+        gateway=TelegramGateway(bot, cipher, bot_username="lottery_test_bot"),
         cipher=cipher,
     )
 

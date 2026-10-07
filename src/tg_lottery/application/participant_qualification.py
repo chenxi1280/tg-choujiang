@@ -36,6 +36,12 @@ def apply_check_result(check: QualificationCheck, result: QualificationResultLik
     check.observed_status = result.observed_status
     check.error_code = result.error_code
     check.observations = {"chats": list(result.observations)}
+    relationship = getattr(result, "relationship", None)
+    if relationship is not None:
+        check.observations["bot_relation"] = relationship
+    profile = getattr(result, "profile", None)
+    if profile is not None:
+        check.observations["profile"] = profile
     check.observed_at = result.observed_at
     check.participation_groups_state = kind_state(result.observations, "participation_group")
     check.requirements_state = kind_state(result.observations, "requirement")

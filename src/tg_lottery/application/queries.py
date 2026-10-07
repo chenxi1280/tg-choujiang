@@ -83,6 +83,7 @@ from tg_lottery.application.query_invites import (
 from tg_lottery.application.query_invites import (
     referral_route_by_reference as load_referral_route_by_reference,
 )
+from tg_lottery.application.reputation_queries import ReputationQueries
 from tg_lottery.application.winner_queries import WinnerRow as WinnerRow
 from tg_lottery.application.winner_queries import load_winner_page, load_winners
 from tg_lottery.domain.enums import (
@@ -124,7 +125,7 @@ class DeliverySummary:
     purposes: tuple[DeliveryPurpose, ...] = ()
 
 
-class QueryService:
+class QueryService(ReputationQueries):
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
@@ -338,6 +339,11 @@ class QueryService:
         self, campaign_id: UUID, user_id: int
     ) -> GroupBonusProgress | None:
         return await load_group_bonus_progress(self._session_factory, campaign_id, user_id)
+
+    async def legacy_activity_progress(self, campaign_id: UUID, user_id: int):
+        from tg_lottery.application.legacy_activity_progress import load_legacy_activity_progress
+
+        return await load_legacy_activity_progress(self._session_factory, campaign_id, user_id)
 
     async def invite_link_by_url(self, url: str) -> InviteLink | None:
         return await load_invite_link_by_url(self._session_factory, url)

@@ -17,6 +17,7 @@ from tg_lottery.application.winners import WinnerService
 from tg_lottery.domain.action_confirmation import ExpectedCampaign
 from tg_lottery.domain.enums import CampaignState, OutboxState
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.domain.platform_policy import PlatformPolicy
 from tg_lottery.telegram.admin_authorization import verify_chat_admin
 from tg_lottery.telegram.admin_confirmations import (
     ACTION_LABELS,
@@ -32,6 +33,7 @@ from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.campaign_authorization import verify_campaign_admin
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_list_views import campaign_origin, creator_list_view
+from tg_lottery.telegram.platform_requirements import inspect_official_channels
 from tg_lottery.telegram.public_projection import campaign_state_text
 from tg_lottery.telegram.publication_error_text import publication_error_text
 
@@ -271,6 +273,13 @@ class AdminFlow:
     async def _retry_publication(self, query: CallbackQuery, grant: CallbackGrant) -> None:
         campaign_id = _campaign_id(grant)
         await self._verify_admin(campaign_id, query.from_user.id)
+        campaign = await self._queries.campaign(campaign_id)
+        if campaign is None:
+            raise UserFacingError("活动状态暂未核实，请刷新后重试")
+        frozen = campaign.rules.get("platform_policy")
+        await inspect_official_channels(
+            self._bot, PlatformPolicy.model_validate(frozen) if frozen else None
+        )
         count = await self._campaigns.retry_failed_publication(
             campaign_id, query.from_user.id, expected=_expected(grant)
         )

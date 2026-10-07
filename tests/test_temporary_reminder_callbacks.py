@@ -3,14 +3,19 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from aiogram.exceptions import TelegramForbiddenError
+from aiogram.methods import SendMessage
 from aiogram.types import Chat, Message, User
 
+from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram.member_callbacks import (
     REGISTRATION_REMINDER,
     bonus_callback,
     group_invite_callback,
+    invite_link_callback,
+    invite_page_callback,
 )
 from tg_lottery.telegram.member_flow import MemberFlow
 
@@ -44,11 +49,15 @@ class Queries:
     async def invite_link_for_participant(self, campaign_id, user_id):
         return None
 
+    async def participant_campaign_detail(self, user_id, reference):
+        return None
+
 
 def _campaign():
     return SimpleNamespace(
         id=uuid4(),
         public_ref=PUBLIC_REF,
+        state=CampaignState.RUNNING,
         rules=CampaignRules(bonus_types=("invite",)).model_dump(mode="json"),
     )
 
@@ -97,6 +106,7 @@ async def test_bonus_without_participation_queues_group_reminder():
     assert "立即参与" not in participants.reminders[0]["text"]
     assert participants.reminders[0]["recipient_chat_id"] == GROUP_CHAT_ID
     assert participants.reminders[0]["business_key"].startswith("temporary_reminder:")
+    assert participants.reminders[0]["campaign_ref"] == PUBLIC_REF
 
 
 async def test_group_invite_without_participation_queues_group_reminder():
@@ -127,3 +137,61 @@ async def test_unrelated_group_error_is_not_queued_as_reminder(text):
 
     assert participants.reminders == []
     assert query.answers == []
+
+
+async def test_no_bonus_rules_queues_group_reminder_with_join_link():
+    participants = ReminderParticipants()
+    campaign = _campaign()
+    campaign.rules = CampaignRules().model_dump(mode="json")
+    query = _attach_answer(_query())
+    await bonus_callback(_flow(campaign, participants), query, PUBLIC_REF)
+    assert participants.reminders[0]["text"] == "本期抽奖没有开启可用的邀请或发言加成。"
+    assert participants.reminders[0]["campaign_ref"] == PUBLIC_REF
+
+
+@pytest.mark.parametrize("page", [None, 1])
+async def test_invite_callbacks_deliver_only_to_clicker_private_chat(page):
+    flow = _flow(_campaign(), ReminderParticipants())
+    calls = []
+
+    async def show(message, reference, *, user_id, page=0):
+        calls.append((message.chat.id, message.chat.type, user_id, page))
+
+    flow.show_invite_link = show
+    query = _attach_answer(_query())
+    if page is None:
+        await invite_link_callback(flow, query, PUBLIC_REF)
+    else:
+        await invite_page_callback(flow, query, f"{PUBLIC_REF}:{page}")
+    assert calls == [(201, "private", 201, page or 0)]
+    assert query.answers == [("邀请入口已私聊发送给你", False)]
+
+
+async def test_invite_private_delivery_failure_never_falls_back_to_group():
+    participants = ReminderParticipants()
+    flow = _flow(_campaign(), participants)
+    targets = []
+
+    async def show(message, reference, *, user_id, page=0):
+        targets.append(message.chat.id)
+        raise TelegramForbiddenError(
+            method=SendMessage(chat_id=user_id, text="link"), message="blocked"
+        )
+
+    flow.show_invite_link = show
+    query = _attach_answer(_query())
+    await invite_link_callback(flow, query, PUBLIC_REF)
+    assert targets == [201]
+    assert participants.reminders == []
+    assert query.answers == [("请先私聊机器人，再查看邀请入口", True)]  # noqa: RUF001
+
+
+@pytest.mark.parametrize("rules", [CampaignRules(), CampaignRules(bonus_types=("invite",))])
+async def test_group_invite_entry_precondition_queues_temporary_reminder(rules):
+    participants = ReminderParticipants()
+    campaign = _campaign()
+    campaign.rules = rules.model_dump(mode="json")
+    query = _attach_answer(_query())
+    await invite_link_callback(_flow(campaign, participants), query, PUBLIC_REF)
+    assert participants.reminders[0]["recipient_chat_id"] == GROUP_CHAT_ID
+    assert participants.reminders[0]["campaign_ref"] == PUBLIC_REF

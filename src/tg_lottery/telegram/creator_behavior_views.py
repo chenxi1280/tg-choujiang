@@ -51,13 +51,7 @@ def rule_text(rule: dict, mode: str) -> str:
 def view(data: dict) -> tuple[str, list]:
     editor = data[EDITOR_KEY]
     if editor.get("pending_action"):
-        return (
-            "本群修改尚未保存，或切换类型将清除已配置门槛。确认放弃这些修改？",
-            [
-                [("确认放弃并继续", "draft_gate:confirm_change")],
-                [("继续编辑", "draft_gate:keep_editing")],
-            ],
-        )
+        return _pending_view(editor)
     if editor.get("field"):
         field = editor["field"]
         text = (
@@ -71,6 +65,20 @@ def view(data: dict) -> tuple[str, list]:
     if editor.get("chat_id"):
         return _group_view(data, editor)
     return _list_view(data, editor)
+
+
+def _pending_view(editor):
+    pending = editor["pending_action"]
+    rows = []
+    if pending == "draft_gate:list" or pending.startswith("draft_gate:group:"):
+        rows.append([("暂存本群并继续", "draft_gate:save_and_continue")])
+    rows.extend(
+        [
+            [("确认放弃并继续", "draft_gate:confirm_change")],
+            [("继续编辑", "draft_gate:keep_editing")],
+        ]
+    )
+    return "本群修改尚未暂存，或切换类型将清除已配置门槛。请选择如何继续。", rows
 
 
 def _list_view(data, editor):
@@ -117,10 +125,11 @@ def _group_view(data: dict, editor: dict) -> tuple[str, list]:
         [
             [("本群暂存到编辑稿", "draft_gate:group_save")],
             [("移除本群门槛", "draft_gate:disable")],
-            [("复制到选定群", "draft_gate:copy_open")],
             [("返回群列表", "draft_gate:list")],
         ]
     )
+    if len(data["participation_groups"]) > 1:
+        rows.insert(-1, [("复制到选定群", "draft_gate:copy_open")])
     return f"{chat_title(group)}\n{rule_text(editor['rule'], mode)}\n每日加成独立设置。", rows
 
 
@@ -195,9 +204,9 @@ def _copy_view(data: dict, editor: dict) -> tuple[str, list]:
     if (page + 1) * PAGE_SIZE < count:
         rows.append([("下一页", f"draft_gate:page:{page + 1}")])
     rows.extend(_search_rows(editor, page))
-    rows.extend(
-        [[("确认覆盖选定群", "draft_gate:copy_confirm")], [("取消复制", "draft_gate:copy_cancel")]]
-    )
+    if selected:
+        rows.append([("确认覆盖选定群", "draft_gate:copy_confirm")])
+    rows.append([("取消复制", "draft_gate:copy_cancel")])
     names = {str(item["id"]): chat_title(item) for item in data["participation_groups"]}
     text = (
         f"来源群 {names[editor['chat_id']]}\n{rule_text(editor['rule'], editor['type'])}\n"
@@ -205,9 +214,14 @@ def _copy_view(data: dict, editor: dict) -> tuple[str, list]:
         + "、".join(names[key] for key in selected)
     )
     text += _search_summary(data, editor)
-    if not count and not editor.get("search"):
-        text += "\n没有其他参与群可复制，请取消复制返回本群设置。"
+    text += _copy_hint(editor, count=count, selected=selected)
     return text, rows
+
+
+def _copy_hint(editor, *, count, selected):
+    if not count and not editor.get("search"):
+        return "\n没有其他参与群可复制，请取消复制返回本群设置。"
+    return "\n请先勾选目标群，再确认覆盖。" if not selected else ""
 
 
 def _field_preset_row(editor: dict, field: str) -> list:

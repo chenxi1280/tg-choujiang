@@ -5,19 +5,27 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.presentation.target_identity import duplicate_names, target_name
 from tg_lottery.telegram.member_profile_conditions import profile_conditions
 from tg_lottery.telegram.operational_issue_views import operational_issue_text
+from tg_lottery.telegram.platform_condition_view import platform_condition_lines
 
 
-async def condition_check_payload(query, *, campaign, queries, bot, profiles, cipher):
+async def condition_check_payload(
+    query, *, campaign, queries, bot, profiles, cipher, relationships=None, bot_username=""
+):
     ref = campaign.public_ref
     targets = await queries.qualification_targets(campaign.id)
     detail = await queries.participant_campaign_detail(query.from_user.id, ref)
     issues = await queries.operational_issues(campaign.id)
     rules = CampaignRules.model_validate(campaign.rules)
     lines, rows = await target_conditions(bot, query.from_user.id, targets=targets, cipher=cipher)
+    platform_lines, platform_rows = await platform_condition_lines(
+        relationships, campaign=campaign, user_id=query.from_user.id, bot_username=bot_username
+    )
+    lines, rows = [*platform_lines, *lines], [*platform_rows, *rows]
     profile_lines, profile_rows = await profile_conditions(
         profiles, query, rules=rules, reference=ref
     )
@@ -46,6 +54,8 @@ async def target_conditions(bot, user_id, *, targets, cipher):
             target.title, position=number, chat_id=target.chat_id, duplicates=duplicates
         )
         try:
+            if target.platform:
+                await _require_platform_admin(bot, target)
             member = await bot.get_chat_member(target.chat_id, user_id)
             present = str(member.status) in {"creator", "administrator", "member"} or (
                 str(member.status) == "restricted" and member.is_member
@@ -59,12 +69,20 @@ async def target_conditions(bot, user_id, *, targets, cipher):
                 exc_info=True,
             )
             lines.append(f"{title}：Telegram暂时无法核验，不能视为已满足")
+        except UserFacingError as exc:
+            lines.append(f"{title}：{exc.public_message}；由平台修复，无需反复退订/重订")
         url = target_url(target, cipher)
         if url:
             rows.append([InlineKeyboardButton(text="打开「" + title + "」", url=url)])
         else:
             lines.append(f"{title}：目前没有已确认可用的加入入口")
     return lines, rows
+
+
+async def _require_platform_admin(bot, target):
+    member = await bot.get_chat_member(target.chat_id, bot.id)
+    if str(member.status) not in {"administrator", "creator"}:
+        raise UserFacingError("机器人管理员权限缺失，暂不能核验")
 
 
 def target_url(target, cipher):

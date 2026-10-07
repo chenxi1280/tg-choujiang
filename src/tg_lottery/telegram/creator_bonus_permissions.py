@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from aiogram import Bot
@@ -111,20 +112,36 @@ def _copy_confirm_targets(data: dict[str, Any]) -> list[tuple[int, str]]:
 async def _permission_errors(
     bot: Bot, user_id: int, targets: list[tuple[int, str]], *, data: dict[str, Any]
 ) -> list[str]:
-    errors = []
     names = {
         int(group["id"]): chat_title(group) for group in data.get("participation_groups") or []
     }
     by_chat: dict[int, frozenset[str]] = {}
     for chat_id, kind in targets:
         by_chat[chat_id] = by_chat.get(chat_id, frozenset()) | {kind}
-    for position, (chat_id, kinds) in enumerate(by_chat.items(), start=1):
+    slots = asyncio.Semaphore(4)
+    results = await asyncio.gather(
+        *(
+            _target_error(
+                bot,
+                user_id=user_id,
+                chat_id=chat_id,
+                kinds=kinds,
+                name=names.get(chat_id, f"第 {position} 个参与群"),
+                slots=slots,
+            )
+            for position, (chat_id, kinds) in enumerate(by_chat.items(), start=1)
+        )
+    )
+    return [result for result in results if result is not None]
+
+
+async def _target_error(bot, *, user_id, chat_id, kinds, name, slots):
+    async with slots:
         try:
             await _verify_target(bot, user_id, chat_id, kinds=kinds)
         except (AuthorizationDenied, UserFacingError) as exc:
-            name = names.get(chat_id, f"第 {position} 个参与群")
-            errors.append(f"· {name}：{exc}")
-    return errors
+            return f"· {name}：{exc}"
+    return None
 
 
 async def _verify_target(bot: Bot, user_id: int, chat_id: int, *, kinds: frozenset[str]) -> None:

@@ -5,12 +5,17 @@ from sqlalchemy import exists, func, or_, select
 
 from tg_lottery.application.admission_qualification import behavior_clause
 from tg_lottery.application.base_activity_notifications import notify_unqualified_at_cutoff
+from tg_lottery.application.bot_relationship_history import projected_start_exists
 from tg_lottery.application.campaign_targets import qualification_targets
 from tg_lottery.application.draw_commitments import (
     ensure_draw_commitment,
     require_commitment_confirmed,
 )
 from tg_lottery.application.operational_blocks import has_active_campaign_block
+from tg_lottery.application.platform_review import (
+    platform_snapshot_issue,
+    schedule_platform_refresh,
+)
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
 from tg_lottery.domain.enums import (
@@ -53,6 +58,7 @@ class SettlementService:
         self._uow_factory = uow_factory
 
     async def settle(self, campaign_id: UUID, now: datetime) -> DrawSnapshot:
+        await schedule_platform_refresh(self._uow_factory, campaign_id, now=now)
         async with self._uow_factory() as uow:
             campaign = await uow.session.scalar(
                 select(Campaign).where(Campaign.id == campaign_id).with_for_update()
@@ -114,6 +120,9 @@ class SettlementService:
         rules = CampaignRules.model_validate(campaign.rules)
         drain_until = campaign.cutoff_at + timedelta(seconds=rules.settlement_drain_seconds)
         blockers: list[str] = []
+        platform_issue = await platform_snapshot_issue(session, campaign, now=now)
+        if platform_issue:
+            blockers.append(platform_issue)
         if now < drain_until:
             blockers.append("drain_window_not_elapsed")
         if await self._has_pending_updates(session, campaign):
@@ -128,7 +137,7 @@ class SettlementService:
             await require_commitment_confirmed(session, campaign)
         except SettlementBlocked as exc:
             blockers.append(str(exc))
-        if not await self._polling_fresh_after_cutoff(session, campaign.cutoff_at):
+        if not await self._campaign_polling_fresh(session, campaign):
             blockers.append("polling_not_fresh_after_cutoff")
         if blockers:
             raise SettlementBlocked(",".join(blockers))
@@ -143,17 +152,21 @@ class SettlementService:
             if chat_id is None:
                 raise SettlementBlocked("campaign_group_missing")
             chat_ids = (chat_id,)
+        statement = select(TelegramUpdate.id)
+        if campaign.rules.get("platform_policy"):
+            statement = statement.where(
+                TelegramUpdate.bot_id == campaign.rules["platform_policy"]["bot_id"],
+                ~projected_start_exists(),
+            )
         update_id = await session.scalar(
-            select(TelegramUpdate.id)
-            .where(
+            statement.where(
                 TelegramUpdate.event_at <= campaign.cutoff_at,
                 TelegramUpdate.state.in_(_PENDING_UPDATE_STATES),
                 or_(
                     TelegramUpdate.routing_campaign_id == str(campaign.id),
                     TelegramUpdate.routing_chat_id.in_(chat_ids),
                 ),
-            )
-            .limit(1)
+            ).limit(1)
         )
         return update_id is not None
 
@@ -175,9 +188,19 @@ class SettlementService:
                 QualificationCheck.phase == "draw",
             )
         )
+        campaign = await session.get(Campaign, campaign_id)
+        statement = select(Participant.id)
+        if campaign.rules.get("platform_policy"):
+            excluded = exists(
+                select(QualificationCheck.id).where(
+                    QualificationCheck.participant_id == Participant.id,
+                    QualificationCheck.phase == "draw",
+                    QualificationCheck.error_code == "behavior_gate_incomplete",
+                )
+            )
+            statement = statement.where(behavior_clause() | ~excluded)
         participant_id = await session.scalar(
-            select(Participant.id)
-            .where(
+            statement.where(
                 Participant.campaign_id == campaign_id,
                 (
                     Participant.qualification_state.in_(
@@ -185,22 +208,26 @@ class SettlementService:
                     )
                     | ~draw_check_exists
                 ),
-            )
-            .limit(1)
+            ).limit(1)
         )
         return participant_id is not None
 
-    async def _polling_fresh_after_cutoff(self, session: object, cutoff_at: datetime) -> bool:
-        row = (
-            await session.execute(
-                select(
-                    func.max(PollingOffset.last_poll_succeeded_at),
-                    func.count(PollingOffset.bot_id).filter(PollingOffset.integrity_status != "ok"),
-                )
-            )
-        ).one()
+    async def _polling_fresh_after_cutoff(
+        self, session: object, cutoff_at: datetime, *, bot_id=None
+    ) -> bool:
+        statement = select(
+            func.max(PollingOffset.last_poll_succeeded_at),
+            func.count(PollingOffset.bot_id).filter(PollingOffset.integrity_status != "ok"),
+        )
+        if bot_id is not None:
+            statement = statement.where(PollingOffset.bot_id == bot_id)
+        row = (await session.execute(statement)).one()
         last_poll, integrity_issues = row
         return last_poll is not None and last_poll >= cutoff_at and int(integrity_issues or 0) == 0
+
+    async def _campaign_polling_fresh(self, session, campaign):
+        bot_id = (campaign.rules.get("platform_policy") or {}).get("bot_id")
+        return await self._polling_fresh_after_cutoff(session, campaign.cutoff_at, bot_id=bot_id)
 
     async def _eligible_entries(
         self, session: object, campaign_id: UUID
@@ -240,6 +267,9 @@ class SettlementService:
             "ledger_watermark": watermark.isoformat(),
             "entries": [(str(participant.id), weight) for participant, weight in entries],
         }
+        if campaign.rules.get("platform_policy"):
+            payload["platform_review"] = campaign.presentation["platform_qualification_review"]
+            payload["platform_policy"] = campaign.rules["platform_policy"]
         snapshot = DrawSnapshot(
             campaign_id=campaign.id,
             config_revision=campaign.config_revision,

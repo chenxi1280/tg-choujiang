@@ -3,6 +3,7 @@ from typing import Any
 
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import MAX_CHAT_MESSAGE_THRESHOLD
+from tg_lottery.telegram.platform_requirements import platform_summary
 
 ButtonRows = list[list[tuple[str, str]]]
 PARTICIPATION_PAGE_SIZE = 10
@@ -210,6 +211,7 @@ def participation_page(data: dict[str, Any]) -> int:
 def _participation_intro(data: dict[str, Any]) -> list[str]:
     lines = [
         "📮 准入条件（必须全部满足）",
+        platform_summary(data),
         "参与活动的群会另行全部校验。",
         "可一次发送一个或多个群聊/频道链接。",
     ]

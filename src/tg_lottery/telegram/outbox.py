@@ -14,6 +14,7 @@ from aiogram.exceptions import (
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tg_lottery.application.bot_relationships import record_blocked_delivery
 from tg_lottery.application.operational_blocks import (
     record_outbox_target_block,
     resolve_outbox_target_block,
@@ -65,6 +66,7 @@ class OutboxWorker:
         lease_seconds: int = _CLAIM_LEASE_SECONDS,
         renew_interval_seconds: float = _LEASE_RENEW_INTERVAL_SECONDS,
         invite_name_factory: InviteNameFactory | None = None,
+        bot_id: int | None = None,
     ) -> None:
         if lease_seconds <= 0 or not 0 < renew_interval_seconds < lease_seconds:
             raise ValueError("outbox lease renewal interval must be shorter than the lease")
@@ -75,6 +77,7 @@ class OutboxWorker:
         self._lease_seconds = lease_seconds
         self._renew_interval_seconds = renew_interval_seconds
         self._invite_name_factory = invite_name_factory
+        self._bot_id = bot_id
         self._logger = logging.getLogger(__name__)
 
     async def run_forever(self, stop: asyncio.Event) -> None:
@@ -300,6 +303,18 @@ class OutboxWorker:
                 error_code=type(exc).__name__,
                 details=str(exc),
             )
+            if (
+                self._bot_id
+                and row.recipient_chat_id > 0
+                and isinstance(exc, TelegramForbiddenError)
+            ):
+                if "bot was blocked by the user" in str(exc).casefold():
+                    await record_blocked_delivery(
+                        session,
+                        bot_id=self._bot_id,
+                        user_id=row.recipient_chat_id,
+                        observed_at=utcnow(),
+                    )
             return attempt_number
 
     async def _unknown(self, outbox_id: UUID, attempt_number: int, exc: Exception) -> None:

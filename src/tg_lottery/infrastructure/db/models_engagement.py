@@ -73,9 +73,9 @@ class DailyProgress(Base, UuidPkMixin, TimestampMixin):
         ForeignKey("campaign_participation_groups.id", ondelete="RESTRICT"), index=True
     )
     local_date: Mapped[date] = mapped_column(Date, nullable=False)
-    valid_message_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    valid_message_count: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     valid_message_counts: Mapped[dict[str, Any]] = mapped_column(default=dict, nullable=False)
-    tickets_awarded: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tickets_awarded: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     last_content_hash: Mapped[str | None] = mapped_column(String(64))
     last_content_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -256,7 +256,7 @@ class UserGroupMessageTotal(Base, UuidPkMixin, TimestampMixin):
 
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
-    total_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_count: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     last_content_hash: Mapped[str | None] = mapped_column(String(64))
     last_message_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

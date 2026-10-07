@@ -6,6 +6,8 @@ from zoneinfo import ZoneInfo
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from tg_lottery.domain.platform_policy import OfficialChannel, PlatformPolicy
+
 _POLL_LEASE_MARGIN_SECONDS = 10
 
 
@@ -28,6 +30,19 @@ class Settings(BaseSettings):
     guide_channel_url: str = ""
     navigation_channel_url: str = ""
     featured_channel_url: str = ""
+    platform_required_enabled: bool = False
+    platform_official_channels: tuple[OfficialChannel, ...] = ()
+    platform_observation_max_age_seconds: int = Field(default=300, ge=30, le=900)
+
+    @property
+    def platform_policy(self) -> PlatformPolicy | None:
+        if not self.platform_required_enabled:
+            return None
+        return PlatformPolicy(
+            bot_id=self.bot_id,
+            channels=self.platform_official_channels,
+            max_observation_age_seconds=self.platform_observation_max_age_seconds,
+        )
 
     @field_validator("guide_channel_url", "navigation_channel_url", "featured_channel_url")
     @classmethod
@@ -70,6 +85,8 @@ class Settings(BaseSettings):
         if self.poll_lease_seconds < self.poll_timeout_seconds + _POLL_LEASE_MARGIN_SECONDS:
             raise ValueError("POLL_LEASE_SECONDS must cover poll timeout plus 10 seconds")
         self.bot_id = token_bot_id
+        if self.platform_required_enabled:
+            _ = self.platform_policy
         return self
 
     @field_validator("timezone")

@@ -82,8 +82,9 @@ async def request_early_cutoff(
 
 
 class CampaignService:
-    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+    def __init__(self, uow_factory: UnitOfWorkFactory, *, platform_policy=None) -> None:
         self._uow_factory = uow_factory
+        self.platform_policy = platform_policy
 
     async def create_draft(
         self,
@@ -103,6 +104,11 @@ class CampaignService:
                     existing, group=group, actor=actor_user_id, source=source
                 )
                 return existing
+            if (
+                self.platform_policy is not None
+                and draft.rules.platform_policy != self.platform_policy
+            ):
+                raise UserFacingError("发布前平台策略已变化, 请保留草稿并重新确认完整条件")
             campaign = self._new_campaign(draft, group, actor_user_id, source=source)
             uow.session.add(campaign)
             await uow.session.flush()

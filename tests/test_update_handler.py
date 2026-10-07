@@ -13,6 +13,7 @@ from tg_lottery.telegram.update_handler import LotteryUpdateHandler, _public_cha
 
 class RecordingMemberFlow:
     def __init__(self) -> None:
+        self._bot = AsyncMock()
         self.user_id: int | None = None
         self.observed_at: datetime | None = None
         self.campaign_reference: str | None = None
@@ -48,8 +49,9 @@ class RecordingMemberFlow:
         self.campaign_reference = campaign_reference
         self.position = position
 
-    async def show_invite_link(self, message, campaign_reference, *, user_id) -> None:
+    async def show_invite_link(self, message, campaign_reference, *, user_id, page=0) -> None:
         self.action = "invite_link"
+        self.invite_chat = (message.chat.id, message.chat.type)
         self.campaign_reference = campaign_reference
         self.user_id = user_id
 
@@ -224,13 +226,14 @@ async def test_campaign_invite_callback_is_scoped_to_campaign_and_clicking_user(
     flow = RecordingMemberFlow()
     handler = _handler(member_flow=flow)
     public_ref = "AbCdEfGhIjKlMnOpQrSt-_"
-    query = _callback(f"member:invite:{public_ref}")
+    query = _callback(f"member:invite:{public_ref}").as_(flow._bot)
 
     await handler._dispatch_callback(query, query.data)
 
     assert flow.action == "invite_link"
     assert flow.campaign_reference == public_ref
     assert flow.user_id == 201
+    assert flow.invite_chat == (201, "private")
 
 
 def test_missing_chat_title_never_falls_back_to_raw_chat_id() -> None:
@@ -255,7 +258,9 @@ async def test_new_command_enters_creation_directly() -> None:
         queries=SimpleNamespace(campaign_by_reference=AsyncMock(return_value=None)),
         stats=FakeStats(),
     )
-    message = type("PrivateMessage", (), {"text": "/new"})()
+    message = type(
+        "PrivateMessage", (), {"text": "/new", "from_user": SimpleNamespace(id=201, is_bot=False)}
+    )()
 
     await handler._private_message(message)
 

@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from tg_lottery.application.authorization import require_group_admin
 from tg_lottery.domain.enums import CampaignState, OutboxState
+from tg_lottery.domain.platform_policy import merge_official_targets
 from tg_lottery.domain.rules import CampaignDraft
 from tg_lottery.infrastructure.db import (
     Campaign,
@@ -45,6 +46,8 @@ class QualificationTarget:
     revoked_at: datetime | None
     secret_context: str
     rule_chat_id: int | None = None
+    platform: bool = False
+    sources: tuple[str, ...] = ()
 
 
 async def resolve_draft_groups(
@@ -70,15 +73,20 @@ async def add_campaign_targets(
     groups: tuple[Group, ...],
 ) -> None:
     records = _participation_records(draft.presentation)
+    requirements = merge_official_targets(
+        _requirements(draft.presentation), draft.rules.platform_policy
+    )
+    if draft.rules.platform_policy:
+        campaign.presentation = campaign.presentation | {"required_chats": requirements}
     participation_ids = {group.chat_id for group in groups}
-    requirement_ids = {int(item["id"]) for item in _requirements(draft.presentation)}
+    requirement_ids = {int(item["id"]) for item in requirements}
     overlap = participation_ids.intersection(requirement_ids)
     if overlap:
         raise ValueError(f"participation groups conflict with requirements: {sorted(overlap)}")
     for position, group in enumerate(groups, start=1):
         presentation = records.get(group.chat_id, {})
         session.add(_participation_row(campaign, group, presentation, position=position))
-    for position, item in enumerate(_requirements(draft.presentation), start=1):
+    for position, item in enumerate(requirements, start=1):
         target_group = await _requirement_group(session, campaign, item)
         session.add(_requirement_row(campaign, item, position=position, target_group=target_group))
 
@@ -309,8 +317,11 @@ def _requirement_target(
     row: CampaignRequirement,
     current_chat_id: int | None,
 ) -> QualificationTarget:
+    sources = _requirement_sources(campaign, row.chat_id_snapshot)
     return QualificationTarget(
         kind="requirement",
+        platform="platform" in sources,
+        sources=sources,
         record_id=row.id,
         chat_id=current_chat_id or row.chat_id_snapshot,
         rule_chat_id=row.chat_id_snapshot,
@@ -322,6 +333,22 @@ def _requirement_target(
         revoked_at=row.revoked_at,
         secret_context=_qualification_secret_context(campaign, "requirement", row),
     )
+
+
+def _requirement_sources(campaign, chat_id):
+    official = (campaign.rules.get("platform_policy") or {}).get("channels", [])
+    record = next(
+        (
+            item
+            for item in campaign.presentation.get("required_chats") or []
+            if int(item["id"]) == chat_id
+        ),
+        {},
+    )
+    sources = list(record.get("sources") or ["creator"])
+    if any(item["chat_id"] == chat_id for item in official) and "platform" not in sources:
+        sources.insert(0, "platform")
+    return tuple(sources)
 
 
 def _qualification_secret_context(

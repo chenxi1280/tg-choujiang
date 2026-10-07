@@ -100,6 +100,7 @@ async def test_queued_share_freezes_content_but_delivery_exposes_closed_state(se
     await TelegramGateway(bot, object()).execute(request)
     button = bot.sent[0][2]["reply_markup"].inline_keyboard[0][0]
     assert "rules_" in button.url and button.callback_data is None
+    assert len(bot.sent[0][2]["reply_markup"].inline_keyboard) == 1
     assert not bot.pinned
 
 

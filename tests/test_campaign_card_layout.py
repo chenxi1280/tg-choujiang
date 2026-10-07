@@ -65,7 +65,10 @@ def test_private_target_never_exposes_plain_invite_even_when_present():
     payload["presentation"]["required_chats"][0]["join_url"] = "https://t.me/+private-secret"
     text, _pages = rule_manifest(payload)
     assert "private-secret" not in text + "".join(public_rule_blocks(payload))
-    assert '关注-<a href="https://t.me/lottery_test_bot?start=join_abcdefgh">公告频道</a>' in text
+    assert (
+        '关注-<a href="https://t.me/lottery_test_bot?start=condition_abcdefgh_3">公告频道</a>'
+        in text
+    )
 
 
 def test_invitation_gate_and_disabled_bonuses_are_not_presented_as_speech_rules():
@@ -123,7 +126,7 @@ async def test_legacy_long_share_rules_keep_all_targets_and_cumulative_threshold
     payload["rules"] = {"message_thresholds": {str(FIRST): 7}}
     payload["presentation"]["required_chats"] = [
         {"id": -100900 - i, "title": f"完整目标{i}" * 6, "join_url": f"https://t.me/target_{i}"}
-        for i in range(40)
+        for i in range(100)
     ]
     card, pages = rule_manifest(payload)
     assert pages and "正文较长" in card and "rules_abcdefgh" in card
@@ -149,6 +152,6 @@ async def test_legacy_long_share_rules_keep_all_targets_and_cumulative_threshold
     await show_legacy_rules(flow, message, campaign)
     full_rules = "\n".join(call.args[0] for call in message.answer.call_args_list)
     assert message.answer.await_count >= 2
-    assert all(f"https://t.me/target_{i}" in full_rules for i in range(40))
+    assert all(f"https://t.me/target_{i}" in full_rules for i in range(100))
     assert "累计发言至少 <b>7</b> 条" in full_rules
     assert all(call.kwargs["parse_mode"] == "HTML" for call in message.answer.call_args_list)

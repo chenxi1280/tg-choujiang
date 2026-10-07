@@ -195,7 +195,7 @@ async def test_callback_failure_popup_alerts_threshold_gap():
     assert len(callback.answers) == 1
     text, show_alert = callback.answers[0]
     assert show_alert is True
-    assert text == "尚未满足参与条件，请私聊机器人查看详情"  # noqa: RUF001
+    assert text == "尚未满足参与条件，详情已发送到本人私聊"  # noqa: RUF001
     assert message.texts == []
 
 
@@ -222,9 +222,10 @@ async def test_callback_failure_with_unreachable_private_chat_never_posts_to_gro
     )
 
     assert message.texts == []
-    assert callback.answers == [
-        ("尚未满足参与条件，请私聊机器人查看详情", True)  # noqa: RUF001
-    ]
+    assert len(callback.answers) == 1
+    text, show_alert = callback.answers[0]
+    assert show_alert is True
+    assert "私聊不可达" in text and "解除屏蔽" in text
 
 
 class SendingBot:
@@ -255,6 +256,9 @@ class BonusQueries:
 
     async def invite_link_for_participant(self, campaign_id, user_id):
         return self._link
+
+    async def participant_campaign_detail(self, user_id, reference):
+        return SimpleNamespace(qualification=QualificationState.ELIGIBLE) if self._link else None
 
 
 class PlainCipher:

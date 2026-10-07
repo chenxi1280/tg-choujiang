@@ -6,7 +6,8 @@ from tg_lottery.application.publication import add_campaign_card_outbox, campaig
 from tg_lottery.application.rule_publication import project_rule_page, queue_rule_states
 from tg_lottery.domain.enums import CampaignState, OutboxState
 from tg_lottery.infrastructure.db import Campaign, Prize, TelegramOutbox
-from tg_lottery.presentation.participation_rules import condition_blocks, rule_manifest, utf16_units
+from tg_lottery.presentation.mentions import html_utf16_length
+from tg_lottery.presentation.participation_rules import condition_blocks, rule_manifest
 from tg_lottery.telegram.creator_publication import confirmation_view
 
 
@@ -47,7 +48,7 @@ def test_full_rules_pages_keep_each_condition_and_same_activity_link(cover):
     )
     card, pages = rule_manifest(payload)
     assert pages and len(pages) >= 2
-    assert all(utf16_units(page) <= 3500 for page in pages)
+    assert all(html_utf16_length(page) <= 3500 for page in pages)
     assert all(f"https://t.me/channel_{i}" in "".join(pages) for i in range(50))
     assert "join_abcdefgh" in card and "join_abcdefgh" in "".join(pages)
     assert "每天 2 条" in "".join(pages)
@@ -93,7 +94,7 @@ async def long_campaign(factory):
                     "type": "channel",
                     "join_url": f"https://t.me/target_{i}",
                 }
-                for i in range(25)
+                for i in range(40)
             ],
         }
         prizes = list(await session.scalars(select(Prize).where(Prize.campaign_id == cid)))
