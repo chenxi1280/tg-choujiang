@@ -13,6 +13,7 @@ from tg_lottery.infrastructure.db import TelegramOutbox
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.telegram.member_base_activity import base_registration_reply
 from tg_lottery.telegram.member_callbacks import (
+    REGISTRATION_REMINDER,
     bonus_callback,
     bonus_category_callback,
     bonus_group_detail_callback,
@@ -97,7 +98,7 @@ async def test_message_gate_without_bonuses_does_not_offer_invite_tools(session_
 
 async def test_invite_gate_tools_still_require_registration(session_factory):
     flow, campaign, message = await member_flow(session_factory, ())
-    with pytest.raises(UserFacingError, match="完成全部参与群资格校验"):
+    with pytest.raises(UserFacingError, match=REGISTRATION_REMINDER):
         await show_bonus_message(flow, message, campaign.public_ref, user_id=202)
 
 
