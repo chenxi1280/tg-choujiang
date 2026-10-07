@@ -133,12 +133,14 @@ class CreatorRenderer:
         selected_chat_ids: tuple[int, ...] = (),
         page: int = 0,
         search: str = "",
+        verified_availability: dict[int, GroupAvailability] | None = None,
     ) -> None:
         await self.edit_groups(
             PanelTarget(user_id, message.chat.id, message.message_id),
             selected_chat_ids=selected_chat_ids,
             page=page,
             search=search,
+            verified_availability=verified_availability,
         )
 
     async def edit_groups(
@@ -148,6 +150,7 @@ class CreatorRenderer:
         selected_chat_ids: tuple[int, ...] = (),
         page: int = 0,
         search: str = "",
+        verified_availability: dict[int, GroupAvailability] | None = None,
     ) -> None:
         groups, selected_chat_ids = await self._picker_group_state(
             target.user_id, selected_chat_ids=selected_chat_ids, search=search
@@ -163,6 +166,7 @@ class CreatorRenderer:
             groups=visible,
             selected_chat_ids=selected_chat_ids,
             context=context,
+            verified_availability=verified_availability,
         )
         back = await self._keyboard(
             target,
@@ -202,6 +206,19 @@ class CreatorRenderer:
             raise ValueError("admin draft session expired")
         await self._sessions.set(user_id, session.state, dict(session.data) | {"group_page": page})
 
+    async def _group_availability_rows(self, groups, *, user_id, verified):
+        return await asyncio.gather(
+            *(
+                self._group_availability(group.chat_id, user_id=user_id, verified=verified)
+                for group in groups
+            )
+        )
+
+    async def _group_availability(self, chat_id, *, user_id, verified):
+        if verified and chat_id in verified:
+            return verified[chat_id]
+        return await inspect_group_availability(self._bot, chat_id, user_id)
+
     async def _group_buttons(
         self,
         target: PanelTarget,
@@ -209,13 +226,11 @@ class CreatorRenderer:
         groups: list[Group],
         selected_chat_ids: tuple[int, ...],
         context: DraftPanelContext,
+        verified_availability: dict[int, GroupAvailability] | None = None,
     ) -> list[list[InlineKeyboardButton]]:
         availability, counts = await asyncio.gather(
-            asyncio.gather(
-                *(
-                    inspect_group_availability(self._bot, group.chat_id, target.user_id)
-                    for group in groups
-                )
+            self._group_availability_rows(
+                groups, user_id=target.user_id, verified=verified_availability
             ),
             self._queries.active_campaign_counts_by_chats(tuple(group.chat_id for group in groups)),
         )

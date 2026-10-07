@@ -168,3 +168,34 @@ async def test_bot_losing_admin_during_review_prevents_completion(session_factor
     async with session_factory() as session:
         current = await session.get(Campaign, campaign_id)
         assert current.presentation["platform_qualification_review"]["complete"] is False
+
+
+async def test_picker_reuses_only_current_operation_proof_and_rechecks_next_operation(monkeypatch):
+    from tg_lottery.application.admin_sessions import DraftPanelContext
+    from tg_lottery.telegram.creator_group_availability import GroupAvailability
+    from tg_lottery.telegram.creator_renderer import CreatorRenderer, PanelTarget
+
+    ready = GroupAvailability(True, "可选择", "")
+    inspect = AsyncMock(return_value=ready)
+    monkeypatch.setattr("tg_lottery.telegram.creator_renderer.inspect_group_availability", inspect)
+    renderer = CreatorRenderer(
+        bot=object(),
+        tokens=None,
+        sessions=None,
+        queries=SimpleNamespace(active_campaign_counts_by_chats=AsyncMock(return_value={})),
+    )
+    renderer._create_tokens = AsyncMock(return_value=("a", "b"))
+    groups = [
+        SimpleNamespace(chat_id=-1001 - index, id=str(index), title="验收群") for index in range(2)
+    ]
+    values = dict(
+        groups=groups, selected_chat_ids=(-1001,), context=DraftPanelContext("draft", 1, 10)
+    )
+    rows = await renderer._group_buttons(
+        PanelTarget(201, 201, 10), **values, verified_availability={-1001: ready}
+    )
+    assert len(rows) == 2 and rows[0][0].text.startswith("✅")
+    assert [call.args[1] for call in inspect.await_args_list] == [-1002]
+    inspect.reset_mock()
+    await renderer._group_buttons(PanelTarget(201, 201, 10), **values)
+    assert {call.args[1] for call in inspect.await_args_list} == {-1001, -1002}

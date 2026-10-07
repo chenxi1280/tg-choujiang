@@ -82,7 +82,9 @@ class CreatorGroupPicker:
         availability = await self._availability(chat_id, query.from_user.id)
         if not availability.selectable:
             raise UserFacingError(availability.reason)
-        await self._save_and_render(query, toggle_group(data, group))
+        await self._save_and_render(
+            query, toggle_group(data, group), verified_availability={chat_id: availability}
+        )
 
     async def select_page(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._required_data(query.from_user.id)
@@ -99,7 +101,13 @@ class CreatorGroupPicker:
             if availability.selectable:
                 data = toggle_group(data, group)
                 selected.add(group.chat_id)
-        await self._save_and_render(query, data)
+        await self._save_and_render(
+            query,
+            data,
+            verified_availability={
+                group.chat_id: status for group, status in zip(groups, statuses, strict=True)
+            },
+        )
 
     async def clear_page(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._required_data(query.from_user.id)
@@ -178,17 +186,18 @@ class CreatorGroupPicker:
             _message(query), user_id=query.from_user.id, text=text, rows=rows
         )
 
-    async def _save_and_render(self, query: CallbackQuery, data: dict[str, Any]) -> None:
+    async def _save_and_render(self, query, data, *, verified_availability=None):
         await self._sessions.set(query.from_user.id, "draft:idle", data)
-        await self._render_groups(query, data)
+        await self._render_groups(query, data, verified_availability=verified_availability)
 
-    async def _render_groups(self, query: CallbackQuery, data: dict[str, Any]) -> None:
+    async def _render_groups(self, query, data, *, verified_availability=None):
         await self._renderer.render_groups(
             _message(query),
             user_id=query.from_user.id,
             selected_chat_ids=selected_chat_ids(data),
             page=int(data.get("group_page", 0)),
             search=str(data.get("group_search", "")),
+            verified_availability=verified_availability,
         )
 
     async def _visible_groups(self, user_id: int, data: dict[str, Any]) -> list[Group]:
