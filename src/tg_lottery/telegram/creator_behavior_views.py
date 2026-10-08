@@ -58,7 +58,7 @@ def view(data: dict) -> tuple[str, list]:
         text = (
             "请输入群名关键词："
             if field == "search"
-            else f"请输入{FIELD_LABELS[field]}（正整数）："
+            else _numeric_input_text(data, editor, field=field)
         )
         return text, [[("取消输入", "draft_gate:cancel_input")]]
     if "copy_targets" in editor:
@@ -66,6 +66,20 @@ def view(data: dict) -> tuple[str, list]:
     if editor.get("chat_id"):
         return _group_view(data, editor)
     return _list_view(data, editor)
+
+
+def _numeric_input_text(data, editor, *, field):
+    group = next(
+        (g for g in data.get("participation_groups", []) if str(g["id"]) == editor.get("chat_id")),
+        None,
+    )
+    title = chat_title(group) if group is not None else "当前参与群"
+    value = (editor.get("rule") or {}).get(field, "未设置")
+    label = FIELD_LABELS[field]
+    return (
+        f"抽奖门槛 · {title}\n当前{label}：{value}\n\n请输入{label}（正整数，只发送数字）："
+        "\n提交后返回本群编辑页，暂存本群后再保存整场门槛；取消输入保留其他暂存设置。"
+    )
 
 
 def _pending_view(editor):

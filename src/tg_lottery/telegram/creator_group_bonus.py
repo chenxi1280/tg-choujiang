@@ -10,9 +10,7 @@ from tg_lottery.telegram.creator_bonus_activation import activation_notice, save
 from tg_lottery.telegram.creator_bonus_fields import (
     changed_positive as _changed_positive,
 )
-from tg_lottery.telegram.creator_bonus_fields import (
-    input_label,
-)
+from tg_lottery.telegram.creator_bonus_fields import input_prompt_text
 from tg_lottery.telegram.creator_bonus_fields import (
     positive_integer as _positive_integer,
 )
@@ -111,7 +109,8 @@ def _apply_direct_action(data: dict[str, Any], action: str) -> dict[str, Any] | 
         return _apply_preset(data, action)
     if action.startswith(GROUP_PREFIXES[:2]):
         kind, chat_id = _parse_group_action(action)
-        return data | {"bonus_working_copy": _new_working_copy(data, kind, chat_id)}
+        working = _new_working_copy(data, kind, chat_id)
+        return data | {"bonus_working_copy": working, "bonus_input_field": None}
     if action == "draft_bonus_group_cancel":
         return _without_editor(data)
     if action == "draft_bonus_input_cancel":
@@ -156,8 +155,10 @@ def _validate_input_field(data, *, working, field):
 
 def input_prompt(data: dict[str, Any]) -> str:
     working = data.get("bonus_working_copy") or {}
-    label = input_label(str(working.get("kind")), str(data.get("bonus_input_field")))
-    return f"请输入{label}（正整数）："
+    if not working:
+        raise UserFacingError("加成编辑页已失效，请重新选择群")
+    title = _group_title(data, int(working["chat_id"]))
+    return input_prompt_text(working, group_title=title, field=str(data.get("bonus_input_field")))
 
 
 def working_copy_dirty(data: dict[str, Any]) -> bool:
@@ -380,7 +381,7 @@ def _apply_preset(data: dict[str, Any], action: str) -> dict[str, Any]:
     updated = working | {"rule": rule}
     if field == "cap":
         updated["last_cap"] = value
-    return data | {"bonus_working_copy": updated}
+    return data | {"bonus_working_copy": updated, "bonus_input_field": None}
 
 
 def _editor_footer(kind: str, data: dict[str, Any], working: dict[str, Any]) -> ButtonRows:

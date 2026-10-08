@@ -155,8 +155,9 @@ def _selection_view(data: dict[str, Any], copy_state: dict[str, Any]) -> tuple[s
         for group in _visible_groups(data, copy_state)
     ]
     details = "\n".join(
-        _target_label(data, kind, group, targets=targets)
-        for group in _visible_groups(data, copy_state)
+        f"{int(copy_state.get('page', 0)) * PAGE_SIZE + i}. "
+        + _target_label(data, kind, group, targets=targets)
+        for i, group in enumerate(_visible_groups(data, copy_state), start=1)
     )
     rows = list_rows(rows, start=int(copy_state.get("page", 0)) * PAGE_SIZE + 1)
     rows.append([("全选本页", "draft_bonus_copy_all"), ("清空已选", "draft_bonus_copy_clear")])
@@ -164,7 +165,9 @@ def _selection_view(data: dict[str, Any], copy_state: dict[str, Any]) -> tuple[s
     rows.append([("继续", "draft_bonus_copy_continue"), ("取消", "draft_bonus_copy_cancel")])
     source = _group_title(data, int(copy_state["source_chat_id"]))
     title = "邀请" if kind == "invite" else "发言"
-    return f"把「{source}」{title}设置复制到：\n\n已选择 {len(targets)} 个群\n{details}", rows
+    total = max(1, (len(_target_groups(data, copy_state)) + PAGE_SIZE - 1) // PAGE_SIZE)
+    text = f"把「{source}」{title}设置复制到：\n第{int(copy_state.get('page', 0)) + 1}/{total}页"
+    return text + f"\n\n已选择 {len(targets)} 个群\n{details}", rows
 
 
 def _confirmation_view(data: dict[str, Any], copy_state: dict[str, Any]) -> tuple[str, ButtonRows]:
@@ -199,13 +202,12 @@ def _page_rows(data: dict[str, Any], copy_state: dict[str, Any]) -> ButtonRows:
     if total == 1:
         return []
     page = int(copy_state.get("page", 0))
-    return [
-        [
-            ("← 上一页", f"{PAGE_PREFIX}prev"),
-            (f"{page + 1}/{total}", "draft_bonus_copy_noop"),
-            ("下一页 →", f"{PAGE_PREFIX}next"),
-        ]
-    ]
+    buttons = []
+    if page:
+        buttons.append(("← 上一页", f"{PAGE_PREFIX}prev"))
+    if page + 1 < total:
+        buttons.append(("下一页 →", f"{PAGE_PREFIX}next"))
+    return [buttons] if buttons else []
 
 
 def _target_label(

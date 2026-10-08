@@ -30,9 +30,14 @@ _DRAFT_MUTATION_ACTIONS = frozenset(
         "draft_bonus_toggle_activity",
         "draft_bonus_invite_save",
         "draft_bonus_activity_save",
+        "draft_bonus_copy_confirm",
+        "draft_bonus_group_disable",
         "draft_gate:save",
         "draft_gate:group_save",
         "draft_gate:confirm_change",
+        "draft_gate:copy_confirm",
+        "draft_gate:disable",
+        "draft_gate:save_and_continue",
         "draft_base:save",
     }
 )

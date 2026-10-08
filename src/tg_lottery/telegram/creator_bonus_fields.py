@@ -3,9 +3,15 @@ from tg_lottery.domain.errors import UserFacingError
 
 def positive_integer(text: str) -> int:
     value = text.strip()
-    if not value.isdigit() or int(value) < 1:
+    if not value.isdecimal():
         raise UserFacingError("请输入正整数，不能使用 0、负数、小数或空值")
-    return int(value)
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise UserFacingError("请输入可解析的正整数，数值过长时请缩短输入") from exc
+    if number < 1:
+        raise UserFacingError("请输入正整数，不能使用 0、负数、小数或空值")
+    return number
 
 
 def changed_positive(current: int, delta: int) -> int:
@@ -31,3 +37,14 @@ def input_label(kind: str, field: str) -> str:
     }
     invite = {"cycle": "每轮有效邀请人数（人）", "cap": "累计奖励上限次数（次）"}
     return (activity if kind == "activity" else invite)[field]
+
+
+def input_prompt_text(working, *, group_title: str, field: str) -> str:
+    kind = str(working["kind"])
+    label = input_label(kind, field)
+    value = working["rule"].get(rule_key(kind, field))
+    module = "邀请加成" if kind == "invite" else "活跃加成（人品）"
+    return (
+        f"{group_title} · {module}\n当前{label}：{value}\n\n请输入{label}（正整数，只发送数字）："
+        "\n提交后返回本群编辑页，保存本群后生效；取消输入保留其他暂存设置。"
+    )

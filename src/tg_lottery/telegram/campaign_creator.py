@@ -27,7 +27,7 @@ from tg_lottery.telegram.creator_message_context import callback_message as _mes
 from tg_lottery.telegram.creator_message_context import message_user as _user
 from tg_lottery.telegram.creator_message_context import panel_target as _target
 from tg_lottery.telegram.creator_operation_logging import log_creator_action
-from tg_lottery.telegram.creator_panel_recovery import recover_gate_panel, restore_applied_panel
+from tg_lottery.telegram.creator_panel_recovery import recover_editing_panel, restore_applied_panel
 from tg_lottery.telegram.creator_prizes import PRIZE_ACTIONS, CreatorPrizes
 from tg_lottery.telegram.creator_publication import CreatorPublisher
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
@@ -147,7 +147,7 @@ class CampaignCreator:
             "panel_message_id": message.message_id,
             "creator_name": query.from_user.full_name,
         }
-        if await recover_gate_panel(
+        if await recover_editing_panel(
             query, sessions=self._sessions, renderer=self._renderer, session=existing, data=data
         ):
             return True

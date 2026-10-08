@@ -15,8 +15,12 @@ async def restore_saved_panel(query, *, sessions, renderer, state, data, notice)
     )
 
 
-async def recover_gate_panel(query, *, sessions, renderer, session, data):
-    if session.state != "draft:behavior_admission":
+async def recover_editing_panel(query, *, sessions, renderer, session, data):
+    gate = session.state == "draft:behavior_admission"
+    bonus = session.state in {"draft:idle", "draft:bonus_input"} and (
+        data.get("bonus_working_copy") or data.get("bonus_copy")
+    )
+    if not gate and not bonus:
         return False
     await restore_saved_panel(
         query,
@@ -24,7 +28,11 @@ async def recover_gate_panel(query, *, sessions, renderer, session, data):
         renderer=renderer,
         state=session.state,
         data=data,
-        notice="旧按钮操作未执行，已恢复当前门槛编辑页；已填写内容保留。",
+        notice=(
+            "旧按钮操作未执行，已恢复当前门槛编辑页；已填写内容保留。"
+            if gate
+            else "旧按钮操作未执行，已恢复当前加成编辑步骤；已填写内容保留。"
+        ),
     )
     return True
 

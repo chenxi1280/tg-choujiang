@@ -1,4 +1,5 @@
 from tg_lottery.telegram import creator_behavior_views, creator_group_bonus
+from tg_lottery.telegram.creator_bonus_copy import copy_view
 from tg_lottery.telegram.creator_cover import cover_prompt_text, cover_rows
 from tg_lottery.telegram.creator_current_view import current_draft_view
 
@@ -32,7 +33,9 @@ def has_field_input(state, data):
 def resumed_view(data, *, state, module):
     if state == "draft:behavior_admission":
         return _resumed_gate(data, module=module)
-    if state in {"draft:bonus_input", "draft:idle"} and data.get("bonus_working_copy"):
+    if state in {"draft:bonus_input", "draft:idle"} and (
+        data.get("bonus_working_copy") or data.get("bonus_copy")
+    ):
         return _resumed_bonus(data, state=state, module=module)
     if module or state not in INPUT_LABELS:
         return data, "draft:idle", current_draft_view(data)
@@ -71,6 +74,8 @@ def _resumed_gate(data, *, module):
 
 def _resumed_bonus(data, *, state, module):
     updated = {key: value for key, value in data.items() if key != "bonus_input_field"}
+    if data.get("bonus_copy"):
+        return updated, "draft:idle", copy_view(updated)
     if module or state == "draft:idle":
         return (
             updated,
