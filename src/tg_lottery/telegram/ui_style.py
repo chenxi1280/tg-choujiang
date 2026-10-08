@@ -119,6 +119,10 @@ ACTION_ICONS = (
     ("nav:campaign", "🗂️"),
     ("m:detail", "📄"),
     ("m:ir", "🧾"),
+    ("member:invites:", "🧾"),
+    ("m:gg:", "🚪"),
+    ("m:ad:", "🌱"),
+    ("m:id:", "🤝"),
     ("m:bo", "📈"),
     ("profile:region", "🌐"),
 )

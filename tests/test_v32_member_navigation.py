@@ -260,6 +260,13 @@ async def test_actual_invitation_list_entry_keeps_source_on_group_return(
     )
     source = ParticipatedCampaignPage(category, page, page + 1, (row,))
     _, keyboard = build_participated_campaign_list(source, invitation_only=True, parent=parent)
+    entry = next(
+        b
+        for row in keyboard.inline_keyboard
+        for b in row
+        if (b.callback_data or "").startswith("member:invites:")
+    )
+    assert entry.text.startswith("🧾 ")
     flow, queries, tokens = _navigation()
     flow._campaign = AsyncMock(
         return_value=SimpleNamespace(
@@ -270,13 +277,7 @@ async def test_actual_invitation_list_entry_keeps_source_on_group_return(
         )
     )
     queries.group_bonus_progress = AsyncMock(return_value=SimpleNamespace(invitations=()))
-    route = next(
-        button.callback_data
-        for row in keyboard.inline_keyboard
-        for button in row
-        if (button.callback_data or "").startswith(("m:detail:", "member:invites:"))
-    )
-    assert await flow.handle_route(_query(), data=route, personal=object())
+    assert await flow.handle_route(_query(), data=entry.callback_data, personal=object())
     requests = tokens.create_many.await_args.kwargs["requests"]
     back = next(request.payload for request in requests if request.payload["back"])
     suffix = f":{parent[0]}:{parent[1]}" if parent else ""

@@ -23,6 +23,8 @@ def test_semantic_icons_preserve_numeric_density_and_selected_state():
         assert style_label(text, action="draft_gate:quick:daily_messages:8") == text
     assert plain_label("✅ 🚪 发言数") == "发言数"
     assert plain_label("↩️ 返回活动") == "返回活动"
+    for action, icon in (("m:gg:ref:-1", "🚪"), ("m:ad:ref:-1", "🌱"), ("m:id:ref:-1", "🤝")):
+        assert style_label("A群", action=action) == icon + " A群"
 
 
 @pytest.mark.parametrize(
