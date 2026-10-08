@@ -11,11 +11,13 @@ from tg_lottery.application.query_invites import GroupInviteLinkStatus
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.presentation.target_identity import distinct_group_names
+from tg_lottery.telegram.keyboard_layout import list_rows
 from tg_lottery.telegram.member_bonus_navigation import (
-    group_detail_row as _group_detail_row,
+    PAGE_SIZE,
+    navigation_rows,
 )
 from tg_lottery.telegram.member_bonus_navigation import (
-    navigation_rows,
+    group_detail_row as _group_detail_row,
 )
 from tg_lottery.telegram.member_bonus_navigation import (
     visible_page as _visible_page,
@@ -32,7 +34,6 @@ from tg_lottery.telegram.member_bonus_task_views import (
 from tg_lottery.telegram.member_bonus_text import (
     HISTORICAL_CAMPAIGN_STATES,
     bonus_closed_notice,
-    invitation_category_label,
     invitation_section_title,
     invite_bonus_completed,
     invite_list_prompt,
@@ -247,20 +248,21 @@ def _category_payload(context: BonusViewContext) -> tuple[str, InlineKeyboardMar
     rows = [
         [
             InlineKeyboardButton(
-                text=invitation_category_label(context.rules, invite_total),
+                text="👥 " + invitation_section_title(context.rules),
                 callback_data=f"member:bonus_invites:{ref}:0",
             )
         ],
         [
             InlineKeyboardButton(
-                text=activity_label,
+                text="💬 活跃加成（人品）",
                 callback_data=f"member:bonus_activity:{ref}:0",
             )
         ],
         [InlineKeyboardButton(text="返回活动详情", callback_data=f"member:tickets:{ref}")],
         [InlineKeyboardButton(text="返回首页", callback_data="nav:index")],
     ]
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+    text += f"\n\n邀请累计：{invite_total} 次\n{activity_label}"
+    return text, InlineKeyboardMarkup(inline_keyboard=[rows[0] + rows[1], rows[2] + rows[3]])
 
 
 def build_invite_group_list(
@@ -296,6 +298,7 @@ def build_invite_group_list(
         rows.append(
             _group_detail_row(context.campaign.public_ref, "invites", group, group_page=selected)
         )
+    rows = list_rows(rows, start=selected * PAGE_SIZE + 1)
     rows.extend(
         navigation_rows(
             reference=context.campaign.public_ref,
@@ -338,6 +341,7 @@ def build_activity_group_list(
         rows.append(
             _group_detail_row(context.campaign.public_ref, "activity", group, group_page=selected)
         )
+    rows = list_rows(rows, start=selected * PAGE_SIZE + 1)
     rows.extend(
         navigation_rows(
             reference=context.campaign.public_ref,

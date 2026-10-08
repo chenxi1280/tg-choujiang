@@ -41,17 +41,20 @@ def navigation_rows(
 
 
 def page_row(reference: str, page: int, maximum: int) -> list[InlineKeyboardButton]:
-    previous = max(0, page - 1)
-    following = min(maximum, page + 1)
-    return [
-        InlineKeyboardButton(
-            text="上一页", callback_data=f"member:invite_page:{reference}:{previous}"
-        ),
-        InlineKeyboardButton(text=f"{page + 1}/{maximum + 1}", callback_data="member:noop"),
-        InlineKeyboardButton(
-            text="下一页", callback_data=f"member:invite_page:{reference}:{following}"
-        ),
-    ]
+    buttons = []
+    if page > 0:
+        buttons.append(
+            InlineKeyboardButton(
+                text="上一页", callback_data=f"member:invite_page:{reference}:{page - 1}"
+            )
+        )
+    if page < maximum:
+        buttons.append(
+            InlineKeyboardButton(
+                text="下一页", callback_data=f"member:invite_page:{reference}:{page + 1}"
+            )
+        )
+    return buttons
 
 
 def footer_rows(reference: str) -> list[list[InlineKeyboardButton]]:

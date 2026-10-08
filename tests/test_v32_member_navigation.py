@@ -182,7 +182,12 @@ async def test_actual_list_entry_keeps_category_and_page_on_detail_return(
     )
     source = ParticipatedCampaignPage(category, page, page + 1, (row,))
     _, keyboard = build_participated_campaign_list(source, invitation_only=False)
-    route = keyboard.inline_keyboard[1][0].callback_data
+    route = next(
+        button.callback_data
+        for row in keyboard.inline_keyboard
+        for button in row
+        if (button.callback_data or "").startswith(("m:detail:", "member:invites:"))
+    )
     flow, _, tokens = _navigation()
     assert await flow.handle_route(_query(), data=route, personal=object())
     requests = tokens.create_many.await_args.kwargs["requests"]
@@ -226,7 +231,12 @@ async def test_actual_invitation_list_entry_keeps_source_on_group_return(
         )
     )
     queries.group_bonus_progress = AsyncMock(return_value=SimpleNamespace(invitations=()))
-    route = keyboard.inline_keyboard[1][0].callback_data
+    route = next(
+        button.callback_data
+        for row in keyboard.inline_keyboard
+        for button in row
+        if (button.callback_data or "").startswith(("m:detail:", "member:invites:"))
+    )
     assert await flow.handle_route(_query(), data=route, personal=object())
     requests = tokens.create_many.await_args.kwargs["requests"]
     back = next(request.payload for request in requests if request.payload["back"])

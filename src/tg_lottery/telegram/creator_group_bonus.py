@@ -32,6 +32,7 @@ from tg_lottery.telegram.creator_number_controls import (
 from tg_lottery.telegram.creator_number_controls import mode_row as _mode_row
 from tg_lottery.telegram.creator_number_controls import number_row as _number_row
 from tg_lottery.telegram.creator_number_controls import preset_row as _preset_row
+from tg_lottery.telegram.keyboard_layout import list_rows
 
 ButtonRows = list[list[tuple[str, str]]]
 PAGE_SIZE = 6
@@ -189,6 +190,11 @@ def list_view(data: dict[str, Any], kind: str) -> tuple[str, ButtonRows]:
         [(_group_row_label(data, kind, group), f"draft_bonus_{kind}_group:{group['id']}")]
         for group in visible
     ]
+    details = "\n".join(
+        f"{page * PAGE_SIZE + i}. {_group_row_label(data, kind, group)}"
+        for i, group in enumerate(visible, 1)
+    )
+    rows = list_rows(rows, start=page * PAGE_SIZE + 1)
     rows.extend(_page_rows(kind, page, len(groups)))
     if not groups:
         rows.append([("选择参与活动的群", "draft_group")])
@@ -201,7 +207,7 @@ def list_view(data: dict[str, Any], kind: str) -> tuple[str, ButtonRows]:
     reminder = "机器人必须在每个参与群中且拥有管理员权限。"
     if not groups:
         reminder += "\n当前没有参与群，请先选择参与活动的群，再设置本群加成。"
-    return f"{title}（逐群设置）\n\n{reminder}", rows
+    return f"{title}（逐群设置）\n\n{reminder}\n\n{details}", rows
 
 
 def editor_view(data: dict[str, Any], working: dict[str, Any]) -> tuple[str, ButtonRows]:

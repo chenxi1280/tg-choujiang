@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from tg_lottery.application.participant_records import ParticipatedCampaignPage
+from tg_lottery.application.participant_records import (
+    PARTICIPATED_CAMPAIGN_PAGE_SIZE,
+    ParticipatedCampaignPage,
+)
 from tg_lottery.domain.enums import CampaignState
+from tg_lottery.telegram.keyboard_layout import columns, list_rows
 from tg_lottery.telegram.public_projection import (
     campaign_history_state_text,
     format_public_time,
@@ -28,7 +32,10 @@ def build_participated_campaign_list(
     lines = [title, ""]
     if page.rows:
         lines.extend(
-            _campaign_line(row, position=position) for position, row in enumerate(page.rows, 1)
+            _campaign_line(row, position=position)
+            for position, row in enumerate(
+                page.rows, page.page * PARTICIPATED_CAMPAIGN_PAGE_SIZE + 1
+            )
         )
     else:
         lines.append(empty)
@@ -50,13 +57,18 @@ def _campaign_list_keyboard(
     page: ParticipatedCampaignPage, *, invitation_only: bool, parent: tuple[str, int] | None = None
 ) -> InlineKeyboardMarkup:
     prefix = "nav:invites" if invitation_only else "nav:join"
-    rows = [_category_row(prefix, page.category, parent=parent)]
+    rows = columns(_category_row(prefix, page.category, parent=parent))
+    category_rows = len(rows)
     rows.extend(
         _campaign_button(
             row, source=page, invitation_only=invitation_only, position=position, parent=parent
         )
-        for position, row in enumerate(page.rows, 1)
+        for position, row in enumerate(page.rows, page.page * PARTICIPATED_CAMPAIGN_PAGE_SIZE + 1)
     )
+    rows = [
+        *rows[:category_rows],
+        *list_rows(rows[category_rows:], start=page.page * PARTICIPATED_CAMPAIGN_PAGE_SIZE + 1),
+    ]
     navigation = _page_row(
         prefix,
         category=page.category,
@@ -104,7 +116,7 @@ def _campaign_button(
     )
     return [
         InlineKeyboardButton(
-            text=f"{position}. {row.name[:24]}｜{_ticket_label(row)}",
+            text=f"{row.name}｜{_ticket_label(row)}",
             callback_data=callback,
         )
     ]

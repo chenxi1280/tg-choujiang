@@ -8,6 +8,7 @@ from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.presentation.target_identity import duplicate_names, target_name
+from tg_lottery.telegram.keyboard_layout import pair_rows, short_label
 from tg_lottery.telegram.member_profile_conditions import profile_conditions
 from tg_lottery.telegram.operational_issue_views import operational_issue_text
 from tg_lottery.telegram.platform_condition_view import platform_condition_lines
@@ -73,10 +74,10 @@ async def target_conditions(bot, user_id, *, targets, cipher):
             lines.append(f"{title}：{exc.public_message}；由平台修复，无需反复退订/重订")
         url = target_url(target, cipher)
         if url:
-            rows.append([InlineKeyboardButton(text="打开「" + title + "」", url=url)])
+            rows.append([InlineKeyboardButton(text=short_label(number, title), url=url)])
         else:
             lines.append(f"{title}：目前没有已确认可用的加入入口")
-    return lines, rows
+    return lines, pair_rows(rows)
 
 
 async def _require_platform_admin(bot, target):

@@ -38,12 +38,10 @@ def invite_detail_navigation(context, chat_id: int, *, return_page: int) -> list
         [
             InlineKeyboardButton(
                 text="邀请记录", callback_data=f"m:ir:{ref}:{chat_id}:{return_page}:all:0"
-            )
-        ],
-        [
+            ),
             InlineKeyboardButton(
                 text="刷新本群状态", callback_data=f"m:id:{ref}:{chat_id}:{return_page}"
-            )
+            ),
         ],
         [task_back(context, "invites", page=return_page)],
     ]

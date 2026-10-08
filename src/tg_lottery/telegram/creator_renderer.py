@@ -18,6 +18,7 @@ from tg_lottery.telegram.creator_group_availability import (
 )
 from tg_lottery.telegram.creator_group_identity import filter_groups
 from tg_lottery.telegram.creator_picker_groups import picker_groups
+from tg_lottery.telegram.keyboard_layout import fit_rows, list_rows
 from tg_lottery.telegram.panel_pagination import creator_page_rows, titled_pages
 
 TOKEN_LIFETIME = timedelta(hours=24)
@@ -175,6 +176,7 @@ class CreatorRenderer:
             ),
             context=context,
         )
+        rows = list_rows(rows, start=page * GROUP_PAGE_SIZE + 1)
         rows.extend(back.inline_keyboard)
         await self._bot.edit_message_text(
             _group_picker_text(selected_count=len(selected_chat_ids), has_groups=bool(groups))
@@ -273,6 +275,7 @@ class CreatorRenderer:
         *,
         context: DraftPanelContext | None = None,
     ) -> InlineKeyboardMarkup:
+        rows = fit_rows(rows)
         context = context or await self._sessions.issue_panel_context(
             target.user_id, target.message_id
         )

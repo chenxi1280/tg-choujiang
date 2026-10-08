@@ -9,6 +9,7 @@ from tg_lottery.domain.enums import CampaignState, InvitationState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram.bonus_rule_text import chat_title
+from tg_lottery.telegram.keyboard_layout import columns, list_rows
 from tg_lottery.telegram.member_record_text import participant_record_pages
 from tg_lottery.telegram.public_projection import format_public_time
 
@@ -144,6 +145,7 @@ async def show_invitation_groups(
         awarded = int(getattr(item, "awarded_tickets", 0))
         lines.append(f"• {group['title']}｜有效 {valid}｜+{awarded} 次")
         rows.append(_record_group_button(campaign.public_ref, group, group_page=selected))
+    rows = list_rows(rows, start=selected * 6 + 1)
     navigation = _group_page_buttons(campaign.public_ref, selected, total_pages)
     if navigation:
         rows.append(navigation)
@@ -194,6 +196,7 @@ def _record_keyboard(
                 )
             ]
         )
+    rows = columns([button for row in rows for button in row])
     rows.append(
         [InlineKeyboardButton(text="返回参与列表", callback_data=f"nav:join:{_category(state)}:0")]
     )
@@ -211,7 +214,7 @@ def _category(state: CampaignState) -> str:
 def _invitation_keyboard(records: CampaignInvitationRecords) -> InlineKeyboardMarkup:
     rows = []
     if records.group_chat_id is not None:
-        rows.append(_filter_row(records))
+        rows.extend(columns(_filter_row(records)))
     pages = []
     if records.page > 0:
         pages.append(
@@ -243,7 +246,7 @@ def _invitation_keyboard(records: CampaignInvitationRecords) -> InlineKeyboardMa
         else "nav:join"
     )
     back_label = "返回群列表" if records.group_chat_id is not None else "返回参与列表"
-    rows.append([InlineKeyboardButton(text=back_label, callback_data=back)])
+    rows[-1].append(InlineKeyboardButton(text=back_label, callback_data=back))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

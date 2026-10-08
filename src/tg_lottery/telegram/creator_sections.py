@@ -88,8 +88,7 @@ def _conditions(data: dict) -> tuple[str, ButtonRows]:
     )
     rows = [
         [("额外关注/加入要求", "draft_participation"), ("用户限制", "draft_user_limits")],
-        [("抽奖门槛", "draft_gate")],
-        [("修改参与群", "draft_group")],
+        [("抽奖门槛", "draft_gate"), ("修改参与群", "draft_group")],
         [("返回草稿", "draft_back")],
     ]
     return text, rows
@@ -102,8 +101,10 @@ def _bonus(data: dict) -> tuple[str, ButtonRows]:
 def _cover(data: dict) -> tuple[str, ButtonRows]:
     has_cover = bool(data.get("cover_file_id"))
     rows = [
-        [("替换封面" if has_cover else "上传封面", "draft_cover")],
-        [("抽奖说明", "draft_description")],
+        [
+            ("替换封面" if has_cover else "上传封面", "draft_cover"),
+            ("抽奖说明", "draft_description"),
+        ],
     ]
     if has_cover:
         rows.append([("清除封面", "draft_cover_clear")])
@@ -137,13 +138,15 @@ def _prizes(data: dict) -> tuple[str, ButtonRows]:
     if not prizes:
         lines.append("尚未添加完整奖品。")
     lines.append(f"\n领奖说明：{data.get('claim_instructions') or '请联系活动管理员领取奖品'}")
-    rows = [[("添加奖品", "draft_add_prize")]]
+    rows = [[("添加奖品", "draft_add_prize"), ("领奖说明", "draft_claim")]]
     if data.get("pending_prize_name"):
         lines.append(f"\n未完成新增：{data['pending_prize_name']}（还需中奖人数）")
         rows = [[("继续新增奖品", "draft_prize_continue"), ("取消新增奖品", "draft_prize_cancel")]]
     if prizes:
         rows.append([("删除指定奖品", "draft_delete_prize"), ("清空奖品", "draft_clear_prizes")])
-    rows.extend([[("领奖说明", "draft_claim")], [("返回草稿", "draft_back")]])
+    if data.get("pending_prize_name"):
+        rows.append([("领奖说明", "draft_claim")])
+    rows.append([("返回草稿", "draft_back")])
     return "\n".join(lines), rows
 
 

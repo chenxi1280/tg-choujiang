@@ -2,6 +2,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.application.creator_campaign_pages import CREATOR_PAGE_SIZE
 from tg_lottery.domain.enums import CampaignState
+from tg_lottery.telegram.keyboard_layout import list_rows
 from tg_lottery.telegram.public_projection import (
     campaign_history_state_text,
     campaign_state_text,
@@ -33,6 +34,7 @@ def creator_list_view(result) -> tuple[str, InlineKeyboardMarkup]:
     prefix = "nav:managed" if result.managed else "nav:created"
     categories = _list_categories(result)
     rows = _category_rows(categories, prefix=prefix, selected=result.category)
+    category_rows = len(rows)
     lines.extend(_summary_lines(result.summary))
     lines.append("当前分类：" + dict((key, label) for label, key in categories)[result.category])
     if result.unconfirmed:
@@ -42,15 +44,17 @@ def creator_list_view(result) -> tuple[str, InlineKeyboardMarkup]:
             f"{number}. {campaign.name}｜{_campaign_label(campaign, result.category)}\n"
             f"  开奖 {format_public_time(campaign.draw_at, campaign.timezone)}"
         )
-        rows.append(
-            [_button(f"{number}. {campaign.name}", _campaign_route(campaign.public_ref, result))]
-        )
+        rows.append([_button(campaign.name, _campaign_route(campaign.public_ref, result))])
     if not result.rows:
         lines.append("当前分类暂无活动。可切换分类或创建新抽奖。")
+    rows = [
+        *rows[:category_rows],
+        *list_rows(rows[category_rows:], start=result.page * CREATOR_PAGE_SIZE + 1),
+    ]
     rows.extend(_list_pages(result, prefix))
     other = ("我发起的抽奖", "nav:created") if result.managed else ("我可管理的活动", "nav:managed")
     rows.extend(
-        [[_button("创建新抽奖", "nav:new")], [_button(*other)], [_button("返回首页", "nav:index")]]
+        [[_button("创建新抽奖", "nav:new")], [_button(*other), _button("返回首页", "nav:index")]]
     )
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
 

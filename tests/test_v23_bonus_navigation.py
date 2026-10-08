@@ -66,7 +66,9 @@ async def test_v23_bonus_navigation_separates_categories_and_group_details() -> 
         campaign, category="activity", chat_id=-1001, return_page=0, **common
     )
 
-    callbacks = [row[0].callback_data for row in overview_keyboard.inline_keyboard]
+    callbacks = [
+        button.callback_data for row in overview_keyboard.inline_keyboard for button in row
+    ]
     assert "双加成活动" in overview
     assert "AbCdEf" not in overview
     assert callbacks[:2] == [
@@ -245,8 +247,9 @@ async def test_closed_bonus_lists_and_details_keep_history_without_new_reward_pr
     common = _view_dependencies(progress, statuses)
     overview, overview_keyboard = await build_bonus_overview(campaign, **common)
     assert "不再计算新增加成" in overview
-    assert "累计 2 次" in overview_keyboard.inline_keyboard[1][0].text
-    assert "今日" not in overview_keyboard.inline_keyboard[1][0].text
+    assert "累计 2 次" in overview
+    assert "今日" not in overview_keyboard.inline_keyboard[0][1].text
+    assert "今日" not in overview
     for category in ("invites", "activity"):
         listing, _ = await build_bonus_category(campaign, category=category, page=0, **common)
         detail, keyboard = await build_bonus_group_detail(

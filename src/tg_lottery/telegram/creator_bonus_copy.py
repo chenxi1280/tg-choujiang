@@ -4,6 +4,7 @@ from typing import Any
 
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.bonus_rule_text import chat_title
+from tg_lottery.telegram.keyboard_layout import list_rows
 
 ButtonRows = list[list[tuple[str, str]]]
 PAGE_SIZE = 6
@@ -153,12 +154,17 @@ def _selection_view(data: dict[str, Any], copy_state: dict[str, Any]) -> tuple[s
         ]
         for group in _visible_groups(data, copy_state)
     ]
+    details = "\n".join(
+        _target_label(data, kind, group, targets=targets)
+        for group in _visible_groups(data, copy_state)
+    )
+    rows = list_rows(rows, start=int(copy_state.get("page", 0)) * PAGE_SIZE + 1)
     rows.append([("全选本页", "draft_bonus_copy_all"), ("清空已选", "draft_bonus_copy_clear")])
     rows.extend(_page_rows(data, copy_state))
     rows.append([("继续", "draft_bonus_copy_continue"), ("取消", "draft_bonus_copy_cancel")])
     source = _group_title(data, int(copy_state["source_chat_id"]))
     title = "邀请" if kind == "invite" else "发言"
-    return f"把「{source}」{title}设置复制到：\n\n已选择 {len(targets)} 个群", rows
+    return f"把「{source}」{title}设置复制到：\n\n已选择 {len(targets)} 个群\n{details}", rows
 
 
 def _confirmation_view(data: dict[str, Any], copy_state: dict[str, Any]) -> tuple[str, ButtonRows]:

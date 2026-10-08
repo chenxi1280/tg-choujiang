@@ -102,10 +102,18 @@ async def test_personal_lists_render_business_states_and_local_time() -> None:
         if (button.callback_data or "").startswith("nav:campaign:")
     )
     assert button.callback_data == "nav:campaign:AbCdEfGhIjKlMnOpQrSt-_:c:a:0"
-    joined_button = message.reply_markups[0].inline_keyboard[1][0]
+    joined_button = next(
+        button
+        for row in message.reply_markups[0].inline_keyboard
+        for button in row
+        if (button.callback_data or "").startswith("m:detail:")
+    )
     assert joined_button.callback_data == "m:detail:AbCdEfGhIjKlMnOpQrSt-_:active:0"
     category_callbacks = {
-        button.callback_data for button in message.reply_markups[0].inline_keyboard[0]
+        button.callback_data
+        for row in message.reply_markups[0].inline_keyboard
+        for button in row
+        if (button.callback_data or "").startswith("nav:join:")
     }
     assert category_callbacks == {
         "nav:join:active:0",

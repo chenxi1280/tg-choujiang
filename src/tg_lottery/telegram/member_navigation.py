@@ -11,6 +11,7 @@ from tg_lottery.presentation.participation_rules import complete_rule_pages
 from tg_lottery.presentation.target_identity import (
     distinct_group_names,
 )
+from tg_lottery.telegram.keyboard_layout import list_rows
 from tg_lottery.telegram.member_activity_landing import _rules_payload
 from tg_lottery.telegram.member_bonus_context import actual_bonus_context, bonus_eligibility_payload
 from tg_lottery.telegram.member_bonus_permissions import inspect_bonus_permissions
@@ -370,10 +371,10 @@ class MemberNavigation:
         counts = {item.chat_id: item for item in progress.invitations}
         lines = [f"{campaign.name} · 邀请记录群列表", f"第{selected + 1}/{pages}页"]
         rows = []
-        for group in visible:
+        for number, group in enumerate(visible, selected * RECORD_GROUP_PAGE_SIZE + 1):
             item = counts.get(int(group["id"]))
             count = f"已确认{item.valid_invites}人" if item is not None else "进度待核查"
-            lines.append(f"{group['title']}：{count}")
+            lines.append(f"{number}. {group['title']}：{count}")
             rows.append(
                 [
                     _button(
@@ -382,6 +383,7 @@ class MemberNavigation:
                     )
                 ]
             )
+        rows = list_rows(rows, start=selected * RECORD_GROUP_PAGE_SIZE + 1)
         navigation = _page_buttons("member:invites:" + campaign.public_ref, selected, pages)
         if navigation:
             rows.append(navigation)

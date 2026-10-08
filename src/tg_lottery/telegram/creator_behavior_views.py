@@ -4,6 +4,7 @@ from tg_lottery.domain.admission import InviteAdmissionRule, MessageAdmissionRul
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.creator_behavior_editor import EDITOR_KEY, PAGE_SIZE
 from tg_lottery.telegram.creator_number_controls import MESSAGE_COUNT_PRESETS
+from tg_lottery.telegram.keyboard_layout import fit_rows, list_rows
 
 FIELD_LABELS = {
     "daily_messages": "每日条数",
@@ -86,6 +87,10 @@ def _list_view(data, editor):
     gate = {"type": mode, "groups": editor.get("groups") or {}}
     text = "抽奖门槛（只能选择一种）\n\n" + admission_summary(data | {"admission": gate})
     text += "\n\n" + _selection_hint(data, mode)
+    visible, page, _ = _visible_groups(data, editor)
+    text += "\n\n" + "\n".join(
+        f"{page * PAGE_SIZE + i}. {chat_title(item)}" for i, item in enumerate(visible, 1)
+    )
     text += _search_summary(data, editor)
     original = (data.get("admission") or {}).get("type")
     if original and original != mode:
@@ -120,7 +125,7 @@ def _group_view(data: dict, editor: dict) -> tuple[str, list]:
     fields = (
         ("daily_messages", "consecutive_days") if mode == "message" else ("required_valid_invites",)
     )
-    rows = [_field_preset_row(editor, field) for field in fields]
+    rows = fit_rows([_field_preset_row(editor, field) for field in fields])
     rows.extend(
         [
             [("本群暂存到编辑稿", "draft_gate:group_save")],
@@ -165,6 +170,7 @@ def _group_rows(data: dict, editor: dict) -> list:
     if (page + 1) * PAGE_SIZE < count:
         navigation.append(("下一页", f"draft_gate:page:{page + 1}"))
     rows.extend([navigation] if navigation else [])
+    rows = [*list_rows(rows[: len(groups)], start=page * PAGE_SIZE + 1), *rows[len(groups) :]]
     rows.extend(_search_rows(editor, page))
     return rows
 
@@ -214,8 +220,11 @@ def _copy_view(data: dict, editor: dict) -> tuple[str, list]:
         + "、".join(names[key] for key in selected)
     )
     text += _search_summary(data, editor)
+    text += "\n可选群：\n" + "\n".join(
+        f"{page * PAGE_SIZE + i}. {chat_title(item)}" for i, item in enumerate(groups, 1)
+    )
     text += _copy_hint(editor, count=count, selected=selected)
-    return text, rows
+    return text, [*list_rows(rows[: len(groups)], start=page * PAGE_SIZE + 1), *rows[len(groups) :]]
 
 
 def _copy_hint(editor, *, count, selected):

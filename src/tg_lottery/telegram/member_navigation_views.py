@@ -2,6 +2,7 @@ from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMa
 
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
+from tg_lottery.telegram.keyboard_layout import columns
 from tg_lottery.telegram.member_detail_actions import (
     REGISTRATION_STATES,
     detail_task,
@@ -38,7 +39,7 @@ def participant_detail_view(detail, *, user_id: int, bot_username: str):
             ]
         )
     rows.extend(_award_rows(detail, user_id=user_id, bot_username=bot_username))
-    rows.extend([[_callback("返回参与列表", "nav:join")], [_callback("返回首页", "nav:index")]])
+    rows.append([_callback("返回参与列表", "nav:join"), _callback("返回首页", "nav:index")])
     return pages, InlineKeyboardMarkup(inline_keyboard=_distinct_rows(rows))
 
 
@@ -67,8 +68,9 @@ def _progress_rows(detail, now):
     if detail.invite_enabled or detail.invite_gate_enabled:
         if invitation_task_available(detail, now):
             rows.append([_callback("我的邀请链接", f"member:bonus_invites:{detail.public_ref}:0")])
-        rows.append([_callback("邀请记录", f"member:invites:{detail.public_ref}:0")])
-    return rows
+        records = _callback("邀请记录", f"member:invites:{detail.public_ref}:0")
+        rows.append([records])
+    return columns([button for row in rows for button in row])
 
 
 def _distinct_rows(rows):

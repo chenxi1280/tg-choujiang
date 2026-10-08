@@ -3,6 +3,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram.keyboard_layout import columns
 from tg_lottery.telegram.member_window_guidance import window_guidance
 
 GATE_PAGE_SIZE = 6
@@ -46,6 +47,7 @@ def _list_payload(context, groups, *, page):
         paging.append(_button("上一页", f"m:gate:{reference}:{page - 1}"))
     if page + 1 < count:
         paging.append(_button("下一页", f"m:gate:{reference}:{page + 1}"))
+    rows = columns([button for row in rows for button in row])
     if paging:
         rows.append(paging)
     rows.append([_button("返回活动详情", f"m:detail:{reference}")])

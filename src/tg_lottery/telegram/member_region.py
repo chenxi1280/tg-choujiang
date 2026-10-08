@@ -7,7 +7,7 @@ from tg_lottery.telegram.member_profile_conditions import region_locked
 from tg_lottery.telegram.personal_flow import REGIONS
 from tg_lottery.telegram.public_projection import format_public_time
 
-REGION_COLUMNS = 3
+REGION_COLUMNS = 2
 
 
 async def region_view(profiles, tokens, *, user_id: int, context):

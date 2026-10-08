@@ -6,6 +6,7 @@ from tg_lottery.telegram.creator_group_selection import selected_chat_ids
 from tg_lottery.telegram.creator_participation import message_chat_refs, participation_add_text
 from tg_lottery.telegram.creator_renderer import GROUP_PAGE_SIZE, PanelTarget
 from tg_lottery.telegram.creator_required_chats_data import required_draft_data, with_required_chats
+from tg_lottery.telegram.keyboard_layout import list_rows
 from tg_lottery.telegram.platform_requirements import official_channel_for_ref
 from tg_lottery.telegram.required_chats import resolve_required_chat
 
@@ -113,6 +114,9 @@ class CreatorAdmissionPicker:
             participation_add_text()
             + f"\n\n共 {len(candidates)} 项 · 第 {page + 1}/{maximum + 1} 页"
         )
+        text += "\n\n" + "\n".join(
+            f"{page * GROUP_PAGE_SIZE + i}. {chat['title']}" for i, chat in enumerate(visible, 1)
+        )
         if search:
             text += f"\n搜索：{search}"
         if not candidates:
@@ -149,8 +153,9 @@ def admission_rows(visible, data: dict[str, Any], *, maximum: int):
         ]
         for chat in visible
     ]
-    navigation = []
     page = int(data.get("admission_page", 0))
+    rows = list_rows(rows, start=page * GROUP_PAGE_SIZE + 1)
+    navigation = []
     if page > 0:
         navigation.append(("← 上一页", PREFIX + "prev"))
     if page < maximum:

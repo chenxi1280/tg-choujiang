@@ -45,7 +45,14 @@ async def test_real_cancel_then_archive_keeps_cancelled_result_in_detail_and_lis
     assert "活动已取消，未开奖" in text + listing
     assert "未找到已完成" not in text and "未中奖" not in text
     assert "历史开奖结果未确认" not in text
-    assert "活动已取消" in keyboard.inline_keyboard[1][0].text
+    button = next(
+        button
+        for row in keyboard.inline_keyboard
+        for button in row
+        if (button.callback_data or "").startswith("m:detail:" + public_ref)
+    )
+    assert button.callback_data == f"m:detail:{public_ref}:ended:0"
+    assert "已取消" in listing
     async with session_factory() as session:
         campaign = await session.get(Campaign, campaign_id)
         assert (campaign.cutoff_at, campaign.draw_at) == original_times

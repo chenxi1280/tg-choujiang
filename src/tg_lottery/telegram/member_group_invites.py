@@ -94,8 +94,13 @@ def _finish_invite_payload(
     history = [
         InlineKeyboardButton(text="查看本场邀请记录", callback_data=f"member:invites:{reference}:0")
     ]
-    final_rows = [*rows, *pages, history, refresh, *footer_rows(reference)[1:]]
-    final_lines = [*lines, "", "链接只归因到对应群；机器人权限异常时请联系创建者修复管理员权限。"]
+    final_rows = [*rows, *pages, history[0:1] + refresh, *footer_rows(reference)[1:]]
+    final_lines = [
+        *lines,
+        f"第 {page + 1}/{maximum + 1} 页",
+        "",
+        "链接只归因到对应群；机器人权限异常时请联系创建者修复管理员权限。",
+    ]
     return "\n".join(final_lines), InlineKeyboardMarkup(inline_keyboard=final_rows)
 
 

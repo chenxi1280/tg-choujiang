@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.domain.draft_contract import DRAFT_SESSION_TTL_HOURS
+from tg_lottery.telegram.keyboard_layout import columns
 
 DRAFT_UNAVAILABLE_TEXT = (
     "当前没有可继续的草稿。\n"
@@ -23,7 +24,7 @@ class HelpLinks:
             ("📣 抽奖导航频道", self.navigation),
             ("⭐ 精选抽奖频道", self.featured),
         )
-        return [[InlineKeyboardButton(text=title, url=url)] for title, url in links if url]
+        return columns([InlineKeyboardButton(text=title, url=url) for title, url in links if url])
 
 
 GUIDE_TEXT = f"""📖 抽奖机器人使用指南
@@ -64,8 +65,10 @@ GUIDE_TEXT = f"""📖 抽奖机器人使用指南
 def guide_keyboard(links: HelpLinks) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🎁 创建抽奖", callback_data="nav:create")],
-            [InlineKeyboardButton(text="🎫 我参加的抽奖", callback_data="nav:join")],
+            [
+                InlineKeyboardButton(text="🎁 创建抽奖", callback_data="nav:create"),
+                InlineKeyboardButton(text="🎫 我参加的抽奖", callback_data="nav:join"),
+            ],
             *links.rows(),
             [InlineKeyboardButton(text="↩ 返回首页", callback_data="nav:index")],
         ]
@@ -75,16 +78,18 @@ def guide_keyboard(links: HelpLinks) -> InlineKeyboardMarkup:
 GUIDE_TOPICS = (
     ("发起抽奖", "create"),
     ("参加与条件", "member"),
-    ("邀请与活跃（人品）", "bonus"),
+    ("邀请与活跃", "bonus"),
     ("开奖与领奖", "results"),
 )
 
 
 def guide_summary(links):
-    rows = [
-        [InlineKeyboardButton(text=label, callback_data="nav:guide:" + key)]
-        for label, key in GUIDE_TOPICS
-    ]
+    rows = columns(
+        [
+            InlineKeyboardButton(text=label, callback_data="nav:guide:" + key)
+            for label, key in GUIDE_TOPICS
+        ]
+    )
     return "使用指南\n\n选择你正在办理的事项。", InlineKeyboardMarkup(
         inline_keyboard=[
             *rows,
@@ -123,5 +128,7 @@ def guide_topic(key: str, *, bot_username: str):
             ],
             [InlineKeyboardButton(text="创建/继续草稿", callback_data="nav:create")],
         ]
+    if key == "create":
+        rows = [rows[0] + rows[1], rows[2]]
     rows.append([InlineKeyboardButton(text="返回使用指南", callback_data="nav:help")])
     return text, InlineKeyboardMarkup(inline_keyboard=rows)

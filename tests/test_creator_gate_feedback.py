@@ -41,7 +41,12 @@ async def test_mode_callback_shows_selection_before_any_group_is_configured(
     assert (f"✅ {label}", f"draft_gate:mode:{mode}") in renderer.rows[0]
     if has_groups:
         assert "请点击下方群名" in renderer.text
-        assert ("A群 · 不设门槛", f"draft_gate:group:{FIRST}") in renderer.rows[1]
+        assert any(
+            action == f"draft_gate:group:{FIRST}" and "不设门槛" in text
+            for row in renderer.rows
+            for text, action in row
+        )
+        assert "A群" in renderer.text
     else:
         assert "选好群后回来设置门槛" in renderer.text
         assert ("选择参与活动的群", "draft_gate:choose_groups") in renderer.rows[1]

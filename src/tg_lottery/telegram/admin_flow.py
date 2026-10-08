@@ -33,6 +33,7 @@ from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.campaign_authorization import verify_campaign_admin
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_list_views import campaign_origin, creator_list_view
+from tg_lottery.telegram.keyboard_layout import columns
 from tg_lottery.telegram.platform_requirements import inspect_official_channels
 from tg_lottery.telegram.public_projection import campaign_state_text
 from tg_lottery.telegram.publication_error_text import publication_error_text
@@ -345,7 +346,7 @@ class AdminFlow:
             for action, token in zip(actions, tokens, strict=True)
         ]
         text = management_text(campaign, stats=stats, deliveries=deliveries, details=details)
-        buttons.extend(_management_footer(origin))
+        buttons = [*_management_sections(actions, buttons), *_management_footer(origin)]
         await render_management_panel(
             self._tokens,
             message=message,
@@ -468,6 +469,20 @@ def _expected(grant):
 
 def _management_footer(origin):
     return [
-        [InlineKeyboardButton(text="返回活动列表", callback_data=origin)],
-        [InlineKeyboardButton(text="返回首页", callback_data="nav:index")],
+        [
+            InlineKeyboardButton(text="返回活动列表", callback_data=origin),
+            InlineKeyboardButton(text="返回首页", callback_data="nav:index"),
+        ],
     ]
+
+
+def _management_sections(actions, rows):
+    result, section = [], []
+    for action, row in zip(actions, rows, strict=True):
+        if action in {"draw", "early_cutoff", "cancel"}:
+            result.extend(columns(section))
+            section = []
+            result.append(row)
+        else:
+            section.extend(row)
+    return [*result, *columns(section)]

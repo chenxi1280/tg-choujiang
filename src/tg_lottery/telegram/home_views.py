@@ -47,8 +47,10 @@ def home_text(data: Mapping[str, object] | None = None) -> str:
 def settings_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="设置归属地区", callback_data="nav:region")],
-            [InlineKeyboardButton(text="查看我的用户ID", callback_data="nav:myid")],
+            [
+                InlineKeyboardButton(text="设置归属地区", callback_data="nav:region"),
+                InlineKeyboardButton(text="查看我的用户ID", callback_data="nav:myid"),
+            ],
             [InlineKeyboardButton(text="返回首页", callback_data="nav:index")],
         ]
     )

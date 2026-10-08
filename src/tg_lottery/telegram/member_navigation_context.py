@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.application.callback_tokens import CallbackRequest
+from tg_lottery.telegram.keyboard_layout import fit_rows
 
 READ_PREFIXES = (
     "m:detail:",
@@ -34,6 +35,7 @@ class MemberPageContext:
 
 
 async def scoped_keyboard(tokens, keyboard, *, context: MemberPageContext, user_id: int):
+    keyboard = keyboard.model_copy(update={"inline_keyboard": fit_rows(keyboard.inline_keyboard)})
     descriptors = [
         _descriptor(button, context) for row in keyboard.inline_keyboard for button in row
     ]
