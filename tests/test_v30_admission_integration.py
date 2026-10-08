@@ -42,6 +42,13 @@ async def confirm(service, link_id, number):
     return invitation
 
 
+@pytest.fixture(autouse=True)
+def campaign_clock(monkeypatch):
+    # These scenarios use the fixed START timeline rather than wall time.
+    monkeypatch.setattr("tg_lottery.application.admission_views.utcnow", lambda: START)
+    monkeypatch.setattr("tg_lottery.application.group_invite_links.utcnow", lambda: START)
+
+
 @pytest.mark.parametrize("mode", ["message", "invite"])
 @pytest.mark.parametrize("bonuses", [(), ("activity",), ("invite",), ("activity", "invite")])
 async def test_eight_combinations_gate_rewards_and_final_entries(session_factory, mode, bonuses):

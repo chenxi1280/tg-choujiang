@@ -16,6 +16,7 @@ from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.presentation.invitation_text import invitation_purpose
 from tg_lottery.telegram.member_bonus_text import historical_outcome_status
 from tg_lottery.telegram.public_projection import format_public_time
+from tg_lottery.telegram.ui_style import row_keyboard
 
 if TYPE_CHECKING:
     from tg_lottery.telegram.member_flow import MemberFlow
@@ -166,7 +167,7 @@ def _landing_keyboard(
         rows.append([InlineKeyboardButton(text=label, url=group_url)])
     if not _registration_open(landing, utcnow()):
         rows.append([InlineKeyboardButton(text="查看我的参与记录", callback_data="nav:join")])
-        return InlineKeyboardMarkup(inline_keyboard=rows)
+        return row_keyboard(rows)
     ref = landing.campaign.public_ref
     rows.append(
         [
@@ -180,7 +181,7 @@ def _landing_keyboard(
             ),
         ]
     )
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return row_keyboard(rows)
 
 
 def _group_url(flow: MemberFlow, landing: ReferralLanding) -> str | None:

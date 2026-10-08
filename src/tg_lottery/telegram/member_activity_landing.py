@@ -1,13 +1,14 @@
 import html
 from typing import Any
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton
 
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.presentation.participation_rules import complete_rule_pages, public_rule_blocks
 from tg_lottery.telegram import member_condition_views
 from tg_lottery.telegram.public_projection import campaign_state_text
+from tg_lottery.telegram.ui_style import row_keyboard
 
 
 async def open_activity(flow: Any, message: Any, reference: str) -> None:
@@ -94,7 +95,7 @@ async def show_legacy_rules(flow, message, campaign):
 
 async def _send_rule_pages(message, pages, *, rows, label="条件"):
     for index, page in enumerate(pages, 1):
-        markup = InlineKeyboardMarkup(inline_keyboard=rows) if index == len(pages) else None
+        markup = row_keyboard(rows) if index == len(pages) else None
         await message.answer(
             f"{label} {index}/{len(pages)}\n{page}", parse_mode="HTML", reply_markup=markup
         )

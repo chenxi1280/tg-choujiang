@@ -17,6 +17,7 @@ from tg_lottery.infrastructure.db import (
 )
 from tg_lottery.telegram.gateway import TelegramGateway
 from tg_lottery.telegram.gateway_requests import build_gateway_call, build_gateway_request
+from tg_lottery.telegram.ui_style import plain_label
 
 
 @pytest.mark.parametrize(
@@ -57,12 +58,12 @@ async def test_delayed_invite_delivery_uses_current_campaign_and_link_state(
     assert expected in delivered
     if visible:
         assert "https://t.me/+persistent" in delivered
-        assert buttons[0].text == ("复制邀请链接" if active else "复制入群链接")
+        assert plain_label(buttons[0].text) == ("复制邀请链接" if active else "复制入群链接")
         cipher.decrypt.assert_called_once()
     else:
         assert "https://t.me/+persistent" not in delivered
         assert not any(button.url or button.copy_text for button in buttons)
-        assert "邀请记录" in [button.text for button in buttons]
+        assert "邀请记录" in [plain_label(button.text) for button in buttons]
         cipher.decrypt.assert_not_called()
 
 

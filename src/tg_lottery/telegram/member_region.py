@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton
 
 from tg_lottery.application.callback_tokens import CallbackRequest
 from tg_lottery.application.records import utcnow
@@ -6,6 +6,7 @@ from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.member_profile_conditions import region_locked
 from tg_lottery.telegram.personal_flow import REGIONS
 from tg_lottery.telegram.public_projection import format_public_time
+from tg_lottery.telegram.ui_style import row_keyboard
 
 REGION_COLUMNS = 2
 
@@ -37,7 +38,7 @@ async def region_view(profiles, tokens, *, user_id: int, context):
     rows.append(
         [InlineKeyboardButton(text="返回参与条件检查", callback_data=f"m:conditions:{ref}:0")]
     )
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+    return text, row_keyboard(rows)
 
 
 async def set_region(profiles, query, grant):

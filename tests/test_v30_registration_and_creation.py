@@ -29,7 +29,8 @@ from tg_lottery.telegram.member_activity_landing import open_activity
 from tg_lottery.telegram.member_flow import MemberFlow
 
 
-async def test_rules_landing_and_group_join_do_not_enroll(session_factory):
+async def test_rules_landing_and_group_join_do_not_enroll(session_factory, monkeypatch):
+    monkeypatch.setattr("tg_lottery.application.records.utcnow", lambda: START)
     cid, _ = await seed_v3(session_factory, rules_for("message"))
     participants = ParticipantService(partial(UnitOfWork, session_factory))
     queries = QueryService(session_factory)

@@ -30,7 +30,7 @@ class HelpLinks:
 
 GUIDE_TEXT = f"""📖 抽奖机器人使用指南
 
-🎁 发起抽奖
+✨ 发起抽奖
 将机器人加入参与群和条件频道并设为管理员。私有群/频道需开启邀请用户权限。
 点击“创建抽奖”，选择参与群，再设置标题、奖品和开奖时间。
 在“准入条件”添加需要关注的频道或加入的群；可添加多个，参与者必须全部满足。
@@ -68,8 +68,8 @@ def guide_keyboard(links: HelpLinks) -> InlineKeyboardMarkup:
         InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="🎁 创建抽奖", callback_data="nav:create"),
-                    InlineKeyboardButton(text="🤝 我参加的抽奖", callback_data="nav:join"),
+                    InlineKeyboardButton(text="创建抽奖", callback_data="nav:create"),
+                    InlineKeyboardButton(text="我参加的抽奖", callback_data="nav:join"),
                 ],
                 *links.rows(),
                 [InlineKeyboardButton(text="↩ 返回首页", callback_data="nav:index")],
@@ -106,7 +106,7 @@ def guide_summary(links):
 
 def guide_topic(key: str, *, bot_username: str):
     markers = {
-        "create": "🎁 发起抽奖",
+        "create": "✨ 发起抽奖",
         "member": "🤝 参加抽奖",
         "bonus": "🤝 邀请与活跃加成",
         "results": "🏆 开奖与领奖",

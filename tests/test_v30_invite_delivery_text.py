@@ -15,6 +15,12 @@ from tg_lottery.telegram import member_invites
 from tg_lottery.telegram.gateway_requests import build_gateway_call
 
 
+@pytest.fixture(autouse=True)
+def campaign_clock(monkeypatch):
+    # Delivery and the shared deadline view must observe the same fixed time.
+    monkeypatch.setattr("tg_lottery.telegram.member_bonus_text.utcnow", lambda: START)
+
+
 @pytest.mark.parametrize(
     ("mode", "bonuses", "chat_id", "expected"),
     [

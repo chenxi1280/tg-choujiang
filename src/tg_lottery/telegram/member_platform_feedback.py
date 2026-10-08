@@ -1,4 +1,6 @@
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton
+
+from tg_lottery.telegram.ui_style import row_keyboard
 
 
 async def platform_feedback(flow, campaign, *, user_id, text, keyboard):
@@ -25,4 +27,4 @@ async def platform_feedback(flow, campaign, *, user_id, text, keyboard):
                 )
             ],
         )
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+    return text, row_keyboard(rows)

@@ -15,6 +15,7 @@ from tg_lottery.telegram.member_bonus_text import (
     invite_list_prompt,
 )
 from tg_lottery.telegram.public_projection import format_public_time
+from tg_lottery.telegram.ui_style import row_keyboard, style_keyboard
 
 
 def invite_link_text(campaign_name: str, *, note: str, link: str) -> str:
@@ -25,17 +26,19 @@ def invite_link_keyboard(link: str, campaign_name: str, *, active: bool) -> Inli
     share = "https://t.me/share/url?url=" + quote(link, safe="")
     share_text = f"邀请你参加「{campaign_name}」抽奖" if active else "邀请你加入群聊"
     share += "&text=" + quote(share_text, safe="")
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="复制邀请链接" if active else "复制入群链接",
-                    copy_text=CopyTextButton(text=link),
-                )
-            ],
-            [InlineKeyboardButton(text="打开邀请入口" if active else "打开入群入口", url=link)],
-            [InlineKeyboardButton(text="转发给好友" if active else "转发入群", url=share)],
-        ]
+    return style_keyboard(
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="复制邀请链接" if active else "复制入群链接",
+                        copy_text=CopyTextButton(text=link),
+                    )
+                ],
+                [InlineKeyboardButton(text="打开邀请入口" if active else "打开入群入口", url=link)],
+                [InlineKeyboardButton(text="转发给好友" if active else "转发入群", url=share)],
+            ]
+        )
     )
 
 
@@ -67,7 +70,7 @@ def member_keyboard(
     show_invitation_record = bonus_enabled if invite_enabled is None else invite_enabled
     if show_invitation_record:
         rows.append([InlineKeyboardButton(text="邀请记录", callback_data=invite_callback)])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return row_keyboard(rows)
 
 
 async def legacy_invite_link_payload(

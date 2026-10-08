@@ -23,6 +23,7 @@ from tg_lottery.telegram.member_bonus_text import (
     invite_bonus_completed,
     invite_list_prompt,
 )
+from tg_lottery.telegram.ui_style import row_keyboard
 
 HIDDEN_INVITE_STATES = HISTORICAL_CAMPAIGN_STATES
 
@@ -101,7 +102,7 @@ def _finish_invite_payload(
         "",
         "链接只归因到对应群；机器人权限异常时请联系创建者修复管理员权限。",
     ]
-    return "\n".join(final_lines), InlineKeyboardMarkup(inline_keyboard=final_rows)
+    return "\n".join(final_lines), row_keyboard(final_rows)
 
 
 def _invite_section(

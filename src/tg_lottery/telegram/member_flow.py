@@ -52,6 +52,7 @@ from tg_lottery.telegram.member_registration import (
 from tg_lottery.telegram.qualification import (
     QualificationRetryable,
 )
+from tg_lottery.telegram.ui_style import row_keyboard
 
 
 class MemberFlow:
@@ -300,7 +301,7 @@ class MemberFlow:
                 )
             ]
         )
-        keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
+        keyboard = row_keyboard(rows)
         instruction = member_condition_views.condition_instruction(chat, rules)
         if chat.get("invite_revoked_at") and not chat.get("join_url"):
             instruction = f"「{chat['title']}」的加入入口已关闭。"
@@ -387,7 +388,7 @@ class MemberFlow:
                 )
             ]
         ]
-        return InlineKeyboardMarkup(inline_keyboard=rows)
+        return row_keyboard(rows)
 
     def _condition_url(self, campaign: object, chat: dict[str, object]) -> str:
         if chat.get("join_url"):

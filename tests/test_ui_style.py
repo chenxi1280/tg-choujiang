@@ -6,6 +6,8 @@ from tg_lottery.telegram.ui_style import plain_label, style_keyboard, style_labe
 def test_semantic_icons_preserve_numeric_density_and_selected_state():
     assert style_label("活跃加成") == "🌱 活跃加成"
     assert style_label("邀请加成") == "🤝 邀请加成"
+    assert style_label("发起抽奖") == "✨ 发起抽奖"
+    assert style_label("创建抽奖") == "✨ 创建抽奖"
     assert style_label("返回首页") == "↩️ 返回首页"
     assert style_label("✅ 发言数") == "✅ 🚪 发言数"
     for text in (

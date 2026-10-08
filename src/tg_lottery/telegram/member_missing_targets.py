@@ -9,6 +9,7 @@ from tg_lottery.application.campaign_targets import QualificationTarget
 from tg_lottery.domain.enums import QualificationState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import member_condition_views
+from tg_lottery.telegram.ui_style import row_keyboard
 
 MISSING_TARGETS_PAGE_SIZE = 6
 PENDING_APPROVAL_STATUS = "join_request_pending"
@@ -44,7 +45,7 @@ def build_missing_targets_reply(
         unknown=list(selected.unknown),
         page=(selected.number, selected.count),
     )
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+    return text, row_keyboard(rows)
 
 
 def missing_target_page(

@@ -1,7 +1,7 @@
 import logging
 
 from aiogram.exceptions import TelegramAPIError
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton
 
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
@@ -12,6 +12,7 @@ from tg_lottery.telegram.keyboard_layout import pair_rows, short_label
 from tg_lottery.telegram.member_profile_conditions import profile_conditions
 from tg_lottery.telegram.operational_issue_views import operational_issue_text
 from tg_lottery.telegram.platform_condition_view import platform_condition_lines
+from tg_lottery.telegram.ui_style import row_keyboard
 
 
 async def condition_check_payload(
@@ -44,7 +45,7 @@ async def condition_check_payload(
         )
     rows.append([InlineKeyboardButton(text="返回活动详情", callback_data=f"m:detail:{ref}")])
     text = f"参与条件检查 · {campaign.name}\n\n" + "\n\n".join(lines)
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+    return text, row_keyboard(rows)
 
 
 async def target_conditions(bot, user_id, *, targets, cipher):

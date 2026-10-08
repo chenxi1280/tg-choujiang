@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy import select
 
-from tests.v30_helpers import FIRST, rules_for, seed_v3
+from tests.v30_helpers import FIRST, START, rules_for, seed_v3
 from tg_lottery.application.participants import ParticipantService
 from tg_lottery.application.queries import QueryService
 from tg_lottery.domain.errors import UserFacingError
@@ -46,6 +46,14 @@ async def member_flow(factory, bonuses, *, mode="invite"):
     )
     message = SimpleNamespace(chat=SimpleNamespace(type="private", id=201), answer=AsyncMock())
     return flow, await queries.campaign(campaign_id), message
+
+
+@pytest.fixture(autouse=True)
+def campaign_clock(monkeypatch):
+    # Keep live-navigation scenarios inside their fixed campaign timeline.
+    monkeypatch.setattr("tg_lottery.application.group_invite_links.utcnow", lambda: START)
+    for module in ("member_bonus_text", "member_group_invites", "member_invites"):
+        monkeypatch.setattr(f"tg_lottery.telegram.{module}.utcnow", lambda: START)
 
 
 @pytest.mark.parametrize("bonuses", [(), ("activity",), ("invite",), ("activity", "invite")])

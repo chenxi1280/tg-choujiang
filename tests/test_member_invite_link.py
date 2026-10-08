@@ -137,10 +137,10 @@ def test_registration_keyboard_exposes_only_the_current_campaign_link() -> None:
     keyboard = member_keyboard("AbCdEfGhIjKlMnOpQrSt-_", True)
     buttons = [button for row in keyboard.inline_keyboard for button in row]
 
-    invite = next(button for button in buttons if button.text == "我的加成")
+    invite = next(button for button in buttons if plain_label(button.text) == "我的加成")
     assert invite.callback_data == "member:bonus:AbCdEfGhIjKlMnOpQrSt-_"
-    tickets = next(button for button in buttons if button.text == "我的抽奖次数")
-    records = next(button for button in buttons if button.text == "邀请记录")
+    tickets = next(button for button in buttons if plain_label(button.text) == "我的抽奖次数")
+    records = next(button for button in buttons if plain_label(button.text) == "邀请记录")
     assert tickets.callback_data == "member:tickets:AbCdEfGhIjKlMnOpQrSt-_"
     assert records.callback_data == "member:invites:AbCdEfGhIjKlMnOpQrSt-_:0"
 
