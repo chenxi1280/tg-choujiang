@@ -130,9 +130,15 @@ def _list_view(data, editor):
 
 
 def _list_footer(data, gate):
+    target = return_target(data)
     if gate == (data.get("admission") or {}) and gate["groups"]:
-        return [[("返回预览（已保存）", "draft_gate:leave")]]
-    return [[("保存本场门槛", "draft_gate:save")], [("返回预览", "draft_gate:leave")]]
+        return [[(f"返回{target}（已保存）", "draft_gate:leave")]]
+    return [[("保存本场门槛", "draft_gate:save")], [(f"返回{target}", "draft_gate:leave")]]
+
+
+def return_target(data: dict) -> str:
+    section = (data.get("creator_path") or ["dashboard"])[-1]
+    return {"conditions": "参与条件", "dashboard": "草稿预览"}.get(section, "当前模块")
 
 
 def _selection_hint(data: dict, mode: str | None) -> str:

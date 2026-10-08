@@ -152,7 +152,9 @@ def test_days_are_separate_and_clean_saved_gate_has_no_second_save_requirement()
     returned = editor.apply_action(data, "draft_gate:list")
     _, rows = views.view(returned)
     assert "draft_gate:save" not in [a for row in rows for _, a in row]
-    assert ("返回预览\uff08已保存\uff09", "draft_gate:leave") in [b for row in rows for b in row]
+    assert ("返回草稿预览\uff08已保存\uff09", "draft_gate:leave") in [
+        b for row in rows for b in row
+    ]
 
 
 async def test_committed_reply_display_failure_replays_saved_result_without_second_save(

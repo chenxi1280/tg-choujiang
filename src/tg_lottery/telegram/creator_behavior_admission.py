@@ -160,7 +160,7 @@ class CreatorBehaviorAdmission:
     async def _unsaved_warning(self, query, *, data):
         rows = [[("放弃修改", "draft_gate:discard"), ("继续编辑", "draft_gate:continue")]]
         if data[editor.EDITOR_KEY].get("groups") and not editor.group_dirty(data):
-            rows.insert(0, [("保存本场门槛并返回预览", "draft_gate:save")])
+            rows.insert(0, [(f"保存本场门槛并返回{views.return_target(data)}", "draft_gate:save")])
         await self._renderer.render(
             query.message,
             user_id=query.from_user.id,

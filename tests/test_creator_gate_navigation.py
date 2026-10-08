@@ -104,3 +104,50 @@ async def test_choose_groups_then_resume_invite_editor_and_save(monkeypatch):
     assert sessions.data["invite_retention_hours"] == 24
     assert editor.EDITOR_KEY not in sessions.data
     verify.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "section,target,heading",
+    [("dashboard", "草稿预览", "编辑草稿"), ("conditions", "参与条件", "参与条件设置")],
+)
+@pytest.mark.parametrize("dirty", [False, True])
+async def test_gate_return_label_matches_actual_parent_and_keeps_saved_rule(
+    section, target, heading, *, dirty
+):
+    gate = {
+        "type": "message",
+        "groups": {str(FIRST): {"daily_messages": 5, "consecutive_days": 1, "min_text_length": 4}},
+    }
+    sessions = ThresholdSessions(
+        new_draft()
+        | {
+            "participation_groups": [{"id": FIRST, "title": "A群"}],
+            "panel_message_id": PANEL_ID,
+            "creator_path": ["dashboard"] if section == "dashboard" else ["dashboard", section],
+            "admission": gate,
+        }
+    )
+    renderer = RecordingRenderer()
+    creator = _creator(sessions, renderer)
+    await creator.handle_grant(_query(), CallbackGrant("draft_gate", None, {}))
+    if dirty:
+        groups = sessions.data[editor.EDITOR_KEY]["groups"]
+        groups[str(FIRST)] = groups[str(FIRST)] | {"daily_messages": 8}
+        await creator.handle_grant(_query(), _grant("continue"))
+    suffix = "" if dirty else "\uff08已保存\uff09"
+    assert (f"返回{target}{suffix}", "draft_gate:leave") in [
+        b for row in renderer.rows for b in row
+    ]
+
+    await creator.handle_grant(_query(), _grant("leave"))
+    if dirty:
+        assert (f"保存本场门槛并返回{target}", "draft_gate:save") in [
+            b for row in renderer.rows for b in row
+        ]
+        await creator.handle_grant(_query(), _grant("discard"))
+
+    assert heading in renderer.text
+    assert sessions.state == "draft:idle"
+    assert editor.EDITOR_KEY not in sessions.data
+    assert sessions.data["admission"] == gate
+    assert sessions.data["admission"]["groups"][str(FIRST)]["daily_messages"] == 5
