@@ -19,6 +19,7 @@ from tg_lottery.telegram.creator_retention_revision import (
     retention_conflict_view,
     synchronize_retention,
 )
+from tg_lottery.telegram.panel_pagination import titled_pages
 
 
 class CreatorBehaviorAdmission:
@@ -110,7 +111,8 @@ class CreatorBehaviorAdmission:
     async def _reply_result(self, message, changed):
         await self._sessions.set(message.from_user.id, "draft:behavior_admission", changed)
         text, rows = views.view(changed)
-        panel = await message.answer(text)
+        first_page = titled_pages(text, title=text.split("\n", 1)[0])[0]
+        panel = await message.answer(first_page)
         updated = changed | {"panel_message_id": panel.message_id}
         await self._sessions.set(message.from_user.id, "draft:behavior_admission", updated)
         await self._renderer.render(panel, user_id=message.from_user.id, text=text, rows=rows)

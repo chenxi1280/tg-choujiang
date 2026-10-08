@@ -215,3 +215,22 @@ def test_removed_group_and_retention_conflict_are_rejected_before_save():
     data["invite_retention_hours"] = 48
     with pytest.raises(UserFacingError, match="24小时"):
         prepare_save(data, field="daily_messages", value="8")
+
+
+async def test_long_group_list_error_reply_uses_safe_first_page_and_keeps_full_view(setup):
+    data = _input_data()
+    groups = [{"id": -1000 - i, "title": "长名称测试群" * 30 + str(i)} for i in range(30)]
+    data["participation_groups"] = groups
+    data[editor.EDITOR_KEY] |= {
+        "chat_id": None,
+        "field": None,
+        "groups": {str(g["id"]): {"daily_messages": 5, "consecutive_days": 1} for g in groups},
+    }
+    admission, sessions, renderer = controller(data)
+    await admission.receive(_message("0"), data)
+    text = setup[1].await_args.args[0]
+    assert len(text.encode("utf-16-le")) // 2 <= 4096
+    assert "未保存" in text
+    assert len(renderer.render.await_args.kwargs["text"].encode("utf-16-le")) // 2 > 4096
+    assert sessions.data["admission"] is None
+    setup[0].assert_not_awaited()
