@@ -182,7 +182,10 @@ class PersonalFlow:
 
     async def show_settings(self, message: Message, *, edit: bool = False) -> None:
         await _respond(
-            message, "个人设置\n\n资料设置不自动登记活动。", keyboard=settings_keyboard(), edit=edit
+            message,
+            "👤 个人设置\n\n资料设置不自动登记活动。",
+            keyboard=settings_keyboard(),
+            edit=edit,
         )
 
     async def show_created(self, message: Message, *, edit: bool = False) -> None:
@@ -243,7 +246,7 @@ class PersonalFlow:
         profile = await self._profiles.get(_user(message).id)
         current = profile.region or "未设置"
         text = (
-            f"🌏 设置归属地区\n\n当前地区：{current}\n首次设置后 5 分钟内可修改，随后锁定 30 天。"
+            f"🌐 设置归属地区\n\n当前地区：{current}\n首次设置后 5 分钟内可修改，随后锁定 30 天。"
         )
         keyboard = _region_keyboard()
         if (
@@ -265,7 +268,7 @@ class PersonalFlow:
     async def show_user_id(self, message: Message, *, edit: bool = False) -> None:
         await _respond(
             message,
-            f"你的 Telegram 用户 ID：{_user(message).id}",
+            f"🆔 你的 Telegram 用户 ID：{_user(message).id}",
             keyboard=settings_keyboard(),
             edit=edit,
         )
