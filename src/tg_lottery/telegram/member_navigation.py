@@ -36,6 +36,7 @@ from tg_lottery.telegram.member_region import region_view, set_region
 from tg_lottery.telegram.member_window_guidance import window_guidance
 from tg_lottery.telegram.panel_pagination import PAGE_CONTENT_UNITS, text_pages
 from tg_lottery.telegram.public_projection import campaign_history_state_text
+from tg_lottery.telegram.ui_style import style_keyboard
 
 RECORD_GROUP_PAGE_SIZE = 6
 
@@ -437,7 +438,7 @@ def _button(text: str, route: str):
 
 
 def _keyboard(rows):
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 def _page_buttons(prefix: str, page: int, total: int):

@@ -337,7 +337,7 @@ def _region_keyboard() -> InlineKeyboardMarkup:
         for index in range(0, len(buttons), _REGION_COLUMNS)
     ]
     rows.append([InlineKeyboardButton(text="返回个人设置", callback_data="nav:settings")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 def _region_success_text(profile: object, timezone: str) -> str:

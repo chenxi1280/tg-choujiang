@@ -2,6 +2,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.application.callback_tokens import CallbackRequest
 from tg_lottery.telegram.panel_pagination import titled_pages
+from tg_lottery.telegram.ui_style import style_keyboard
 
 
 async def render_management_panel(
@@ -28,5 +29,6 @@ async def render_management_panel(
     rows = [*buttons, *([navigation] if navigation else [])]
     adjusted = "页码已随当前记录调整。\n" if selected != content_page else ""
     await message.edit_text(
-        adjusted + pages[selected], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        adjusted + pages[selected],
+        reply_markup=style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows)),
     )

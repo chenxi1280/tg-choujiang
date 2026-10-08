@@ -22,6 +22,7 @@ from tg_lottery.telegram.member_callbacks import (
 )
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.member_records import show_ticket_record
+from tg_lottery.telegram.ui_style import plain_label
 
 
 async def member_flow(factory, bonuses, *, mode="invite"):
@@ -124,7 +125,7 @@ async def test_invite_entry_supports_gate_without_any_group_bonus_rules(session_
 
 def button_labels(message):
     rows = message.answer.call_args.kwargs["reply_markup"].inline_keyboard
-    return [button.text for row in rows for button in row]
+    return [plain_label(button.text) for row in rows for button in row]
 
 
 def button_callbacks(message):

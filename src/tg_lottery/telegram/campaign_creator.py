@@ -48,6 +48,7 @@ from tg_lottery.telegram.draft_config import ensure_draft_identity, new_draft
 from tg_lottery.telegram.home_views import home_keyboard, home_text
 from tg_lottery.telegram.issuer import creator_issuer
 from tg_lottery.telegram.platform_requirements import attach_platform_policy
+from tg_lottery.telegram.ui_style import style_keyboard
 
 
 class CampaignCreator:
@@ -136,10 +137,12 @@ class CampaignCreator:
             await message.answer(
                 "草稿已在另一条消息中更新，本次旧按钮操作未执行。\n"
                 "已填写的内容仍然保留，点击下方按钮继续当前草稿。",
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [InlineKeyboardButton(text="继续当前草稿", callback_data="nav:create")]
-                    ]
+                reply_markup=style_keyboard(
+                    InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [InlineKeyboardButton(text="继续当前草稿", callback_data="nav:create")]
+                        ]
+                    )
                 ),
             )
             return True

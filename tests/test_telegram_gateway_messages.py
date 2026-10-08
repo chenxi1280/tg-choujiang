@@ -17,6 +17,7 @@ from tg_lottery.telegram.gateway import (
     _draw_result_text,
 )
 from tg_lottery.telegram.gateway_requests import GatewayRequest, build_gateway_request
+from tg_lottery.telegram.ui_style import plain_label
 
 SNAPSHOT_HASH = "fc99b18147ccfaf6b7c3ab660c4ed6e688fc091ccaa97e4bdf0db477182702a7"
 
@@ -428,7 +429,7 @@ async def test_campaign_keyboard_emphasizes_participation_with_rules_in_body() -
     assert buttons[0].text == "✨ 点击参与抽奖"
     assert buttons[0].url == _campaign_deep_link(_lotterybest_card_payload(), "join")
     assert buttons[0].callback_data is None
-    assert [button.text for button in buttons[1:]] == ["邀请入口", "我的加成"]
+    assert [plain_label(button.text) for button in buttons[1:]] == ["邀请入口", "我的加成"]
     assert all(len(button.callback_data.encode()) <= 64 for button in buttons[1:])
     assert _campaign_deep_link(_lotterybest_card_payload(), "rules") in bot.sent[0][1][1]
 

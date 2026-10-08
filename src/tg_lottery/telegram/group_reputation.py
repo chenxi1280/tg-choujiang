@@ -14,6 +14,7 @@ from tg_lottery.telegram.bonus_rule_text import global_bonus_lines
 from tg_lottery.telegram.member_bonus_text import activity_cap, campaign_bonus_completed
 from tg_lottery.telegram.member_record_text import current_effective_count
 from tg_lottery.telegram.public_projection import qualification_state_text
+from tg_lottery.telegram.ui_style import style_keyboard
 
 COMMANDS = {"人品": "self", "人品规则": "rules", "人品排行": "rank"}
 SELECTION_SIZE = 8
@@ -247,7 +248,11 @@ def _pages(action, reference, *, user_id, page, pages):
 
 async def _reply(message, text, *, rows, edit):
     sender = message.edit_text if edit else message.answer
-    await sender(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await sender(
+        text,
+        parse_mode="HTML",
+        reply_markup=style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows)),
+    )
 
 
 def _parse_button(data):

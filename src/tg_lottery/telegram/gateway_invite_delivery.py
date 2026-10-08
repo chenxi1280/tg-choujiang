@@ -3,6 +3,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from tg_lottery.infrastructure.db import InviteLink
 from tg_lottery.telegram.gateway_requests import GatewayRequest
 from tg_lottery.telegram.member_invites import invite_link_keyboard, member_keyboard
+from tg_lottery.telegram.ui_style import style_keyboard
 
 
 def invite_delivery_content(
@@ -37,10 +38,16 @@ def _delivery_link(request: GatewayRequest, invite_link: InviteLink, *, cipher: 
 def _delivery_keyboard(request, link, title):
     keyboard = invite_link_keyboard(link, title, active=request.payload["invite_bonus_active"])
     reference = str(request.payload["campaign_ref"])
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            *keyboard.inline_keyboard,
-            [InlineKeyboardButton(text="邀请记录", callback_data=f"member:invites:{reference}:0")],
-            [InlineKeyboardButton(text="返回本场活动", callback_data=f"m:detail:{reference}")],
-        ]
+    return style_keyboard(
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                *keyboard.inline_keyboard,
+                [
+                    InlineKeyboardButton(
+                        text="邀请记录", callback_data=f"member:invites:{reference}:0"
+                    )
+                ],
+                [InlineKeyboardButton(text="返回本场活动", callback_data=f"m:detail:{reference}")],
+            ]
+        )
     )

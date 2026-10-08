@@ -168,7 +168,7 @@ def test_activity_only_ticket_detail_has_no_invitation_entry() -> None:
         bonus_enabled=True,
         invite_enabled=False,
     )
-    labels = [button.text for row in keyboard.inline_keyboard for button in row]
+    labels = [plain_label(button.text) for row in keyboard.inline_keyboard for button in row]
 
     assert "我的加成" in labels
     assert "查看本期邀请记录" not in labels

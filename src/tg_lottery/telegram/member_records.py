@@ -12,6 +12,7 @@ from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.keyboard_layout import columns, list_rows
 from tg_lottery.telegram.member_record_text import participant_record_pages
 from tg_lottery.telegram.public_projection import format_public_time
+from tg_lottery.telegram.ui_style import style_keyboard
 
 _GROUP_PAGE_SIZE = 6
 _FILTER_LABELS = {
@@ -150,7 +151,9 @@ async def show_invitation_groups(
     if navigation:
         rows.append(navigation)
     rows.append([InlineKeyboardButton(text="返回邀请活动", callback_data="nav:invites")])
-    await message.answer("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await message.answer(
+        "\n".join(lines), reply_markup=style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
+    )
 
 
 def _record_line(row: InvitationRecordRow, timezone: str) -> str:
@@ -200,7 +203,7 @@ def _record_keyboard(
     rows.append(
         [InlineKeyboardButton(text="返回参与列表", callback_data=f"nav:join:{_category(state)}:0")]
     )
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 def _category(state: CampaignState) -> str:
@@ -247,7 +250,7 @@ def _invitation_keyboard(records: CampaignInvitationRecords) -> InlineKeyboardMa
     )
     back_label = "返回群列表" if records.group_chat_id is not None else "返回参与列表"
     rows[-1].append(InlineKeyboardButton(text=back_label, callback_data=back))
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 def _filter_row(records: CampaignInvitationRecords) -> list[InlineKeyboardButton]:

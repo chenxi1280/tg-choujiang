@@ -4,6 +4,7 @@ from tg_lottery.application.callback_tokens import CallbackRequest
 from tg_lottery.application.winner_queries import WINNER_PAGE_SIZE
 from tg_lottery.domain.enums import CampaignState, PrizeClaimState
 from tg_lottery.telegram.panel_pagination import titled_pages
+from tg_lottery.telegram.ui_style import style_keyboard
 
 CLAIM_LABELS = {
     PrizeClaimState.CLAIMED: "已登记领奖",
@@ -36,7 +37,7 @@ async def winner_page_view(queries, tokens, *, query, grant):
         await _content_rows(tokens, query, grant=grant, selected=selected, total=len(pages))
     )
     await query.message.edit_text(
-        pages[selected], reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        pages[selected], reply_markup=style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
     )
 
 

@@ -41,6 +41,7 @@ from tg_lottery.telegram.platform_requirements import (
     platform_summary,
 )
 from tg_lottery.telegram.public_projection import campaign_state_text
+from tg_lottery.telegram.ui_style import style_keyboard
 
 
 class CreatorPublisher:
@@ -150,16 +151,19 @@ class CreatorPublisher:
             f"已恢复同一活动：{campaign.name}\n状态：{campaign_state_text(campaign.state)}\n"
             "不会创建第二场。发布请求与各目标实际送达分开核对，请查看当前状态。"
         )
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="查看当前活动状态", callback_data=f"nav:campaign:{campaign.public_ref}"
-                    )
-                ],
-                [InlineKeyboardButton(text="我发起的抽奖", callback_data="nav:created")],
-                [InlineKeyboardButton(text="返回首页", callback_data="nav:index")],
-            ]
+        keyboard = style_keyboard(
+            InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="查看当前活动状态",
+                            callback_data=f"nav:campaign:{campaign.public_ref}",
+                        )
+                    ],
+                    [InlineKeyboardButton(text="我发起的抽奖", callback_data="nav:created")],
+                    [InlineKeyboardButton(text="返回首页", callback_data="nav:index")],
+                ]
+            )
         )
         await message.edit_text(text, reply_markup=keyboard)
 

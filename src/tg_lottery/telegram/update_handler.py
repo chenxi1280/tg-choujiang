@@ -5,7 +5,6 @@ from aiogram.types import (
     CallbackQuery,
     ChatMemberUpdated,
     InlineKeyboardButton,
-    InlineKeyboardMarkup,
     Message,
     Update,
 )
@@ -34,6 +33,7 @@ from tg_lottery.telegram.message_observation import observe_message
 from tg_lottery.telegram.personal_flow import PersonalFlow
 from tg_lottery.telegram.public_projection import public_error_text
 from tg_lottery.telegram.start_payloads import dispatch_start_payload
+from tg_lottery.telegram.ui_style import row_keyboard
 
 
 class LotteryUpdateHandler:
@@ -118,8 +118,8 @@ class LotteryUpdateHandler:
         if name in command_input.PRIVATE_BOT_COMMANDS:
             await message.answer(
                 "该命令请在私聊中使用。",
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
+                reply_markup=row_keyboard(
+                    [
                         [
                             InlineKeyboardButton(
                                 text="私聊我",

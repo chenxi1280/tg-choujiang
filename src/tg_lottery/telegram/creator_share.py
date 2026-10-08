@@ -1,5 +1,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from tg_lottery.telegram.ui_style import style_keyboard
+
 
 def publication_receipt(campaign, bot_username: str) -> tuple[str, InlineKeyboardMarkup]:
     link = f"https://t.me/{bot_username}?start=join_{campaign.public_ref}"
@@ -11,16 +13,18 @@ def publication_receipt(campaign, bot_username: str) -> tuple[str, InlineKeyboar
         "长按本消息可转发链接；「分享活动卡片」提供包含封面、条件和奖品的同款公告。"
     )
     share = f"https://t.me/{bot_username}?start=share_{campaign.public_ref}"
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="查看本场投递状态", callback_data=f"nav:campaign:{campaign.public_ref}"
-                )
-            ],
-            [InlineKeyboardButton(text="查看参与条件", url=link)],
-            [InlineKeyboardButton(text="分享活动卡片", url=share)],
-            [InlineKeyboardButton(text="我发起的抽奖", callback_data="nav:created")],
-        ]
+    keyboard = style_keyboard(
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="查看本场投递状态", callback_data=f"nav:campaign:{campaign.public_ref}"
+                    )
+                ],
+                [InlineKeyboardButton(text="查看参与条件", url=link)],
+                [InlineKeyboardButton(text="分享活动卡片", url=share)],
+                [InlineKeyboardButton(text="我发起的抽奖", callback_data="nav:created")],
+            ]
+        )
     )
     return text, keyboard

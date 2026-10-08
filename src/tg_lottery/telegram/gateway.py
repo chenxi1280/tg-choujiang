@@ -26,6 +26,7 @@ from tg_lottery.telegram.gateway_card_states import (
 from tg_lottery.telegram.gateway_invite_delivery import invite_delivery_content
 from tg_lottery.telegram.gateway_requests import GatewayRequest
 from tg_lottery.telegram.remote_serialization import remote_object
+from tg_lottery.telegram.ui_style import style_keyboard
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -89,15 +90,17 @@ class TelegramGateway:
             text,
             parse_mode="HTML",
             disable_notification=False,
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="查看我的进度",
-                            callback_data=f"member:tickets:{payload['campaign_ref']}",
-                        )
+            reply_markup=style_keyboard(
+                InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="查看我的进度",
+                                callback_data=f"member:tickets:{payload['campaign_ref']}",
+                            )
+                        ]
                     ]
-                ]
+                )
             ),
         )
         return GatewayResult(
@@ -113,15 +116,17 @@ class TelegramGateway:
         if payload.get("campaign_ref"):
             if not self._bot_username:
                 raise ValueError("temporary reminder participation link requires a bot username")
-            options["reply_markup"] = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text="参与抽奖",
-                            url=campaign_link(payload | {"bot_username": self._bot_username}),
-                        )
+            options["reply_markup"] = style_keyboard(
+                InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="参与抽奖",
+                                url=campaign_link(payload | {"bot_username": self._bot_username}),
+                            )
+                        ]
                     ]
-                ]
+                )
             )
         if payload.get("user_id"):
             mention = user_mention(payload | {"display_name": "这位成员"})
@@ -375,7 +380,7 @@ def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
     folder_link = payload.get("presentation", {}).get("folder_link")
     if folder_link and not closed:
         rows.append([InlineKeyboardButton(text="🗂 一键加入群和频道", url=str(folder_link))])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 def _campaign_card_text(payload: dict[str, Any]) -> str:

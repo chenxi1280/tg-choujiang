@@ -8,6 +8,7 @@ from tg_lottery.telegram.member_bonus_text import bonus_closed_notice, campaign_
 from tg_lottery.telegram.member_bonus_views import build_bonus_overview
 from tg_lottery.telegram.member_invites import legacy_invite_link_payload
 from tg_lottery.telegram.member_window_guidance import window_guidance
+from tg_lottery.telegram.ui_style import style_keyboard
 
 
 def uses_legacy_bonus(rules) -> bool:
@@ -100,7 +101,7 @@ async def _legacy_payload(queries, campaign, *, rules, detail, user_id):
             ],
         ]
     )
-    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+    return "\n".join(lines), style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 def _legacy_activity_lines(progress, rules):

@@ -4,6 +4,7 @@ from aiogram.types import InlineKeyboardMarkup
 
 from tg_lottery.domain.enums import QualificationState
 from tg_lottery.telegram.member_group_invites import _configured_groups
+from tg_lottery.telegram.ui_style import style_keyboard
 
 
 def actual_bonus_context(context, *, campaign, rules):
@@ -55,4 +56,4 @@ def bonus_eligibility_payload(detail, *, text, keyboard):
         ]
         for row in keyboard.inline_keyboard
     ]
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+    return text, style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
