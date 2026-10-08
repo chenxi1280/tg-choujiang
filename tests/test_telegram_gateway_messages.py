@@ -25,7 +25,7 @@ SNAPSHOT_HASH = "fc99b18147ccfaf6b7c3ab660c4ed6e688fc091ccaa97e4bdf0db477182702a
 def test_campaign_card_localizes_internal_iso_times() -> None:
     text = _campaign_card_text(_campaign_payload())
 
-    assert "📅 <b>开奖日期" in text
+    assert "⏰ <b>开奖日期" in text
     assert "北京时间" in text
     assert "2026年08月08日 11时25分00秒" in text
     assert "T03:20:00" not in text
@@ -149,7 +149,7 @@ def test_campaign_card_explains_per_group_messages_and_channel_following() -> No
 
     assert "主活动群</a>" in text
     assert "协作群</a>" in text
-    assert "🤝 关注-<a href=" in text and "公告频道</a>" in text
+    assert "📡 关注-<a href=" in text and "公告频道</a>" in text
     assert text.count('href="https://t.me/lottery_test_bot?start=condition_') == 3
     for position in range(1, 4):
         assert f"condition_{payload['campaign_ref']}_{position}" in text
@@ -395,10 +395,10 @@ async def test_campaign_card_matches_lotterybest_format() -> None:
     assert operation == "send_message"
     assert "✨ <b>周末抽奖 &lt;福利场&gt;</b>" in text
     assert "🧭 <b>参与条件" in text
-    assert "🌏️ 归属地" in text
+    assert "🌐 归属地" in text
     assert "广东" in text
     assert "🪪 必须设置 Telegram 用户名" in text
-    assert '🤝 加入-<a href="https://t.me/welfare_group">福利群</a>' in text
+    assert '👥 加入-<a href="https://t.me/welfare_group">福利群</a>' in text
     assert "累计发言至少 <b>10</b> 条" in text
     assert "🎁 <b>奖品内容" in text
     assert "📦 一等奖" in text
@@ -407,7 +407,7 @@ async def test_campaign_card_matches_lotterybest_format() -> None:
     assert "活跃加成" in text and "邀请加成" in text
     assert text.count(">规则</a>") == 2
     assert ">规则</a>" in text
-    assert "📅 <b>开奖日期" in text
+    assert "⏰ <b>开奖日期" in text
     assert "2026年08月08日 11时25分00秒" in text
     assert kwargs["parse_mode"] == "HTML"
     assert kwargs["protect_content"] is False
@@ -426,7 +426,7 @@ async def test_campaign_keyboard_emphasizes_participation_with_rules_in_body() -
     buttons = [button for row in keyboard.inline_keyboard for button in row]
 
     assert len(buttons) == 3
-    assert buttons[0].text == "✨ 点击参与抽奖"
+    assert buttons[0].text == "🛂 点击参与抽奖"
     assert buttons[0].url == _campaign_deep_link(_lotterybest_card_payload(), "join")
     assert buttons[0].callback_data is None
     assert [plain_label(button.text) for button in buttons[1:]] == ["邀请入口", "我的加成"]

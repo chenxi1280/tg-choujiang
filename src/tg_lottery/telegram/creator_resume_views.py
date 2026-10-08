@@ -46,9 +46,9 @@ def resumed_view(data, *, state, module):
             state,
             (cover_prompt_text(has_cover=has_cover), cover_rows(has_cover=has_cover)),
         )
-    text = "已恢复输入：" + INPUT_LABELS[state] + "\n请发送内容；发送前可取消该字段输入。"
+    text = "⌨️ 已恢复输入：" + INPUT_LABELS[state] + "\n请发送内容；发送前可取消该字段输入。"
     if state == "draft:prize_count":
-        text += "\n本次奖品：" + str(data["pending_prize_name"]) + "（尚未加入奖品清单）"
+        text += "\n🎁 本次奖品：" + str(data["pending_prize_name"]) + "（尚未加入奖品清单）"
     rows = [[("取消本次输入", "draft_back")]]
     if state in {"draft:prize_count", "draft:prize_name"}:
         rows = [[("重新输入名称", "draft_prize_rename")], [("取消新增奖品", "draft_prize_cancel")]]

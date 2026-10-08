@@ -46,7 +46,7 @@ BONUS_ACTIONS = (
 
 def bonus_text(data: dict[str, Any]) -> str:
     return (
-        "🌱 抽奖加成\n\n当前设置："
+        "📈 抽奖加成\n\n当前设置："
         + bonus_summary(data)
         + "\n邀请资格："
         + retention.retention_text(retention.retention_hours(data))

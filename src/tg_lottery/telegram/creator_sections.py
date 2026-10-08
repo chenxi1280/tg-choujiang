@@ -110,16 +110,16 @@ def _cover(data: dict) -> tuple[str, ButtonRows]:
         rows.append([("清除封面", "draft_cover_clear")])
     rows.append([("返回草稿", "draft_back")])
     return (
-        f"📷 封面与说明\n\n封面：{'已设置' if has_cover else '未设置（可选）'}\n"
-        f"抽奖说明：{data.get('description') or '未设置（可选）'}",
+        f"🖼️ 封面与说明\n\n🖼️ 封面：{'已设置' if has_cover else '未设置（可选）'}\n"
+        f"📃 抽奖说明：{data.get('description') or '未设置（可选）'}",
         rows,
     )
 
 
 def _more(data: dict) -> tuple[str, ButtonRows]:
     return (
-        "🪪 更多设置\n\n普通设置立即保存；载入和清空会先显示影响并要求确认。\n"
-        f"发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}",
+        "⚙️ 更多设置\n\n普通设置立即保存；载入和清空会先显示影响并要求确认。\n"
+        f"🧑‍💼 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}",
         [
             [("发奖人员", "draft_issuer"), ("消息提示", "draft_messages")],
             [("载入上次抽奖配置", "draft_load_last")],
@@ -131,13 +131,13 @@ def _more(data: dict) -> tuple[str, ButtonRows]:
 
 def _prizes(data: dict) -> tuple[str, ButtonRows]:
     prizes = data.get("prizes") or []
-    lines = ["📦 奖品与领奖", ""]
+    lines = ["🎁 奖品与领奖", ""]
     lines.extend(
         f"{index}. {p['name']} × {p['winner_count']} 人" for index, p in enumerate(prizes, 1)
     )
     if not prizes:
         lines.append("尚未添加完整奖品。")
-    lines.append(f"\n领奖说明：{data.get('claim_instructions') or '请联系活动管理员领取奖品'}")
+    lines.append(f"\n📮 领奖说明：{data.get('claim_instructions') or '请联系活动管理员领取奖品'}")
     rows = [[("添加奖品", "draft_add_prize"), ("领奖说明", "draft_claim")]]
     if data.get("pending_prize_name"):
         lines.append(f"\n未完成新增：{data['pending_prize_name']}（还需中奖人数）")
@@ -157,7 +157,7 @@ def _user_limits(data: dict) -> tuple[str, ButtonRows]:
     regions = "、".join(data.get("allowed_regions") or []) or "全国"
     return (
         f"🪪 用户限制\n\n用户名：{'必填' if required else '可为空'}\n"
-        f"允许地区：{regions}\n选择立即保存。",
+        f"🌐 允许地区：{regions}\n选择立即保存。",
         [
             [
                 ("✓ 用户名必填" if required else "用户名必填", "draft_username_on"),

@@ -10,6 +10,7 @@ from tests.test_template_schedule import _complete_draft
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_settings import CreatorSettings
+from tg_lottery.telegram.ui_style import plain_label
 
 
 def _message(*, file_id=None, message_id=10):
@@ -186,7 +187,7 @@ async def test_stale_panel_callback_does_not_take_over_latest_cover_panel(flow, 
     assert await flow.creator.recover_expired_panel(query)
     assert "旧按钮操作未执行" in notification.call_args.args[0]
     button = notification.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
-    assert button.text == "继续当前草稿" and button.callback_data == "nav:create"
+    assert plain_label(button.text) == "继续当前草稿" and button.callback_data == "nav:create"
     assert flow.sessions.data == before
     assert flow.sessions.state == "draft:cover"
 

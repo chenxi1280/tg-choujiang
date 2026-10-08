@@ -10,10 +10,10 @@ from tg_lottery.telegram.public_projection import (
 
 def participant_record_pages(detail: ParticipantCampaignDetail) -> tuple[str, ...]:
     blocks = [
-        f"✨ {detail.campaign_name}\n"
-        f"活动状态: {_record_state_text(detail)}\n"
-        f"参与资格: {qualification_state_text(detail.qualification)}\n"
-        f"计划开奖时间: {format_public_time(detail.draw_at, detail.timezone)}",
+        f"📄 {detail.campaign_name}\n"
+        f"📊 活动状态: {_record_state_text(detail)}\n"
+        f"🛂 参与资格: {qualification_state_text(detail.qualification)}\n"
+        f"⏰ 计划开奖时间: {format_public_time(detail.draw_at, detail.timezone)}",
     ]
     result = _result_summary(detail)
     if result:
@@ -42,14 +42,14 @@ def _result_summary(detail: ParticipantCampaignDetail) -> str:
     else:
         status = "🎉 已中奖" if result.awards else "未中奖"
     lines = [
-        f"开奖结果：{status}",
-        f"实际开奖时间：{format_public_time(result.completed_at, detail.timezone)}",
+        f"🏆 开奖结果：{status}",
+        f"⏰ 实际开奖时间：{format_public_time(result.completed_at, detail.timezone)}",
     ]
     if result.frozen_tickets is not None:
         lines.append(f"最终开奖次数：{result.frozen_tickets}（以已保存开奖快照为准）")
     if result.awards:
         contact = f"@{result.issuer_username}" if result.issuer_username else result.issuer_name
-        lines.append(f"发奖人员：{contact}")
+        lines.append(f"🧑‍💼 发奖人员：{contact}")
     return "\n".join(lines)
 
 
@@ -76,10 +76,10 @@ def _ticket_summary(detail: ParticipantCampaignDetail) -> str:
     }
     label = "累计次数（含暂存）" if active else "历史累计次数（账本记录）"
     lines = [
-        f"{label}: {detail.total}",
-        f"基础次数: {detail.registration}",
-        f"活跃加成（人品）: {detail.activity}",
-        f"邀请加成: {detail.invitation}",
+        f"🎫 {label}: {detail.total}",
+        f"🎟️ 基础次数: {detail.registration}",
+        f"🌱 活跃加成（人品）: {detail.activity}",
+        f"🤝 邀请加成: {detail.invitation}",
         detail.base_progress,
     ]
     if not active and not detail.base_qualified:

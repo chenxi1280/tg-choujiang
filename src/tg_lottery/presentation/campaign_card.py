@@ -44,7 +44,8 @@ def chat_condition(chat: Mapping, *, payload: Mapping, rules: CampaignRules) -> 
     title = html.escape(chat_title(chat))
     link = html.escape(url, quote=True)
     status = " (加入入口已关闭)" if chat.get("invite_revoked_at") else ""
-    lines = [f'🤝 {action}-<a href="{link}">{title}</a>{status}']
+    icon = "📡" if chat.get("type") == "channel" else "👥"
+    lines = [f'{icon} {action}-<a href="{link}">{title}</a>{status}']
     if chat.get("type") != "channel":
         lines.extend(group_gate_lines(str(chat["id"]), rules))
     return "\n".join(lines)
@@ -75,7 +76,7 @@ def membership_blocks(payload: Mapping) -> tuple[str, ...]:
     if rules.username_required:
         blocks.append("🪪 必须设置 Telegram 用户名")
     if rules.allowed_regions:
-        blocks.append("🌏️ 归属地：" + html.escape("、".join(rules.allowed_regions)))
+        blocks.append("🌐 归属地：" + html.escape("、".join(rules.allowed_regions)))
     blocks.extend(
         chat_condition(chat, payload=payload, rules=rules) for chat in condition_chats(payload)
     )
@@ -105,7 +106,7 @@ def description_blocks(payload: Mapping) -> tuple[str, ...]:
     if not description:
         return ()
     first, *remaining = escaped_text_blocks(str(description))
-    return ("📝 <b>抽奖说明：</b>\n" + first, *remaining)
+    return ("📃 <b>抽奖说明：</b>\n" + first, *remaining)
 
 
 def bonus_block(payload: Mapping) -> str:
@@ -146,7 +147,7 @@ def time_blocks(payload: Mapping) -> tuple[str, ...]:
         )
     else:
         moment = card_time(payload["draw_at"], timezone)
-        draw = "📅 <b>开奖日期：</b>（北京时间）\n" + moment
+        draw = "⏰ <b>开奖日期：</b>（北京时间）\n" + moment
     return ("⏳ <b>报名及行为统计截止：</b>（北京时间）\n" + cutoff, draw)
 
 

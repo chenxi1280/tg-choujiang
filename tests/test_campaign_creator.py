@@ -70,4 +70,4 @@ async def test_new_campaign_opens_preview_dashboard_directly() -> None:
     assert sessions.set.await_args.args[1] == "draft:idle"
     data = sessions.set.await_args.args[2]
     assert data["chat_id"] == -1001 and data["prizes"] == []
-    assert renderer.render.await_args.kwargs["text"].startswith("✨ 创建抽奖 · 编辑草稿")
+    assert renderer.render.await_args.kwargs["text"].startswith("📝 创建抽奖 · 编辑草稿")

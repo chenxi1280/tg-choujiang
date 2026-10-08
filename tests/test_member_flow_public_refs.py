@@ -211,12 +211,13 @@ async def test_condition_page_distinguishes_channel_and_supports_navigation() ->
     await flow.show_condition(message, PUBLIC_REF, 1)
 
     rows = message.reply_markup.inline_keyboard
-    assert rows[0][0].text == "关注频道"
+    assert rows[0][0].text == "📡 关注频道"
     assert rows[1][0].callback_data == f"member:condition:{PUBLIC_REF}:2"
     assert "参与条件 1/2" in message.texts[-1]
 
     await flow.show_condition(message, PUBLIC_REF, 2)
 
+    assert message.reply_markup.inline_keyboard[0][0].text == "👥 加入群聊"
     assert "请加入群聊" in message.texts[-1]
     assert "每天需发送" not in message.texts[-1]
 

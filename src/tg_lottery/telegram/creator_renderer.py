@@ -353,7 +353,7 @@ def _group_navigation(
 
 
 def _group_picker_text(*, selected_count: int, has_groups: bool) -> str:
-    title = f"🤝 参与活动的群（已选 {selected_count}）\n\n"
+    title = f"👥 参与活动的群（已选 {selected_count}）\n\n"
     if not has_groups:
         return (
             title + "当前没有可管理的群。\n"

@@ -27,9 +27,9 @@ from tg_lottery.telegram.ui_style import plain_label
 @pytest.mark.parametrize("key", ["create", "member", "bonus", "results"])
 def test_help_topics_do_not_include_the_next_topic(key):
     markers = {
-        "create": "✨ 发起抽奖",
-        "member": "🤝 参加抽奖",
-        "bonus": "🤝 邀请与活跃加成",
+        "create": "➕ 发起抽奖",
+        "member": "🛂 参加抽奖",
+        "bonus": "📈 邀请与活跃加成",
         "results": "🏆 开奖与领奖",
     }
     text, _keyboard = guide_topic(key, bot_username="lottery_bot")

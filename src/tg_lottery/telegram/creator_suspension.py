@@ -31,7 +31,7 @@ def resume_view(data):
     if gate_dirty(data):
         rows.insert(0, [("继续编辑未保存门槛", "draft_gate")])
         rows.append([("放弃门槛修改", "draft_gate:discard")])
-    return "草稿已保留\n\n请选择继续原字段输入或回到当前模块。未保存编辑不会自动提交。", rows
+    return "📝 草稿已保留\n\n请选择继续原字段输入或回到当前模块。未保存编辑不会自动提交。", rows
 
 
 class CreatorSuspension:

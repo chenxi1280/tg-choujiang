@@ -44,7 +44,7 @@ def test_caption_keeps_group_gate_under_its_link_and_reference_section_order():
     assert "一群</a>\n└ 🚪 单日有效发言满 <b>2</b> 条" in text
     assert "二群</a>\n└" not in text and "公告频道</a>\n└" not in text
     assert "大于" not in text and "每条至少" not in text
-    sections = ("✨", "🧭", "🎁 <b>奖品内容", "📝", "🌱", "⏳", "📅", "🔗")
+    sections = ("✨", "🧭", "🎁 <b>奖品内容", "📃", "🌱", "⏳", "⏰", "🔗")
     assert [text.index(section) for section in sections] == sorted(
         text.index(section) for section in sections
     )

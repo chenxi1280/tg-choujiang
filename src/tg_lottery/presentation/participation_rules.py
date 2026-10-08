@@ -100,7 +100,7 @@ def public_rule_blocks(payload: Mapping) -> tuple[str, ...]:
         bonus_block(payload),
         *time_blocks(payload),
         *footer_blocks(payload),
-        "📖 完整统计与加成规则",
+        "📜 完整统计与加成规则",
         *detail_rule_blocks(payload),
     )
 
@@ -153,7 +153,7 @@ def compact_card(payload: Mapping) -> str:
             f"✨ <b>{html.escape(str(payload['name']))}</b>",
             "\n".join(membership_blocks(payload)),
             "\n".join(prize_blocks(payload)),
-            f'📝 <b>抽奖说明：</b>正文较长，<a href="{rule_url}">查看完整说明与规则</a>',
+            f'📃 <b>抽奖说明：</b>正文较长，<a href="{rule_url}">查看完整说明与规则</a>',
             bonus_block(payload),
             *time_blocks(payload),
             *footer_blocks(payload),

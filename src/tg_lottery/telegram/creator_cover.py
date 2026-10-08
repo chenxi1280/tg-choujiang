@@ -18,9 +18,9 @@ def cover_rows(*, has_cover: bool) -> ButtonRows:
 def cover_prompt_text(*, has_cover: bool) -> str:
     if has_cover:
         return (
-            "📷 当前已设置封面。\n直接发送新图片即可替换；点「✅ 完成」保留当前封面返回封面与说明。"
+            "🖼️ 当前已设置封面。\n直接发送新图片即可替换；点「✅ 完成」保留当前封面返回封面与说明。"
         )
-    return "📷 请发送一张图片作为抽奖封面："
+    return "📤 请发送一张图片作为抽奖封面："
 
 
 class CreatorCover:
