@@ -28,7 +28,7 @@ _CATEGORY_LABELS = {
 def build_participated_campaign_list(
     page: ParticipatedCampaignPage, *, invitation_only: bool, parent: tuple[str, int] | None = None
 ) -> tuple[str, InlineKeyboardMarkup]:
-    title = "🤝 我的邀请记录" if invitation_only else "✨ 我参加的抽奖"
+    title = "🧾 我的邀请记录" if invitation_only else "🙋 我参加的抽奖"
     empty = "当前分类没有可显示的邀请活动" if invitation_only else "当前分类没有参与记录"
     lines = [title, ""]
     if page.rows:

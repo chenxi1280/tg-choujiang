@@ -93,6 +93,45 @@ def test_record_filter_and_page_changes_do_not_add_a_fake_parent():
     assert page["trail"] == list(context.trail)
 
 
+async def test_empty_invitation_records_show_clear_state_and_keep_group_source(monkeypatch):
+    flow, queries, tokens = _navigation()
+    records = SimpleNamespace(
+        public_ref=REFERENCE,
+        campaign_name="本人活动",
+        group_title="A群",
+        timezone="Asia/Shanghai",
+        rows=(),
+        valid=0,
+        pending=0,
+        invalid=0,
+        page=0,
+        total_pages=1,
+        group_chat_id=-1001,
+        group_page=2,
+        status_filter="all",
+    )
+    queries.campaign_invitation_records = AsyncMock(return_value=records)
+    edit = AsyncMock()
+    monkeypatch.setattr(Message, "edit_text", edit)
+    context = MemberPageContext(
+        f"m:ir:{REFERENCE}:-1001:2:all:0", (f"member:invites:{REFERENCE}:2",)
+    )
+
+    await flow._records(_query(), context)
+
+    queries.campaign_invitation_records.assert_awaited_once_with(
+        USER_ID, REFERENCE, chat_id=-1001, group_page=2, status_filter="all", page=0
+    )
+    text = edit.await_args.args[0]
+    assert text.startswith("🧾 邀请记录")
+    assert "本活动暂无邀请记录" in text and "已确认0" in text
+    requests = tokens.create_many.await_args.kwargs["requests"]
+    filters = [r.payload for r in requests if r.payload["route"].startswith("m:ir:")]
+    assert filters and all(r["trail"] == list(context.trail) for r in filters)
+    back = next(r.payload for r in requests if r.payload["back"])
+    assert back["route"] == context.trail[-1]
+
+
 def test_content_page_changes_keep_the_same_route_and_real_parent():
     context = MemberPageContext("m:detail:" + REFERENCE, ("nav:join:ended:3",))
     value = _descriptor(InlineKeyboardButton(text="下一页", callback_data="m:page:1"), context)

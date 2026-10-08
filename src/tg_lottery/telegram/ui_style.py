@@ -106,6 +106,7 @@ LABEL_ICONS = (
     (("打开本场", "启动本机器人"), "🤖"),
     (("私聊我",), "🤖"),
 )
+STATUS_FILTER_ICONS = {"全部": "🧾", "等待中": "⏳", "有效": "🟢", "未计入": "🚫"}
 ACTION_ICONS = (
     ("draft_gate:group:", "👥"),
     ("draft_gate:input:consecutive_days", "📆"),
@@ -173,7 +174,9 @@ def style_label(label: str, *, action: str = "") -> str:
     text = plain_label(raw)
     if _short_number(text):
         return label
-    icon = next((icon for prefixes, icon in LABEL_ICONS if text.startswith(prefixes)), "")
+    icon = STATUS_FILTER_ICONS.get(text) or next(
+        (icon for prefixes, icon in LABEL_ICONS if text.startswith(prefixes)), ""
+    )
     if icon:
         return selected + icon + " " + text
     # Unknown/user-derived labels keep their existing decoration.

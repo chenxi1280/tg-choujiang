@@ -56,6 +56,9 @@ def test_semantic_icons_preserve_numeric_density_and_selected_state():
         ("📋 下一页", "▶️ 下一页"),
         ("↩ 返回首页", "🏠 返回首页"),
         ("🔄 创建中 · A群", "⏳ 创建中 · A群"),
+        ("🧾 等待中", "⏳ 等待中"),
+        ("🧾 有效", "🟢 有效"),
+        ("🧾 未计入", "🚫 未计入"),
     ],
 )
 def test_existing_system_badges_follow_the_specific_function(label, expected):
@@ -66,6 +69,7 @@ def test_existing_system_badges_follow_the_specific_function(label, expected):
 
 def test_opaque_labels_and_selected_markers_are_preserved():
     assert style_label("🌱 用户自己的活动标题", action="m:detail:ref") == "🌱 用户自己的活动标题"
+    assert style_label("🌱 有效活动标题", action="m:detail:ref") == "🌱 有效活动标题"
     assert style_label("✅ 🤝 添加到频道") == "✅ 📡 添加到频道"
     assert style_label("⬜️ 🌱 活跃加成") == "⬜️ 🌱 活跃加成"
 

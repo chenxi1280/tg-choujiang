@@ -343,10 +343,11 @@ class MemberNavigation:
         if records is None:
             raise UserFacingError("没有本人的邀请记录，请先核对已登记活动")
         lines = [_record_line(row, records.timezone) for row in records.rows]
+        body = "\n\n".join(lines) if lines else "本活动暂无邀请记录"
         text = (
-            f"邀请记录 · {records.campaign_name}\n{records.group_title}\n"
-            f"已确认{records.valid} · 待核验{records.pending} · 未计入{records.invalid}\n"
-            f"第{records.page + 1}/{records.total_pages}页\n\n" + "\n\n".join(lines)
+            f"🧾 邀请记录 · {records.campaign_name}\n👥 {records.group_title}\n"
+            f"📊 已确认{records.valid} · 待核验{records.pending} · 未计入{records.invalid}\n"
+            f"第{records.page + 1}/{records.total_pages}页\n\n{body}"
         )
         await self._render(query, context, pages=(text,), keyboard=_invitation_keyboard(records))
 
@@ -370,7 +371,7 @@ class MemberNavigation:
             selected * RECORD_GROUP_PAGE_SIZE : (selected + 1) * RECORD_GROUP_PAGE_SIZE
         ]
         counts = {item.chat_id: item for item in progress.invitations}
-        lines = [f"{campaign.name} · 邀请记录群列表", f"第{selected + 1}/{pages}页"]
+        lines = [f"🧾 {campaign.name} · 邀请记录群列表", f"第{selected + 1}/{pages}页"]
         rows = []
         for number, group in enumerate(visible, selected * RECORD_GROUP_PAGE_SIZE + 1):
             item = counts.get(int(group["id"]))

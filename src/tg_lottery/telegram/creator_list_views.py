@@ -31,7 +31,7 @@ CATEGORY_COLUMNS = 2
 
 def creator_list_view(result) -> tuple[str, InlineKeyboardMarkup]:
     scope = (
-        "✨ 我可管理的活动（进入时实时核验全部参与群权限）" if result.managed else "✨ 我发起的抽奖"
+        "🗂️ 我可管理的活动（进入时实时核验全部参与群权限）" if result.managed else "🗂️ 我发起的抽奖"
     )
     lines = [scope, "", f"共 {result.total} 场 · 第 {result.page + 1}/{result.page_count} 页"]
     prefix = "nav:managed" if result.managed else "nav:created"

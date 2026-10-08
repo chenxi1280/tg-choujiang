@@ -177,7 +177,8 @@ async def test_each_long_rule_page_keeps_campaign_identity_version_and_join(monk
 
 def test_creator_categories_and_origin_distinguish_lifecycle_and_stable_anchor():
     result = CreatorCampaignPage("active", 0, 1, 0, ())
-    _, keyboard = creator_list_view(result)
+    text, keyboard = creator_list_view(result)
+    assert text.startswith("🗂️ 我发起的抽奖\n")
     categories = [
         plain_label(b.text)
         for row in keyboard.inline_keyboard

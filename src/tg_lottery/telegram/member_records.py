@@ -98,9 +98,9 @@ async def show_invitation_records(
     lines = [_record_line(row, records.timezone) for row in records.rows]
     body = "\n\n".join(lines) if lines else "本活动暂无邀请记录"
     await message.answer(
-        f"🤝 {records.campaign_name}｜{records.group_title}邀请记录\n"
-        f"开奖：{format_public_time(records.draw_at, records.timezone)}\n"
-        f"已生效 {records.valid}｜待验证 {records.pending}｜未生效 {records.invalid}\n\n"
+        f"🧾 {records.campaign_name}｜{records.group_title}邀请记录\n"
+        f"⏰ 开奖：{format_public_time(records.draw_at, records.timezone)}\n"
+        f"📊 已生效 {records.valid}｜待验证 {records.pending}｜未生效 {records.invalid}\n\n"
         f"{body}",
         reply_markup=_invitation_keyboard(records),
     )
@@ -134,8 +134,8 @@ async def show_invitation_groups(
     progress_by_chat = {item.chat_id: item for item in progress.invitations}
     selected, total_pages, visible = _group_page(groups, page)
     lines = [
-        f"🤝 {campaign.name}｜我的邀请记录",
-        f"开奖：{format_public_time(campaign.draw_at, campaign.timezone)}",
+        f"🧾 {campaign.name}｜我的邀请记录",
+        f"⏰ 开奖：{format_public_time(campaign.draw_at, campaign.timezone)}",
         "",
         "请选择一个群查看状态和未计入原因：",
     ]
