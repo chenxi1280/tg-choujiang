@@ -26,7 +26,7 @@ from tg_lottery.domain.errors import (
 from tg_lottery.telegram import command_input, member_callbacks
 from tg_lottery.telegram.admin_flow import AdminFlow
 from tg_lottery.telegram.bot_permission_reminders import send_bot_permission_reminder
-from tg_lottery.telegram.callback_feedback import answer_callback
+from tg_lottery.telegram.callback_feedback import callback_feedback
 from tg_lottery.telegram.group_reputation import GroupReputation
 from tg_lottery.telegram.help_views import DRAFT_UNAVAILABLE_TEXT
 from tg_lottery.telegram.member_flow import MemberFlow
@@ -168,16 +168,22 @@ class LotteryUpdateHandler:
 
     async def _callback(self, query: CallbackQuery) -> None:
         data = query.data or ""
-        if not data.startswith(command_input.DEFERRED_CALLBACK_PREFIXES):
-            await answer_callback(query, self._logger)
-        if not isinstance(query.message, Message):
-            return
-        try:
-            if data.startswith(("nav:", "m:", "member:")) and data not in {"nav:create", "nav:new"}:
-                await self._admin_flow.suspend_draft(query.from_user.id)
-            await self._dispatch_callback(query, data)
-        except (DomainError, ValueError) as exc:
-            await self._callback_error(query, exc)
+        async with callback_feedback(
+            query,
+            self._logger,
+            deferred=data.startswith(command_input.DEFERRED_CALLBACK_PREFIXES),
+        ):
+            if not isinstance(query.message, Message):
+                return
+            try:
+                if data.startswith(("nav:", "m:", "member:")) and data not in {
+                    "nav:create",
+                    "nav:new",
+                }:
+                    await self._admin_flow.suspend_draft(query.from_user.id)
+                await self._dispatch_callback(query, data)
+            except (DomainError, ValueError) as exc:
+                await self._callback_error(query, exc)
 
     async def _callback_error(self, query: CallbackQuery, exc: Exception) -> None:
         message = query.message
