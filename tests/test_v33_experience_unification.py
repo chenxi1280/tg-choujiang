@@ -236,3 +236,32 @@ async def test_invitation_permission_failure_is_visible_when_activity_also_enabl
     assert not any(button.copy_text for row in keyboard.inline_keyboard for button in row)
     refresh = keyboard.inline_keyboard[0][0]
     assert refresh.callback_data == f"member:invite:{item.public_ref}"
+
+
+@pytest.mark.parametrize("rewards", [True, False])
+async def test_cancelled_invitation_entry_has_history_action_and_one_cancellation_notice(rewards):
+    item, progress, statuses = _bonus_state()
+    item.state = CampaignState.CANCELLED
+    if not rewards:
+        item.rules = CampaignRules(
+            participation_rules_version="v3.0",
+            admission={"type": "invite", "groups": {"-1001": {"required_valid_invites": 1}}},
+        ).model_dump()
+    text, keyboard = await build_group_invite_payload(
+        item,
+        user_id=201,
+        page=0,
+        queries=BonusQueries(progress, statuses, outcome=CampaignOutcomeFacts("cancelled")),
+        cipher=object(),
+        bot_username="test_bot",
+    )
+    assert text.count("本场已取消") == 1
+    assert "人数继续累计" not in text and "距下一次" not in text
+    assert not any(
+        button.copy_text or button.url for row in keyboard.inline_keyboard for button in row
+    )
+    assert any(
+        button.callback_data == f"member:invites:{item.public_ref}:0"
+        for row in keyboard.inline_keyboard
+        for button in row
+    )

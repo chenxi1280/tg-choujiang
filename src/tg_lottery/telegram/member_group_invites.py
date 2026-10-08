@@ -91,7 +91,10 @@ def _finish_invite_payload(
             text="刷新邀请状态", callback_data=f"member:invite_page:{reference}:{page}"
         )
     ]
-    final_rows = [*rows, *pages, refresh, *footer_rows(reference)[1:]]
+    history = [
+        InlineKeyboardButton(text="查看本场邀请记录", callback_data=f"member:invites:{reference}:0")
+    ]
+    final_rows = [*rows, *pages, history, refresh, *footer_rows(reference)[1:]]
     final_lines = [*lines, "", "链接只归因到对应群；机器人权限异常时请联系创建者修复管理员权限。"]
     return "\n".join(final_lines), InlineKeyboardMarkup(inline_keyboard=final_rows)
 
@@ -174,10 +177,20 @@ def _invite_group_progress(
     if rule is None:
         gate = rules.admission.groups[str(group["id"])]
         count = progress.valid_invites if progress is not None else 0
+        notice = (
+            "邀请加成关闭，以下为本期记录。"
+            if campaign_bonus_completed(campaign)
+            else "邀请加成关闭，人数继续累计。"
+        )
+        link_note = ""
+        if campaign.state not in HIDDEN_INVITE_STATES:
+            link_note = _invite_link_note(
+                campaign, status, bonus_deadline=deadline, outcome=outcome
+            )
         return (
             f"· {group['title']}：邀请门槛 {count}/{gate.required_valid_invites} 人；"
-            "邀请加成关闭，人数继续累计。"
-            + _invite_link_note(campaign, status, bonus_deadline=deadline, outcome=outcome)
+            + notice
+            + link_note
         )
     line = _invite_progress_line(
         str(group["title"]),
@@ -185,6 +198,8 @@ def _invite_group_progress(
         progress,
         completed=invite_bonus_completed(campaign, retention_hours=rules.invite.retention_hours),
     )
+    if campaign.state in HIDDEN_INVITE_STATES:
+        return line
     return line + _invite_link_note(campaign, status, bonus_deadline=deadline, outcome=outcome)
 
 
