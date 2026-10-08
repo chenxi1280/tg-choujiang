@@ -88,7 +88,7 @@ def handles_action(action: str) -> bool:
 def apply_action(data: dict[str, Any], action: str) -> dict[str, Any]:
     require_current_bonus_action(data, action)
     if "length" in action:
-        raise UserFacingError("字数设置已移除，请重新打开发言加成编辑页")
+        raise UserFacingError("字数设置已移除，请重新打开活跃加成（人品）编辑页")
     _validate_v3_invite_action(data, action)
     direct = _apply_direct_action(data, action)
     if direct is not None:
@@ -177,7 +177,7 @@ def summary(data: dict[str, Any]) -> str:
     activity_unlimited = sum(rule.get("daily_cap_mode") == "unlimited" for rule in activity)
     return (
         f"邀请加成 {len(invite)} 个群（{invite_unlimited} 个不限）；"
-        f"发言加成 {len(activity)} 个群（{activity_unlimited} 个不限）"
+        f"活跃加成（人品） {len(activity)} 个群（{activity_unlimited} 个不限）"
     )
 
 
@@ -197,11 +197,11 @@ def list_view(data: dict[str, Any], kind: str) -> tuple[str, ButtonRows]:
     if kind == "invite":
         rows.append([("有效邀请要求", "draft_retention")])
     rows.append([("↩ 返回加成设置", "draft_bonus_menu")])
-    title = "邀请" if kind == "invite" else "发言"
+    title = "邀请加成" if kind == "invite" else "活跃加成（人品）"
     reminder = "机器人必须在每个参与群中且拥有管理员权限。"
     if not groups:
         reminder += "\n当前没有参与群，请先选择参与活动的群，再设置本群加成。"
-    return f"{title}加成（逐群设置）\n\n{reminder}", rows
+    return f"{title}（逐群设置）\n\n{reminder}", rows
 
 
 def editor_view(data: dict[str, Any], working: dict[str, Any]) -> tuple[str, ButtonRows]:
@@ -339,7 +339,7 @@ def _activity_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str
         rows.append(_preset_row("cap", (1, 5, 10, 20), "轮", selected=cap))
     rows.extend(_editor_footer("activity", data, working))
     title = _group_title(data, int(working["chat_id"]))
-    text = f"💬 {title}发言加成\n\n" + _activity_description(rule, cap)
+    text = f"💬 {title}活跃加成（人品）\n\n" + _activity_description(rule, cap)
     text += activation_notice(data, "activity", chat_id=int(working["chat_id"]))
     return text, rows
 

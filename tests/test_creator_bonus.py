@@ -25,7 +25,7 @@ def test_bonus_configuration_is_discoverable_through_keyboard_buttons() -> None:
 
     assert bonus_rows(data)[0] == [
         ("✅ 邀请加成", "draft_bonus_toggle_invite"),
-        ("✅ 发言加成", "draft_bonus_toggle_activity"),
+        ("✅ 活跃加成\uff08人品\uff09", "draft_bonus_toggle_activity"),
     ]
     assert any("邀请人数" in label for row in invite_bonus_rows(data) for label, _ in row)
     assert any("消息数" in label for label, _ in activity_bonus_rows(data)[0])

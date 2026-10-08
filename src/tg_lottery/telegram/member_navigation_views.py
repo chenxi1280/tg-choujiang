@@ -1,13 +1,13 @@
 from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.application.records import utcnow
-from tg_lottery.domain.enums import CampaignState, QualificationState
+from tg_lottery.domain.enums import CampaignState
 from tg_lottery.telegram.member_detail_actions import (
     REGISTRATION_STATES,
     detail_task,
     invitation_task_available,
 )
-from tg_lottery.telegram.member_record_text import participant_record_pages
+from tg_lottery.telegram.member_record_text import current_effective_count, participant_record_pages
 from tg_lottery.telegram.operational_issue_views import operational_issue_text
 from tg_lottery.telegram.public_projection import format_public_time
 
@@ -43,13 +43,7 @@ def participant_detail_view(detail, *, user_id: int, bot_username: str):
 
 
 def _detail_body(detail, *, pages, now):
-    effective = (
-        str(detail.total)
-        if detail.qualification is QualificationState.ELIGIBLE and detail.base_qualified
-        else "待核查"
-        if detail.qualification is QualificationState.UNKNOWN
-        else "0"
-    )
+    effective = current_effective_count(detail)
     if detail.state not in TERMINAL:
         pages = (pages[0] + f"\n\n我的进度 · 当前有效次数：{effective}", *pages[1:])
     notice, primary = detail_task(detail, now)

@@ -27,7 +27,7 @@ def test_dashboard_separates_required_settings_bonus_and_submission():
     actions = [action for row in rows for _, action in row]
     assert len(labels) == 10
     assert "加成设置" in labels
-    assert "每日发言加成" not in labels
+    assert "活跃加成\uff08人品\uff09" not in labels
     assert "邀请加成" not in labels
     assert "清空配置" not in labels
     assert "draft_conditions" in actions

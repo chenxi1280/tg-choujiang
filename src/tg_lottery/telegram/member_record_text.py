@@ -1,6 +1,6 @@
 from tg_lottery.application.participant_records import ParticipantCampaignDetail
 from tg_lottery.application.participant_results import ParticipantAward
-from tg_lottery.domain.enums import CampaignState
+from tg_lottery.domain.enums import CampaignState, QualificationState
 from tg_lottery.telegram.public_projection import (
     campaign_history_state_text,
     format_public_time,
@@ -78,7 +78,7 @@ def _ticket_summary(detail: ParticipantCampaignDetail) -> str:
     lines = [
         f"{label}: {detail.total}",
         f"基础次数: {detail.registration}",
-        f"发言加成: {detail.activity}",
+        f"活跃加成（人品）: {detail.activity}",
         f"邀请加成: {detail.invitation}",
         detail.base_progress,
     ]
@@ -91,3 +91,13 @@ def _record_pages(blocks: list[str]) -> tuple[str, ...]:
     from tg_lottery.telegram.panel_pagination import text_pages
 
     return text_pages("\n\n".join(blocks))
+
+
+def current_effective_count(detail) -> str:
+    if detail.qualification is QualificationState.UNKNOWN:
+        return "待核查"
+    return (
+        str(detail.total)
+        if detail.qualification is QualificationState.ELIGIBLE and detail.base_qualified
+        else "0"
+    )

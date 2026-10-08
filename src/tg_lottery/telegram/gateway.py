@@ -10,6 +10,7 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
 
 from tg_lottery.application.message_deletion import TEMPORARY_REMINDER_OPERATION
+from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import InviteLink
 from tg_lottery.presentation.campaign_card import campaign_link
 from tg_lottery.presentation.draw_messages import draw_result_text as _draw_result_text
@@ -359,12 +360,18 @@ def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=text, url=_campaign_deep_link(payload, action))]]
     if not closed:
         reference = payload["campaign_ref"]
-        rows.append(
-            [
-                InlineKeyboardButton(text="邀请入口", callback_data=f"member:invite:{reference}"),
-                InlineKeyboardButton(text="我的加成", callback_data=f"member:bonus:{reference}"),
-            ]
-        )
+        rules = CampaignRules.model_validate(payload.get("rules") or {})
+        bonus_buttons = []
+        if rules.invitation_enabled:
+            bonus_buttons.append(
+                InlineKeyboardButton(text="邀请入口", callback_data=f"member:invite:{reference}")
+            )
+        if rules.bonus_types:
+            bonus_buttons.append(
+                InlineKeyboardButton(text="我的加成", callback_data=f"member:bonus:{reference}")
+            )
+        if bonus_buttons:
+            rows.append(bonus_buttons)
     folder_link = payload.get("presentation", {}).get("folder_link")
     if folder_link and not closed:
         rows.append([InlineKeyboardButton(text="🗂 一键加入群和频道", url=str(folder_link))])

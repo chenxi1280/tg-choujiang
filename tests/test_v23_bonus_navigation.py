@@ -222,7 +222,7 @@ async def test_drawn_campaign_hides_entries_but_keeps_invitation_history() -> No
         unavailable={},
     )
     assert "累计达标 2 天、获得 2 次" in activity_detail
-    assert "不再计算新增发言加成" in activity_detail
+    assert "不再计算新增活跃加成" in activity_detail
     assert "距下一次还差" not in activity_detail
 
 
@@ -266,7 +266,8 @@ async def test_closed_bonus_lists_and_details_keep_history_without_new_reward_pr
         campaign, page=0, **{key: value for key, value in common.items() if key != "unavailable"}
     )
     assert "距下一次还差" not in legacy
-    assert "累计达标 2 天、获得 2 次" in legacy
+    assert "累计达标" not in legacy
+    assert "有效邀请 3 人" in legacy and "已获得 1 次" in legacy
 
 
 async def test_join_deadline_preserves_awarded_invites_and_activity_progress() -> None:
@@ -351,8 +352,10 @@ async def test_closed_legacy_bonus_keeps_awarded_history_after_bot_loses_group_p
     common = _view_dependencies(progress, statuses) | {"unavailable": {-1001: "机器人已离群"}}
     text, _ = await build_group_invite_payload(campaign, page=0, **common)
     assert "有效邀请 3 人" in text and "已获得 1 次" in text
-    assert "累计达标 2 天、获得 2 次" in text
+    activity, _ = await build_bonus_category(campaign, category="activity", page=0, **common)
+    assert "累计达标 2 天、获得 2 次" in activity
     assert "机器人已离群" in text
+    assert "累计达标" not in text
     assert "距下一次还差" not in text
 
 

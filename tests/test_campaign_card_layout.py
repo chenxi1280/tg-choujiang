@@ -107,7 +107,9 @@ def test_legacy_global_bonus_rules_keep_actual_reward_and_daily_scope():
     rules = "\n".join(public_rule_blocks(payload))
     assert "每个统计群每天有效发言满 10 条\uff0c全部达标 +3 次" in rules
     assert "每天奖励一次" in rules and "每个有效邀请 +4 次" in rules
-    assert "每日发言加成、邀请加成" in _campaign_card_text(payload)
+    card = _campaign_card_text(payload)
+    assert "人品加成\uff1a" in card and "邀请加成\uff1a" in card
+    assert "按本场规则" in card and "不设上限" not in card
 
 
 def test_long_prize_list_paginates_between_prizes_without_dropping_names():

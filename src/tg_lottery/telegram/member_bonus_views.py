@@ -240,9 +240,9 @@ def _category_payload(context: BonusViewContext) -> tuple[str, InlineKeyboardMar
     )
     ref = context.campaign.public_ref
     activity_label = (
-        f"💬 发言加成｜累计 {cumulative} 次"
+        f"💬 活跃加成（人品）｜累计 {cumulative} 次"
         if campaign_bonus_completed(context.campaign)
-        else f"💬 发言加成｜今日 {activity_total} 次 · 累计 {cumulative} 次"
+        else f"💬 活跃加成（人品）｜今日 {activity_total} 次 · 累计 {cumulative} 次"
     )
     rows = [
         [
@@ -326,7 +326,7 @@ def build_activity_group_list(
         return _activity_group_detail(context, int(groups[0]["id"]), return_page=0)
     visible, selected, total_pages = _visible_page(groups, page)
     lines = [
-        _header(context.campaign, "发言加成", outcome=context.outcome),
+        _header(context.campaign, "活跃加成（人品）", outcome=context.outcome),
         "请选择一个群查看今日进度和累计加成：",
     ]
     completed = campaign_bonus_completed(context.campaign)

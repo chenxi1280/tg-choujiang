@@ -23,7 +23,7 @@ async def send_bot_permission_reminder(bot: Bot, event: ChatMemberUpdated) -> No
             "请在机器人私聊的「准入条件」中添加本频道。私有频道还需开启邀请用户权限。"
             if channel
             else "现在可以在机器人私聊中创建抽奖并选择本群；"
-            "邀请加成还需要开启邀请用户权限，发言加成需要允许普通成员发送文本。"
+            "邀请加成还需要开启邀请用户权限，活跃加成（人品）需要允许普通成员发送文本。"
         )
         await bot.send_message(
             event.chat.id,

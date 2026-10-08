@@ -261,7 +261,7 @@ def _missing_group_bonus_fields(data: dict[str, Any]) -> list[str]:
     if "invite" in types and not _has_enabled_group_rule(data, "invite"):
         missing.append("至少配置一个群的邀请加成")
     if "activity" in types and not _has_enabled_group_rule(data, "activity"):
-        missing.append("至少配置一个群的发言加成")
+        missing.append("至少配置一个群的活跃加成（人品）")
     return missing
 
 

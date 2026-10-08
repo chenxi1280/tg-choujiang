@@ -58,7 +58,7 @@ def test_card_and_private_rules_render_each_frozen_group_bonus() -> None:
         assert "-100" not in text
     assert "公告频道</a>" in card and "🎫 关注-<a" in card
     assert "累计发言至少 <b>50</b> 条" in card
-    assert "每日发言加成、邀请加成" in card and "规则</a>" in card
+    assert "活跃加成" in card and "邀请加成" in card and card.count("规则</a>") == 2
     assert "全部达标" not in private
 
 

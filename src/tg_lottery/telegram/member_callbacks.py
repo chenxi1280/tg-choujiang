@@ -142,7 +142,7 @@ async def bonus_callback(
     rules = CampaignRules.model_validate(campaign.rules)
     if not rules.bonus_types and not rules.invite_admission_enabled:
         if not await _queue_group_reminder(
-            flow, query, campaign, text="本期抽奖没有开启可用的邀请或发言加成。"
+            flow, query, campaign, text="本期抽奖没有开启可用的邀请或活跃加成（人品）。"
         ):
             await safe_answer(query, "本期抽奖没有开启加成", alert=True)
         return
@@ -347,6 +347,7 @@ _TEMPORARY_REMINDER_MESSAGES = frozenset(
         "本期专属链接正在创建，或你尚未完成报名，请稍后再点",
         "请先登记本场活动；已有本人记录始终可读，不要求重新报名",
         "该群未开启发言加成",
+        "该群未开启活跃加成（人品）",
         "该群未开启邀请门槛或加成",
         "参与群不存在或已移除",
     }

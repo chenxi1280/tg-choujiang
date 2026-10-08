@@ -56,7 +56,7 @@ async def _legacy_read(flow, campaign, *, rules, detail, user_id):
 async def _legacy_payload(queries, campaign, *, rules, detail, user_id):
     lines = [
         f"{campaign.name} · 我的加成（原活动规则）",
-        f"累计发言加成: {detail.activity} 次",
+        f"累计活跃加成（人品）: {detail.activity} 次",
         f"累计邀请加成: {detail.invitation} 次",
         f"累计次数（含暂存）: {detail.total}",
     ]
@@ -110,5 +110,5 @@ def _legacy_activity_lines(progress, rules):
         f"今日发言（{progress.local_date}）:",
         *(f"{title}: {count}/{rule.message_threshold} 条" for title, count in progress.groups),
         f"全部条件群达标后增加{rule.reward_tickets}次, {mode}",
-        f"今日已入账发言加成: {progress.awarded_today} 次",
+        f"今日已入账活跃加成（人品）: {progress.awarded_today} 次",
     ]

@@ -112,21 +112,29 @@ def bonus_block(payload: Mapping) -> str:
     rules = CampaignRules.model_validate(payload["rules"])
     if rules.bonus_policy_version == "unlimited-v1":
         return unlimited_bonus_block(payload, rules=rules)
-    labels = []
-    if rules.activity_bonus_enabled:
-        labels.append("每日发言加成")
-    if rules.invite_bonus_enabled:
-        labels.append("邀请加成")
-    label = "、".join(labels) or "未开启"
-    url = html.escape(campaign_link(payload, "rules"), quote=True)
-    return f'🔋 <b>人品加成：</b>{label}　<a href="{url}">规则</a>'
+    return _bonus_lines(payload, rules=rules, unlimited=False)
 
 
 def unlimited_bonus_block(payload: Mapping, *, rules: CampaignRules) -> str:
-    activity = "活跃加成，不设上限" if rules.activity_bonus_enabled else "未开启"
-    invite = "不设上限" if rules.invite_bonus_enabled else "未开启"
+    return _bonus_lines(payload, rules=rules, unlimited=True)
+
+
+def _bonus_lines(payload: Mapping, *, rules: CampaignRules, unlimited: bool) -> str:
     url = html.escape(campaign_link(payload, "rules"), quote=True)
-    return f'🔋 <b>人品加成：</b>{activity}\n👥 <b>邀请加成：</b>{invite}　<a href="{url}">规则</a>'
+    rule_link = f'<a href="{url}">规则</a>'
+    activity = (
+        ("活跃加成，不设上限" if unlimited else "活跃加成，按本场规则")
+        if rules.activity_bonus_enabled
+        else "未开启"
+    )
+    invite = ("不设上限" if unlimited else "按本场规则") if rules.invite_bonus_enabled else "未开启"
+    lines = [
+        f"🔋 <b>人品加成：</b>{activity}　{rule_link}",
+        f"👥 <b>邀请加成：</b>{invite}　{rule_link}",
+    ]
+    if rules.activity_bonus_enabled:
+        lines.append("└ 群内输入：<b>人品</b> · <b>人品排行</b> · <b>人品规则</b>")
+    return "\n".join(lines)
 
 
 def time_blocks(payload: Mapping) -> tuple[str, ...]:

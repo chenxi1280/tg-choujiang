@@ -10,7 +10,10 @@ from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.presentation.campaign_card import group_gate_lines
 from tg_lottery.presentation.mentions import html_utf16_length
+from tg_lottery.telegram.bonus_rule_text import global_bonus_lines
 from tg_lottery.telegram.member_bonus_text import activity_cap, campaign_bonus_completed
+from tg_lottery.telegram.member_record_text import current_effective_count
+from tg_lottery.telegram.public_projection import qualification_state_text
 
 COMMANDS = {"人品": "self", "人品规则": "rules", "人品排行": "rank"}
 SELECTION_SIZE = 8
@@ -134,9 +137,9 @@ class GroupReputation:
         if rule is None:
             if rules.activity_bonus_enabled and not rules.group_activity_rules:
                 return await self._legacy(
-                    campaign, rules, user_id=user_id, chat_id=chat_id, total=detail.activity
+                    campaign, rules, user_id=user_id, chat_id=chat_id, detail=detail
                 )
-            return f"{title} · 我的人品\n本场本群未开启活跃加成。"
+            return f"{title} · 我的人品\n本场本群未开启活跃加成。\n" + _personal_totals(detail)
         progress = await self._queries.group_bonus_progress(campaign.id, user_id)
         item = next((row for row in progress.activities if row.chat_id == chat_id), None)
         if item is None:
@@ -149,10 +152,10 @@ class GroupReputation:
             f"{title} · 我的人品（本群）\n今日有效发言：{item.valid_messages} 条\n"
             f"本群活跃加成累计已入账：{item.total_awarded_tickets} 次\n"
             f"{notice}\n"
-            "未完成全场门槛的奖励暂存，累计加成不等于当前有效开奖次数。"
+            f"{_personal_totals(detail)}"
         )
 
-    async def _legacy(self, campaign, rules, *, user_id, chat_id, total):
+    async def _legacy(self, campaign, rules, *, user_id, chat_id, detail):
         progress = await self._queries.legacy_activity_progress(campaign.id, user_id)
         if progress is None:
             raise ValueError("本人旧活动进度不可读")
@@ -160,7 +163,7 @@ class GroupReputation:
         return (
             f"{html.escape(campaign.name)} · 我的人品（原活动规则）\n"
             f"今日本群有效发言：{count}/{rules.activity.message_threshold} 条\n"
-            f"本场活跃加成累计：{total} 次。冻结的每日上限与全部群达标要求继续有效。"
+            "冻结的每日上限与全部群达标要求继续有效。\n" + _personal_totals(detail)
         )
 
     async def _ranking(self, campaign, user_id, *, page):
@@ -182,12 +185,14 @@ class GroupReputation:
 def _rules(campaign, rules, chat_id):
     lines = [f"{campaign.name} · 人品规则（本群）"]
     rule = rules.activity_rule_for(chat_id)
-    lines.append(
-        f"活跃：每 {rule.messages_per_cycle} 条有效发言增加 {rule.reward_tickets} 次；"
-        f"{activity_cap(rule)}。"
-        if rule
-        else "本群未开启逐群活跃加成。"
-    )
+    if rule:
+        lines.append(
+            f"活跃：每 {rule.messages_per_cycle} 条有效发言增加 {rule.reward_tickets} 次；"
+            f"{activity_cap(rule)}。"
+        )
+    elif rules.group_activity_rules or not rules.activity_bonus_enabled:
+        lines.append("本群未开启活跃加成。")
+    lines.extend(global_bonus_lines(rules))
     invite = rules.invite_rule_for(chat_id)
     if invite:
         cap = (
@@ -254,3 +259,15 @@ def _parse_button(data):
     ):
         raise ValueError("invalid reputation query button")
     return parts[1:]
+
+
+def _personal_totals(detail):
+    lines = [
+        f"本场活跃加成累计（所有群）：{detail.activity} 次",
+        f"基础：{detail.registration} 次；邀请加成：{detail.invitation} 次（不计入人品排行）",
+        f"当前参与资格：{qualification_state_text(detail.qualification)}；当前有效次数：{current_effective_count(detail)}",
+    ]
+    if not detail.base_qualified:
+        lines.append("行为门槛未完成，加成暂存；先完成本场各群门槛。")
+    lines.append("当前次数仍需通过开奖前复核，累计加成不保证中奖。")
+    return "\n".join(lines)

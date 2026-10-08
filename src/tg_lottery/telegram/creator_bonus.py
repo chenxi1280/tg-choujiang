@@ -79,12 +79,12 @@ def bonus_summary(data: dict[str, Any]) -> str:
 
 def _configured_group_summary(data: dict[str, Any]) -> str:
     pending = []
-    for kind, label in (("invite", "邀请"), ("activity", "发言")):
+    for kind, label in (("invite", "邀请加成"), ("activity", "活跃加成（人品）")):
         configured = data.get(f"group_{kind}_rules") or {}
         if kind in data["bonus_types"] and not any(
             rule.get("enabled") for rule in configured.values()
         ):
-            pending.append(f"{label}加成待逐群设置")
+            pending.append(f"{label}待逐群设置")
     active = group_bonus.summary(data)
     return "；".join(([active] if active != "关闭" else []) + pending)
 
@@ -92,13 +92,13 @@ def _configured_group_summary(data: dict[str, Any]) -> str:
 def bonus_rows(data: dict[str, Any]) -> ButtonRows:
     types = set(data.get("bonus_types", []))
     invite = "✅ 邀请加成" if "invite" in types else "⬜ 邀请加成"
-    activity = "✅ 发言加成" if "activity" in types else "⬜ 发言加成"
+    activity = "✅ 活跃加成（人品）" if "activity" in types else "⬜ 活跃加成（人品）"
     rows = [[(invite, "draft_bonus_toggle_invite"), (activity, "draft_bonus_toggle_activity")]]
     if "invite" in types:
         rows.append([("设置邀请加成", "draft_bonus_invite")])
         rows.append([("邀请留存要求", "draft_retention")])
     if "activity" in types:
-        rows.append([("设置每日发言", "draft_bonus_activity")])
+        rows.append([("设置活跃加成（人品）", "draft_bonus_activity")])
     rows.append([("↩ 返回抽奖预览", "draft_back")])
     return rows
 
@@ -151,7 +151,7 @@ def invite_bonus_rows(data: dict[str, Any]) -> ButtonRows:
 
 def activity_bonus_text(data: dict[str, Any]) -> str:
     return (
-        "💬 发言抽奖加成\n\n"
+        "💬 活跃加成（人品）\n\n"
         f"在每个条件群每天分别发送达到 {data['activity_message_threshold']} 条有效消息，"
         f"全部达标后当天增加 {data['activity_reward_tickets']} 次。\n"
         "频道只要求关注，不要求发言。\n"

@@ -39,7 +39,6 @@ from tg_lottery.telegram.creator_publication import CreatorPublisher, confirmati
 from tg_lottery.telegram.member_group_invites import (
     _group_rows,
     _missing_link_row,
-    build_group_invite_payload,
 )
 
 
@@ -181,59 +180,6 @@ def test_active_group_invite_link_has_copy_and_share_actions() -> None:
 
     assert buttons[0].copy_text.text == "https://t.me/+active"
     assert "share/url" in buttons[1].url
-
-
-@pytest.mark.parametrize(
-    "state", [CampaignState.RUNNING, CampaignState.DRAWN, CampaignState.CANCELLED]
-)
-async def test_activity_only_bonus_progress_is_paginated_by_six_groups(state) -> None:
-    now = datetime.now(UTC)
-    chat_ids = tuple(-1000 - index for index in range(7))
-    rules = CampaignRules(
-        bonus_types=("activity",),
-        group_activity_rules={str(chat_id): GroupActivityRule() for chat_id in chat_ids},
-    )
-    campaign = SimpleNamespace(
-        id="campaign-1",
-        public_ref="AbCdEfGhIjKlMnOpQrSt-_",
-        name="七群活动",
-        state=state,
-        preheat_at=now - timedelta(hours=1),
-        cutoff_at=now + timedelta(hours=1),
-        rules=rules.model_dump(mode="json"),
-        presentation={
-            "participation_groups": [
-                {"id": chat_id, "title": f"群{index}"} for index, chat_id in enumerate(chat_ids)
-            ]
-        },
-    )
-    progress = SimpleNamespace(
-        invitations=(),
-        activities=tuple(
-            SimpleNamespace(
-                chat_id=chat_id,
-                valid_messages=index,
-                awarded_tickets=0,
-                total_awarded_tickets=index,
-                qualified_days=index,
-            )
-            for index, chat_id in enumerate(chat_ids)
-        ),
-    )
-    queries = BonusProgressQueries(progress)
-
-    first, _ = await build_group_invite_payload(
-        campaign, user_id=201, page=0, queries=queries, cipher=object()
-    )
-    second, _ = await build_group_invite_payload(
-        campaign, user_id=201, page=1, queries=queries, cipher=object()
-    )
-
-    assert "群0" in first and "群5" in first and "群6" not in first
-    assert "群6" in second and "群0" not in second
-    if state is not CampaignState.RUNNING:
-        assert "距下一次还差" not in first + second
-        assert "累计达标 6 天、获得 6 次" in second
 
 
 def test_invite_join_deadline_keeps_legacy_group_link_without_bonus_share_prompt() -> None:
@@ -385,7 +331,7 @@ def test_publication_confirmation_summarizes_all_group_rules() -> None:
 
     assert "参与群" in text and "2 个" in text
     assert "邀请加成" in text and "2 个群开启" in text
-    assert "发言加成" in text and "1 个每日不设上限" in text
+    assert "活跃加成\uff08人品\uff09" in text and "1 个每日不设上限" in text
     assert [(label, action) for row in rows for label, action in row][-2] == (
         "确认发布",
         "draft_publish_confirm",

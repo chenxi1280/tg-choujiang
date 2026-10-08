@@ -34,6 +34,7 @@ from tg_lottery.telegram.member_records import _invitation_keyboard, _invite_gro
 from tg_lottery.telegram.member_region import region_view, set_region
 from tg_lottery.telegram.member_window_guidance import window_guidance
 from tg_lottery.telegram.panel_pagination import PAGE_CONTENT_UNITS, text_pages
+from tg_lottery.telegram.public_projection import campaign_history_state_text
 
 RECORD_GROUP_PAGE_SIZE = 6
 
@@ -156,6 +157,12 @@ class MemberNavigation:
         detail = await self._queries.participant_campaign_detail(
             query.from_user.id, campaign.public_ref
         )
+        outcome = (
+            await self._queries.campaign_outcome(campaign.id)
+            if campaign.state
+            in {CampaignState.DRAWN, CampaignState.CANCELLED, CampaignState.ARCHIVED}
+            else None
+        )
         issues = await self._queries.operational_issues(campaign.id)
         rows = self._rule_rows(campaign, detail, blocked=bool(issues))
         navigation = _page_buttons("m:rules:" + campaign.public_ref, selected, len(pages))
@@ -164,6 +171,8 @@ class MemberNavigation:
         rows.append([_button("返回活动详情", f"m:detail:{campaign.public_ref}")])
         text = (
             f"规则版本：{campaign.config_revision} · 第{selected + 1}/{len(pages)}页\n"
+            + _rule_status(campaign, outcome=outcome)
+            + "\n"
             + pages[selected]
             + "\n"
             + window_guidance(campaign, CampaignRules.model_validate(campaign.rules))
@@ -461,3 +470,13 @@ def _can_speak(campaign, rules):
         and rules.admission
         and rules.admission.type == "message"
     )
+
+
+def _rule_status(campaign, *, outcome):
+    status = campaign_history_state_text(campaign.state, outcome.kind if outcome else None)
+    lines = ["当前状态：" + status]
+    if campaign.state in {CampaignState.DRAWN, CampaignState.CANCELLED, CampaignState.ARCHIVED}:
+        lines.append("本场已结束，不再开放报名或计算新增加成；以下日期与规则为本场原计划。")
+    elif utcnow() > campaign.cutoff_at:
+        lines.append("报名及行为统计已截止，不再开放报名或计算新增加成。")
+    return "\n".join(lines)

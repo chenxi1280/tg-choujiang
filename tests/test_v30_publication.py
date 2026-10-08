@@ -17,10 +17,10 @@ def test_confirmation_counts_only_effective_bonus_groups(version, bonuses):
     rules = rules_for("invite", bonuses)
     data = rules.model_dump(mode="json") | {"participation_rules_version": version}
     text, _rows = confirmation_view(data)
-    for kind, label in (("invite", "邀请"), ("activity", "发言")):
+    for kind, label in (("invite", "邀请加成"), ("activity", "活跃加成\uff08人品\uff09")):
         count = len(data[f"group_{kind}_rules"])
         expected = count if version == "legacy" or kind in bonuses else 0
-        assert f"{label}加成\uff1a{expected} 个群开启" in text
+        assert f"{label}\uff1a{expected} 个群开启" in text
 
 
 @pytest.mark.parametrize("cover", [None, "file-id"])

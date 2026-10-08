@@ -4,6 +4,8 @@ from tg_lottery.domain.enums import CampaignState
 
 
 def window_guidance(campaign, rules) -> str:
+    if campaign.state in {CampaignState.DRAWN, CampaignState.CANCELLED, CampaignState.ARCHIVED}:
+        return ""
     now = utcnow()
     lines = []
     if campaign.state is CampaignState.PAUSED:

@@ -259,7 +259,8 @@ def confirmation_view(data: dict[str, Any]) -> tuple[str, ButtonRows]:
         f"参与群：{len(selected_chat_ids(data))} 个\n"
         f"邀请加成：{len(invite_rules)} 个群开启，其中 {invite_unlimited} 个不设上限\n"
         f"{retention_summary(data)}"
-        f"发言加成：{len(activity_rules)} 个群开启，其中 {activity_unlimited} 个每日不设上限\n"
+        f"活跃加成（人品）：{len(activity_rules)} 个群开启，"
+        f"其中 {activity_unlimited} 个每日不设上限\n"
         "权限异常：0 项\n\n"
         "确认后规则将冻结，并向全部参与群投递同一活动。"
     )
