@@ -6,7 +6,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError, Telegra
 from aiogram.methods import AnswerCallbackQuery
 
 from tests.test_update_handler import _callback, _handler, _RecordingCallbackQuery
-from tg_lottery.telegram import callback_feedback, command_input
+from tg_lottery.telegram import callback_feedback, command_input, member_callbacks
 
 
 class SlowAcknowledgement(_RecordingCallbackQuery):
@@ -155,3 +155,54 @@ async def test_concurrent_failures_preserve_business_error_and_log_ack_error(cap
         await handler._callback(query)
     assert "callback acknowledgement cleanup failed" in caplog.text
     assert "invalid feedback adapter" in caplog.text
+
+
+async def test_result_alert_follows_pending_blank_acknowledgement():
+    query = SlowAcknowledgement()
+    handler = _handler()
+    result_requested = asyncio.Event()
+    original_answer = query.answer
+
+    async def answer(text=None, show_alert=False):
+        if text is None:
+            await original_answer()
+        else:
+            query.answers.append((text, show_alert))
+
+    async def dispatch(actual, _):
+        result_requested.set()
+        await member_callbacks.safe_answer(actual, "旧按钮已恢复", alert=True)
+
+    query.answer = answer
+    handler._dispatch_callback = dispatch
+    task = asyncio.create_task(handler._callback(query))
+    try:
+        await asyncio.wait_for(result_requested.wait(), 1)
+        assert query.answers == []
+    finally:
+        query.release.set()
+        await asyncio.wait_for(task, 1)
+    assert query.answers == [(None, False), ("旧按钮已恢复", True)]
+
+
+async def test_feedback_context_does_not_hold_another_query_or_leak_after_completion():
+    query = SlowAcknowledgement()
+    original = _callback("member:rules:other-scene")
+    other = _RecordingCallbackQuery(original.data, original.message)
+    handler = _handler()
+
+    async def dispatch(*_):
+        await member_callbacks.safe_answer(other, "另一条查询", alert=True)
+        assert other.answers == [("另一条查询", True)]
+        query.release.set()
+
+    handler._dispatch_callback = dispatch
+    await asyncio.wait_for(handler._callback(query), 1)
+    assert callback_feedback._ACTIVE_FEEDBACK.get() is None
+
+
+async def test_result_rejection_is_visible_in_logs(caplog):
+    query = SlowAcknowledgement()
+    query.answer = AsyncMock(side_effect=TelegramBadRequest(METHOD, "query is too old"))
+    await member_callbacks.safe_answer(query, "实际结果", alert=True)
+    assert "callback result acknowledgement rejected by Telegram" in caplog.text

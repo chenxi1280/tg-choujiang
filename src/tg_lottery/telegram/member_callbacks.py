@@ -25,7 +25,8 @@ from tg_lottery.telegram.platform_inviter import verify_platform_inviter
 
 if TYPE_CHECKING:
     from tg_lottery.telegram.member_flow import MemberFlow
-    from tg_lottery.telegram.personal_flow import PersonalFlow
+from tg_lottery.telegram.callback_feedback import finish_callback_feedback
+from tg_lottery.telegram.personal_flow import PersonalFlow
 
 
 async def record_callback(
@@ -52,6 +53,7 @@ async def record_callback(
 async def _record_acknowledgement(
     flow: "MemberFlow", query: CallbackQuery, *, text: str | None = None, alert: bool = False
 ) -> None:
+    await finish_callback_feedback(query)
     try:
         await query.model_copy().as_(flow._bot).answer(text, show_alert=alert)
     except TelegramBadRequest as exc:
@@ -392,10 +394,19 @@ async def rules_callback(
 
 
 async def safe_answer(query: CallbackQuery, text: str, *, alert: bool) -> None:
+    await finish_callback_feedback(query)
     try:
         await query.answer(text[:200], show_alert=alert)
-    except TelegramBadRequest:
-        pass
+    except TelegramBadRequest as exc:
+        logging.getLogger(__name__).warning(
+            "callback result acknowledgement rejected by Telegram: %s",
+            exc,
+            extra={
+                "operation": "callback_result",
+                "error_code": type(exc).__name__,
+                "completed": False,
+            },
+        )
 
 
 def _invitation_record_reference(data: str) -> tuple[str, int]:

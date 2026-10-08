@@ -1,10 +1,12 @@
 import asyncio
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from time import perf_counter
 
 from aiogram.exceptions import TelegramAPIError
 
 ACK_TIMEOUT_SECONDS = 2
+_ACTIVE_FEEDBACK = ContextVar("active_callback_feedback", default=None)
 
 
 @asynccontextmanager
@@ -13,6 +15,7 @@ async def callback_feedback(query, logger, *, deferred: bool):
         yield
         return
     acknowledgement = asyncio.create_task(answer_callback(query, logger))
+    token = _ACTIVE_FEEDBACK.set((_query_key(query), acknowledgement))
     try:
         # Initiate feedback before the business path, without waiting for the network.
         await asyncio.sleep(0)
@@ -22,6 +25,19 @@ async def callback_feedback(query, logger, *, deferred: bool):
         raise
     else:
         await acknowledgement
+    finally:
+        _ACTIVE_FEEDBACK.reset(token)
+
+
+async def finish_callback_feedback(query) -> None:
+    active = _ACTIVE_FEEDBACK.get()
+    if active is not None and active[0] == _query_key(query):
+        # A late blank acknowledgement must never replace the actual result alert.
+        await active[1]
+
+
+def _query_key(query):
+    return getattr(query, "id", id(query))
 
 
 async def _cancel_acknowledgement(task, logger) -> None:
