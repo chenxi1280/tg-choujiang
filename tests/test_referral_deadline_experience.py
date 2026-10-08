@@ -13,6 +13,7 @@ from tg_lottery.telegram.member_referral_landing import (
     _landing_keyboard,
     _landing_text,
 )
+from tg_lottery.telegram.ui_style import plain_label
 
 NOW = datetime(2026, 9, 5, 8, tzinfo=UTC)
 
@@ -60,7 +61,7 @@ def test_ended_referral_keeps_joining_without_registration_button(state) -> None
     markup = _landing_keyboard(flow, landing, False)
     buttons = [button for row in markup.inline_keyboard for button in row]
     assert buttons[0].url == "https://t.me/+persistent"
-    assert "报名本次抽奖" not in [button.text for button in buttons]
+    assert "报名本次抽奖" not in [plain_label(button.text) for button in buttons]
     assert buttons[-1].callback_data == "nav:join"
 
 
@@ -125,7 +126,7 @@ def test_referral_before_preheat_keeps_ordinary_join_and_registration_options() 
     assert "邀请加成尚未开始" in text
     assert "暂时无法核验" in text
     assert buttons[0].url == "https://t.me/+persistent"
-    assert "报名本次抽奖" in [button.text for button in buttons]
+    assert "报名本次抽奖" in [plain_label(button.text) for button in buttons]
 
 
 def test_ended_invite_note_preserves_confirmed_revocation_fact() -> None:
