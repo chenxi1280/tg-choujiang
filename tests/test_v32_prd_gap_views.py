@@ -19,6 +19,7 @@ from tg_lottery.telegram.member_condition_check import condition_check_payload
 from tg_lottery.telegram.member_navigation_context import MemberPageContext
 from tg_lottery.telegram.member_navigation_views import participant_detail_view
 from tg_lottery.telegram.member_profile_conditions import profile_conditions
+from tg_lottery.telegram.ui_style import plain_label
 
 
 @pytest.mark.parametrize("category", ["invites", "activity"])
@@ -73,8 +74,8 @@ def test_unavailable_share_and_finished_invitation_tasks_keep_history(state):
     detail = replace(_detail(), state=state, cutoff_at=now - timedelta(minutes=1))
     pages, keyboard = participant_detail_view(detail, user_id=USER_ID, bot_username="test_bot")
     buttons = [b for row in keyboard.inline_keyboard for b in row]
-    assert not any(b.text in {"我的邀请链接", "分享活动卡片"} for b in buttons)
-    assert any(b.text == "邀请记录" for b in buttons)
+    assert not any(plain_label(b.text) in {"我的邀请链接", "分享活动卡片"} for b in buttons)
+    assert any(plain_label(b.text) == "邀请记录" for b in buttons)
     assert "历史累计" in "\n".join(pages) or "本期已截止" in "\n".join(pages)
 
 
@@ -85,7 +86,7 @@ def test_unknown_qualification_keeps_ledger_and_points_to_condition_check():
         cutoff_at=datetime.now(UTC) + timedelta(hours=1),
     )
     pages, keyboard = participant_detail_view(detail, user_id=USER_ID, bot_username="test_bot")
-    assert keyboard.inline_keyboard[0][0].text == "核查参与条件"
+    assert plain_label(keyboard.inline_keyboard[0][0].text) == "核查参与条件"
     assert "当前有效次数：待核查" in pages[0] and "累计次数（含暂存）: 5" in pages[0]
 
 
@@ -100,7 +101,7 @@ def test_invitation_gate_after_join_deadline_points_to_existing_records():
         invite_join_deadline=now - timedelta(seconds=1),
     )
     pages, keyboard = participant_detail_view(detail, user_id=USER_ID, bot_username="test_bot")
-    assert keyboard.inline_keyboard[0][0].text == "查看待核验邀请记录"
+    assert plain_label(keyboard.inline_keyboard[0][0].text) == "查看待核验邀请记录"
     assert "最晚计奖入群时间已过" in pages[0]
 
 
@@ -171,14 +172,14 @@ async def test_each_long_rule_page_keeps_campaign_identity_version_and_join(monk
     assert "完整活动名称&lt;验收&gt;" in text and "规则版本：7" in text
     assert "第2/" in text and f"start=join_{campaign.public_ref}" in text
     keyboard = edit.await_args.kwargs["reply_markup"]
-    assert any(b.text == "登记参与" for row in keyboard.inline_keyboard for b in row)
+    assert any(plain_label(b.text) == "登记参与" for row in keyboard.inline_keyboard for b in row)
 
 
 def test_creator_categories_and_origin_distinguish_lifecycle_and_stable_anchor():
     result = CreatorCampaignPage("active", 0, 1, 0, ())
     _, keyboard = creator_list_view(result)
     categories = [
-        b.text.removeprefix("✅ ")
+        plain_label(b.text)
         for row in keyboard.inline_keyboard
         for b in row
         if (b.callback_data or "").startswith("nav:created:")
@@ -193,4 +194,4 @@ def test_old_unconfirmed_filter_still_renders_after_last_issue_is_resolved():
     result = CreatorCampaignPage("unconfirmed", 0, 1, 0, ())
     text, keyboard = creator_list_view(result)
     assert "当前分类：待核查" in text and "当前分类暂无活动" in text
-    assert any(b.text == "返回首页" for row in keyboard.inline_keyboard for b in row)
+    assert any(plain_label(b.text) == "返回首页" for row in keyboard.inline_keyboard for b in row)

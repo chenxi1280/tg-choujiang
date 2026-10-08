@@ -3,6 +3,10 @@ from unittest.mock import AsyncMock
 
 from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 
+from tests.test_v33_creator_gate_repairs import gate_data
+from tg_lottery.telegram import creator_behavior_editor as gate_editor
+from tg_lottery.telegram import creator_behavior_views as gate_views
+from tg_lottery.telegram.creator_sections import section_view
 from tg_lottery.telegram.help_views import HelpLinks, guide_summary
 from tg_lottery.telegram.keyboard_layout import columns, fit_rows, list_rows
 from tg_lottery.telegram.member_navigation_context import MemberPageContext, scoped_keyboard
@@ -90,3 +94,26 @@ async def test_scoped_tokens_follow_original_actions_after_filter_reflow():
     assert [len(row) for row in result.inline_keyboard] == [2, 2]
     assert len(original.inline_keyboard[0]) == 4
     assert columns([]) == []
+
+
+def test_gate_copy_middle_page_keeps_paging_together_and_confirm_separate():
+    data = gate_data() | {
+        "participation_groups": [{"id": -1000 - i, "title": f"群{i}"} for i in range(20)]
+    }
+    editor = data[gate_editor.EDITOR_KEY] | {
+        "chat_id": "-1000",
+        "page": 1,
+        "copy_targets": ["-1001"],
+    }
+    _, rows = gate_views.view(data | {gate_editor.EDITOR_KEY: editor})
+    assert [("上一页", "draft_gate:page:0"), ("下一页", "draft_gate:page:2")] in rows
+    assert [("确认覆盖选定群", "draft_gate:copy_confirm")] in rows
+    assert rows[-1] == [("取消复制", "draft_gate:copy_cancel")]
+
+
+def test_prize_removal_actions_have_their_own_rows():
+    _, rows = section_view({"prizes": [{"name": "奖品", "winner_count": 1}]}, "prizes")
+    for action in ("draft_delete_prize", "draft_clear_prizes"):
+        row = next(row for row in rows if any(item[1] == action for item in row))
+        assert len(row) == 1
+    assert rows[-1] == [("返回草稿", "draft_back")]

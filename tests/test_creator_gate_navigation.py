@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from aiogram.types import Message
 
 from tests.test_creator_gate_feedback import PANEL_ID, USER_ID, _message
 from tests.test_creator_settings import RecordingRenderer, ThresholdSessions
@@ -59,6 +60,11 @@ async def test_empty_gate_save_stays_in_editor_with_explicit_error(mode):
 
 
 async def test_choose_groups_then_resume_invite_editor_and_save(monkeypatch):
+    monkeypatch.setattr(Message, "answer", AsyncMock(return_value=_message()))
+    monkeypatch.setattr(
+        "tg_lottery.telegram.creator_behavior_admission.verify_publication_bonus_permissions",
+        AsyncMock(),
+    )
     sessions = ThresholdSessions(new_draft() | {"panel_message_id": PANEL_ID})
     renderer = RecordingRenderer()
     renderer.render_groups = AsyncMock()

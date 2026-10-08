@@ -138,4 +138,4 @@ async def test_used_button_on_current_gate_panel_restores_gate_without_replaying
     assert sessions.data[editor.EDITOR_KEY] == before
     assert sessions.data["admission"] is None
     assert renderer.edit.await_args.kwargs["text"].startswith("旧按钮操作未执行")
-    assert "draft_gate:group_save" in actions(renderer.edit.await_args.kwargs["rows"])
+    assert "draft_gate:save_group" in actions(renderer.edit.await_args.kwargs["rows"])

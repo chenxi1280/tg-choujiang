@@ -7,7 +7,6 @@ from aiogram.types import Chat, Message, User
 from tests.test_creator_settings import RecordingRenderer, ThresholdSessions
 from tests.v30_helpers import FIRST
 from tg_lottery.application.callback_tokens import CallbackGrant
-from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import creator_behavior_editor as editor
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_behavior_admission import CreatorBehaviorAdmission
@@ -83,7 +82,16 @@ def _input_data(mode: str = "message", field: str = "daily_messages") -> dict:
         ("invite", "required_valid_invites", "新成员 34 人"),
     ],
 )
-async def test_custom_gate_input_is_handled_and_keeps_group_editor(mode, field, expected):
+async def test_custom_gate_input_is_handled_and_keeps_group_editor(
+    mode, field, *, expected, monkeypatch
+):
+    monkeypatch.setattr(
+        Message, "answer", AsyncMock(return_value=_message().model_copy(update={"message_id": 401}))
+    )
+    monkeypatch.setattr(
+        "tg_lottery.telegram.creator_behavior_admission.verify_publication_bonus_permissions",
+        AsyncMock(),
+    )
     sessions = ThresholdSessions(_input_data(mode, field))
     sessions.state = "draft:behavior_admission"
     renderer = RecordingRenderer()
@@ -101,23 +109,23 @@ async def test_custom_gate_input_is_handled_and_keeps_group_editor(mode, field, 
     assert await creator.handle_message(_message("34")) is True
     assert sessions.state == "draft:behavior_admission"
     assert sessions.data[editor.EDITOR_KEY]["rule"][field] == 34
-    assert sessions.data["admission"] is None
+    assert sessions.data["admission"]["groups"][str(FIRST)][field] == 34
     assert expected in renderer.text
-    assert any(("本群暂存到编辑稿", "draft_gate:group_save") in row for row in renderer.rows)
+    assert any(("保存本群门槛", "draft_gate:save_group") in row for row in renderer.rows)
 
 
 @pytest.mark.parametrize(
     "mode,field", [("message", "daily_messages"), ("invite", "required_valid_invites")]
 )
-async def test_invalid_custom_gate_input_preserves_staged_rule(mode, field):
+async def test_invalid_custom_gate_input_preserves_staged_rule(mode, field, monkeypatch):
     data = _input_data(mode, field)
     sessions = ThresholdSessions(data)
-    renderer = SimpleNamespace(edit=AsyncMock())
+    renderer = SimpleNamespace(render=AsyncMock(), edit=AsyncMock())
+    monkeypatch.setattr(Message, "answer", AsyncMock(return_value=_message()))
     admission = CreatorBehaviorAdmission(sessions=sessions, renderer=renderer, bot=object())
-
-    with pytest.raises(UserFacingError):
-        await admission.receive(_message("不是数字"), data)
-
-    assert sessions.data == data
+    await admission.receive(_message("不是数字"), data)
+    assert sessions.data["admission"] == data["admission"]
+    assert sessions.data[editor.EDITOR_KEY]["rule"] == data[editor.EDITOR_KEY]["rule"]
+    assert "未保存" in renderer.render.await_args.kwargs["text"]
     assert sessions.data[editor.EDITOR_KEY]["field"] == field
     renderer.edit.assert_not_awaited()

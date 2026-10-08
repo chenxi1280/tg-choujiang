@@ -54,6 +54,7 @@ from tg_lottery.telegram.member_group_invites import (
     campaign_bonus_completed,
 )
 from tg_lottery.telegram.public_projection import format_public_time
+from tg_lottery.telegram.ui_style import row_keyboard, style_keyboard
 
 
 @dataclass(frozen=True)
@@ -241,20 +242,20 @@ def _category_payload(context: BonusViewContext) -> tuple[str, InlineKeyboardMar
     )
     ref = context.campaign.public_ref
     activity_label = (
-        f"💬 活跃加成（人品）｜累计 {cumulative} 次"
+        f"🌱 活跃加成（人品）｜累计 {cumulative} 次"
         if campaign_bonus_completed(context.campaign)
-        else f"💬 活跃加成（人品）｜今日 {activity_total} 次 · 累计 {cumulative} 次"
+        else f"🌱 活跃加成（人品）｜今日 {activity_total} 次 · 累计 {cumulative} 次"
     )
     rows = [
         [
             InlineKeyboardButton(
-                text="👥 " + invitation_section_title(context.rules),
+                text="🤝 " + invitation_section_title(context.rules),
                 callback_data=f"member:bonus_invites:{ref}:0",
             )
         ],
         [
             InlineKeyboardButton(
-                text="💬 活跃加成（人品）",
+                text="🌱 活跃加成（人品）",
                 callback_data=f"member:bonus_activity:{ref}:0",
             )
         ],
@@ -262,7 +263,9 @@ def _category_payload(context: BonusViewContext) -> tuple[str, InlineKeyboardMar
         [InlineKeyboardButton(text="返回首页", callback_data="nav:index")],
     ]
     text += f"\n\n邀请累计：{invite_total} 次\n{activity_label}"
-    return text, InlineKeyboardMarkup(inline_keyboard=[rows[0] + rows[1], rows[2] + rows[3]])
+    return text, style_keyboard(
+        InlineKeyboardMarkup(inline_keyboard=[rows[0] + rows[1], rows[2] + rows[3]])
+    )
 
 
 def build_invite_group_list(
@@ -314,7 +317,7 @@ def build_invite_group_list(
             )
         ]
     )
-    return "\n".join([*lines, context.base_progress]), InlineKeyboardMarkup(inline_keyboard=rows)
+    return "\n".join([*lines, context.base_progress]), row_keyboard(rows)
 
 
 def build_activity_group_list(
@@ -357,7 +360,9 @@ def build_activity_group_list(
             )
         ]
     )
-    return "\n".join([*lines, context.base_progress]), InlineKeyboardMarkup(inline_keyboard=rows)
+    return "\n".join([*lines, context.base_progress]), style_keyboard(
+        InlineKeyboardMarkup(inline_keyboard=rows)
+    )
 
 
 def _invite_group_detail(
@@ -392,9 +397,9 @@ def _invite_group_detail(
         return_page=return_page,
     )
     rows.extend(_invite_detail_navigation(context, chat_id, return_page=return_page))
-    return "\n".join(
-        line for line in [*lines, context.base_progress] if line
-    ), InlineKeyboardMarkup(inline_keyboard=rows)
+    return "\n".join(line for line in [*lines, context.base_progress] if line), style_keyboard(
+        InlineKeyboardMarkup(inline_keyboard=rows)
+    )
 
 
 def _available_invite_rows(

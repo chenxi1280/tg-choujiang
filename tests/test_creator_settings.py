@@ -23,6 +23,7 @@ from tg_lottery.telegram.creator_settings import (
 )
 from tg_lottery.telegram.issuer import creator_issuer, resolve_issuer
 from tg_lottery.telegram.personal_flow import _index_keyboard
+from tg_lottery.telegram.ui_style import plain_label
 
 
 class RequiredChatBot:
@@ -311,7 +312,7 @@ def test_index_keyboard_contains_real_group_and_channel_links() -> None:
     assert sum(len(row) for row in home.inline_keyboard) == 5
     _, keyboard = guide_topic("create", bot_username="lottery_test_bot")
     buttons = [button for row in keyboard.inline_keyboard for button in row]
-    urls = {button.text: button.url for button in buttons if button.url}
+    urls = {plain_label(button.text): button.url for button in buttons if button.url}
 
     assert urls["添加到群组"] == "https://t.me/lottery_test_bot?startgroup=lottery"
     assert urls["添加到频道"] == "https://t.me/lottery_test_bot?startchannel=lottery"

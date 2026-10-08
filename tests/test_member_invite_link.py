@@ -9,6 +9,7 @@ from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import InviteLink
 from tg_lottery.telegram.member_flow import MemberFlow, member_keyboard
+from tg_lottery.telegram.ui_style import plain_label
 
 
 class RecordingMessage:
@@ -66,8 +67,8 @@ async def test_member_can_retrieve_a_campaign_scoped_personal_invite_link() -> N
 
     await flow.show_invite_link(message, campaign.public_ref, user_id=201)
 
-    assert "最晚计奖入群" in message.text
-    assert "满足留群及活动条件" in message.text
+    assert "最晚计奖入群" in plain_label(message.text)
+    assert "满足留群及活动条件" in plain_label(message.text)
     assert message.markup.inline_keyboard[0][0].copy_text.text == "https://t.me/+campaign_personal"
     assert message.markup.inline_keyboard[1][0].url == "https://t.me/+campaign_personal"
     assert "share/url" in message.markup.inline_keyboard[2][0].url
@@ -83,11 +84,11 @@ async def test_legacy_invite_link_after_join_deadline_still_opens_without_bonus_
     )
     message = RecordingMessage()
     await flow.show_invite_link(message, campaign.public_ref, user_id=201)
-    assert "最晚计奖入群时间已过" in message.text
-    assert "新入群不计加成" in message.text
-    assert "仅核验此前邀请" in message.text
-    assert message.markup.inline_keyboard[0][0].text == "复制入群链接"
-    assert message.markup.inline_keyboard[2][0].text == "转发入群"
+    assert "最晚计奖入群时间已过" in plain_label(message.text)
+    assert "新入群不计加成" in plain_label(message.text)
+    assert "仅核验此前邀请" in plain_label(message.text)
+    assert plain_label(message.markup.inline_keyboard[0][0].text) == "复制入群链接"
+    assert plain_label(message.markup.inline_keyboard[2][0].text) == "转发入群"
 
 
 async def test_legacy_invite_link_before_preheat_does_not_say_campaign_has_ended() -> None:
@@ -103,9 +104,9 @@ async def test_legacy_invite_link_before_preheat_does_not_say_campaign_has_ended
     )
     message = RecordingMessage()
     await flow.show_invite_link(message, campaign.public_ref, user_id=201)
-    assert "邀请加成尚未开始" in message.text
-    assert "已截止" not in message.text
-    assert message.markup.inline_keyboard[0][0].text == "复制入群链接"
+    assert "邀请加成尚未开始" in plain_label(message.text)
+    assert "已截止" not in plain_label(message.text)
+    assert plain_label(message.markup.inline_keyboard[0][0].text) == "复制入群链接"
 
 
 async def test_expired_campaign_link_still_opens_but_never_counts_again() -> None:
@@ -124,12 +125,12 @@ async def test_expired_campaign_link_still_opens_but_never_counts_again() -> Non
 
     await flow.show_invite_link(message, campaign.public_ref, user_id=201)
 
-    assert "仍有效的旧链接可入群" in message.text
-    assert "不再计算本期或以后任何抽奖加成" in message.text
-    assert "邀请入口已隐藏" in message.text
+    assert "仍有效的旧链接可入群" in plain_label(message.text)
+    assert "不再计算本期或以后任何抽奖加成" in plain_label(message.text)
+    assert "邀请入口已隐藏" in plain_label(message.text)
     buttons = [button for row in message.markup.inline_keyboard for button in row]
     assert not any(button.url or button.copy_text for button in buttons)
-    assert "邀请记录" in [button.text for button in buttons]
+    assert "邀请记录" in [plain_label(button.text) for button in buttons]
 
 
 def test_registration_keyboard_exposes_only_the_current_campaign_link() -> None:

@@ -37,6 +37,7 @@ from tg_lottery.telegram.keyboard_layout import columns
 from tg_lottery.telegram.platform_requirements import inspect_official_channels
 from tg_lottery.telegram.public_projection import campaign_state_text
 from tg_lottery.telegram.publication_error_text import publication_error_text
+from tg_lottery.telegram.ui_style import style_keyboard
 
 DRAW_CONFIRMATION_TEXT = "开奖结果已生成, 群公告和中奖通知正在发送。"
 
@@ -62,13 +63,15 @@ class AdminFlow:
         self._queries = queries
 
     async def show_main(self, message: Message) -> None:
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="创建/继续抽奖", callback_data="nav:create")],
-                [InlineKeyboardButton(text="我的活动", callback_data="nav:campaigns")],
-                [InlineKeyboardButton(text="我的抽奖次数", callback_data="member:tickets")],
-                [InlineKeyboardButton(text="邀请记录", callback_data="member:invites")],
-            ]
+        keyboard = style_keyboard(
+            InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="创建/继续抽奖", callback_data="nav:create")],
+                    [InlineKeyboardButton(text="我的活动", callback_data="nav:campaigns")],
+                    [InlineKeyboardButton(text="我的抽奖次数", callback_data="member:tickets")],
+                    [InlineKeyboardButton(text="邀请记录", callback_data="member:invites")],
+                ]
+            )
         )
         await message.answer("请选择操作：", reply_markup=keyboard)
 
@@ -165,7 +168,7 @@ class AdminFlow:
         ]
         await _message(query).edit_text(
             confirmation_text(campaign, grant.action, details=grant.payload),
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+            reply_markup=style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows)),
         )
 
     async def _execute_confirmation(self, query: CallbackQuery, grant: CallbackGrant) -> None:

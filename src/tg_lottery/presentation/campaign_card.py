@@ -44,7 +44,7 @@ def chat_condition(chat: Mapping, *, payload: Mapping, rules: CampaignRules) -> 
     title = html.escape(chat_title(chat))
     link = html.escape(url, quote=True)
     status = " (加入入口已关闭)" if chat.get("invite_revoked_at") else ""
-    lines = [f'🎫 {action}-<a href="{link}">{title}</a>{status}']
+    lines = [f'🤝 {action}-<a href="{link}">{title}</a>{status}']
     if chat.get("type") != "channel":
         lines.extend(group_gate_lines(str(chat["id"]), rules))
     return "\n".join(lines)
@@ -55,20 +55,20 @@ def group_gate_lines(key: str, rules: CampaignRules) -> tuple[str, ...]:
         gate = rules.admission.groups.get(key)
         if gate is None:
             return ()
-        return (f"└ 🎟️ 有效邀请满 <b>{gate.required_valid_invites}</b> 人",)
+        return (f"└ 🚪 有效邀请满 <b>{gate.required_valid_invites}</b> 人",)
     gate = rules.message_gate_rules.get(key)
     if gate is not None:
         period = "单日" if gate.consecutive_days == 1 else f"连续 {gate.consecutive_days} 天，每天"
-        return (f"└ 🎟️ {period}有效发言满 <b>{gate.daily_messages}</b> 条",)
+        return (f"└ 🚪 {period}有效发言满 <b>{gate.daily_messages}</b> 条",)
     threshold = rules.message_thresholds.get(key)
     if threshold:
-        return (f"└ 🎟️ 累计发言至少 <b>{threshold}</b> 条",)
+        return (f"└ 🚪 累计发言至少 <b>{threshold}</b> 条",)
     return ()
 
 
 def membership_blocks(payload: Mapping) -> tuple[str, ...]:
     rules = CampaignRules.model_validate(payload["rules"])
-    blocks = ["📮 <b>参与条件（必须全部满足）：</b>"]
+    blocks = ["🧭 <b>参与条件（必须全部满足）：</b>"]
     if rules.platform_policy:
         url = html.escape(campaign_link(payload), quote=True)
         blocks.append(f'🤖 <a href="{url}">启动本抽奖机器人</a>，并关注以下三个官方频道')
@@ -94,7 +94,7 @@ def prize_block(payload: Mapping) -> str:
 
 def prize_blocks(payload: Mapping) -> tuple[str, ...]:
     prizes = (
-        f"💰️ {html.escape(str(prize['name']))} × <b>{prize['winner_count']}</b>"
+        f"📦 {html.escape(str(prize['name']))} × <b>{prize['winner_count']}</b>"
         for prize in payload.get("prizes") or []
     )
     return ("🎁 <b>奖品内容：</b>", *prizes)
@@ -105,7 +105,7 @@ def description_blocks(payload: Mapping) -> tuple[str, ...]:
     if not description:
         return ()
     first, *remaining = escaped_text_blocks(str(description))
-    return ("⚠️ <b>抽奖说明：</b>\n" + first, *remaining)
+    return ("📝 <b>抽奖说明：</b>\n" + first, *remaining)
 
 
 def bonus_block(payload: Mapping) -> str:
@@ -129,8 +129,8 @@ def _bonus_lines(payload: Mapping, *, rules: CampaignRules, unlimited: bool) -> 
     )
     invite = ("不设上限" if unlimited else "按本场规则") if rules.invite_bonus_enabled else "未开启"
     lines = [
-        f"🔋 <b>人品加成：</b>{activity}　{rule_link}",
-        f"👥 <b>邀请加成：</b>{invite}　{rule_link}",
+        f"🌱 <b>人品加成：</b>{activity}　{rule_link}",
+        f"🤝 <b>邀请加成：</b>{invite}　{rule_link}",
     ]
     if rules.activity_bonus_enabled:
         lines.append("└ 群内输入：<b>人品</b> · <b>人品排行</b> · <b>人品规则</b>")
@@ -159,7 +159,7 @@ def card_time(value: str, timezone: str) -> str:
 
 def footer_blocks(payload: Mapping) -> tuple[str, ...]:
     issuer = payload["presentation"].get("issuer_name")
-    blocks = [f"🎁 发奖人员：{html.escape(str(issuer))}"] if issuer else []
+    blocks = [f"🧑‍💼 发奖人员：{html.escape(str(issuer))}"] if issuer else []
     blocks.append(
         "🔗 点击链接参与抽奖（长按本消息可转发）：\n" + html.escape(campaign_link(payload))
     )
@@ -168,7 +168,7 @@ def footer_blocks(payload: Mapping) -> tuple[str, ...]:
 
 def card_blocks(payload: Mapping) -> tuple[str, ...]:
     return (
-        f"🎰 <b>{html.escape(str(payload['name']))}</b>",
+        f"✨ <b>{html.escape(str(payload['name']))}</b>",
         "\n".join(membership_blocks(payload)),
         prize_block(payload),
         *description_blocks(payload),

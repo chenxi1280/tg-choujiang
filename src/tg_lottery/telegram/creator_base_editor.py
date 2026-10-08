@@ -116,7 +116,7 @@ def editor_view(data: dict[str, Any]) -> tuple[str, list]:
         )
     rule = editor["rule"]
     text = (
-        f"💬 {title} · 基础发言门槛\n\n"
+        f"🚪 {title} · 基础发言门槛\n\n"
         f"连续 {rule['consecutive_days']} 天，每天至少 {rule['daily_messages']} 条，"
         "文字、图片、表情均计数。\n"
         "点击参与链接登记后开始统计；全部配置群达标后获得抽奖资格。\n"

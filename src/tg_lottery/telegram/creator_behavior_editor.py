@@ -63,6 +63,7 @@ def clear(data: dict[str, Any]) -> dict[str, Any]:
 def apply_action(data: dict[str, Any], action: str) -> dict[str, Any]:
     parts = action.removeprefix("draft_gate:").split(":")
     editor = dict(data.get(EDITOR_KEY) or open_editor(data)[EDITOR_KEY])
+    editor.pop("notice", None)
     operation = parts[0]
     if operation in {"confirm_change", "keep_editing", "save_and_continue"}:
         return _confirmation_action(data, editor, operation=operation)

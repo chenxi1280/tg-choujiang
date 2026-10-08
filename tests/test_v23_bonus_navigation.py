@@ -17,6 +17,7 @@ from tg_lottery.telegram.member_bonus_views import (
 from tg_lottery.telegram.member_group_invites import build_group_invite_payload
 from tg_lottery.telegram.member_invites import legacy_invite_link_payload
 from tg_lottery.telegram.member_records import _invitation_keyboard, _record_keyboard
+from tg_lottery.telegram.ui_style import plain_label
 
 
 class BonusQueries:
@@ -210,7 +211,7 @@ async def test_drawn_campaign_hides_entries_but_keeps_invitation_history() -> No
     assert "距下一次还差" not in detail
     buttons = [button for row in keyboard.inline_keyboard for button in row]
     assert not any(button.url or button.copy_text for button in buttons)
-    assert "邀请记录" in [button.text for button in buttons]
+    assert "邀请记录" in [plain_label(button.text) for button in buttons]
 
     activity_detail, _ = await build_bonus_group_detail(
         campaign,
@@ -248,7 +249,7 @@ async def test_closed_bonus_lists_and_details_keep_history_without_new_reward_pr
     overview, overview_keyboard = await build_bonus_overview(campaign, **common)
     assert "不再计算新增加成" in overview
     assert "累计 2 次" in overview
-    assert "今日" not in overview_keyboard.inline_keyboard[0][1].text
+    assert "今日" not in plain_label(overview_keyboard.inline_keyboard[0][1].text)
     assert "今日" not in overview
     for category in ("invites", "activity"):
         listing, _ = await build_bonus_category(campaign, category=category, page=0, **common)
@@ -288,8 +289,8 @@ async def test_join_deadline_preserves_awarded_invites_and_activity_progress() -
     assert "仅核验此前邀请" in detail
     assert "有效邀请 3 人" in detail and "已获得 1 次" in detail
     assert "距下一次还差" not in listing + detail
-    assert keyboard.inline_keyboard[0][0].text.startswith("复制入群链接")
-    assert "不计加成" in keyboard.inline_keyboard[0][0].text
+    assert plain_label(keyboard.inline_keyboard[0][0].text).startswith("复制入群链接")
+    assert "不计加成" in plain_label(keyboard.inline_keyboard[0][0].text)
     assert "距下一次还差 2 条" in activity
 
 
@@ -321,8 +322,8 @@ async def test_single_bonus_category_keeps_closed_progress_and_group_return_rout
     assert "本场已取消" in text
     assert "距下一次还差" not in text
     buttons = [button for row in keyboard.inline_keyboard for button in row]
-    assert any(button.text.startswith("返回") for button in buttons)
-    assert not any(button.text == "A群" for button in buttons)
+    assert any(plain_label(button.text).startswith("返回") for button in buttons)
+    assert not any(plain_label(button.text) == "A群" for button in buttons)
 
 
 async def test_no_enabled_group_bonus_reports_explicit_error() -> None:
@@ -346,7 +347,9 @@ async def test_cancelled_legacy_invite_entry_keeps_history_without_loading_revok
     assert not any(
         button.url or button.copy_text for row in keyboard.inline_keyboard for button in row
     )
-    assert any(button.text == "邀请记录" for row in keyboard.inline_keyboard for button in row)
+    assert any(
+        plain_label(button.text) == "邀请记录" for row in keyboard.inline_keyboard for button in row
+    )
 
 
 async def test_closed_legacy_bonus_keeps_awarded_history_after_bot_loses_group_permission() -> None:

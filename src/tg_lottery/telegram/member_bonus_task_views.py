@@ -7,6 +7,7 @@ from tg_lottery.telegram.member_group_invites import (
     _activity_progress_line,
     campaign_bonus_completed,
 )
+from tg_lottery.telegram.ui_style import style_keyboard
 
 
 def required_group(context, chat_id: int) -> dict:
@@ -74,7 +75,7 @@ def activity_group_detail(context, chat_id: int, *, return_page: int):
     if chat_id in context.unavailable:
         lines.append(context.unavailable[chat_id])
     rows = _activity_rows(context, group, chat_id=chat_id, return_page=return_page, closed=closed)
-    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+    return "\n".join(lines), style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 def _activity_rows(context, group, *, chat_id: int, return_page: int, closed: bool):

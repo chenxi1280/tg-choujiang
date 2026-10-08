@@ -153,8 +153,9 @@ def test_gate_input_names_group_and_separate_save_scope(mode, field):
     data = gate.apply_action(data, f"draft_gate:input:{field}")
     text, rows = gate_views.view(data)
     assert "抽奖门槛" in text and "A群" in text and gate_views.FIELD_LABELS[field] in text
-    assert "保存整场门槛" in text
-    assert rows == [[("取消输入", "draft_gate:cancel_input")]]
+    assert "直接保存本群" in text
+    assert rows[-1] == [("取消输入", "draft_gate:cancel_input")]
+    assert any(action.startswith("draft_gate:quick:") for row in rows for _, action in row)
 
 
 @pytest.mark.parametrize("kind", ["invite", "activity"])

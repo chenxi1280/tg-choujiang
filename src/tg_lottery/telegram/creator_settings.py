@@ -381,7 +381,7 @@ class CreatorSettings:
         await self._render(
             query,
             data=data,
-            text="🎅 回复已参与用户的 @username，或 Telegram 用户 ID：",
+            text="🧑‍💼 回复已参与用户的 @username，或 Telegram 用户 ID：",
             rows=_back_rows(),
         )
 

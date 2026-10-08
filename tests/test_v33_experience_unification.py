@@ -21,14 +21,15 @@ from tg_lottery.telegram.member_bonus_views import build_bonus_category
 from tg_lottery.telegram.member_group_invites import build_group_invite_payload
 from tg_lottery.telegram.member_navigation import _rule_status
 from tg_lottery.telegram.member_window_guidance import window_guidance
+from tg_lottery.telegram.ui_style import plain_label
 
 
 @pytest.mark.parametrize("key", ["create", "member", "bonus", "results"])
 def test_help_topics_do_not_include_the_next_topic(key):
     markers = {
         "create": "🎁 发起抽奖",
-        "member": "🎫 参加抽奖",
-        "bonus": "👥 邀请与活跃加成",
+        "member": "🤝 参加抽奖",
+        "bonus": "🤝 邀请与活跃加成",
         "results": "🏆 开奖与领奖",
     }
     text, _keyboard = guide_topic(key, bot_username="lottery_bot")
@@ -82,9 +83,9 @@ async def test_invitation_entry_filters_activity_only_groups_before_pagination()
     assert "仅活跃群" not in text and "今日发言" not in text
     buttons = [button for row in keyboard.inline_keyboard for button in row]
     assert not any(button.callback_data == "member:noop" for button in buttons)
-    assert next(button for button in buttons if button.text == "刷新邀请状态").callback_data == (
-        f"member:invite_page:{item.public_ref}:0"
-    )
+    assert next(
+        button for button in buttons if plain_label(button.text) == "刷新邀请状态"
+    ).callback_data == (f"member:invite_page:{item.public_ref}:0")
 
 
 @pytest.mark.parametrize(

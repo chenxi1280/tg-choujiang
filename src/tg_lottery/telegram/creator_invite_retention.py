@@ -45,7 +45,7 @@ def apply_action(data: dict[str, Any], action: str) -> dict[str, Any]:
 
 def view(data: dict[str, Any]) -> tuple[str, list[list[tuple[str, str]]]]:
     text = (
-        "👥 本场邀请留存要求\n\n当前："
+        "🤝 本场邀请留存要求\n\n当前："
         + retention_text(retention_hours(data))
         + "\n\n达到留存时间后仍需核验新成员资格。已有成员、重复入群和自邀不计奖。"
         "\n最晚计奖入群时间 = 报名截止时间减去留存时间。"

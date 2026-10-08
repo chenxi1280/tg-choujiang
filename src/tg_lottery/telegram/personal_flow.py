@@ -19,6 +19,7 @@ from tg_lottery.telegram.participant_list_views import (
 from tg_lottery.telegram.public_projection import (
     campaign_state_text,
 )
+from tg_lottery.telegram.ui_style import style_keyboard
 
 REGIONS = (
     "北京",
@@ -318,6 +319,8 @@ def _index_keyboard(
 
 
 async def _respond(message, text: str, *, keyboard, edit: bool) -> None:
+
+    keyboard = style_keyboard(keyboard)
     if edit:
         await message.edit_text(text, reply_markup=keyboard)
         return

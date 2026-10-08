@@ -16,6 +16,7 @@ from tg_lottery.infrastructure.db import Campaign
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_renderer import CreatorRenderer, PanelTarget
+from tg_lottery.telegram.ui_style import plain_label
 
 USER_ID = 201
 PANEL_ID = 381
@@ -89,7 +90,10 @@ async def test_zero_group_creator_opens_saved_draft_with_working_buttons(creator
     assert "活动群" in text_call.args[0]
     keyboard = markup_call.kwargs["reply_markup"]
     button = next(
-        item for row in keyboard.inline_keyboard for item in row if item.text == "活动标题"
+        item
+        for row in keyboard.inline_keyboard
+        for item in row
+        if plain_label(item.text) == "活动标题"
     )
     grant = await case.tokens.consume(
         button.callback_data.removeprefix("secure:"), owner_user_id=USER_ID, chat_id=USER_ID
@@ -117,7 +121,10 @@ async def test_zero_group_list_explains_setup_and_has_only_usable_navigation(cre
     assert "当前没有可管理的群" in case.bot.edit_message_text.call_args.args[0]
     assert "你和机器人都是该群管理员" in case.bot.edit_message_text.call_args.args[0]
     rows = case.bot.edit_message_text.call_args.kwargs["reply_markup"].inline_keyboard
-    assert [button.text for row in rows for button in row] == ["🔄 刷新群列表", "↩ 返回上一层"]
+    assert [plain_label(button.text) for row in rows for button in row] == [
+        "刷新群列表",
+        "返回上一层",
+    ]
 
 
 async def test_zero_group_publish_is_rejected_without_campaign_creation(

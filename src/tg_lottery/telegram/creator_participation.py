@@ -141,7 +141,7 @@ def apply_threshold_action(thresholds: dict[str, int], chat_id: str, op: str) ->
 
 def participation_add_text() -> str:
     return (
-        "📮 添加准入条件（必须全部满足）\n\n"
+        "🧭 添加准入条件（必须全部满足）\n\n"
         "点击下方列表勾选群聊或频道，再次点击取消；可搜索名称或刷新列表。\n"
         "完成后点击「返回条件列表」。\n\n"
         "参与活动的群无需在这里重复添加。\n"
@@ -210,7 +210,7 @@ def participation_page(data: dict[str, Any]) -> int:
 
 def _participation_intro(data: dict[str, Any]) -> list[str]:
     lines = [
-        "📮 准入条件（必须全部满足）",
+        "🧭 准入条件（必须全部满足）",
         platform_summary(data),
         "参与活动的群会另行全部校验。",
         "可一次发送一个或多个群聊/频道链接。",

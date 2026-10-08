@@ -20,6 +20,7 @@ from tg_lottery.telegram.creator_group_identity import filter_groups
 from tg_lottery.telegram.creator_picker_groups import picker_groups
 from tg_lottery.telegram.keyboard_layout import fit_rows, list_rows
 from tg_lottery.telegram.panel_pagination import creator_page_rows, titled_pages
+from tg_lottery.telegram.ui_style import style_keyboard, style_label
 
 TOKEN_LIFETIME = timedelta(hours=24)
 GROUP_PAGE_SIZE = 6
@@ -189,7 +190,7 @@ class CreatorRenderer:
             ),
             chat_id=target.chat_id,
             message_id=target.message_id,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+            reply_markup=style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows)),
         )
 
     async def _picker_group_state(self, user_id, *, selected_chat_ids, search):
@@ -283,16 +284,21 @@ class CreatorRenderer:
             CallbackRequest(item[1]) for row in rows for item in row if isinstance(item, tuple)
         )
         tokens = iter(await self._create_tokens(target, requests, context=context))
-        return InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    item
-                    if isinstance(item, InlineKeyboardButton)
-                    else InlineKeyboardButton(text=item[0], callback_data=f"secure:{next(tokens)}")
-                    for item in row
+        return style_keyboard(
+            InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        item
+                        if isinstance(item, InlineKeyboardButton)
+                        else InlineKeyboardButton(
+                            text=style_label(item[0], action=item[1]),
+                            callback_data=f"secure:{next(tokens)}",
+                        )
+                        for item in row
+                    ]
+                    for row in rows
                 ]
-                for row in rows
-            ]
+            )
         )
 
     async def _create_tokens(
@@ -347,7 +353,7 @@ def _group_navigation(
 
 
 def _group_picker_text(*, selected_count: int, has_groups: bool) -> str:
-    title = f"👥 参与活动的群（已选 {selected_count}）\n\n"
+    title = f"🤝 参与活动的群（已选 {selected_count}）\n\n"
     if not has_groups:
         return (
             title + "当前没有可管理的群。\n"

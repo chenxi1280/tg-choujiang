@@ -41,10 +41,10 @@ def card_payload(*, mode="message", bonuses=("activity", "invite")):
 def test_caption_keeps_group_gate_under_its_link_and_reference_section_order():
     payload = card_payload()
     text, pages = rule_manifest(payload)
-    assert "一群</a>\n└ 🎟️ 单日有效发言满 <b>2</b> 条" in text
+    assert "一群</a>\n└ 🚪 单日有效发言满 <b>2</b> 条" in text
     assert "二群</a>\n└" not in text and "公告频道</a>\n└" not in text
     assert "大于" not in text and "每条至少" not in text
-    sections = ("🎰", "📮", "🎁 <b>奖品内容", "⚠️", "🔋", "⏳", "📅", "🔗")
+    sections = ("✨", "🧭", "🎁 <b>奖品内容", "📝", "🌱", "⏳", "📅", "🔗")
     assert [text.index(section) for section in sections] == sorted(
         text.index(section) for section in sections
     )
@@ -74,7 +74,7 @@ def test_private_target_never_exposes_plain_invite_even_when_present():
 def test_invitation_gate_and_disabled_bonuses_are_not_presented_as_speech_rules():
     payload = card_payload(mode="invite", bonuses=())
     text, _pages = rule_manifest(payload)
-    assert "一群</a>\n└ 🎟️ 有效邀请满 <b>2</b> 人" in text
+    assert "一群</a>\n└ 🚪 有效邀请满 <b>2</b> 人" in text
     assert "单日有效发言" not in text and "每日发言加成" not in text
     assert "人品加成\uff1a</b>未开启" in text
     assert "有效邀请要求" in "".join(public_rule_blocks(payload))

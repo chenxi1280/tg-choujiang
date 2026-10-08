@@ -5,6 +5,7 @@ from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.keyboard_layout import columns
 from tg_lottery.telegram.member_window_guidance import window_guidance
+from tg_lottery.telegram.ui_style import style_keyboard
 
 GATE_PAGE_SIZE = 6
 
@@ -51,7 +52,7 @@ def _list_payload(context, groups, *, page):
     if paging:
         rows.append(paging)
     rows.append([_button("返回活动详情", f"m:detail:{reference}")])
-    return "\n\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+    return "\n\n".join(lines), style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 def _group_payload(context, *, chat_id, page):
@@ -81,7 +82,7 @@ def _group_payload(context, *, chat_id, page):
         else f"m:detail:{campaign.public_ref}"
     )
     rows.append([_button("返回门槛进度" if len(context["lines"]) > 1 else "返回活动详情", parent)])
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+    return text, style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 def _speaking_available(campaign, rules):

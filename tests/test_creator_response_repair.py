@@ -35,8 +35,8 @@ def test_gate_and_bonus_presets_and_custom_values_are_independent(value):
     data = _gate_draft()
     before = deepcopy(data)
     _, rows = gate_views.view(data)
-    presets = [action for row in rows for _, action in row if ":preset:daily_messages:" in action]
-    assert presets == [f"draft_gate:preset:daily_messages:{count}" for count in (5, 10, 20)]
+    presets = [action for row in rows for _, action in row if ":quick:daily_messages:" in action]
+    assert presets == [f"draft_gate:quick:daily_messages:{count}" for count in (5, 8, 10)]
     assert data[gate.EDITOR_KEY]["rule"]["daily_messages"] == 5
     editing = gate.apply_action(data, "draft_gate:input:daily_messages")
     changed = gate.receive(editing, str(value))
@@ -47,8 +47,8 @@ def test_gate_and_bonus_presets_and_custom_values_are_independent(value):
     assert bonus["bonus_working_copy"]["rule"]["messages_per_cycle"] == 5
     _, rows = editor_view(bonus, bonus["bonus_working_copy"])
     presets = [action for row in rows for _, action in row if "preset:cycle:" in action]
-    assert presets == [f"draft_bonus_preset:cycle:{count}" for count in (5, 10, 20)]
-    for count in (5, 10, 20):
+    assert presets == [f"draft_bonus_preset:cycle:{count}" for count in (5, 8, 10)]
+    for count in (5, 8, 10):
         preset = apply_action(bonus, f"draft_bonus_preset:cycle:{count}")
         assert preset["bonus_working_copy"]["rule"]["messages_per_cycle"] == count
         preset_gate = gate.apply_action(data, f"draft_gate:preset:daily_messages:{count}")

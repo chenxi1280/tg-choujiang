@@ -20,7 +20,7 @@ def campaign_state_card_text(payload: dict[str, Any]) -> str:
     if status is None:
         raise ValueError("unsupported campaign card state")
     name = html.escape(str(payload["campaign_name"]))
-    text = f"🎰 <b>{name}</b>\n\n{status}"
+    text = f"✨ <b>{name}</b>\n\n{status}"
     if payload.get("frozen_rules_text"):
         text = status + "\n\n" + payload["frozen_rules_text"]
     return _with_winner_summary(text, payload)

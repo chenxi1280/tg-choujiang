@@ -192,7 +192,7 @@ class TelegramGateway:
         payload = outbox.payload
         message_id = int(payload["message_id"])
         name = html.escape(str(payload["campaign_name"]))
-        text = f"🎰 <b>{name}</b>\n\n活动已取消，报名入口已关闭。"
+        text = f"✨ <b>{name}</b>\n\n活动已取消，报名入口已关闭。"
         if payload.get("frozen_rules_text"):
             text = "活动已取消，报名入口已关闭。\n\n" + payload["frozen_rules_text"]
         if payload.get("has_cover"):
@@ -355,7 +355,7 @@ def _campaign_deep_link(payload: dict[str, Any], action: str) -> str:
 
 def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
     closed = bool(payload.get("share_closed"))
-    text = "查看活动状态与规则" if closed else "👉 点击参与抽奖"
+    text = "✨ 查看活动状态与规则" if closed else "✨ 点击参与抽奖"
     action = "rules" if closed else "join"
     rows = [[InlineKeyboardButton(text=text, url=_campaign_deep_link(payload, action))]]
     if not closed:

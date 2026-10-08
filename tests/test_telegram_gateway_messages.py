@@ -148,12 +148,12 @@ def test_campaign_card_explains_per_group_messages_and_channel_following() -> No
 
     assert "主活动群</a>" in text
     assert "协作群</a>" in text
-    assert "🎫 关注-<a href=" in text and "公告频道</a>" in text
+    assert "🤝 关注-<a href=" in text and "公告频道</a>" in text
     assert text.count('href="https://t.me/lottery_test_bot?start=condition_') == 3
     for position in range(1, 4):
         assert f"condition_{payload['campaign_ref']}_{position}" in text
     assert text.count("累计发言至少 <b>10</b> 条") == 2
-    assert "🔋 <b>人品加成" in text
+    assert "🌱 <b>人品加成" in text
     assert "活跃加成" in text and text.count(">规则</a>") == 2
 
 
@@ -249,7 +249,7 @@ def test_campaign_state_card_has_business_text_only() -> None:
     settling = _campaign_state_card_text({"campaign_name": "周末抽奖", "card_state": "settling"})
     drawn = _campaign_state_card_text({"campaign_name": "周末抽奖", "card_state": "drawn"})
 
-    assert settling.startswith("🎰 <b>周末抽奖</b>")
+    assert settling.startswith("✨ <b>周末抽奖</b>")
     assert "报名已截止" in settling
     assert "已经开奖" in drawn
     assert "SETTLING" not in settling
@@ -392,17 +392,17 @@ async def test_campaign_card_matches_lotterybest_format() -> None:
     operation, _, kwargs = bot.sent[0]
     text = bot.sent[0][1][1]
     assert operation == "send_message"
-    assert "🎰 <b>周末抽奖 &lt;福利场&gt;</b>" in text
-    assert "📮 <b>参与条件" in text
+    assert "✨ <b>周末抽奖 &lt;福利场&gt;</b>" in text
+    assert "🧭 <b>参与条件" in text
     assert "🌏️ 归属地" in text
     assert "广东" in text
     assert "🪪 必须设置 Telegram 用户名" in text
-    assert '🎫 加入-<a href="https://t.me/welfare_group">福利群</a>' in text
+    assert '🤝 加入-<a href="https://t.me/welfare_group">福利群</a>' in text
     assert "累计发言至少 <b>10</b> 条" in text
     assert "🎁 <b>奖品内容" in text
-    assert "💰️ 一等奖" in text
+    assert "📦 一等奖" in text
     assert "<b>2</b>" in text
-    assert "🔋 <b>人品加成" in text
+    assert "🌱 <b>人品加成" in text
     assert "活跃加成" in text and "邀请加成" in text
     assert text.count(">规则</a>") == 2
     assert ">规则</a>" in text
@@ -425,7 +425,7 @@ async def test_campaign_keyboard_emphasizes_participation_with_rules_in_body() -
     buttons = [button for row in keyboard.inline_keyboard for button in row]
 
     assert len(buttons) == 3
-    assert buttons[0].text == "👉 点击参与抽奖"
+    assert buttons[0].text == "✨ 点击参与抽奖"
     assert buttons[0].url == _campaign_deep_link(_lotterybest_card_payload(), "join")
     assert buttons[0].callback_data is None
     assert [button.text for button in buttons[1:]] == ["邀请入口", "我的加成"]

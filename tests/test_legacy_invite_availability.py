@@ -9,6 +9,7 @@ from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram import member_invites
 from tg_lottery.telegram.member_flow import MemberFlow
+from tg_lottery.telegram.ui_style import plain_label
 
 NOW = datetime(2026, 10, 2, 12, tzinfo=UTC)
 PERSONAL_LINK = "https://t.me/+legacy_personal"
@@ -49,7 +50,7 @@ async def test_legacy_entry_reports_unavailable_link_without_exposing_it(
     assert PERSONAL_LINK not in text
     assert "仍可入群" not in text
     assert not any(button.url or button.copy_text for button in buttons)
-    assert any(button.text == "邀请记录" for button in buttons)
+    assert any(plain_label(button.text) == "邀请记录" for button in buttons)
     cipher.decrypt.assert_not_called()
 
 
@@ -70,9 +71,9 @@ async def test_legacy_valid_old_link_remains_available_for_joining_after_bonus_c
     assert "本期已截止" in text
     assert "不再计算本期或以后任何抽奖加成" in text
     assert PERSONAL_LINK in text
-    assert keyboard.inline_keyboard[0][0].text == "复制入群链接"
+    assert plain_label(keyboard.inline_keyboard[0][0].text) == "复制入群链接"
     assert keyboard.inline_keyboard[1][0].url == PERSONAL_LINK
-    assert keyboard.inline_keyboard[2][0].text == "转发入群"
+    assert plain_label(keyboard.inline_keyboard[2][0].text) == "转发入群"
     cipher.decrypt.assert_called_once_with(b"encrypted", context=f"invite-link:{link.id}")
 
 

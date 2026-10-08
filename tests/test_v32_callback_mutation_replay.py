@@ -114,7 +114,7 @@ async def test_committed_home_navigation_recovery_preserves_home_destination(mon
     edit = AsyncMock()
     monkeypatch.setattr(Message, "edit_text", edit)
     await creator.recover_applied_callback(query)
-    assert edit.await_args.args[0].startswith("抽奖助手")
+    assert edit.await_args.args[0].startswith("✨ 抽奖助手")
     assert len(edit.await_args.kwargs["reply_markup"].inline_keyboard) == 3
     creator._renderer.edit.assert_not_awaited()
 

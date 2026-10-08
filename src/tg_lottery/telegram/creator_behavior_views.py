@@ -14,7 +14,7 @@ FIELD_LABELS = {
 PRESETS = {
     "daily_messages": MESSAGE_COUNT_PRESETS,
     "consecutive_days": (1, 3, 7),
-    "required_valid_invites": (1, 2, 5),
+    "required_valid_invites": MESSAGE_COUNT_PRESETS,
 }
 MODE_LABELS = {"message": "发言数", "invite": "邀请好友"}
 
@@ -25,12 +25,12 @@ def admission_summary(data: dict[str, Any]) -> str:
     names = {str(item["id"]): chat_title(item) for item in data.get("participation_groups") or []}
     title = "发言数" if gate.get("type") == "message" else "邀请好友"
     if not gate.get("type"):
-        return "🎟 抽奖门槛：请选一种类型并配置至少一个群\n" + "\n".join(
+        return "🚪 抽奖门槛：请选一种类型并配置至少一个群\n" + "\n".join(
             data.get("import_notes") or []
         )
     if not groups:
-        return f"🎟 抽奖门槛：{title}（请配置至少一个群）"
-    lines = [f"🎟 抽奖门槛：{title}（配置群必须分别全部达标）"]
+        return f"🚪 抽奖门槛：{title}（请配置至少一个群）"
+    lines = [f"🚪 抽奖门槛：{title}（配置群必须分别全部达标）"]
     lines.extend(
         f"· {names.get(key, key)}：{rule_text(rule, gate['type'])}" for key, rule in groups.items()
     )
@@ -50,6 +50,12 @@ def rule_text(rule: dict, mode: str) -> str:
 
 
 def view(data: dict) -> tuple[str, list]:
+    text, rows = _view(data)
+    notice = (data.get(EDITOR_KEY) or {}).get("notice")
+    return (notice + "\n\n" + text if notice else text), rows
+
+
+def _view(data: dict) -> tuple[str, list]:
     editor = data[EDITOR_KEY]
     if editor.get("pending_action"):
         return _pending_view(editor)
@@ -60,7 +66,8 @@ def view(data: dict) -> tuple[str, list]:
             if field == "search"
             else _numeric_input_text(data, editor, field=field)
         )
-        return text, [[("取消输入", "draft_gate:cancel_input")]]
+        rows = [] if field == "search" else fit_rows([_field_preset_row(editor, field)])
+        return text, [*rows, [("取消输入", "draft_gate:cancel_input")]]
     if "copy_targets" in editor:
         return _copy_view(data, editor)
     if editor.get("chat_id"):
@@ -77,8 +84,9 @@ def _numeric_input_text(data, editor, *, field):
     value = (editor.get("rule") or {}).get(field, "未设置")
     label = FIELD_LABELS[field]
     return (
-        f"抽奖门槛 · {title}\n当前{label}：{value}\n\n请输入{label}（正整数，只发送数字）："
-        "\n提交后返回本群编辑页，暂存本群后再保存整场门槛；取消输入保留其他暂存设置。"
+        f"🚪 抽奖门槛 · {title}\n当前{label}：{value}\n\n请输入{label}（正整数，只发送数字）："
+        "\n💾 回复数字或点快捷值，核验通过后直接保存本群到草稿。"
+        "\n↩️ 取消输入保留原值及其他群的暂存设置。"
     )
 
 
@@ -99,7 +107,7 @@ def _pending_view(editor):
 def _list_view(data, editor):
     mode = editor.get("type")
     gate = {"type": mode, "groups": editor.get("groups") or {}}
-    text = "抽奖门槛（只能选择一种）\n\n" + admission_summary(data | {"admission": gate})
+    text = "🚪 抽奖门槛（只能选择一种）\n\n" + admission_summary(data | {"admission": gate})
     text += "\n\n" + _selection_hint(data, mode)
     visible, page, _ = _visible_groups(data, editor)
     text += "\n\n" + "\n".join(
@@ -118,7 +126,13 @@ def _list_view(data, editor):
     rows.extend(_group_rows(data, editor))
     if mode == "invite":
         rows.append([("有效邀请要求", "draft_gate:retention")])
-    return text, [*rows, [("保存本场门槛", "draft_gate:save")], [("返回预览", "draft_gate:leave")]]
+    return text, [*rows, *_list_footer(data, gate)]
+
+
+def _list_footer(data, gate):
+    if gate == (data.get("admission") or {}) and gate["groups"]:
+        return [[("返回预览（已保存）", "draft_gate:leave")]]
+    return [[("保存本场门槛", "draft_gate:save")], [("返回预览", "draft_gate:leave")]]
 
 
 def _selection_hint(data: dict, mode: str | None) -> str:
@@ -128,7 +142,7 @@ def _selection_hint(data: dict, mode: str | None) -> str:
     if not data.get("participation_groups"):
         return selected + "\n请点击「选择参与活动的群」，选好群后回来设置门槛。"
     fields = "每日条数和连续天数" if mode == "message" else "有效邀请人数"
-    return selected + f"\n请点击下方群名设置{fields}，保存本群后再保存整场门槛。"
+    return selected + f"\n请点击下方群名设置{fields}；快捷值或回复数字直接保存本群到草稿。"
 
 
 def _group_view(data: dict, editor: dict) -> tuple[str, list]:
@@ -142,14 +156,22 @@ def _group_view(data: dict, editor: dict) -> tuple[str, list]:
     rows = fit_rows([_field_preset_row(editor, field) for field in fields])
     rows.extend(
         [
-            [("本群暂存到编辑稿", "draft_gate:group_save")],
+            [("保存本群门槛", "draft_gate:save_group")],
             [("移除本群门槛", "draft_gate:disable")],
             [("返回群列表", "draft_gate:list")],
         ]
     )
     if len(data["participation_groups"]) > 1:
         rows.insert(-1, [("复制到选定群", "draft_gate:copy_open")])
-    return f"{chat_title(group)}\n{rule_text(editor['rule'], mode)}\n每日加成独立设置。", rows
+    return (
+        f"🚪 抽奖门槛 · {chat_title(group)}\n{rule_text(editor['rule'], mode)}\n"
+        "🌱 每日加成独立设置。\n\n💾 快捷值或直接回复正整数，即保存本群门槛到草稿。\n"
+        "默认修改每日条数；连续天数请点对应自定义。"
+        if mode == "message"
+        else f"🚪 抽奖门槛 · {chat_title(group)}\n{rule_text(editor['rule'], mode)}\n\n"
+        "💾 快捷值或直接回复正整数，即保存本群有效邀请人数到草稿。",
+        rows,
+    )
 
 
 def _visible_groups(data: dict, editor: dict):
@@ -219,10 +241,12 @@ def _copy_view(data: dict, editor: dict) -> tuple[str, list]:
         ]
         for item in groups
     ]
+    navigation = []
     if page:
-        rows.append([("上一页", f"draft_gate:page:{page - 1}")])
+        navigation.append(("上一页", f"draft_gate:page:{page - 1}"))
     if (page + 1) * PAGE_SIZE < count:
-        rows.append([("下一页", f"draft_gate:page:{page + 1}")])
+        navigation.append(("下一页", f"draft_gate:page:{page + 1}"))
+    rows.extend([navigation] if navigation else [])
     rows.extend(_search_rows(editor, page))
     if selected:
         rows.append([("确认覆盖选定群", "draft_gate:copy_confirm")])
@@ -253,7 +277,7 @@ def _field_preset_row(editor: dict, field: str) -> list:
     values = [
         (
             f"{'✓ ' if value == current else ''}{value}{units[field]}",
-            f"draft_gate:preset:{field}:{value}",
+            f"draft_gate:quick:{field}:{value}",
         )
         for value in PRESETS[field]
     ]

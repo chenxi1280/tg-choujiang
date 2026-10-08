@@ -13,6 +13,7 @@ from tg_lottery.telegram.public_projection import (
     format_public_time,
     qualification_state_text,
 )
+from tg_lottery.telegram.ui_style import style_keyboard
 
 _LIST_ROUTE_FIELDS = 2
 _LIST_ROUTE_WITH_PARENT_FIELDS = 4
@@ -27,7 +28,7 @@ _CATEGORY_LABELS = {
 def build_participated_campaign_list(
     page: ParticipatedCampaignPage, *, invitation_only: bool, parent: tuple[str, int] | None = None
 ) -> tuple[str, InlineKeyboardMarkup]:
-    title = "👥 我的邀请记录" if invitation_only else "🎟 我参加的抽奖"
+    title = "🤝 我的邀请记录" if invitation_only else "✨ 我参加的抽奖"
     empty = "当前分类没有可显示的邀请活动" if invitation_only else "当前分类没有参与记录"
     lines = [title, ""]
     if page.rows:
@@ -85,7 +86,7 @@ def _campaign_list_keyboard(
         route = f"nav:join:{parent[0]}:{parent[1]}"
         rows.append([InlineKeyboardButton(text="返回参与列表", callback_data=route)])
     rows.append([InlineKeyboardButton(text="返回首页", callback_data="nav:index")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 def _category_row(

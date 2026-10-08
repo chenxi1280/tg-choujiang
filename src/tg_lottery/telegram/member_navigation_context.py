@@ -4,6 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.application.callback_tokens import CallbackRequest
 from tg_lottery.telegram.keyboard_layout import fit_rows
+from tg_lottery.telegram.ui_style import plain_label, style_keyboard
 
 READ_PREFIXES = (
     "m:detail:",
@@ -59,7 +60,7 @@ async def scoped_keyboard(tokens, keyboard, *, context: MemberPageContext, user_
             label = _return_label(descriptor["route"]) if descriptor["back"] else button.text
             buttons.append(InlineKeyboardButton(text=label, callback_data="secure:" + next(issued)))
         rows.append(buttons)
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 def _descriptor(button, context: MemberPageContext) -> dict | None:
@@ -73,7 +74,9 @@ def _descriptor(button, context: MemberPageContext) -> dict | None:
         }
     if route is None or not route.startswith(READ_PREFIXES):
         return None
-    back = button.text.startswith("返回") and route != "nav:index" and bool(context.trail)
+    back = (
+        plain_label(button.text).startswith("返回") and route != "nav:index" and bool(context.trail)
+    )
     if back:
         return {"route": context.trail[-1], "trail": list(context.trail[:-1]), "back": True}
     if route in context.trail:

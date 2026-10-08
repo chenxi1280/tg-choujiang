@@ -81,7 +81,7 @@ def _landing_text(
     draw_time = _draw_time_text(landing, outcome=outcome)
     verification = "\n⚠ 暂时无法核验你是否已在群内，入群后仍需核验。" if membership is None else ""
     return (
-        f"👥 {identity}\n\n{state}{verification}\n\n"
+        f"🤝 {identity}\n\n{state}{verification}\n\n"
         f"最晚计奖入群时间：{deadline}\n{draw_time}\n\n"
         "加入该群不等于自动报名本次抽奖。\n"
         "此邀请入口仅属于本次抽奖，结束后如入群入口仍有效，可继续入群，不计入下次抽奖。"

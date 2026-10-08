@@ -5,9 +5,14 @@ from tg_lottery.telegram import creator_behavior_editor as editor
 from tg_lottery.telegram import creator_behavior_views as views
 from tg_lottery.telegram.creator_bonus_permissions import verify_publication_bonus_permissions
 from tg_lottery.telegram.creator_bonus_policy import uses_unlimited_policy
+from tg_lottery.telegram.creator_gate_quick_save import (
+    QUICK_PREFIX,
+    handles_quick,
+    input_field,
+    prepare_save,
+)
 from tg_lottery.telegram.creator_gate_schedule import validate_gate_time
 from tg_lottery.telegram.creator_invite_retention import view as retention_view
-from tg_lottery.telegram.creator_renderer import PanelTarget
 from tg_lottery.telegram.creator_required_chats_data import required_draft_data
 from tg_lottery.telegram.creator_retention_revision import (
     resolve_retention,
@@ -28,6 +33,9 @@ class CreatorBehaviorAdmission:
     async def handle(self, query: Any, grant: Any) -> bool:
         data = await required_draft_data(self._sessions, query.from_user.id)
         action = grant.action
+        if handles_quick(action):
+            await self._handle_quick(query, data=data, action=action)
+            return False
         if action in {"draft_gate:retention_saved", "draft_gate:retention_edited"}:
             await self._render(query, resolve_retention(data, use_saved=action.endswith("saved")))
             return False
@@ -63,15 +71,49 @@ class CreatorBehaviorAdmission:
         await self._render(query, changed)
         return False
 
+    async def _handle_quick(self, query, *, data, action):
+        if action == "draft_gate:save_group":
+            field = input_field(data)
+            value = str(data[editor.EDITOR_KEY]["rule"][field])
+        else:
+            field, value = action.removeprefix(QUICK_PREFIX).split(":", 1)
+        changed = await self._quick_save(data, user_id=query.from_user.id, field=field, value=value)
+        await self._render(query, changed)
+
     async def receive(self, message: Any, data: dict[str, Any]) -> None:
-        changed = editor.receive(data, message.text or "")
+        if (data[editor.EDITOR_KEY]).get("field") == "search":
+            changed = editor.receive(data, message.text or "")
+        else:
+            try:
+                reply = getattr(message, "reply_to_message", None)
+                if reply is not None and reply.message_id != data["panel_message_id"]:
+                    raise UserFacingError("所回复的门槛页已更新，请使用当前群页面输入正整数")
+                changed = await self._quick_save(
+                    data,
+                    user_id=message.from_user.id,
+                    field=input_field(data),
+                    value=message.text or "",
+                )
+            except UserFacingError as exc:
+                current = data[editor.EDITOR_KEY]
+                changed = data | {
+                    editor.EDITOR_KEY: current | {"notice": "⚠️ 未保存：" + exc.public_message}
+                }
+        await self._reply_result(message, changed)
+
+    async def _quick_save(self, data, *, user_id, field, value):
+        changed = prepare_save(data, field=field, value=value)
+        validate_gate_time(changed)
+        await verify_publication_bonus_permissions(self._bot, user_id, changed)
+        return changed
+
+    async def _reply_result(self, message, changed):
         await self._sessions.set(message.from_user.id, "draft:behavior_admission", changed)
         text, rows = views.view(changed)
-        await self._renderer.edit(
-            PanelTarget(message.from_user.id, message.chat.id, int(changed["panel_message_id"])),
-            text=text,
-            rows=rows,
-        )
+        panel = await message.answer(text)
+        updated = changed | {"panel_message_id": panel.message_id}
+        await self._sessions.set(message.from_user.id, "draft:behavior_admission", updated)
+        await self._renderer.render(panel, user_id=message.from_user.id, text=text, rows=rows)
 
     async def _render(self, query: Any, data: dict) -> None:
         updated = synchronize_retention(data) | {"panel_message_id": query.message.message_id}

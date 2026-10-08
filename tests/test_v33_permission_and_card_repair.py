@@ -109,11 +109,11 @@ def test_long_cover_description_keeps_all_conditions_and_prizes_on_main_caption(
     assert "一群</a>" in caption and "二群</a>" in caption and "公告频道</a>" in caption
     for prize in payload["prizes"]:
         assert f"{prize['name']} \u00d7 <b>{prize['winner_count']}</b>" in caption
-    markers = ("📮", "🎁 <b>奖品", "⚠️", "🔋", "📅")
+    markers = ("🧭", "🎁 <b>奖品", "📝", "🌱", "📅")
     assert [caption.index(x) for x in markers] == sorted(caption.index(x) for x in markers)
     full = "\n\n".join(pages)
     assert payload["presentation"]["description"] in full
-    assert full.index("🎁 <b>奖品") < full.index("⚠️") < full.index("完整统计与加成")
+    assert full.index("🎁 <b>奖品") < full.index("📝 <b>抽奖说明") < full.index("完整统计与加成")
 
 
 def test_large_target_and_prize_list_keeps_complete_order_in_rule_messages():
@@ -129,7 +129,7 @@ def test_large_target_and_prize_list_keeps_complete_order_in_rule_messages():
     full = "\n\n".join(pages)
     assert all(item["title"] in full for item in payload["presentation"]["required_chats"])
     assert all(item["name"] in full for item in payload["prizes"])
-    assert full.index("目标群19") < full.index("🎁 <b>奖品") < full.index("⚠️")
+    assert full.index("目标群19") < full.index("🎁 <b>奖品") < full.index("📝 <b>抽奖说明")
 
 
 def test_runtime_logs_include_action_processing_and_queue_times_without_payload():

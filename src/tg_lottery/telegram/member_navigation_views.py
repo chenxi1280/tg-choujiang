@@ -11,6 +11,7 @@ from tg_lottery.telegram.member_detail_actions import (
 from tg_lottery.telegram.member_record_text import current_effective_count, participant_record_pages
 from tg_lottery.telegram.operational_issue_views import operational_issue_text
 from tg_lottery.telegram.public_projection import format_public_time
+from tg_lottery.telegram.ui_style import style_keyboard
 
 TERMINAL = frozenset({CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED})
 
@@ -40,7 +41,7 @@ def participant_detail_view(detail, *, user_id: int, bot_username: str):
         )
     rows.extend(_award_rows(detail, user_id=user_id, bot_username=bot_username))
     rows.append([_callback("返回参与列表", "nav:join"), _callback("返回首页", "nav:index")])
-    return pages, InlineKeyboardMarkup(inline_keyboard=_distinct_rows(rows))
+    return pages, style_keyboard(InlineKeyboardMarkup(inline_keyboard=_distinct_rows(rows)))
 
 
 def _detail_body(detail, *, pages, now):

@@ -73,7 +73,7 @@ def bonus_header(
             label = "实际开奖"
             moment = outcome.completed_at
     return (
-        f"🔋 {title}\n活动：{campaign.name}\n"
+        f"{'🤝' if '邀请' in title else '🌱'} {title}\n活动：{campaign.name}\n"
         f"{label}：{format_public_time(moment, campaign.timezone)}"
     )
 
@@ -89,7 +89,7 @@ def invitation_section_title(rules: object) -> str:
 
 
 def invitation_category_label(rules: object, total: int) -> str:
-    title = "👥 " + invitation_section_title(rules)
+    title = "🤝 " + invitation_section_title(rules)
     return f"{title}｜{total} 次" if rules.invite_bonus_enabled else title
 
 

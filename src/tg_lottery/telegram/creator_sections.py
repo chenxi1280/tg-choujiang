@@ -82,7 +82,7 @@ def _gate_complete(data: dict) -> bool:
 
 def _conditions(data: dict) -> tuple[str, ButtonRows]:
     text = (
-        "参与条件设置\n\n全部参与群都必须加入；额外关注、用户限制和行为门槛分别核验。\n"
+        "🧭 参与条件设置\n\n全部参与群都必须加入；额外关注、用户限制和行为门槛分别核验。\n"
         f"{platform_summary(data)}"
         f"{admission_summary(data)}"
     )
@@ -110,7 +110,7 @@ def _cover(data: dict) -> tuple[str, ButtonRows]:
         rows.append([("清除封面", "draft_cover_clear")])
     rows.append([("返回草稿", "draft_back")])
     return (
-        f"封面与说明\n\n封面：{'已设置' if has_cover else '未设置（可选）'}\n"
+        f"📷 封面与说明\n\n封面：{'已设置' if has_cover else '未设置（可选）'}\n"
         f"抽奖说明：{data.get('description') or '未设置（可选）'}",
         rows,
     )
@@ -118,7 +118,7 @@ def _cover(data: dict) -> tuple[str, ButtonRows]:
 
 def _more(data: dict) -> tuple[str, ButtonRows]:
     return (
-        "更多设置\n\n普通设置立即保存；载入和清空会先显示影响并要求确认。\n"
+        "🪪 更多设置\n\n普通设置立即保存；载入和清空会先显示影响并要求确认。\n"
         f"发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}",
         [
             [("发奖人员", "draft_issuer"), ("消息提示", "draft_messages")],
@@ -131,7 +131,7 @@ def _more(data: dict) -> tuple[str, ButtonRows]:
 
 def _prizes(data: dict) -> tuple[str, ButtonRows]:
     prizes = data.get("prizes") or []
-    lines = ["奖品与领奖", ""]
+    lines = ["📦 奖品与领奖", ""]
     lines.extend(
         f"{index}. {p['name']} × {p['winner_count']} 人" for index, p in enumerate(prizes, 1)
     )
@@ -143,7 +143,9 @@ def _prizes(data: dict) -> tuple[str, ButtonRows]:
         lines.append(f"\n未完成新增：{data['pending_prize_name']}（还需中奖人数）")
         rows = [[("继续新增奖品", "draft_prize_continue"), ("取消新增奖品", "draft_prize_cancel")]]
     if prizes:
-        rows.append([("删除指定奖品", "draft_delete_prize"), ("清空奖品", "draft_clear_prizes")])
+        rows.extend(
+            [[("删除指定奖品", "draft_delete_prize")], [("清空奖品", "draft_clear_prizes")]]
+        )
     if data.get("pending_prize_name"):
         rows.append([("领奖说明", "draft_claim")])
     rows.append([("返回草稿", "draft_back")])
@@ -154,7 +156,7 @@ def _user_limits(data: dict) -> tuple[str, ButtonRows]:
     required = bool(data.get("username_required"))
     regions = "、".join(data.get("allowed_regions") or []) or "全国"
     return (
-        f"用户限制\n\n用户名：{'必填' if required else '可为空'}\n"
+        f"🪪 用户限制\n\n用户名：{'必填' if required else '可为空'}\n"
         f"允许地区：{regions}\n选择立即保存。",
         [
             [

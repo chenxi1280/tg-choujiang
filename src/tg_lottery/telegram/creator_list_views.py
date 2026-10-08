@@ -8,6 +8,7 @@ from tg_lottery.telegram.public_projection import (
     campaign_state_text,
     format_public_time,
 )
+from tg_lottery.telegram.ui_style import style_keyboard
 
 CATEGORIES = (
     ("发布中", "publishing"),
@@ -29,7 +30,9 @@ CATEGORY_COLUMNS = 2
 
 
 def creator_list_view(result) -> tuple[str, InlineKeyboardMarkup]:
-    scope = "我可管理的活动（进入时实时核验全部参与群权限）" if result.managed else "我发起的抽奖"
+    scope = (
+        "✨ 我可管理的活动（进入时实时核验全部参与群权限）" if result.managed else "✨ 我发起的抽奖"
+    )
     lines = [scope, "", f"共 {result.total} 场 · 第 {result.page + 1}/{result.page_count} 页"]
     prefix = "nav:managed" if result.managed else "nav:created"
     categories = _list_categories(result)
@@ -56,7 +59,7 @@ def creator_list_view(result) -> tuple[str, InlineKeyboardMarkup]:
     rows.extend(
         [[_button("创建新抽奖", "nav:new")], [_button(*other), _button("返回首页", "nav:index")]]
     )
-    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+    return "\n".join(lines), style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 def _list_categories(result):

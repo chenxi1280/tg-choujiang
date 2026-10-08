@@ -27,6 +27,8 @@ def _review_data():
 def test_review_shows_exact_group_rules_and_all_qualification_conditions():
     data = _review_data()
     text = "".join(rule_review_pages(data))
+    assert text.startswith("📋 发布前完整规则 · 未发布\n\n")
+    assert "编辑草稿" not in text and "下一项\uff1a" not in text
     for expected in ("读书群", "公告频道", "每邀请 3 个", "至少 2 条", "立即核验", "阅读奖"):
         assert expected in text
     assert "-1001" not in text and "-1002" not in text

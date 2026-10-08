@@ -46,7 +46,7 @@ BONUS_ACTIONS = (
 
 def bonus_text(data: dict[str, Any]) -> str:
     return (
-        "🔋 抽奖加成\n\n当前设置："
+        "🌱 抽奖加成\n\n当前设置："
         + bonus_summary(data)
         + "\n邀请资格："
         + retention.retention_text(retention.retention_hours(data))
@@ -106,11 +106,11 @@ def bonus_rows(data: dict[str, Any]) -> ButtonRows:
 def invite_bonus_text(data: dict[str, Any]) -> str:
     if _invite_mode(data) == "ratio":
         return (
-            "👥 邀请抽奖加成\n\n"
+            "🤝 邀请抽奖加成\n\n"
             f"每 {_ratio(data)} 个有效邀请 +1 次，最多 {data['invite_bonus_cap']} 次。"
         )
     return (
-        "👥 邀请抽奖加成\n\n"
+        "🤝 邀请抽奖加成\n\n"
         f"当前阶梯：{_tier_summary(data)}\n"
         "每档表示累计有效邀请人数对应的累计抽奖加成。"
     )
@@ -151,7 +151,7 @@ def invite_bonus_rows(data: dict[str, Any]) -> ButtonRows:
 
 def activity_bonus_text(data: dict[str, Any]) -> str:
     return (
-        "💬 活跃加成（人品）\n\n"
+        "🌱 活跃加成（人品）\n\n"
         f"在每个条件群每天分别发送达到 {data['activity_message_threshold']} 条有效消息，"
         f"全部达标后当天增加 {data['activity_reward_tickets']} 次。\n"
         "频道只要求关注，不要求发言。\n"

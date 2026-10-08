@@ -40,6 +40,7 @@ from tg_lottery.telegram.member_group_invites import (
     _group_rows,
     _missing_link_row,
 )
+from tg_lottery.telegram.ui_style import plain_label
 
 
 class PublicationReviewBot:
@@ -160,7 +161,7 @@ def test_group_invite_link_buttons_follow_delivery_certainty(
 
     button = _missing_link_row(campaign, {"id": -1001, "title": "A群"}, status)[0][0]
 
-    assert button.text == label
+    assert plain_label(button.text) == plain_label(label)
     assert (button.callback_data != "member:noop") is actionable
 
 
@@ -201,7 +202,7 @@ def test_invite_join_deadline_keeps_legacy_group_link_without_bonus_share_prompt
     )
     assert len(rows) == 1 and len(rows[0]) == 1
     assert rows[0][0].url == "https://t.me/+join-only"
-    assert "不计加成" in rows[0][0].text
+    assert "不计加成" in plain_label(rows[0][0].text)
     assert rows[0][0].copy_text is None
 
 

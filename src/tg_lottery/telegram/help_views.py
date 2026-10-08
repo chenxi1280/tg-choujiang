@@ -4,6 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.domain.draft_contract import DRAFT_SESSION_TTL_HOURS
 from tg_lottery.telegram.keyboard_layout import columns
+from tg_lottery.telegram.ui_style import style_keyboard
 
 DRAFT_UNAVAILABLE_TEXT = (
     "当前没有可继续的草稿。\n"
@@ -37,14 +38,14 @@ GUIDE_TEXT = f"""📖 抽奖机器人使用指南
 “活跃加成（人品）”和“邀请加成”分别设置各群奖励。发布前核对名称、全部条件和时间。
 未发布草稿在最后一次更新后保留 {DRAFT_SESSION_TTL_HOURS} 小时；发送 /new 可继续有效草稿。
 
-🎫 参加抽奖
+🤝 参加抽奖
 打开活动卡的参与链接，先阅读完整条件，再点击“登记参与”或“查看本人进度”。
 按提示关注频道、加入群并验证资格；首次核验通过才开始计算本场发言与邀请。
 只查看规则或入群不会自动报名，登记前的行为不补计。历史活动沿用原报名规则。
 加入申请需等待管理员批准。发言门槛、用户名或地区要求以本次活动规则为准。
 “我参加的抽奖”可查看报名状态、抽奖次数和结果。
 
-👥 邀请与活跃加成
+🤝 邀请与活跃加成
 报名后进入“我的加成”，选择邀请加成和目标群，复制本期邀请链接分享。
 每次抽奖、每个群分别累计；有效邀请完成留存与核验后自动计入，无需手动领取。
 点击链接、已经在群内或未完成核验均不代表获得加成。
@@ -63,15 +64,17 @@ GUIDE_TEXT = f"""📖 抽奖机器人使用指南
 
 
 def guide_keyboard(links: HelpLinks) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="🎁 创建抽奖", callback_data="nav:create"),
-                InlineKeyboardButton(text="🎫 我参加的抽奖", callback_data="nav:join"),
-            ],
-            *links.rows(),
-            [InlineKeyboardButton(text="↩ 返回首页", callback_data="nav:index")],
-        ]
+    return style_keyboard(
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🎁 创建抽奖", callback_data="nav:create"),
+                    InlineKeyboardButton(text="🤝 我参加的抽奖", callback_data="nav:join"),
+                ],
+                *links.rows(),
+                [InlineKeyboardButton(text="↩ 返回首页", callback_data="nav:index")],
+            ]
+        )
     )
 
 
@@ -90,20 +93,22 @@ def guide_summary(links):
             for label, key in GUIDE_TOPICS
         ]
     )
-    return "使用指南\n\n选择你正在办理的事项。", InlineKeyboardMarkup(
-        inline_keyboard=[
-            *rows,
-            *links.rows(),
-            [InlineKeyboardButton(text="返回首页", callback_data="nav:index")],
-        ]
+    return "📖 使用指南\n\n选择你正在办理的事项。", style_keyboard(
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                *rows,
+                *links.rows(),
+                [InlineKeyboardButton(text="返回首页", callback_data="nav:index")],
+            ]
+        )
     )
 
 
 def guide_topic(key: str, *, bot_username: str):
     markers = {
         "create": "🎁 发起抽奖",
-        "member": "🎫 参加抽奖",
-        "bonus": "👥 邀请与活跃加成",
+        "member": "🤝 参加抽奖",
+        "bonus": "🤝 邀请与活跃加成",
         "results": "🏆 开奖与领奖",
     }
     marker = markers[key]
@@ -131,4 +136,4 @@ def guide_topic(key: str, *, bot_username: str):
     if key == "create":
         rows = [rows[0] + rows[1], rows[2]]
     rows.append([InlineKeyboardButton(text="返回使用指南", callback_data="nav:help")])
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+    return text, style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))

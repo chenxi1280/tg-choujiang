@@ -10,7 +10,7 @@ from tg_lottery.telegram.public_projection import (
 
 def participant_record_pages(detail: ParticipantCampaignDetail) -> tuple[str, ...]:
     blocks = [
-        f"🎟 {detail.campaign_name}\n"
+        f"✨ {detail.campaign_name}\n"
         f"活动状态: {_record_state_text(detail)}\n"
         f"参与资格: {qualification_state_text(detail.qualification)}\n"
         f"计划开奖时间: {format_public_time(detail.draw_at, detail.timezone)}",

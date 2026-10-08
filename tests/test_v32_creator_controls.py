@@ -13,6 +13,7 @@ from tg_lottery.telegram.creator_views import dashboard_rows
 from tg_lottery.telegram.draft_config import new_draft
 from tg_lottery.telegram.home_views import home_keyboard
 from tg_lottery.telegram.personal_flow import PersonalFlow
+from tg_lottery.telegram.ui_style import plain_label
 
 
 @pytest.mark.parametrize(
@@ -25,8 +26,8 @@ from tg_lottery.telegram.personal_flow import PersonalFlow
 )
 def test_home_has_one_creation_entry_and_separate_user_roles(data, label):
     rows = home_keyboard(data).inline_keyboard
-    assert [button.text for button in rows[0]] == ["我参加的抽奖", "我发起的抽奖"]
-    assert rows[1][0].text == label
+    assert [plain_label(button.text) for button in rows[0]] == ["我参加的抽奖", "我发起的抽奖"]
+    assert plain_label(rows[1][0].text) == label
     assert sum(len(row) for row in rows) == 5
     assert {button.callback_data for row in rows for button in row} >= {
         "nav:join",
@@ -127,4 +128,4 @@ async def test_personal_home_callback_updates_existing_panel_and_uses_real_draft
     queries.creator_navigation_state.assert_awaited_once_with(201)
     message.answer.assert_not_awaited()
     keyboard = message.edit_text.await_args.kwargs["reply_markup"]
-    assert keyboard.inline_keyboard[1][0].text == "继续创建抽奖"
+    assert plain_label(keyboard.inline_keyboard[1][0].text) == "继续创建抽奖"

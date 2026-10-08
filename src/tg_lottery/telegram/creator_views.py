@@ -30,21 +30,21 @@ def main_keyboard() -> InlineKeyboardMarkup:
 def preview_text(data: dict[str, Any], *, now: datetime | None = None) -> str:
     status = _preview_status(data, now or utcnow())
     return (
-        "创建抽奖 · 编辑草稿（未发布）\n"
+        "✨ 创建抽奖 · 编辑草稿（未发布）\n"
         f"下一项：{next_draft_action(data)[0]}\n\n"
-        f"🎰 抽奖标题：{data.get('title') or '【等待设置】'}\n\n"
-        f"🏞️ 封面设置：{'【已设置】' if data.get('cover_file_id') else '【等待设置】'}\n\n"
-        f"🪪 用户限制：{_user_limits(data)}\n\n"
+        f"✨ 抽奖标题：{data.get('title') or '【等待设置】'}\n"
+        f"📷 封面设置：{'【已设置】' if data.get('cover_file_id') else '【等待设置】'}\n"
+        f"🪪 用户限制：{_user_limits(data)}\n"
         f"🌏️ 地区限制：{_region_limits(data)}\n\n"
-        f"👥 参与活动的群：{_participation_groups(data)}\n"
-        f"📮 准入条件：{_requirements(data)}\n\n"
+        f"🤝 参与活动的群：{_participation_groups(data)}\n"
+        f"🧭 准入条件：{_requirements(data)}\n\n"
         f"{platform_summary(data)}"
         f"{_base_summary(data)}\n\n"
         f"🎁 奖品内容：\n{_prize_lines(data.get('prizes', []))}\n"
-        f"⚠️ 抽奖说明：{data.get('description') or '【等待设置】'}\n\n"
-        f"🔋 抽奖加成：{bonus_summary(data)}\n{retention_summary(data)}\n"
-        f"🌀 开奖时间：{_draw_text(data)}\n\n"
-        f"🎅 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}\n\n"
+        f"📝 抽奖说明：{data.get('description') or '【等待设置】'}\n\n"
+        f"🌱 抽奖加成：{bonus_summary(data)}\n{retention_summary(data)}\n"
+        f"🗓️ 开奖时间：{_draw_text(data)}\n"
+        f"🧑‍💼 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}\n"
         f"🔔 参与提示：{message_policy_summary(data)}\n\n"
         f"当前状态：{status}\n{bonus_window_warning(data, now=now)}"
         "（本页面为预览文案，不是正式效果）"
@@ -96,7 +96,7 @@ def prizes_text(data: dict[str, Any]) -> str:
 def title_prompt_text(data: dict[str, Any]) -> str:
     return (
         "🏷 创建抽奖·设置标题（必填项）\n\n"
-        f"当前标题：{data.get('title') or '【等待设置】'}\n\n"
+        f"当前标题：{data.get('title') or '【等待设置】'}\n"
         "请回复抽奖标题（最多 80 字）："
     )
 
@@ -141,7 +141,7 @@ def _participation_groups(data: dict[str, Any]) -> str:
 def _prize_lines(prizes: list[dict[str, Any]]) -> str:
     if not prizes:
         return "【等待设置】"
-    return "\n".join(f"  💰 {item['name']} × {item['winner_count']} 人" for item in prizes)
+    return "\n".join(f"  📦 {item['name']} × {item['winner_count']} 人" for item in prizes)
 
 
 def _base_summary(data: dict[str, Any]) -> str:

@@ -93,7 +93,7 @@ def message_count_blocks(rules: CampaignRules) -> tuple[str, ...]:
 
 def public_rule_blocks(payload: Mapping) -> tuple[str, ...]:
     return (
-        f"🎰 <b>{html.escape(str(payload['name']))}</b>",
+        f"✨ <b>{html.escape(str(payload['name']))}</b>",
         *membership_blocks(payload),
         *prize_blocks(payload),
         *description_blocks(payload),
@@ -150,10 +150,10 @@ def compact_card(payload: Mapping) -> str:
     rule_url = html.escape(campaign_link(payload, "rules"), quote=True)
     return "\n\n".join(
         (
-            f"🎰 <b>{html.escape(str(payload['name']))}</b>",
+            f"✨ <b>{html.escape(str(payload['name']))}</b>",
             "\n".join(membership_blocks(payload)),
             "\n".join(prize_blocks(payload)),
-            f'⚠️ <b>抽奖说明：</b>正文较长，<a href="{rule_url}">查看完整说明与规则</a>',
+            f'📝 <b>抽奖说明：</b>正文较长，<a href="{rule_url}">查看完整说明与规则</a>',
             bonus_block(payload),
             *time_blocks(payload),
             *footer_blocks(payload),
@@ -163,8 +163,8 @@ def compact_card(payload: Mapping) -> str:
 
 def summary_card(payload: Mapping, *, page_count: int, limit: int) -> str:
     prefix = (
-        f"🎰 <b>{html.escape(str(payload['name']))}</b>\n\n"
-        f"📮 <b>参与条件：</b>正文较长，完整清单见规则消息（共 {page_count} 页）。\n\n"
+        f"✨ <b>{html.escape(str(payload['name']))}</b>\n\n"
+        f"🧭 <b>参与条件：</b>正文较长，完整清单见规则消息（共 {page_count} 页）。\n\n"
         "🎁 <b>奖品内容：</b>"
     )
     url = html.escape(campaign_link(payload, "rules"), quote=True)
