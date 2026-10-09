@@ -1,7 +1,8 @@
 from tg_lottery.telegram import creator_group_bonus as bonus
 from tg_lottery.telegram.creator_behavior_editor import dirty as gate_dirty
 from tg_lottery.telegram.creator_message_context import callback_message
-from tg_lottery.telegram.creator_resume_views import has_field_input, resumed_view
+from tg_lottery.telegram.creator_renderer import PanelTarget
+from tg_lottery.telegram.creator_resume_views import LIST_STATES, has_field_input, resumed_view
 
 
 async def suspend_draft(sessions, user_id):
@@ -44,6 +45,17 @@ class CreatorSuspension:
         data = dict(session.data)
         state = data.get("suspended_state", "draft:idle")
         data = {key: value for key, value in data.items() if key != "suspended_state"}
+        if state in LIST_STATES or (
+            state == "draft:admission_search" and grant.action == "draft_resume_module"
+        ):
+            message = callback_message(query)
+            await self._renderer.restore_list(
+                PanelTarget(query.from_user.id, message.chat.id, message.message_id),
+                state="draft:admission_picker" if state == "draft:admission_search" else state,
+                data=data | {"panel_message_id": message.message_id},
+                notice="已恢复当前列表；搜索和已选项保留。",
+            )
+            return
         groups_return = state == "draft:group_search" and grant.action == "draft_resume_module"
         data, state, (text, rows) = resumed_view(
             data, state=state, module=grant.action == "draft_resume_module"

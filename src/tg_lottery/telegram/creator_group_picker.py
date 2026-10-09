@@ -40,7 +40,7 @@ class CreatorGroupPicker:
     async def show(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._required_data(query.from_user.id)
         updated = data | {"panel_message_id": _message(query).message_id, "guided": False}
-        await self._sessions.set(query.from_user.id, "draft:idle", updated)
+        await self._sessions.set(query.from_user.id, "draft:groups", updated)
         await self._render_groups(query, updated)
 
     async def search(self, query, grant):
@@ -60,7 +60,7 @@ class CreatorGroupPicker:
         from tg_lottery.telegram.creator_renderer import PanelTarget
 
         updated = data | {"group_search": (message.text or "").strip(), "group_page": 0}
-        await self._sessions.set(message.from_user.id, "draft:idle", updated)
+        await self._sessions.set(message.from_user.id, "draft:groups", updated)
         await self._renderer.edit_groups(
             PanelTarget(message.from_user.id, message.chat.id, int(data["panel_message_id"])),
             selected_chat_ids=selected_chat_ids(updated),
@@ -173,21 +173,15 @@ class CreatorGroupPicker:
         chat_ids = [group.chat_id for group in groups]
         updated = data | {"pending_group_removal_ids": chat_ids}
         configured = [group.title for group in groups if _group_has_rules(data, group.chat_id)]
-        text = (
-            f"移除 {len(groups)} 个参与群？\n\n"
-            f"其中包含已保存或编辑中规则的群：{'、'.join(configured)}。确认后清理这些群的已保存规则和编辑引用，其他群不变。"
-        )
-        rows = [
-            [("确认移除并删除设置", "draft_group_remove_confirm")],
-            [("取消", "draft_group_remove_cancel")],
-        ]
-        await self._sessions.set(query.from_user.id, "draft:idle", updated)
+        updated |= {"pending_group_removal_titles": configured}
+        text, rows = removal_confirmation_view(updated)
+        await self._sessions.set(query.from_user.id, "draft:group_remove_confirm", updated)
         await self._renderer.render(
             _message(query), user_id=query.from_user.id, text=text, rows=rows
         )
 
     async def _save_and_render(self, query, data, *, verified_availability=None):
-        await self._sessions.set(query.from_user.id, "draft:idle", data)
+        await self._sessions.set(query.from_user.id, "draft:groups", data)
         await self._render_groups(query, data, verified_availability=verified_availability)
 
     async def _render_groups(self, query, data, *, verified_availability=None):
@@ -252,7 +246,27 @@ def _group_has_rules(data: dict[str, Any], chat_id: int) -> bool:
 def _clear_pending_removal(data: dict[str, Any]) -> dict[str, Any]:
     result = dict(data)
     result.pop("pending_group_removal_ids", None)
+    result.pop("pending_group_removal_titles", None)
     return result
+
+
+def removal_confirmation_view(data):
+    ids = data.get("pending_group_removal_ids") or []
+    if not ids:
+        raise UserFacingError("参与群移除范围已失效，请返回群列表重新选择")
+    titles = data.get("pending_group_removal_titles") or [
+        group["title"]
+        for group in data.get("participation_groups") or []
+        if int(group["id"]) in ids
+    ]
+    return (
+        f"移除 {len(ids)} 个参与群？\n\n"
+        f"其中包含已保存或编辑中规则的群：{'、'.join(titles)}。确认后清理这些群的已保存规则和编辑引用，其他群不变。",
+        [
+            [("确认移除并删除设置", "draft_group_remove_confirm")],
+            [("取消", "draft_group_remove_cancel")],
+        ],
+    )
 
 
 def _message(query: CallbackQuery) -> Message:

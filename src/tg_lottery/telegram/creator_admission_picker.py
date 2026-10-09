@@ -103,28 +103,32 @@ class CreatorAdmissionPicker:
 
     async def _render(self, user_id: int, chat_id: int, data: dict[str, Any]) -> None:
         groups = await self._queries.admin_groups(user_id)
-        candidates = admission_candidates(groups, data)
-        maximum = max(0, (len(candidates) - 1) // GROUP_PAGE_SIZE)
-        page = min(maximum, max(0, int(data.get("admission_page", 0))))
-        updated = data | {"admission_page": page}
-        visible = candidates[page * GROUP_PAGE_SIZE : (page + 1) * GROUP_PAGE_SIZE]
-        rows = admission_rows(visible, updated, maximum=maximum)
-        search = str(data.get("admission_search") or "")
-        text = (
-            participation_add_text()
-            + f"\n\n共 {len(candidates)} 项 · 第 {page + 1}/{maximum + 1} 页"
-        )
-        text += "\n\n" + "\n".join(
-            f"{page * GROUP_PAGE_SIZE + i}. {chat['title']}" for i, chat in enumerate(visible, 1)
-        )
-        if search:
-            text += f"\n搜索：{search}"
-        if not candidates:
-            text += "\n没有匹配的群/频道，可清除搜索、刷新列表或转发来源可见的消息。"
+        updated, text, rows = admission_view(groups, data)
         await self._sessions.set(user_id, "draft:admission_picker", updated)
         await self._renderer.edit(
             PanelTarget(user_id, chat_id, int(data["panel_message_id"])), text=text, rows=rows
         )
+
+
+def admission_view(groups, data):
+    candidates = admission_candidates(groups, data)
+    maximum = max(0, (len(candidates) - 1) // GROUP_PAGE_SIZE)
+    page = min(maximum, max(0, int(data.get("admission_page", 0))))
+    updated = data | {"admission_page": page}
+    visible = candidates[page * GROUP_PAGE_SIZE : (page + 1) * GROUP_PAGE_SIZE]
+    rows = admission_rows(visible, updated, maximum=maximum)
+    search = str(data.get("admission_search") or "")
+    text = (
+        participation_add_text() + f"\n\n共 {len(candidates)} 项 · 第 {page + 1}/{maximum + 1} 页"
+    )
+    text += "\n\n" + "\n".join(
+        f"{page * GROUP_PAGE_SIZE + i}. {chat['title']}" for i, chat in enumerate(visible, 1)
+    )
+    if search:
+        text += f"\n搜索：{search}"
+    if not candidates:
+        text += "\n没有匹配的群/频道，可清除搜索、刷新列表或转发来源可见的消息。"
+    return updated, text, rows
 
 
 def admission_candidates(groups, data: dict[str, Any]) -> list[dict[str, Any]]:

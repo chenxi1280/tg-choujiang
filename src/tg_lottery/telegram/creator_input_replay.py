@@ -1,6 +1,6 @@
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.telegram.creator_message_context import panel_target
-from tg_lottery.telegram.creator_resume_views import resumed_view
+from tg_lottery.telegram.creator_resume_views import LIST_STATES, resumed_view
 
 MUTATION_SOURCE_KEY = "mutation_source_update_id"
 
@@ -12,6 +12,14 @@ async def recover_applied_input(renderer, message, session) -> bool:
         return False
     if source < int(applied) or session.state == "draft:suspended":
         await message.answer("原输入所属页面已更新，本次没有按新字段重复提交。请使用当前页面继续。")
+        return True
+    if session.state in LIST_STATES:
+        await renderer.restore_list(
+            panel_target(message, session.data),
+            state=session.state,
+            data=dict(session.data),
+            notice="已恢复当前列表；搜索和已选项保留。",
+        )
         return True
     data, _, (text, rows) = resumed_view(dict(session.data), state=session.state, module=False)
     await renderer.edit(

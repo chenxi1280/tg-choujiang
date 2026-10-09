@@ -10,6 +10,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from tg_lottery.application.admin_sessions import AdminSessionService, DraftPanelContext
 from tg_lottery.application.callback_tokens import CallbackRequest, CallbackTokenService
 from tg_lottery.application.queries import QueryService
+from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.infrastructure.db import Group
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.creator_group_availability import (
@@ -87,6 +88,8 @@ class CreatorRenderer:
         if len(pages) == 1:
             return text, rows
         session = await self._sessions.get(target.user_id)
+        if session is None or not session.state.startswith("draft:"):
+            raise UserFacingError("创建草稿已过期，请发送 /new 重新打开创建入口")
         serialized = [
             [item if isinstance(item, tuple) else item.model_dump(mode="json") for item in row]
             for row in rows
@@ -104,16 +107,21 @@ class CreatorRenderer:
 
     async def page(self, query, grant):
         session = await self._sessions.get(query.from_user.id)
-        pages = session.data["content_pages"]
+        if session is None or not session.state.startswith("draft:"):
+            raise UserFacingError("创建草稿已过期，请发送 /new 重新打开创建入口")
+        pages = session.data.get("content_pages")
+        content_rows = session.data.get("content_rows")
+        if not pages or not isinstance(content_rows, list):
+            raise UserFacingError("内容页已失效，请重新打开当前草稿页面")
         page = int(grant.action.removeprefix("draft_content_page:"))
         if page < 0 or page >= len(pages):
-            raise ValueError("内容页已失效")
+            raise UserFacingError("内容页已失效，请重新打开当前草稿页面")
         rows = [
             [
                 InlineKeyboardButton.model_validate(item) if isinstance(item, dict) else tuple(item)
                 for item in row
             ]
-            for row in session.data["content_rows"]
+            for row in content_rows
         ]
         target = PanelTarget(query.from_user.id, query.message.chat.id, query.message.message_id)
         keyboard = await self._keyboard(
@@ -128,6 +136,24 @@ class CreatorRenderer:
     ) -> InlineKeyboardMarkup:
         """Build buttons scoped to the id of an already sent panel."""
         return await self._keyboard(target, rows)
+
+    async def restore_list(self, target, *, state, data, notice):
+        await self._sessions.set(target.user_id, state, data)
+        if state == "draft:groups":
+            await self.edit_groups(
+                target,
+                selected_chat_ids=tuple(data.get("participation_group_ids") or []),
+                page=int(data.get("group_page", 0)),
+                search=str(data.get("group_search", "")),
+                notice=notice,
+            )
+            return
+        from tg_lottery.telegram.creator_admission_picker import admission_view
+
+        groups = await self._queries.admin_groups(target.user_id)
+        updated, text, rows = admission_view(groups, data)
+        await self._sessions.set(target.user_id, "draft:admission_picker", updated)
+        await self.edit(target, text=notice + "\n\n" + text, rows=rows)
 
     async def render_groups(
         self,
@@ -155,6 +181,7 @@ class CreatorRenderer:
         page: int = 0,
         search: str = "",
         verified_availability: dict[int, GroupAvailability] | None = None,
+        notice: str = "",
     ) -> None:
         groups, selected_chat_ids = await self._picker_group_state(
             target.user_id, selected_chat_ids=selected_chat_ids, search=search
@@ -183,7 +210,8 @@ class CreatorRenderer:
         rows.extend(back.inline_keyboard)
         await edit_panel_at(
             self._bot,
-            _group_picker_text(selected_count=len(selected_chat_ids), has_groups=bool(groups))
+            (notice + "\n\n" if notice else "")
+            + _group_picker_text(selected_count=len(selected_chat_ids), has_groups=bool(groups))
             + ("\n页码已随当前群列表调整。" if page != requested_page else "")
             + ("\n搜索：" + search if search else "")
             + "\n\n"

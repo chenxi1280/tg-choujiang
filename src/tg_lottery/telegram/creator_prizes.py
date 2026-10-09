@@ -3,6 +3,7 @@ from typing import Any
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram.creator_message_context import callback_message, message_user, panel_target
 from tg_lottery.telegram.creator_participation import parse_positions
+from tg_lottery.telegram.creator_prize_confirmation import clear_confirmation, delete_confirmation
 from tg_lottery.telegram.creator_required_chats_data import required_draft_data
 from tg_lottery.telegram.creator_schedule import positive_int
 from tg_lottery.telegram.creator_sections import enter_section, section_view
@@ -112,13 +113,10 @@ class CreatorPrizes:
     async def receive_delete(self, message, data: dict) -> None:
         positions = parse_positions(message.text or "", len(data.get("prizes") or []))
         updated = data | {"pending_prize_delete": sorted(positions)}
-        names = [p["name"] for i, p in enumerate(data["prizes"], 1) if i in positions]
-        text = "确认删除奖品\n\n将删除：" + "、".join(names) + "\n其他奖品不变。"
-        rows = [
-            [("确认删除指定奖品", "draft_delete_prize_confirm")],
-            [("保留奖品", "draft_prizes")],
-        ]
-        await self._edit(message, data=updated, state="draft:idle", text=text, rows=rows)
+        text, rows = delete_confirmation(updated)
+        await self._edit(
+            message, data=updated, state="draft:prize_delete_confirm", text=text, rows=rows
+        )
 
     async def commit_delete(self, query) -> None:
         data = await self._data(query)
@@ -128,11 +126,10 @@ class CreatorPrizes:
 
     async def confirm_clear(self, query) -> None:
         data = await self._data(query)
-        text = (
-            f"确认清空奖品\n\n将移除本草稿的{len(data.get('prizes') or [])}项奖品，其他配置保留。"
+        text, rows = clear_confirmation(data)
+        await self._render(
+            query, data=data, state="draft:prize_clear_confirm", text=text, rows=rows
         )
-        rows = [[("确认清空奖品", "draft_clear_prizes_confirm")], [("保留奖品", "draft_prizes")]]
-        await self._render(query, data=data, state="draft:idle", text=text, rows=rows)
 
     async def clear(self, query) -> None:
         await self._save_summary(query, _clean(await self._data(query)) | {"prizes": []})

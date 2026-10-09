@@ -210,7 +210,8 @@ async def test_expired_buttons_on_current_panel_can_still_recover(flow, monkeypa
     assert await flow.creator.recover_expired_panel(query)
     assert flow.sessions.data["panel_message_id"] == 20
     assert flow.sessions.data["cover_file_id"] == "new-cover"
-    assert flow.sessions.state == "draft:idle"
+    assert flow.sessions.state == "draft:cover"
+    assert "当前已设置封面" in flow.renderer.edit.await_args.kwargs["text"]
 
 
 async def test_new_command_sends_preview_then_binds_buttons_to_new_panel(flow, monkeypatch):
