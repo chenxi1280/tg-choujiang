@@ -31,7 +31,6 @@ from tg_lottery.telegram.help_views import DRAFT_UNAVAILABLE_TEXT
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.message_observation import observe_message
 from tg_lottery.telegram.personal_flow import PersonalFlow
-from tg_lottery.telegram.public_projection import public_error_text
 from tg_lottery.telegram.start_payloads import dispatch_start_payload
 from tg_lottery.telegram.ui_style import row_keyboard
 
@@ -174,6 +173,9 @@ class LotteryUpdateHandler:
             deferred=data.startswith(command_input.DEFERRED_CALLBACK_PREFIXES),
         ):
             if not isinstance(query.message, Message):
+                await member_callbacks.safe_answer(
+                    query, "原页面已失效, 请发送 /menu 重新打开。", alert=True
+                )
                 return
             try:
                 if data.startswith(("nav:", "m:", "member:")) and data not in {
@@ -186,24 +188,14 @@ class LotteryUpdateHandler:
                 await self._callback_error(query, exc)
 
     async def _callback_error(self, query: CallbackQuery, exc: Exception) -> None:
-        message = query.message
-        if isinstance(message, Message) and message.chat.type == "private":
-            await self._send_operation_error(message, exc)
-            return
-        if await member_callbacks.send_bonus_navigation_reminder(self._member_flow, query, exc):
-            return
-        await member_callbacks.safe_answer(
-            query, public_error_text(exc, self._default_timezone), alert=True
-        )
+        from tg_lottery.telegram.private_update_navigation import callback_error
+
+        await callback_error(self, query, exc)
 
     async def _send_operation_error(self, message: Message, exc: Exception) -> None:
-        self._logger.warning(
-            "Telegram operation rejected",
-            extra={"error_type": type(exc).__name__},
-            exc_info=(type(exc), exc, exc.__traceback__),
-        )
-        text = public_error_text(exc, self._default_timezone)
-        await message.answer(f"操作未完成: {text}")
+        from tg_lottery.telegram.private_update_navigation import send_operation_error
+
+        await send_operation_error(self, message, exc)
 
     async def _dispatch_callback(self, query: CallbackQuery, data: str) -> None:
         message = query.message
@@ -231,6 +223,10 @@ class LotteryUpdateHandler:
             return
         if data.startswith("secure:"):
             await self._dispatch_secure_callback(query, data)
+            return
+        await member_callbacks.safe_answer(
+            query, "此按钮已失效, 请发送 /menu 重新打开当前页面。", alert=True
+        )
 
     async def _dispatch_member_callback(self, query: CallbackQuery, data: str) -> bool:
         message = query.message
@@ -459,9 +455,9 @@ class LotteryUpdateHandler:
                     blocked=str(event.new_chat_member.status) in {"kicked", "left"},
                 )
             return
-        await send_bot_permission_reminder(self._bot, event)
         if not _is_admin(event.new_chat_member):
             await self._groups.deactivate_group(event.chat.id, event.date)
+            await send_bot_permission_reminder(self._bot, event)
             return
         admins = await self._bot.get_chat_administrators(event.chat.id)
         records = tuple(
@@ -481,6 +477,7 @@ class LotteryUpdateHandler:
             admins=records,
             observed_at=event.date,
         )
+        await send_bot_permission_reminder(self._bot, event)
 
 
 def _is_member(member: object) -> bool:

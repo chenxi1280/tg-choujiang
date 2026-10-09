@@ -12,6 +12,7 @@ async def run() -> None:
     settings = get_settings()
     configure_logging(settings.log_level)
     container = build_container(settings)
+    container.bot.session.timeout = 15
     stop = stop_event()
     try:
         bot_username = await validate_bot(container.bot, settings.bot_id)

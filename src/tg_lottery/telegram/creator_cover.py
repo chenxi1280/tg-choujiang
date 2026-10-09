@@ -8,6 +8,7 @@ from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, Pa
 from tg_lottery.telegram.creator_required_chats_data import required_draft_data
 from tg_lottery.telegram.creator_sections import enter_section
 from tg_lottery.telegram.creator_settings_ui import _message, _user_id
+from tg_lottery.telegram.panel_edit import edit_panel_markup
 
 
 def cover_rows(*, has_cover: bool) -> ButtonRows:
@@ -64,4 +65,4 @@ class CreatorCover:
             PanelTarget(user_id, panel.chat.id, panel.message_id),
             cover_rows(has_cover=True),
         )
-        await panel.edit_reply_markup(reply_markup=keyboard)
+        await edit_panel_markup(panel, reply_markup=keyboard)

@@ -78,9 +78,10 @@ class FakePollingBot:
         self.offsets: list[int | None] = []
         self.allowed_updates: list[str] = []
 
-    async def get_updates(self, *, offset, timeout, allowed_updates):  # noqa: ASYNC109
+    async def get_updates(self, *, offset, timeout, allowed_updates, request_timeout):  # noqa: ASYNC109
         self.offsets.append(offset)
         self.allowed_updates = allowed_updates
+        assert request_timeout == timeout + 10
         return [_update(10)] if len(self.offsets) == 1 else []
 
 
@@ -108,7 +109,7 @@ async def test_polling_persists_batch_before_advancing_offset(session_factory) -
 
 
 class GapPollingBot:
-    async def get_updates(self, *, offset, timeout, allowed_updates):  # noqa: ASYNC109
+    async def get_updates(self, *, offset, timeout, allowed_updates, request_timeout):  # noqa: ASYNC109
         assert offset == 10
         return [_update(12)]
 

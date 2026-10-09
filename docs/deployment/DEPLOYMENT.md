@@ -25,6 +25,8 @@
 
 发布完成必须分别核验：Actions checks/build/deploy 结论；GHCR 镜像 SHA；服务器 `current` 指向；Alembic revision；app/worker 健康；Bot `getMe`；confirmed/unprojected、UNKNOWN 和失败队列；真实群内创建、报名、消息票、邀请留存、截止复核、开奖、群公告和中奖私聊。容器健康不能替代 Telegram 业务闭环。
 
+app 健康检查同时核对轮询连续性与当前 Bot 的处理队列：最早未完成 Update 等待超过 120 秒即明确报告阻塞，不能由新鲜轮询心跳掩盖。`check-services.sh` 单独报告已处理输入中界面回信被 Telegram 明确拒绝的数量；这些记录保留 `last_error`，不表示回信送达或业务成功。未知网络结果、资格核验错误和内部处理错误仍按原 Inbox 顺序重试；Outbox UNKNOWN 不自动重发。
+
 ## 回滚
 
 ```bash

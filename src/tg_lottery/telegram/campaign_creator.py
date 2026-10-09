@@ -47,6 +47,7 @@ from tg_lottery.telegram.creator_views import (
 from tg_lottery.telegram.draft_config import ensure_draft_identity, new_draft
 from tg_lottery.telegram.home_views import home_keyboard, home_text
 from tg_lottery.telegram.issuer import creator_issuer
+from tg_lottery.telegram.panel_edit import edit_panel, edit_panel_markup
 from tg_lottery.telegram.platform_requirements import attach_platform_policy
 from tg_lottery.telegram.ui_style import style_keyboard
 
@@ -124,7 +125,7 @@ class CampaignCreator:
         keyboard = await self._renderer.keyboard_for(
             PanelTarget(user.id, panel.chat.id, panel.message_id), dashboard_rows(updated)
         )
-        await panel.edit_reply_markup(reply_markup=keyboard)
+        await edit_panel_markup(panel, reply_markup=keyboard)
 
     async def recover_expired_panel(self, query: CallbackQuery) -> bool:
         message = _message(query)
@@ -421,7 +422,7 @@ class CampaignCreator:
     async def _home(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._required_session(query.from_user.id)
         await suspend_draft(self._sessions, query.from_user.id)
-        await _message(query).edit_text(home_text(data), reply_markup=home_keyboard(data))
+        await edit_panel(_message(query), home_text(data), reply_markup=home_keyboard(data))
 
     async def _render_dashboard(self, user_id: int, message: Message, data: dict[str, Any]) -> None:
         updated = attach_platform_policy(data, self._platform_policy) | {"guided": False}

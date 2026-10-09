@@ -49,6 +49,7 @@ from tg_lottery.telegram.member_registration import (
     registration_request_from_message,
     required_user,
 )
+from tg_lottery.telegram.panel_edit import edit_panel
 from tg_lottery.telegram.qualification import (
     QualificationRetryable,
 )
@@ -211,7 +212,7 @@ class MemberFlow:
             invite_enabled=rules.invitation_enabled,
         )
         if callback is not None:
-            await message.edit_text(popup_success(total), reply_markup=keyboard)
+            await edit_panel(message, popup_success(total), reply_markup=keyboard)
             await member_callbacks.safe_answer(callback, popup_success(total), alert=False)
             return
         sent = await message.answer(popup_success(total), reply_markup=keyboard)
@@ -331,7 +332,7 @@ class MemberFlow:
                     callback, campaign, state, observations=observations
                 )
         if callback is not None and chat_type == "private":
-            await message.edit_text(text, reply_markup=keyboard)
+            await edit_panel(message, text, reply_markup=keyboard)
             return
         if chat_type in {None, "private"}:
             await message.answer(text, reply_markup=keyboard)

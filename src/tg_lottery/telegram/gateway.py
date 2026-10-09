@@ -23,6 +23,7 @@ from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway_card_states import (
     campaign_state_card_text as _campaign_state_card_text,
 )
+from tg_lottery.telegram.gateway_edit import confirmed_edit
 from tg_lottery.telegram.gateway_invite_delivery import invite_delivery_content
 from tg_lottery.telegram.gateway_requests import GatewayRequest
 from tg_lottery.telegram.remote_serialization import remote_object
@@ -198,50 +199,26 @@ class TelegramGateway:
         self, outbox: GatewayRequest, _: InviteLink | None
     ) -> GatewayResult:
         payload = outbox.payload
-        message_id = int(payload["message_id"])
         name = html.escape(str(payload["campaign_name"]))
         text = f"✨ <b>{name}</b>\n\n活动已取消，报名入口已关闭。"
         if payload.get("frozen_rules_text"):
             text = "活动已取消，报名入口已关闭。\n\n" + payload["frozen_rules_text"]
-        if payload.get("has_cover"):
-            result = await self._bot.edit_message_caption(
-                caption=text,
-                chat_id=outbox.recipient_chat_id,
-                message_id=message_id,
-                parse_mode="HTML",
-            )
-        else:
-            result = await self._bot.edit_message_text(
-                text,
-                chat_id=outbox.recipient_chat_id,
-                message_id=message_id,
-                parse_mode="HTML",
-            )
-        remote_result = remote_object(result)
-        return GatewayResult(remote_result=remote_result, remote_message_id=message_id)
+        return await self._edit_card(outbox, text)
 
     async def _edit_campaign_card_state(
         self, outbox: GatewayRequest, _: InviteLink | None
     ) -> GatewayResult:
-        payload = outbox.payload
-        message_id = int(payload["message_id"])
-        text = _campaign_state_card_text(payload)
-        if payload.get("has_cover"):
-            result = await self._bot.edit_message_caption(
-                caption=text,
-                chat_id=outbox.recipient_chat_id,
-                message_id=message_id,
-                parse_mode="HTML",
-            )
-        else:
-            result = await self._bot.edit_message_text(
-                text,
-                chat_id=outbox.recipient_chat_id,
-                message_id=message_id,
-                parse_mode="HTML",
-            )
-        remote = remote_object(result)
-        return GatewayResult(remote_result=remote, remote_message_id=message_id)
+        return await self._edit_card(outbox, _campaign_state_card_text(outbox.payload))
+
+    async def _edit_card(self, outbox: GatewayRequest, text: str) -> GatewayResult:
+        message_id = int(outbox.payload["message_id"])
+        options = dict(chat_id=outbox.recipient_chat_id, message_id=message_id, parse_mode="HTML")
+        operation = (
+            self._bot.edit_message_caption(caption=text, **options)
+            if outbox.payload.get("has_cover")
+            else self._bot.edit_message_text(text, **options)
+        )
+        return await confirmed_edit(operation, message_id=message_id)
 
     async def _create_invite_link(
         self, outbox: GatewayRequest, _: InviteLink | None

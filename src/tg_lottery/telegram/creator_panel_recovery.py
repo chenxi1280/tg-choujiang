@@ -3,6 +3,7 @@ from tg_lottery.telegram.creator_message_context import callback_message
 from tg_lottery.telegram.creator_renderer import PanelTarget
 from tg_lottery.telegram.creator_resume_views import resumed_view
 from tg_lottery.telegram.home_views import home_keyboard, home_text
+from tg_lottery.telegram.panel_edit import edit_panel
 
 
 async def restore_saved_panel(query, *, sessions, renderer, state, data, notice):
@@ -45,7 +46,7 @@ async def restore_applied_panel(query, *, sessions, renderer):
     if session is None or not session.state.startswith("draft:"):
         raise UserFacingError("创建草稿已过期，请重新打开创建入口")
     if session.state == "draft:suspended":
-        await message.edit_text(home_text(session.data), reply_markup=home_keyboard(session.data))
+        await edit_panel(message, home_text(session.data), reply_markup=home_keyboard(session.data))
         return
     await restore_saved_panel(
         query,

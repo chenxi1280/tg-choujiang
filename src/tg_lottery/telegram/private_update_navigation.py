@@ -47,3 +47,34 @@ async def read_callback(handler, query, *, data):
     if await handler._navigation.handle_route(query, data=data, personal=handler._personal_flow):
         return True
     return await handler._personal_flow.handle_callback(query, data)
+
+
+async def send_operation_error(handler, message, exc):
+    from tg_lottery.telegram.panel_edit import PanelUnavailableError
+    from tg_lottery.telegram.public_projection import public_error_text
+
+    handler._logger.warning(
+        "Telegram operation rejected",
+        extra={"error_type": type(exc).__name__},
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
+    text = public_error_text(exc, handler._default_timezone)
+    prefix = "页面显示未完成" if isinstance(exc, PanelUnavailableError) else "操作未完成"
+    await message.answer(f"{prefix}: {text}")
+
+
+async def callback_error(handler, query, exc):
+    from aiogram.types import Message
+
+    from tg_lottery.telegram import member_callbacks
+    from tg_lottery.telegram.public_projection import public_error_text
+
+    message = query.message
+    if isinstance(message, Message) and message.chat.type == "private":
+        await handler._send_operation_error(message, exc)
+        return
+    if await member_callbacks.send_bonus_navigation_reminder(handler._member_flow, query, exc):
+        return
+    await member_callbacks.safe_answer(
+        query, public_error_text(exc, handler._default_timezone), alert=True
+    )

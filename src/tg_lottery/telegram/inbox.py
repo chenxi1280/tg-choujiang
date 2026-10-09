@@ -14,10 +14,13 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.application.request_context import bind_update_context
 from tg_lottery.domain.enums import UpdateState
 from tg_lottery.infrastructure.db import TelegramUpdate
+from tg_lottery.telegram.inbox_execution import run_until_stopped
+from tg_lottery.telegram.response_rejection import rejected_source_response
 
 _PROCESSING_STALE_SECONDS = 300
 _FAILED_RETRY_SECONDS = 5
 _IDLE_WAIT_SECONDS = 0.5
+_HANDLER_TIMEOUT_SECONDS = 120
 
 
 class UpdateHandler(Protocol):
@@ -45,7 +48,7 @@ class InboxProcessor:
             if row is None:
                 await self._wait(stop)
                 continue
-            succeeded = await self._process(row)
+            succeeded = await run_until_stopped(self._process(row), stop)
             if not succeeded:
                 await self._wait(stop)
 
@@ -97,6 +100,24 @@ class InboxProcessor:
             return row
 
     async def _process(self, row: TelegramUpdate) -> bool:
+        try:
+            return await self._execute(row)
+        except asyncio.CancelledError:
+            await self._release_interrupted(row)
+            raise
+
+    async def _release_interrupted(self, claim: TelegramUpdate) -> None:
+        async with self._session_factory() as session, session.begin():
+            row = await session.get(TelegramUpdate, claim.id, with_for_update=True)
+            if (
+                row is not None
+                and row.state is UpdateState.PROCESSING
+                and row.attempts == claim.attempts
+            ):
+                row.state = UpdateState.FAILED
+                row.last_error = "CancelledError: processing interrupted"
+
+    async def _execute(self, row: TelegramUpdate) -> bool:
         started = perf_counter()
         queue_wait_ms = (
             (utcnow() - row.created_at).total_seconds() * 1000 if row.created_at else None
@@ -106,22 +127,17 @@ class InboxProcessor:
                 row.id, row.attempts, "update payload was pruned before processing"
             )
             return False
+        update = None
         try:
             update = Update.model_validate(row.payload, context={"bot": self._bot})
-            with bind_update_context(row.bot_id, row.update_id):
-                await self._handler.handle(update)
-        except asyncio.CancelledError:
-            raise
+            async with asyncio.timeout(_HANDLER_TIMEOUT_SECONDS):
+                with bind_update_context(row.bot_id, row.update_id):
+                    await self._handler.handle(update)
         except Exception as exc:
-            self._logger.exception(
-                "durable update processing failed",
-                extra={
-                    "bot_id": row.bot_id,
-                    "update_id": row.update_id,
-                    "elapsed_ms": round((perf_counter() - started) * 1000),
-                    "queue_wait_ms": queue_wait_ms,
-                },
-            )
+            if update is not None and rejected_source_response(update, exc):
+                await self._record_response_rejection(row, exc)
+                return True
+            self._log_failure(row, started, queue_wait_ms)
             await self._mark_failed(row.id, row.attempts, f"{type(exc).__name__}: {exc}")
             return False
         await self._mark_processed(row.id, row.attempts)
@@ -136,12 +152,39 @@ class InboxProcessor:
         )
         return True
 
-    async def _mark_processed(self, row_id: int, claimed_attempt: int) -> None:
+    def _log_failure(self, row, started, queue_wait_ms) -> None:
+        self._logger.exception(
+            "durable update processing failed",
+            extra={
+                "bot_id": row.bot_id,
+                "update_id": row.update_id,
+                "elapsed_ms": round((perf_counter() - started) * 1000),
+                "queue_wait_ms": queue_wait_ms,
+            },
+        )
+
+    async def _record_response_rejection(self, row, exc) -> None:
+        error = f"UI response rejected: {type(exc).__name__}: {exc}"
+        self._logger.warning(
+            error,
+            extra={
+                "bot_id": row.bot_id,
+                "update_id": row.update_id,
+                "operation": type(exc.method).__name__,
+                "chat_id": exc.method.chat_id,
+                "completed": False,
+            },
+        )
+        await self._mark_processed(row.id, row.attempts, error=error)
+
+    async def _mark_processed(
+        self, row_id: int, claimed_attempt: int, *, error: str | None = None
+    ) -> None:
         async with self._session_factory() as session, session.begin():
             row = await self._locked_claim(session, row_id, claimed_attempt)
             row.state = UpdateState.PROCESSED
             row.processed_at = utcnow()
-            row.last_error = None
+            row.last_error = error[:4000] if error else None
 
     async def _mark_failed(self, row_id: int, claimed_attempt: int, error: str) -> None:
         async with self._session_factory() as session, session.begin():

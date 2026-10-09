@@ -66,6 +66,7 @@ class TelegramPollingAdapter:
             offset=cursor.next_offset,
             timeout=self._timeout_seconds,
             allowed_updates=ALLOWED_UPDATES,
+            request_timeout=self._timeout_seconds + 10,
         )
         await self._persist_batch(updates, cursor)
         if updates:

@@ -51,17 +51,22 @@ async def _cancel_acknowledgement(task, logger) -> None:
         logger.exception("callback acknowledgement cleanup failed")
 
 
-async def answer_callback(query, logger) -> None:
+async def answer_callback(query, logger, *, text: str | None = None, alert: bool = False) -> None:
     started = perf_counter()
     try:
         async with asyncio.timeout(ACK_TIMEOUT_SECONDS):
-            await query.answer()
+            if text is None:
+                await query.answer()
+            else:
+                await query.answer(text[:200], show_alert=alert)
     except (TelegramAPIError, OSError, TimeoutError) as exc:
         logger.warning(
-            "callback acknowledgement failed: %s",
+            "callback acknowledgement failed: %s"
+            if text is None
+            else "callback result acknowledgement rejected by Telegram: %s",
             exc,
             extra={
-                "operation": "answer_callback",
+                "operation": "answer_callback" if text is None else "callback_result",
                 "error_code": type(exc).__name__,
                 "elapsed_ms": round((perf_counter() - started) * 1000),
                 "completed": False,
@@ -71,7 +76,7 @@ async def answer_callback(query, logger) -> None:
     logger.info(
         "callback acknowledgement finished",
         extra={
-            "operation": "answer_callback",
+            "operation": "answer_callback" if text is None else "callback_result",
             "elapsed_ms": round((perf_counter() - started) * 1000),
             "completed": True,
         },

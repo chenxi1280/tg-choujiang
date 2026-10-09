@@ -34,6 +34,7 @@ from tg_lottery.telegram.campaign_authorization import verify_campaign_admin
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_list_views import campaign_origin, creator_list_view
 from tg_lottery.telegram.keyboard_layout import columns
+from tg_lottery.telegram.panel_edit import edit_panel
 from tg_lottery.telegram.platform_requirements import inspect_official_channels
 from tg_lottery.telegram.public_projection import campaign_state_text
 from tg_lottery.telegram.publication_error_text import publication_error_text
@@ -98,7 +99,7 @@ class AdminFlow:
             query.from_user.id, options={"managed": True, "category": "active", "page": 0}
         )
         text, keyboard = creator_list_view(result)
-        await _message(query).edit_text(text, reply_markup=keyboard)
+        await edit_panel(_message(query), text, reply_markup=keyboard)
 
     async def show_campaign_reference(self, query: CallbackQuery, reference: str) -> None:
         reference, origin = campaign_origin(reference)
@@ -166,7 +167,8 @@ class AdminFlow:
             ],
             [InlineKeyboardButton(text="返回活动管理", callback_data=f"secure:{tokens[1]}")],
         ]
-        await _message(query).edit_text(
+        await edit_panel(
+            _message(query),
             confirmation_text(campaign, grant.action, details=grant.payload),
             reply_markup=style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows)),
         )

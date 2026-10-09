@@ -33,6 +33,7 @@ from tg_lottery.telegram.creator_rule_review import review_navigation, rule_revi
 from tg_lottery.telegram.creator_share import publication_receipt
 from tg_lottery.telegram.draft_config import campaign_input, presentation_from_data
 from tg_lottery.telegram.issuer import resolve_issuer
+from tg_lottery.telegram.panel_edit import edit_panel
 from tg_lottery.telegram.platform_requirements import (
     attach_platform_policy,
     editable_requirement_data,
@@ -165,7 +166,7 @@ class CreatorPublisher:
                 ]
             )
         )
-        await message.edit_text(text, reply_markup=keyboard)
+        await edit_panel(message, text, reply_markup=keyboard)
 
     async def _finish(self, query: CallbackQuery, data: dict[str, Any], campaign_id: UUID) -> None:
         current = await self._queries.campaign(campaign_id)
@@ -181,7 +182,7 @@ class CreatorPublisher:
         if campaign is None:
             raise UserFacingError("找不到已创建的活动，请在抽奖管理中核对")
         text, keyboard = publication_receipt(campaign, self._bot_username)
-        await _message(query).edit_text(text, reply_markup=keyboard)
+        await edit_panel(_message(query), text, reply_markup=keyboard)
         await self._sessions.clear(query.from_user.id)
 
     async def _verify_frozen_platform(self, campaign):

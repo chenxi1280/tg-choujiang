@@ -68,7 +68,7 @@ async def test_unchanged_list_edit_completes_and_unblocks_next_start(session_fac
 
 
 @pytest.mark.parametrize(
-    "error_text", ["Bad Request: message to edit not found", "Bad Request: can't parse entities"]
+    "error_text", ["Bad Request: can't parse entities", "Bad Request: message is too long"]
 )
 async def test_other_edit_rejections_remain_failed_and_keep_order(session_factory, error_text):
     await _queued_pair(session_factory)

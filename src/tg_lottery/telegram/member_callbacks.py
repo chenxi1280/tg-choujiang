@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from aiogram.exceptions import TelegramAPIError, TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramAPIError, TelegramForbiddenError
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 
 from tg_lottery.application.records import utcnow
@@ -25,7 +25,7 @@ from tg_lottery.telegram.platform_inviter import verify_platform_inviter
 
 if TYPE_CHECKING:
     from tg_lottery.telegram.member_flow import MemberFlow
-from tg_lottery.telegram.callback_feedback import finish_callback_feedback
+from tg_lottery.telegram.callback_feedback import answer_callback, finish_callback_feedback
 from tg_lottery.telegram.personal_flow import PersonalFlow
 
 
@@ -54,13 +54,9 @@ async def _record_acknowledgement(
     flow: "MemberFlow", query: CallbackQuery, *, text: str | None = None, alert: bool = False
 ) -> None:
     await finish_callback_feedback(query)
-    try:
-        await query.model_copy().as_(flow._bot).answer(text, show_alert=alert)
-    except TelegramBadRequest as exc:
-        logging.getLogger(__name__).warning(
-            "Participant record callback acknowledgement rejected by Telegram",
-            extra={"callback_query_id": query.id, "error": str(exc)},
-        )
+    await answer_callback(
+        query.model_copy().as_(flow._bot), logging.getLogger(__name__), text=text, alert=alert
+    )
 
 
 async def _show_record_callback(
@@ -395,18 +391,7 @@ async def rules_callback(
 
 async def safe_answer(query: CallbackQuery, text: str, *, alert: bool) -> None:
     await finish_callback_feedback(query)
-    try:
-        await query.answer(text[:200], show_alert=alert)
-    except TelegramBadRequest as exc:
-        logging.getLogger(__name__).warning(
-            "callback result acknowledgement rejected by Telegram: %s",
-            exc,
-            extra={
-                "operation": "callback_result",
-                "error_code": type(exc).__name__,
-                "completed": False,
-            },
-        )
+    await answer_callback(query, logging.getLogger(__name__), text=text, alert=alert)
 
 
 def _invitation_record_reference(data: str) -> tuple[str, int]:

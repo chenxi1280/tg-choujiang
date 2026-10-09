@@ -13,6 +13,7 @@ from tg_lottery.presentation.mentions import html_utf16_length
 from tg_lottery.telegram.bonus_rule_text import global_bonus_lines
 from tg_lottery.telegram.member_bonus_text import activity_cap, campaign_bonus_completed
 from tg_lottery.telegram.member_record_text import current_effective_count
+from tg_lottery.telegram.panel_edit import edit_panel
 from tg_lottery.telegram.public_projection import qualification_state_text
 from tg_lottery.telegram.ui_style import style_keyboard
 
@@ -55,7 +56,7 @@ class GroupReputation:
         campaigns = await self._campaigns(message.chat.id)
         campaign = next((item for item in campaigns if item.public_ref == reference), None)
         if campaign is None:
-            await message.edit_text("原活动已停止统计，请从本人私聊记录查看历史。")
+            await edit_panel(message, "原活动已停止统计，请从本人私聊记录查看历史。")
             return True
         await self._show(
             message, campaign, int(owner), action=action, page=int(raw_page), edit=True
@@ -247,7 +248,9 @@ def _pages(action, reference, *, user_id, page, pages):
 
 
 async def _reply(message, text, *, rows, edit):
-    sender = message.edit_text if edit else message.answer
+    sender = (
+        (lambda text, **options: edit_panel(message, text, **options)) if edit else message.answer
+    )
     await sender(
         text,
         parse_mode="HTML",

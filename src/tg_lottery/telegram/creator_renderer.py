@@ -19,6 +19,7 @@ from tg_lottery.telegram.creator_group_availability import (
 from tg_lottery.telegram.creator_group_identity import filter_groups
 from tg_lottery.telegram.creator_picker_groups import picker_groups
 from tg_lottery.telegram.keyboard_layout import fit_rows, list_rows
+from tg_lottery.telegram.panel_edit import edit_panel, edit_panel_at
 from tg_lottery.telegram.panel_pagination import creator_page_rows, titled_pages
 from tg_lottery.telegram.ui_style import style_keyboard, style_label
 
@@ -60,7 +61,7 @@ class CreatorRenderer:
         target = PanelTarget(user_id, message.chat.id, message.message_id)
         text, rows = await self._paginate(target, text=text, rows=rows, parse_mode=parse_mode)
         keyboard = await self._keyboard(target, rows)
-        await message.edit_text(text, reply_markup=keyboard, parse_mode=parse_mode)
+        await edit_panel(message, text, reply_markup=keyboard, parse_mode=parse_mode)
 
     async def edit(
         self,
@@ -71,7 +72,8 @@ class CreatorRenderer:
     ) -> None:
         text, rows = await self._paginate(target, text=text, rows=rows)
         keyboard = await self._keyboard(target, rows)
-        await self._bot.edit_message_text(
+        await edit_panel_at(
+            self._bot,
             text,
             chat_id=target.chat_id,
             message_id=target.message_id,
@@ -117,7 +119,7 @@ class CreatorRenderer:
         keyboard = await self._keyboard(
             target, creator_page_rows(rows, page=page, total=len(pages))
         )
-        await query.message.edit_text(pages[page], reply_markup=keyboard)
+        await edit_panel(query.message, pages[page], reply_markup=keyboard)
 
     async def keyboard_for(
         self,
@@ -179,7 +181,8 @@ class CreatorRenderer:
         )
         rows = list_rows(rows, start=page * GROUP_PAGE_SIZE + 1)
         rows.extend(back.inline_keyboard)
-        await self._bot.edit_message_text(
+        await edit_panel_at(
+            self._bot,
             _group_picker_text(selected_count=len(selected_chat_ids), has_groups=bool(groups))
             + ("\n页码已随当前群列表调整。" if page != requested_page else "")
             + ("\n搜索：" + search if search else "")

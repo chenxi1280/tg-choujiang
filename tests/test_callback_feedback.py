@@ -206,3 +206,16 @@ async def test_result_rejection_is_visible_in_logs(caplog):
     query.answer = AsyncMock(side_effect=TelegramBadRequest(METHOD, "query is too old"))
     await member_callbacks.safe_answer(query, "实际结果", alert=True)
     assert "callback result acknowledgement rejected by Telegram" in caplog.text
+
+
+async def test_result_timeout_cancels_feedback_and_does_not_repeat_business(monkeypatch, caplog):
+    monkeypatch.setattr(callback_feedback, "ACK_TIMEOUT_SECONDS", 0.01)
+    query = SlowAcknowledgement()
+    await asyncio.wait_for(member_callbacks.safe_answer(query, "已完成", alert=True), 1)
+    assert query.cancelled.is_set() and not query.finished
+    assert any(
+        getattr(record, "operation", None) == "callback_result"
+        and record.error_code == "TimeoutError"
+        and record.completed is False
+        for record in caplog.records
+    )
