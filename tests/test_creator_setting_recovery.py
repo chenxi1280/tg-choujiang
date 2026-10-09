@@ -19,7 +19,7 @@ from tg_lottery.telegram.creator_input_replay import recover_applied_input
 from tg_lottery.telegram.creator_prizes import CreatorPrizes
 from tg_lottery.telegram.creator_renderer import CreatorRenderer, PanelTarget
 from tg_lottery.telegram.creator_resume_views import has_field_input, resumed_view
-from tg_lottery.telegram.creator_suspension import CreatorSuspension
+from tg_lottery.telegram.creator_suspension import CreatorSuspension, suspend_draft
 from tg_lottery.telegram.draft_config import new_draft
 
 
@@ -208,6 +208,57 @@ async def test_resuming_suspended_list_restores_the_live_panel_binding(state):
     assert actual.args[0].message_id == 9 and actual.kwargs["state"] == state
     assert "suspended_state" not in actual.kwargs["data"]
     renderer.render.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("draft:groups", "draft_resume_module", "draft:groups"),
+        ("draft:admission_picker", "draft_resume_module", "draft:admission_picker"),
+        ("draft:group_search", "draft_resume_module", "draft:groups"),
+        ("draft:admission_search", "draft_resume_module", "draft:admission_picker"),
+        ("draft:title", "draft_resume_input", "draft:title"),
+    ],
+)
+async def test_resume_retry_after_saved_state_and_failed_display_preserves_step(
+    session_factory, case
+):
+    state, action, expected = case
+    sessions = AdminSessionService(partial(UnitOfWork, session_factory))
+    data = setting_data() | {"group_search": "A", "admission_search": "B"}
+    await sessions.set(201, state, data)
+    await suspend_draft(sessions, 201)
+    renderer = object.__new__(CreatorRenderer)
+    renderer._sessions = sessions
+    failed_edit = AsyncMock(
+        side_effect=[
+            TelegramNetworkError(method=EditMessageText(text="恢复"), message="reset"),
+            None,
+        ]
+    )
+    renderer.edit_groups = failed_edit
+    renderer.render = failed_edit
+    renderer.edit = failed_edit
+    renderer._queries = SimpleNamespace(admin_groups=AsyncMock(return_value=[]))
+    suspension = CreatorSuspension(sessions=sessions, renderer=renderer)
+    grant = SimpleNamespace(action=action)
+    with bind_update_context(123, 211):
+        with pytest.raises(TelegramNetworkError):
+            await suspension.resume(picker_query(), grant)
+        assert (await sessions.get(201)).state == expected
+        await suspension.resume(picker_query(), grant)
+    stored = await sessions.get(201)
+    assert stored.state == expected
+    assert stored.data["draft_id"] == data["draft_id"]
+    assert stored.data["participation_group_ids"] == data["participation_group_ids"]
+    assert stored.data["group_search"] == "A" and stored.data["admission_search"] == "B"
+    assert "suspended_state" not in stored.data
+    if expected == "draft:groups":
+        assert failed_edit.await_args.kwargs["search"] == "A"
+    elif expected == "draft:admission_picker":
+        assert "搜索\uff1aB" in failed_edit.await_args.kwargs["text"]
+    else:
+        assert "已恢复输入\uff1a活动标题" in failed_edit.await_args.kwargs["text"]
 
 
 async def test_stale_group_removal_confirmation_preserves_rules_and_requires_confirmation():

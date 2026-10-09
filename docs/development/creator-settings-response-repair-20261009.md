@@ -20,3 +20,14 @@
 - 覆盖文件：`test_creator_setting_recovery.py`、`test_creator_numeric_recovery.py`、`test_v32_callback_mutation_replay.py`、`test_creator_leaf_experience.py`、`test_creator_settings.py`、`test_draft_panel_recovery.py`、`test_creator_cover.py`、`test_panel_response_recovery.py`、`test_creator_rule_review.py`、`test_creator_gate_search_regressions.py`、`test_creator_admission_picker.py`、`test_v32_creator_controls.py`。
 - Ruff 全范围格式、Lint、代码规模和差异检查通过；发布版本与真实 Telegram 客户端证据单独记录，不以隔离测试替代线上结果。
 - 首轮完整 CI 在第 4 分片拦截旧群选择状态断言：页面身份由 idle 改为 groups，但旧用例仍断言 idle。更新选择中的断言及模拟选择状态，保留“完成选择/保存门槛后回到 idle”的断言。该轮构建及部署均未执行，不能计为完整回归通过。
+- `4bd055c` 主分支和发布分支各 1357 项完整分片回归通过，迁移升级、降级、再次升级及漂移检查成功，并已部署。浏览器验证标题重复点击后原输入状态保留、非法时间输入明确报错；不代表所有恢复路径已经完成线上验收。
+
+## 浏览器发现的恢复重试遗漏（2026-10-10）
+
+同一用户、草稿在群列表搜索后 `/menu` 暂停，再继续并点击“返回当前模块”，请求 `162318182` 经两次处理后实际显示草稿首页。原因是恢复首次调用先移除 `suspended_state` 并保存列表步骤，随后 Telegram 编辑遇到网络失败；第二次调用仅从已经移除的暂停标记读状态，缺失时默认 idle。直接调用恢复器一次的隔离用例没有覆盖这个顺序。
+
+恢复请求重试现在从已保存的当前步骤读取状态；参与群/准入搜索的“返回当前模块”统一保存为相应列表步骤，再显示列表。保持同草稿、消息绑定、搜索和已选项；不重做添加/移除或发布。
+
+- 上海 Docker 专用库中新增五条“实际持久化状态 + 首次编辑网络失败 + 同一 Update 重试”用例，在旧代码全部失败，覆盖两类列表、两类搜索和标题输入。
+- 修复后 `test_creator_setting_recovery.py`、`test_v32_resume_and_identity.py`、`test_v32_callback_mutation_replay.py`、`test_creator_gate_navigation.py`、`test_creator_admission_picker.py`、`test_panel_response_recovery.py` 合计 87 项通过，12.24 秒。
+- Ruff 全范围格式、Lint、代码指标及差异检查通过；本次没有新增迁移。最终版本与继续恢复的线上复核证据保存到本地验收记录。

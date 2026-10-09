@@ -43,33 +43,26 @@ class CreatorSuspension:
     async def resume(self, query, grant):
         session = await self._sessions.get(query.from_user.id)
         data = dict(session.data)
-        state = data.get("suspended_state", "draft:idle")
+        state = data.get("suspended_state", session.state)
         data = {key: value for key, value in data.items() if key != "suspended_state"}
-        if state in LIST_STATES or (
-            state == "draft:admission_search" and grant.action == "draft_resume_module"
-        ):
+        if grant.action == "draft_resume_module":
+            state = {
+                "draft:group_search": "draft:groups",
+                "draft:admission_search": "draft:admission_picker",
+            }.get(state, state)
+        if state in LIST_STATES:
             message = callback_message(query)
             await self._renderer.restore_list(
                 PanelTarget(query.from_user.id, message.chat.id, message.message_id),
-                state="draft:admission_picker" if state == "draft:admission_search" else state,
+                state=state,
                 data=data | {"panel_message_id": message.message_id},
                 notice="已恢复当前列表；搜索和已选项保留。",
             )
             return
-        groups_return = state == "draft:group_search" and grant.action == "draft_resume_module"
         data, state, (text, rows) = resumed_view(
             data, state=state, module=grant.action == "draft_resume_module"
         )
         await self._sessions.set(query.from_user.id, state, data)
-        if groups_return:
-            await self._renderer.render_groups(
-                callback_message(query),
-                user_id=query.from_user.id,
-                selected_chat_ids=tuple(data.get("participation_group_ids") or []),
-                page=int(data.get("group_page", 0)),
-                search=str(data.get("group_search", "")),
-            )
-            return
         await self._renderer.render(
             callback_message(query), user_id=query.from_user.id, text=text, rows=rows
         )
