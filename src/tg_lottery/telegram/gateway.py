@@ -122,16 +122,13 @@ class TelegramGateway:
                         [
                             InlineKeyboardButton(
                                 text="参与抽奖",
-                                callback_data=f"m:detail:{payload['campaign_ref']}",
-                            ),
-                            InlineKeyboardButton(
-                                text="打开私聊", url=f"https://t.me/{self._bot_username}"
+                                url=campaign_link(payload | {"bot_username": self._bot_username}),
                             ),
                         ]
                     ]
                 )
             )
-            text += "\n首次使用请先开启本活动：" + campaign_link(
+            text += "\n查看本场活动：" + campaign_link(
                 payload | {"bot_username": self._bot_username}
             )
         if payload.get("user_id"):
@@ -328,7 +325,7 @@ class TelegramGateway:
     ) -> GatewayResult:
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
-            _draw_result_text(outbox.payload),
+            _draw_result_text(outbox.payload | {"bot_username": self._bot_username}),
             disable_notification=False,
             parse_mode="HTML",
             link_preview_options=LinkPreviewOptions(is_disabled=True),
@@ -343,7 +340,7 @@ class TelegramGateway:
     ) -> GatewayResult:
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
-            winner_notice_text(outbox.payload),
+            winner_notice_text(outbox.payload | {"bot_username": self._bot_username}),
             disable_notification=False,
             parse_mode="HTML",
             link_preview_options=LinkPreviewOptions(is_disabled=True),
@@ -370,16 +367,6 @@ def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
     action = "rules" if closed else "join"
     rows = [[InlineKeyboardButton(text=text, url=_campaign_deep_link(payload, action))]]
     if not closed:
-        rows = [
-            [
-                InlineKeyboardButton(
-                    text=text, callback_data=f"m:detail:{payload['campaign_ref']}"
-                ),
-                InlineKeyboardButton(
-                    text="打开私聊", url=f"https://t.me/{payload['bot_username']}"
-                ),
-            ]
-        ]
         reference = payload["campaign_ref"]
         rules = CampaignRules.model_validate(payload.get("rules") or {})
         bonus_buttons = []

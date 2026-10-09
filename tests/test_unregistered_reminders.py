@@ -253,10 +253,10 @@ async def test_speech_reminder_delivers_mention_and_same_campaign_link_then_sche
     assert f"tg://user?id={NEW_USER_ID}" in text
     assert options["parse_mode"] == "HTML"
     button = options["reply_markup"].inline_keyboard[0][0]
-    assert button.callback_data == f"m:detail:{reference}"
-    assert button.url is None
+    assert button.url == f"https://t.me/lottery_test_bot?start=join_{reference}"
+    assert button.callback_data is None
     assert f"https://t.me/lottery_test_bot?start=join_{reference}" in text
-    assert options["reply_markup"].inline_keyboard[0][1].url == "https://t.me/lottery_test_bot"
+    assert len(options["reply_markup"].inline_keyboard[0]) == 1
 
 
 async def test_legacy_invitee_activity_is_recorded_even_when_reminding_to_register(session_factory):

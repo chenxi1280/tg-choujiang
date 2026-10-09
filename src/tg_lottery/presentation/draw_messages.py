@@ -9,6 +9,10 @@ def draw_result_text(payload: dict[str, Any]) -> str:
     if payload.get("page_count", 1) > 1:
         title += f"（第 {payload['page_number']}/{payload['page_count']} 页）"
     lines = [title, *(_winner_line(item) for item in payload.get("winners", []))]
+    if payload.get("campaign_ref"):
+        lines.insert(1, result_reference_line(payload))
+    if payload.get("completed_at_text"):
+        lines.insert(2, "实际开奖时间：" + html.escape(payload["completed_at_text"]))
     if not payload.get("has_winners", bool(payload.get("winners"))):
         lines.append("本期没有符合条件的中奖候选人。")
     unallocated = payload.get("undistributed", [])
@@ -39,12 +43,25 @@ def winner_notice_text(payload: dict[str, Any]) -> str:
         "username": payload.get("issuer_username"),
         "display_name": payload["issuer_name"],
     }
-    return (
+    text = (
         f"恭喜你在「{html.escape(str(payload['campaign_name']))}」中获得: "
         f"{html.escape(str(payload['prize_name']))}（名额 {int(payload['prize_slot_no'])}）。\n"
         f"领奖方式: {html.escape(str(payload['claim_instructions']))}\n"
         f"发奖人员: {user_mention(issuer)}"
     )
+    if payload.get("campaign_ref"):
+        text += "\n" + result_reference_line(payload)
+    return text
+
+
+def result_reference_line(payload: dict[str, Any]) -> str:
+    reference = html.escape(str(payload["campaign_ref"]))
+    label = f"CJ-{reference}"
+    username = payload.get("bot_username")
+    if username:
+        url = html.escape(f"https://t.me/{username}?start=history_{payload['campaign_ref']}")
+        label = f'<a href="{url}">{label}</a>'
+    return "🔖 结果编号：" + label
 
 
 def draw_result_pages(payload: dict[str, Any]) -> tuple[dict[str, Any], ...]:

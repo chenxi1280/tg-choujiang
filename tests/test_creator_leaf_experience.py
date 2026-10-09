@@ -61,9 +61,10 @@ async def test_folder_link_preserves_all_independent_participation_conditions() 
             "presentation": frozen,
         }
     )
-    assert keyboard.inline_keyboard[0][0].callback_data == "m:detail:reference"
-    assert keyboard.inline_keyboard[0][0].url is None
-    assert keyboard.inline_keyboard[0][1].url == "https://t.me/lottery_test_bot"
+    assert (
+        keyboard.inline_keyboard[0][0].url == "https://t.me/lottery_test_bot?start=join_reference"
+    )
+    assert keyboard.inline_keyboard[0][0].callback_data is None
     assert keyboard.inline_keyboard[-1][0].url == FOLDER_LINK
 
 

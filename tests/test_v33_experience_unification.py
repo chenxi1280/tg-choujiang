@@ -44,9 +44,8 @@ def test_card_actions_match_the_frozen_enabled_capabilities(bonuses):
     routes = {button.callback_data for row in markup.inline_keyboard for button in row}
     assert ("member:invite:abcdefgh" in routes) == ("invite" in bonuses)
     assert ("member:bonus:abcdefgh" in routes) == bool(bonuses)
-    assert markup.inline_keyboard[0][0].callback_data == "m:detail:abcdefgh"
-    assert markup.inline_keyboard[0][0].url is None
-    assert markup.inline_keyboard[0][1].url == "https://t.me/lottery_test_bot"
+    assert markup.inline_keyboard[0][0].url == "https://t.me/lottery_test_bot?start=join_abcdefgh"
+    assert markup.inline_keyboard[0][0].callback_data is None
     text = bonus_block(payload)
     assert text.count('href="https://t.me/lottery_test_bot?start=rules_abcdefgh"') == 2
     assert ("群内输入" in text) == ("activity" in bonuses)

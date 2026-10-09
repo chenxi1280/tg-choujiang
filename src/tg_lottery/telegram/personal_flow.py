@@ -11,6 +11,7 @@ from tg_lottery.telegram.creator_list_views import creator_list_view
 from tg_lottery.telegram.help_views import HelpLinks, guide_summary, guide_topic
 from tg_lottery.telegram.home_views import home_keyboard, home_text, settings_keyboard
 from tg_lottery.telegram.member_records import show_ticket_record
+from tg_lottery.telegram.panel_edit import edit_panel
 from tg_lottery.telegram.participant_list_views import (
     build_participated_campaign_list,
     parse_campaign_list_callback,
@@ -303,8 +304,10 @@ class PersonalFlow:
         profile = await self._profiles.set_region(query.from_user.id, region, utcnow())
         if profile.region_editable_until is None or profile.region_locked_until is None:
             raise RuntimeError("region lock deadlines are missing")
-        await message.edit_text(
-            _region_success_text(profile, self._default_timezone), reply_markup=_region_keyboard()
+        await edit_panel(
+            message,
+            _region_success_text(profile, self._default_timezone),
+            reply_markup=_region_keyboard(),
         )
 
 
@@ -325,7 +328,7 @@ async def _respond(message, text: str, *, keyboard, edit: bool) -> None:
 
     keyboard = style_keyboard(keyboard)
     if edit:
-        await message.edit_text(text, reply_markup=keyboard)
+        await edit_panel(message, text, reply_markup=keyboard)
         return
     await message.answer(text, reply_markup=keyboard)
 

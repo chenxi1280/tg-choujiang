@@ -4,6 +4,11 @@ from tg_lottery.telegram.member_share import show_share_card
 
 
 async def dispatch_start_payload(flow, message, payload: str) -> bool:
+    if payload.startswith("history_"):
+        from tg_lottery.telegram.public_draw_result import show_public_result
+
+        await show_public_result(flow, message, payload.removeprefix("history_"))
+        return True
     if payload.startswith("join_"):
         await open_activity(flow, message, payload.removeprefix("join_"))
         return True
@@ -28,8 +33,12 @@ async def dispatch_start_payload(flow, message, payload: str) -> bool:
         return True
     if not payload.startswith("condition_"):
         return False
+    await _condition_payload(flow, message, payload)
+    return True
+
+
+async def _condition_payload(flow, message, payload):
     reference, separator, position = payload.removeprefix("condition_").rpartition("_")
     if not separator or not position.isdecimal():
         raise ValueError("invalid participation condition payload")
     await flow.show_condition(message, reference, int(position))
-    return True

@@ -382,6 +382,7 @@ class DrawingService:
     ) -> None:
         payload = {
             "campaign_name": campaign.name,
+            "campaign_ref": campaign.public_ref,
             "winners": [self._winner_payload(item) for item in outcome.awards],
             "undistributed": [
                 {
@@ -424,6 +425,7 @@ class DrawingService:
                 business_key=f"winner_notice:{item.winner.id}:{item.participant.user_id}",
                 payload={
                     "campaign_name": campaign.name,
+                    "campaign_ref": campaign.public_ref,
                     "prize_name": item.prize.name,
                     "prize_slot_no": item.prize_slot_no,
                     "claim_instructions": item.prize.claim_instructions,

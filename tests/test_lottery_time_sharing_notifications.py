@@ -25,18 +25,15 @@ def test_quick_ten_days_and_legacy_naive_time_preserve_correct_instants():
     )
 
 
-def test_shared_card_detail_callback_and_first_start_link_bind_same_activity():
+def test_shared_card_button_and_body_open_the_same_activity():
     payload = _campaign_payload()
     button = _campaign_keyboard(payload).inline_keyboard[0][0]
-    assert button.callback_data == f"m:detail:{payload['campaign_ref']}"
-    assert button.url is None
     first_start_link = (
         f"https://t.me/{payload['bot_username']}?start=join_{payload['campaign_ref']}"
     )
     assert first_start_link in _campaign_card_text(payload)
-    assert _campaign_keyboard(payload).inline_keyboard[0][1].url == (
-        f"https://t.me/{payload['bot_username']}"
-    )
+    assert button.url == first_start_link
+    assert button.callback_data is None
 
 
 async def test_draw_result_notifies_and_mentions_winner_without_username():

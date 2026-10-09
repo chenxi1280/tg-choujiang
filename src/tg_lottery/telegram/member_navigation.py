@@ -13,6 +13,7 @@ from tg_lottery.presentation.target_identity import (
 )
 from tg_lottery.telegram.keyboard_layout import list_rows
 from tg_lottery.telegram.member_activity_landing import _rules_payload
+from tg_lottery.telegram.member_activity_preview import show_activity_preview
 from tg_lottery.telegram.member_bonus_context import actual_bonus_context, bonus_eligibility_payload
 from tg_lottery.telegram.member_bonus_permissions import inspect_bonus_permissions
 from tg_lottery.telegram.member_bonus_read import bonus_read_payload, uses_legacy_bonus
@@ -34,6 +35,7 @@ from tg_lottery.telegram.member_record_delivery import private_record_message
 from tg_lottery.telegram.member_records import _invitation_keyboard, _invite_groups, _record_line
 from tg_lottery.telegram.member_region import region_view, set_region
 from tg_lottery.telegram.member_window_guidance import window_guidance
+from tg_lottery.telegram.panel_edit import edit_panel
 from tg_lottery.telegram.panel_pagination import PAGE_CONTENT_UNITS, text_pages
 from tg_lottery.telegram.public_projection import campaign_history_state_text
 from tg_lottery.telegram.ui_style import style_keyboard
@@ -142,7 +144,7 @@ class MemberNavigation:
             )
         detail = await self._queries.participant_campaign_detail(query.from_user.id, reference)
         if detail is None:
-            await self._rules(query, replace(context, route=f"m:rules:{reference}:0"))
+            await show_activity_preview(self, query, context)
             return
         pages, keyboard = participant_detail_view(
             detail, user_id=query.from_user.id, bot_username=self._bot_username
@@ -424,7 +426,7 @@ class MemberNavigation:
             self._tokens, _keyboard(rows), context=context, user_id=query.from_user.id
         )
         if _editable_panel(query, private=private):
-            await message.edit_text(shown, reply_markup=scoped, parse_mode=parse_mode)
+            await edit_panel(message, shown, reply_markup=scoped, parse_mode=parse_mode)
         else:
             try:
                 await message.answer(shown, reply_markup=scoped, parse_mode=parse_mode)
