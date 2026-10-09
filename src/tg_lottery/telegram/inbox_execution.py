@@ -1,4 +1,4 @@
-"""Cancel a claimed update on shutdown and wait for its durable retry state."""
+"""Cancel and reap a running operation on shutdown before releasing ownership."""
 
 import asyncio
 from contextlib import suppress

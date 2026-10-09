@@ -10,7 +10,7 @@ from aiogram import Bot
 from aiogram.enums import UpdateType
 from aiogram.types import Update
 from aiogram.utils.serialization import deserialize_telegram_object_to_python
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -18,6 +18,7 @@ from tg_lottery.application.campaign_references import resolve_campaign_referenc
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import UpdateState
 from tg_lottery.infrastructure.db import BotRuntimeLease, PollingOffset, TelegramUpdate
+from tg_lottery.telegram.inbox_execution import run_until_stopped
 
 ALLOWED_UPDATES = [update_type.value for update_type in UpdateType]
 _LEASE_RETRY_SECONDS = 5
@@ -48,12 +49,29 @@ class TelegramPollingAdapter:
         self._logger = logging.getLogger(__name__)
 
     async def run_forever(self, stop: asyncio.Event) -> None:
+        try:
+            await self._poll_loop(stop)
+        finally:
+            await self._release_lease()
+
+    async def _release_lease(self) -> None:
+        async with self._session_factory() as session, session.begin():
+            await session.execute(
+                update(BotRuntimeLease)
+                .where(
+                    BotRuntimeLease.bot_id == self._bot_id,
+                    BotRuntimeLease.owner_id == self._owner_id,
+                )
+                .values(lease_until=utcnow())
+            )
+
+    async def _poll_loop(self, stop: asyncio.Event) -> None:
         while not stop.is_set():
             try:
                 if not await self._acquire_or_renew_lease():
                     await self._wait(stop, _LEASE_RETRY_SECONDS)
                     continue
-                await self.poll_once()
+                await run_until_stopped(self.poll_once(), stop)
             except asyncio.CancelledError:
                 raise
             except Exception:
