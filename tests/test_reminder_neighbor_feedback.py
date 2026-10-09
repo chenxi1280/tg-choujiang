@@ -1,4 +1,6 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNetworkError
@@ -127,7 +129,7 @@ async def test_qualification_private_delivery_reports_actual_result_once(monkeyp
 
 
 @pytest.mark.parametrize("registered", [True, False])
-async def test_participation_card_opens_clickers_private_detail_without_start(
+async def test_participation_card_link_opens_same_activity_in_users_private_chat(
     monkeypatch, registered
 ):
     from tg_lottery.telegram.gateway import _campaign_keyboard
@@ -137,6 +139,7 @@ async def test_participation_card_opens_clickers_private_detail_without_start(
     queries = queries_for(record, registered=registered)
     queries.prizes = AsyncMock(return_value=())
     queries.operational_issues = AsyncMock(return_value=())
+    queries.campaign_outcome = AsyncMock(return_value=SimpleNamespace(kind="unconfirmed"))
     flow = flow_for(queries)
     delivered = []
 
@@ -145,16 +148,21 @@ async def test_participation_card_opens_clickers_private_detail_without_start(
 
     monkeypatch.setattr(Message, "answer", receive)
     monkeypatch.setattr(CallbackQuery, "answer", AsyncMock())
-    route = (
+    url = (
         _campaign_keyboard(
             {"campaign_ref": REFERENCE, "bot_username": "test_bot", "rules": record.rules}
         )
         .inline_keyboard[0][0]
-        .callback_data
+        .url
     )
-    query = _query(CHAT_ID, kind="supergroup").model_copy(update={"data": route})
+    payload = parse_qs(urlparse(url).query)["start"][0]
+    assert payload == "join_" + REFERENCE
+    query = _query()
+    message = query.message.model_copy(
+        update={"from_user": query.from_user, "text": "/start " + payload}
+    )
     handler = handler_for(flow)
-    await handler._callback(query)
+    await handler._private_message(message)
     assert len(delivered) == 1
     assert delivered[0][0] == USER_ID
     queries.participant_campaign_detail.assert_any_await(USER_ID, REFERENCE)
