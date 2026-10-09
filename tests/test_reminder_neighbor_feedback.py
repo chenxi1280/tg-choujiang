@@ -124,3 +124,46 @@ async def test_qualification_private_delivery_reports_actual_result_once(monkeyp
         label = {"blocked": "私聊不可达", "unknown": "结果未确认", "rejected": "发送失败"}[case]
         assert label in text
         assert "Qualification detail private delivery failed" in caplog.text
+
+
+@pytest.mark.parametrize("registered", [True, False])
+async def test_participation_card_opens_clickers_private_detail_without_start(
+    monkeypatch, registered
+):
+    from tg_lottery.telegram.gateway import _campaign_keyboard
+
+    record = campaign()
+    record.config_revision = 1
+    queries = queries_for(record, registered=registered)
+    queries.prizes = AsyncMock(return_value=())
+    queries.operational_issues = AsyncMock(return_value=())
+    flow = flow_for(queries)
+    delivered = []
+
+    async def receive(message, text, **options):
+        delivered.append((message.chat.id, text, options))
+
+    monkeypatch.setattr(Message, "answer", receive)
+    monkeypatch.setattr(CallbackQuery, "answer", AsyncMock())
+    route = (
+        _campaign_keyboard(
+            {"campaign_ref": REFERENCE, "bot_username": "test_bot", "rules": record.rules}
+        )
+        .inline_keyboard[0][0]
+        .callback_data
+    )
+    query = _query(CHAT_ID, kind="supergroup").model_copy(update={"data": route})
+    handler = handler_for(flow)
+    await handler._callback(query)
+    assert len(delivered) == 1
+    assert delivered[0][0] == USER_ID
+    queries.participant_campaign_detail.assert_any_await(USER_ID, REFERENCE)
+    requests = handler._navigation._tokens.create_many.await_args.kwargs["requests"]
+    if registered:
+        assert "本人活动" in delivered[0][1]
+    else:
+        assert "提醒回归" in delivered[0][1]
+        routes = {r.payload["route"] for r in requests}
+        assert f"m:conditions:{REFERENCE}:0" in routes
+        assert "登记参与" in str(delivered[0][2]["reply_markup"])
+    flow._participants.queue_temporary_reminder.assert_not_awaited()

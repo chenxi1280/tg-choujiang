@@ -1,16 +1,14 @@
 """未报名发言提示: 与发言处理共用活动锁和事务, 不产生参与或计奖事实。"""
 
-from datetime import UTC, timedelta
+from datetime import UTC
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from tg_lottery.application.message_rules import rejection_reason
 from tg_lottery.application.records import utcnow
 from tg_lottery.application.temporary_reminders import add_temporary_reminder
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import Participant, TelegramOutbox
-
-REMINDER_COOLDOWN = timedelta(minutes=5)
 
 
 async def remind_unregistered_speaker(session, campaign, observation) -> None:
@@ -26,22 +24,26 @@ async def remind_unregistered_speaker(session, campaign, observation) -> None:
     )
     if registered is not None:
         return
-    prefix = f"unregistered_speech:{campaign.id}:{observation.chat_id}:{observation.user_id}:"
+    prefix = f"unregistered_speech:{campaign.id}:{observation.rule_target}:{observation.user_id}:"
+    legacy_prefix = (
+        f"unregistered_speech:{campaign.id}:{observation.chat_id}:{observation.user_id}:"
+    )
     event_at = observation.event_at.astimezone(UTC)
-    recent = await session.scalar(
+    previous = await session.scalar(
         select(TelegramOutbox.id).where(
-            TelegramOutbox.business_key.startswith(prefix, autoescape=True),
-            TelegramOutbox.payload["observed_at"].as_string()
-            > (event_at - REMINDER_COOLDOWN).isoformat(timespec="microseconds"),
+            or_(
+                TelegramOutbox.business_key.startswith(prefix, autoescape=True),
+                TelegramOutbox.business_key.startswith(legacy_prefix, autoescape=True),
+            ),
         )
     )
-    if recent is not None:
+    if previous is not None:
         return
     await add_temporary_reminder(
         session,
         campaign_id=campaign.id,
         recipient_chat_id=observation.chat_id,
-        business_key=prefix + str(observation.message_id),
+        business_key=prefix + "first",
         campaign_ref=campaign.public_ref,
         user_id=observation.user_id,
         observed_at=event_at.isoformat(timespec="microseconds"),

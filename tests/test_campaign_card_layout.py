@@ -57,7 +57,9 @@ def test_caption_keeps_group_gate_under_its_link_and_reference_section_order():
     assert "转发及空白消息不计" in rules_text
     assert "图片、表情、贴纸及 GIF 表情均计数\uff0c不限制字数" in rules_text
     button = _campaign_keyboard(card_payload()).inline_keyboard[0][0]
-    assert button.url in text and button.callback_data is None
+    assert button.url is None
+    assert button.callback_data == "m:detail:" + card_payload()["campaign_ref"]
+    assert "https://t.me/lottery_test_bot?start=join_abcdefgh" in text
 
 
 def test_private_target_never_exposes_plain_invite_even_when_present():

@@ -122,11 +122,17 @@ class TelegramGateway:
                         [
                             InlineKeyboardButton(
                                 text="参与抽奖",
-                                url=campaign_link(payload | {"bot_username": self._bot_username}),
-                            )
+                                callback_data=f"m:detail:{payload['campaign_ref']}",
+                            ),
+                            InlineKeyboardButton(
+                                text="打开私聊", url=f"https://t.me/{self._bot_username}"
+                            ),
                         ]
                     ]
                 )
+            )
+            text += "\n首次使用请先开启本活动：" + campaign_link(
+                payload | {"bot_username": self._bot_username}
             )
         if payload.get("user_id"):
             mention = user_mention(payload | {"display_name": "这位成员"})
@@ -364,6 +370,16 @@ def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
     action = "rules" if closed else "join"
     rows = [[InlineKeyboardButton(text=text, url=_campaign_deep_link(payload, action))]]
     if not closed:
+        rows = [
+            [
+                InlineKeyboardButton(
+                    text=text, callback_data=f"m:detail:{payload['campaign_ref']}"
+                ),
+                InlineKeyboardButton(
+                    text="打开私聊", url=f"https://t.me/{payload['bot_username']}"
+                ),
+            ]
+        ]
         reference = payload["campaign_ref"]
         rules = CampaignRules.model_validate(payload.get("rules") or {})
         bonus_buttons = []

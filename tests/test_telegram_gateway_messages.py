@@ -123,9 +123,8 @@ def test_campaign_card_separates_rules_registration_and_join_links() -> None:
         "https://t.me/lottery_test_bot?start=rules_AbCdEfGhIjKlMnOpQrSt-_"
         in _campaign_card_text(payload)
     )
-    assert urls == [
-        "https://t.me/lottery_test_bot?start=join_AbCdEfGhIjKlMnOpQrSt-_",
-    ]
+    assert "m:detail:AbCdEfGhIjKlMnOpQrSt-_" in datas
+    assert urls == ["https://t.me/lottery_test_bot"]
 
 
 def test_campaign_card_explains_per_group_messages_and_channel_following() -> None:
@@ -425,12 +424,13 @@ async def test_campaign_keyboard_emphasizes_participation_with_rules_in_body() -
     keyboard = bot.sent[0][2]["reply_markup"]
     buttons = [button for row in keyboard.inline_keyboard for button in row]
 
-    assert len(buttons) == 3
+    assert len(buttons) == 4
     assert buttons[0].text == "🛂 点击参与抽奖"
-    assert buttons[0].url == _campaign_deep_link(_lotterybest_card_payload(), "join")
-    assert buttons[0].callback_data is None
-    assert [plain_label(button.text) for button in buttons[1:]] == ["邀请入口", "我的加成"]
-    assert all(len(button.callback_data.encode()) <= 64 for button in buttons[1:])
+    assert buttons[0].url is None
+    assert buttons[0].callback_data == "m:detail:" + _lotterybest_card_payload()["campaign_ref"]
+    assert buttons[1].url == "https://t.me/" + _lotterybest_card_payload()["bot_username"]
+    assert [plain_label(button.text) for button in buttons[2:]] == ["邀请入口", "我的加成"]
+    assert all(len(button.callback_data.encode()) <= 64 for button in (buttons[0], *buttons[2:]))
     assert _campaign_deep_link(_lotterybest_card_payload(), "rules") in bot.sent[0][1][1]
 
 

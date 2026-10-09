@@ -6,10 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from tg_lottery.application.activity_rules import group_activity_ticket_target
-from tg_lottery.application.progress_notifications import (
-    queue_bonus_notice,
-    queue_incomplete_progress_notice,
-)
+from tg_lottery.application.progress_notifications import queue_bonus_notice
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import TicketSource
 from tg_lottery.domain.rules import CampaignRules
@@ -45,16 +42,6 @@ async def increment_group_activity_progress(
     target = group_activity_ticket_target(progress.valid_message_counts, chat_id, rules)
     if target is None:
         raise RuntimeError("group activity rule disappeared during progress update")
-    await _queue_incomplete_activity_notice(
-        session,
-        campaign=campaign,
-        participant=participant,
-        progress=progress,
-        rules=rules,
-        chat_id=chat_id,
-        local_date=local_date,
-        target=target,
-    )
     await _award_target(
         session,
         campaign=campaign,
@@ -64,44 +51,6 @@ async def increment_group_activity_progress(
         chat_id=chat_id,
         target=target,
         event_at=event_at,
-    )
-
-
-async def _queue_incomplete_activity_notice(
-    session: object,
-    *,
-    campaign: Campaign,
-    participant: Participant,
-    progress: DailyProgress,
-    rules: CampaignRules,
-    chat_id: int,
-    local_date: date,
-    target: int,
-) -> None:
-    if target > progress.tickets_awarded:
-        return
-    rule = rules.activity_rule_for(chat_id)
-    if rule is None:
-        return
-    awarded_cycles = progress.tickets_awarded // rule.reward_tickets
-    capped = rule.daily_cap_mode == "limited" and awarded_cycles >= int(rule.daily_max_cycles or 0)
-    in_cycle = progress.valid_message_count % rule.messages_per_cycle
-    if capped or in_cycle == 0:
-        return
-    remainder = rule.messages_per_cycle - in_cycle
-    await queue_incomplete_progress_notice(
-        session,
-        campaign=campaign,
-        participant=participant,
-        chat_id=chat_id,
-        key=(
-            f"progress_incomplete:activity:{participant.id}:{chat_id}:"
-            f"{local_date}:{progress.valid_message_count}"
-        ),
-        text=(
-            f"本群发言加成进度: 今日 {progress.valid_message_count} 条, "
-            f"本轮 {in_cycle}/{rule.messages_per_cycle}, 还差 {remainder} 条。"
-        ),
     )
 
 

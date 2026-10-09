@@ -88,8 +88,7 @@ async def test_seven_days_stashes_bonus_then_enables_same_ledger_and_deduplicate
         notices = list(await session.scalars(select(TelegramOutbox)))
         durable, incomplete = _split_progress_notices(notices)
         assert len(durable) == 12
-        assert incomplete
-        assert all(item.payload.get("delete_after_seconds") == 15 for item in incomplete)
+        assert incomplete == []
         assert all("delete_after_seconds" not in item.payload for item in durable)
         assert all("暂存" in notice.payload["ticket_status"] for notice in notices)
     await messages(service, day=6)
@@ -134,8 +133,7 @@ async def test_qualified_streak_does_not_remind_a_later_short_day(session_factor
             and "2026-09-08" in row.business_key
         ]
         assert later_messages == []
-        assert later_activity
-        assert all(row.payload.get("delete_after_seconds") == 15 for row in later_activity)
+        assert later_activity == []
 
 
 async def test_each_group_must_qualify_and_gate_only_group_does_not_award_legacy_bonus(

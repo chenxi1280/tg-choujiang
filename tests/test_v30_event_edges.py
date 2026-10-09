@@ -159,7 +159,7 @@ async def test_cancel_between_routing_and_campaign_lock_does_not_accept_message(
         assert await session.scalar(select(func.sum(TicketLedger.delta))) == 1
 
 
-async def test_incomplete_progress_follows_migrated_group_chat(session_factory):
+async def test_incomplete_progress_is_silent_after_group_migration(session_factory):
     await seed_v3(session_factory, rules_for("message", ("activity",)))
     upgraded = -100999
     await GroupService(partial(UnitOfWork, session_factory)).migrate_group(FIRST, upgraded)
@@ -172,9 +172,7 @@ async def test_incomplete_progress_follows_migrated_group_chat(session_factory):
                 )
             )
         )
-        assert rows
-        assert {row.recipient_chat_id for row in rows} == {upgraded}
-        assert all(row.payload["delete_after_seconds"] == 15 for row in rows)
+        assert rows == []
 
 
 def _second_group_without_invite_bonus():
@@ -207,9 +205,7 @@ async def test_closed_group_invite_bonus_does_not_use_campaign_ratio(session_fac
         assert not participant.admission_qualified
         assert participant.ticket_total_cache == 1
         assert bonus == []
-        assert len(gates) == 1
-        assert "还差 1" in gates[0].payload["text"]
-        assert gates[0].recipient_chat_id == SECOND
+        assert gates == []
 
 
 async def test_concurrent_messages_and_replays_keep_one_gate_and_correct_awards(session_factory):
@@ -230,7 +226,6 @@ async def test_concurrent_messages_and_replays_keep_one_gate_and_correct_awards(
         durable = [row for row in rows if not row.business_key.startswith("progress_incomplete:")]
         incomplete = [row for row in rows if row.business_key.startswith("progress_incomplete:")]
         assert len(durable) == 2
-        assert incomplete
-        assert all(row.payload["delete_after_seconds"] == 15 for row in incomplete)
+        assert incomplete == []
         assert all("delete_after_seconds" not in row.payload for row in durable)
         assert await session.scalar(select(func.sum(TicketLedger.delta))) == 3

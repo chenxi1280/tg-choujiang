@@ -283,3 +283,32 @@ async def test_actual_invitation_list_entry_keeps_source_on_group_return(
     suffix = f":{parent[0]}:{parent[1]}" if parent else ""
     assert back["route"] == f"nav:invites_at:{REFERENCE}:{category}:{page}" + suffix
     assert back["trail"] == []
+
+
+async def test_private_photo_share_opens_detail_as_text_without_editing_photo(monkeypatch):
+    from aiogram.types import PhotoSize
+
+    monkeypatch.setattr(CallbackQuery, "answer", AsyncMock())
+    flow, queries, _ = _navigation()
+    edit, answer = AsyncMock(), AsyncMock()
+    monkeypatch.setattr(Message, "edit_text", edit)
+    monkeypatch.setattr(Message, "answer", answer)
+    query = _query()
+    query = query.model_copy(
+        update={
+            "data": "m:detail:" + REFERENCE,
+            "message": query.message.model_copy(
+                update={
+                    "photo": [
+                        PhotoSize(file_id="cover", file_unique_id="cover", width=100, height=100)
+                    ],
+                    "caption": "活动分享卡片",
+                }
+            ),
+        }
+    )
+    await flow.handle_route(query, data=query.data, personal=object())
+    edit.assert_not_awaited()
+    answer.assert_awaited_once()
+    assert "本人活动" in answer.await_args.args[0]
+    queries.participant_campaign_detail.assert_awaited_once_with(USER_ID, REFERENCE)

@@ -88,7 +88,7 @@ async def test_unregistered_speech_is_temporary_idempotent_and_never_registers_o
             assert await session.scalar(select(func.count(model.id))) == 0
 
 
-async def test_cooldown_is_five_minutes_and_separates_users(session_factory):
+async def test_first_reminder_is_once_per_campaign_and_separates_users(session_factory):
     await _seed(session_factory)
     message = _observation()
     service = _service(session_factory)
@@ -102,9 +102,38 @@ async def test_cooldown_is_five_minutes_and_separates_users(session_factory):
     await service.record_message(
         replace(message, message_id=903, event_at=message.event_at + timedelta(minutes=5))
     )
-    assert len(await _reminders(session_factory)) == 3
+    assert len(await _reminders(session_factory)) == 2
     await service.record_message(message)
-    assert len(await _reminders(session_factory)) == 3
+    assert len(await _reminders(session_factory)) == 2
+
+
+async def test_old_reminder_and_next_day_speech_do_not_rearm_first_notice(session_factory):
+    campaign_id, _ = await _seed(session_factory)
+    service = _service(session_factory)
+    message = _observation()
+    await service.record_message(message)
+    async with session_factory() as session, session.begin():
+        row = await session.scalar(select(TelegramOutbox))
+        row.business_key = f"unregistered_speech:{campaign_id}:{CHAT_ID}:{NEW_USER_ID}:900"
+        campaign = await session.get(Campaign, campaign_id)
+        campaign.cutoff_at = message.event_at + timedelta(days=3)
+    await service.record_message(
+        replace(message, message_id=904, event_at=message.event_at + timedelta(days=1))
+    )
+    assert len(await _reminders(session_factory)) == 1
+
+
+async def test_group_migration_does_not_rearm_first_notice(session_factory):
+    from tg_lottery.application.groups import GroupService
+
+    await _seed(session_factory)
+    service = _service(session_factory)
+    message = _observation()
+    await service.record_message(message)
+    upgraded = -100999
+    await GroupService(partial(UnitOfWork, session_factory)).migrate_group(CHAT_ID, upgraded)
+    await service.record_message(replace(message, chat_id=upgraded, message_id=901))
+    assert len(await _reminders(session_factory)) == 1
 
 
 async def test_concurrent_unregistered_messages_queue_only_one_reminder(session_factory):
@@ -120,7 +149,7 @@ async def test_concurrent_unregistered_messages_queue_only_one_reminder(session_
     assert len(await _reminders(session_factory)) == 1
 
 
-async def test_cooldown_does_not_hide_reminder_in_another_configured_group(session_factory):
+async def test_first_reminder_is_independent_in_another_configured_group(session_factory):
     second_chat = -100456
     rules = CampaignRules(
         participation_rules_version="v3.0",
@@ -224,7 +253,10 @@ async def test_speech_reminder_delivers_mention_and_same_campaign_link_then_sche
     assert f"tg://user?id={NEW_USER_ID}" in text
     assert options["parse_mode"] == "HTML"
     button = options["reply_markup"].inline_keyboard[0][0]
-    assert button.url == f"https://t.me/lottery_test_bot?start=join_{reference}"
+    assert button.callback_data == f"m:detail:{reference}"
+    assert button.url is None
+    assert f"https://t.me/lottery_test_bot?start=join_{reference}" in text
+    assert options["reply_markup"].inline_keyboard[0][1].url == "https://t.me/lottery_test_bot"
 
 
 async def test_legacy_invitee_activity_is_recorded_even_when_reminding_to_register(session_factory):

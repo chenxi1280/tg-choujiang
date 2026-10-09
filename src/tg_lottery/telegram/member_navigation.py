@@ -423,7 +423,7 @@ class MemberNavigation:
         scoped = await scoped_keyboard(
             self._tokens, _keyboard(rows), context=context, user_id=query.from_user.id
         )
-        if private and not isinstance(query, MemberMessageTarget):
+        if _editable_panel(query, private=private):
             await message.edit_text(shown, reply_markup=scoped, parse_mode=parse_mode)
         else:
             try:
@@ -432,6 +432,10 @@ class MemberNavigation:
                 raise UserFacingError(
                     "私聊暂不可达，请先打开机器人并点击开始，再查看本人记录"
                 ) from exc
+
+
+def _editable_panel(query, *, private: bool) -> bool:
+    return private and not isinstance(query, MemberMessageTarget) and not query.message.photo
 
 
 def _button(text: str, route: str):

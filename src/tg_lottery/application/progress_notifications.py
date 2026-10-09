@@ -2,7 +2,6 @@ from sqlalchemy import select
 
 from tg_lottery.application.activity_targets import message_rule_chat_id
 from tg_lottery.application.admission_qualification import behavior_qualified
-from tg_lottery.application.message_deletion import TEMPORARY_REMINDER_DELETE_SECONDS
 from tg_lottery.application.records import add_outbox
 from tg_lottery.domain.enums import QualificationState
 from tg_lottery.infrastructure.db import CampaignParticipationGroup, Group, TelegramOutbox
@@ -48,39 +47,6 @@ async def queue_progress_notice(
             "campaign_ref": campaign.public_ref,
             "text": text,
             "ticket_status": ticket_status(participant, campaign),
-        },
-    )
-
-
-async def queue_incomplete_progress_notice(
-    session: object,
-    *,
-    campaign: object,
-    participant: object,
-    chat_id: int,
-    key: str,
-    text: str,
-) -> None:
-    if campaign.rules.get("participation_rules_version") == "v3.0":
-        rule_chat_id = await message_rule_chat_id(session, campaign.id, chat_id)
-        chat_id = await _current_chat(session, campaign.id, rule_chat_id)
-    if await session.scalar(select(TelegramOutbox.id).where(TelegramOutbox.business_key == key)):
-        return
-    add_outbox(
-        session,
-        operation="send_progress_notice",
-        aggregate_type="participant",
-        aggregate_id=str(participant.id),
-        recipient_chat_id=chat_id,
-        business_key=key,
-        payload={
-            "user_id": participant.user_id,
-            "display_name": participant.display_name,
-            "campaign_name": campaign.name,
-            "campaign_ref": campaign.public_ref,
-            "text": text,
-            "ticket_status": ticket_status(participant, campaign),
-            "delete_after_seconds": TEMPORARY_REMINDER_DELETE_SECONDS,
         },
     )
 

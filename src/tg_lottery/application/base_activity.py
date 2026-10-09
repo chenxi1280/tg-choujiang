@@ -12,10 +12,7 @@ from tg_lottery.application.admission_qualification import (
 from tg_lottery.application.base_activity_notifications import notify_streak_restart
 from tg_lottery.application.full_draw import record_full_draw_candidate
 from tg_lottery.application.message_rules import normalized_content, rejection_reason
-from tg_lottery.application.progress_notifications import (
-    queue_incomplete_progress_notice,
-    queue_progress_notice,
-)
+from tg_lottery.application.progress_notifications import queue_progress_notice
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.base_activity import base_progress
 from tg_lottery.domain.enums import QualificationState
@@ -258,22 +255,6 @@ async def _daily_notice(
     rule_chat_id: int | None = None,
 ) -> None:
     current = progress[str(rule_chat_id if rule_chat_id is not None else event.chat_id)]
-    if not current.qualified and current.today_messages < rule.daily_messages:
-        await queue_incomplete_progress_notice(
-            session,
-            campaign=campaign,
-            participant=participant,
-            chat_id=event.chat_id,
-            key=(
-                f"progress_incomplete:message:{participant.id}:{event.chat_id}:"
-                f"{event.local_date}:{current.today_messages}"
-            ),
-            text=(
-                f"{event.local_date} 基础发言进度: "
-                f"{current.today_messages}/{rule.daily_messages} 条, "
-                f"还差 {rule.daily_messages - current.today_messages} 条。"
-            ),
-        )
     if current.today_messages == 1 and not current.qualified:
         await notify_streak_restart(
             session, campaign=campaign, participant=participant, event=event, rule=rule
