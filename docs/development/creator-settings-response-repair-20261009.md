@@ -19,3 +19,4 @@
 - 最终上海 Docker 专用库定向回归 161 项通过（12.84 秒），每个 pytest 进程硬超时 60 秒；迁移及 Alembic 漂移检查成功，无新增迁移。
 - 覆盖文件：`test_creator_setting_recovery.py`、`test_creator_numeric_recovery.py`、`test_v32_callback_mutation_replay.py`、`test_creator_leaf_experience.py`、`test_creator_settings.py`、`test_draft_panel_recovery.py`、`test_creator_cover.py`、`test_panel_response_recovery.py`、`test_creator_rule_review.py`、`test_creator_gate_search_regressions.py`、`test_creator_admission_picker.py`、`test_v32_creator_controls.py`。
 - Ruff 全范围格式、Lint、代码规模和差异检查通过；发布版本与真实 Telegram 客户端证据单独记录，不以隔离测试替代线上结果。
+- 首轮完整 CI 在第 4 分片拦截旧群选择状态断言：页面身份由 idle 改为 groups，但旧用例仍断言 idle。更新选择中的断言及模拟选择状态，保留“完成选择/保存门槛后回到 idle”的断言。该轮构建及部署均未执行，不能计为完整回归通过。

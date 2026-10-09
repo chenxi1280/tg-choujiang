@@ -76,10 +76,10 @@ async def test_choose_groups_then_resume_invite_editor_and_save(monkeypatch):
 
     await creator.handle_grant(query, _grant("choose_groups"))
     renderer.render_groups.assert_awaited_once()
-    assert sessions.state == "draft:idle"
+    assert sessions.state == "draft:groups"
     assert sessions.data[editor.EDITOR_KEY]["type"] == "invite"
     group = Group(chat_id=FIRST, title="A群", timezone="Asia/Shanghai")
-    await sessions.set(USER_ID, "draft:idle", toggle_group(sessions.data, group))
+    await sessions.set(USER_ID, "draft:groups", toggle_group(sessions.data, group))
     await creator.handle_grant(query, CallbackGrant("draft_groups_done", None, {}))
     await creator.handle_grant(query, CallbackGrant("draft_gate", None, {}))
     assert "当前选择\N{FULLWIDTH COLON}邀请好友" in renderer.text
