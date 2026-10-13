@@ -65,9 +65,18 @@ async def test_large_draw_queues_one_durable_delivery_per_complete_page_and_is_i
     assert all(
         html_utf16_length(draw_result_text(row.payload)) <= MESSAGE_UTF16_LIMIT for row in results
     )
+    _assert_creator_delivery(results, outboxes)
     assert len([row for row in outboxes if row.operation == "send_winner_notice"]) == 12
     notices = [row.payload for row in outboxes if row.operation == "send_winner_notice"]
     assert all(row["issuer_user_id"] == 101 for row in notices)
+
+
+def _assert_creator_delivery(results, outboxes):
+    assert 'href="tg://user?id=101"' in draw_result_text(results[0].payload)
+    assert all(
+        'href="tg://user?id=101"' not in draw_result_text(row.payload) for row in results[1:]
+    )
+    assert len([row for row in outboxes if row.operation == "send_creator_draw_notice"]) == 1
 
 
 @pytest.mark.parametrize("claimed", [False, True])

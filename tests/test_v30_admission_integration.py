@@ -105,7 +105,9 @@ async def _draw_and_verify(factory, cid, pid, *, expected):
         rows = list(
             await session.scalars(
                 select(TelegramOutbox).where(
-                    TelegramOutbox.operation.in_(["send_draw_result", "send_winner_notice"])
+                    TelegramOutbox.operation.in_(
+                        ["send_draw_result", "send_winner_notice", "send_creator_draw_notice"]
+                    )
                 )
             )
         )
@@ -113,8 +115,11 @@ async def _draw_and_verify(factory, cid, pid, *, expected):
             ("send_draw_result", FIRST),
             ("send_draw_result", SECOND),
             ("send_winner_notice", 201),
+            ("send_creator_draw_notice", 101),
         }
-        assert len(rows) == 3
+        assert len(rows) == 4
+        groups = [row for row in rows if row.operation == "send_draw_result"]
+        assert all(row.payload["creator"]["user_id"] == 101 for row in groups)
 
 
 async def test_per_group_20_34_cross_date_and_one_notice_final_state(session_factory):

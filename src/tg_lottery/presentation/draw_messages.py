@@ -13,6 +13,7 @@ def draw_result_text(payload: dict[str, Any]) -> str:
         lines.insert(1, result_reference_line(payload))
     if payload.get("completed_at_text"):
         lines.insert(2, "实际开奖时间：" + html.escape(payload["completed_at_text"]))
+    lines.extend(_creator_completion_lines(payload))
     if not payload.get("has_winners", bool(payload.get("winners"))):
         lines.append("本期没有符合条件的中奖候选人。")
     unallocated = payload.get("undistributed", [])
@@ -21,6 +22,12 @@ def draw_result_text(payload: dict[str, Any]) -> str:
     if payload.get("extended_tips"):
         lines.append("本次结果已保存，可在「我参加的抽奖」中查看。")
     return "\n".join(lines)
+
+
+def _creator_completion_lines(payload: dict[str, Any]) -> list[str]:
+    if payload.get("creator") and payload.get("page_number", 1) == 1:
+        return [f"创建者：{user_mention(payload['creator'])}，你创建的抽奖已开奖。"]
+    return []
 
 
 def _winner_line(item: dict[str, Any]) -> str:
@@ -54,6 +61,20 @@ def winner_notice_text(payload: dict[str, Any]) -> str:
     return text
 
 
+def creator_draw_notice_text(payload: dict[str, Any]) -> str:
+    lines = [
+        f"🏆 你创建的「{html.escape(str(payload['campaign_name']))}」已开奖。",
+        f"中奖人数：{int(payload['winner_count'])} 人；"
+        f"中奖名额：{int(payload['awarded_slots'])} 个。",
+    ]
+    if not payload["awarded_slots"]:
+        lines.append("本期没有符合条件的中奖候选人。")
+    if payload.get("undistributed_count"):
+        lines.append(f"未分配名额：{int(payload['undistributed_count'])} 个。")
+    lines.extend(["请查看开奖结果并安排发奖。", result_reference_line(payload)])
+    return "\n".join(lines)
+
+
 def result_reference_line(payload: dict[str, Any]) -> str:
     reference = html.escape(str(payload["campaign_ref"]))
     label = f"CJ-{reference}"
@@ -80,16 +101,24 @@ def draw_result_pages(payload: dict[str, Any]) -> tuple[dict[str, Any], ...]:
     pages, current = [], base
     for kind, item in items:
         candidate = current | {kind: [*current[kind], item]}
-        if html_utf16_length(draw_result_text(candidate)) > MESSAGE_UTF16_LIMIT:
+        if _result_page_length(candidate) > MESSAGE_UTF16_LIMIT:
             if not current["winners"] and not current["undistributed"]:
                 raise ValueError("a draw result row exceeds the Telegram message limit")
             pages.append(current)
             candidate = base | {kind: [item]}
-            if html_utf16_length(draw_result_text(candidate)) > MESSAGE_UTF16_LIMIT:
+            if _result_page_length(candidate) > MESSAGE_UTF16_LIMIT:
                 raise ValueError("a draw result row exceeds the Telegram message limit")
         current = candidate
     pages.append(current)
     return tuple(
         page | {"page_number": index, "page_count": len(pages)}
         for index, page in enumerate(pages, start=1)
+    )
+
+
+def _result_page_length(payload: dict[str, Any]) -> int:
+    # Reserve both the widest page number and the first page's creator mention.
+    return max(
+        html_utf16_length(draw_result_text(payload)),
+        html_utf16_length(draw_result_text(payload | {"page_number": 1})),
     )

@@ -13,8 +13,8 @@ from tg_lottery.application.message_deletion import TEMPORARY_REMINDER_OPERATION
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import InviteLink
 from tg_lottery.presentation.campaign_card import campaign_link
+from tg_lottery.presentation.draw_messages import creator_draw_notice_text, winner_notice_text
 from tg_lottery.presentation.draw_messages import draw_result_text as _draw_result_text
-from tg_lottery.presentation.draw_messages import winner_notice_text
 from tg_lottery.presentation.mentions import (
     user_mention,
 )
@@ -64,6 +64,7 @@ class TelegramGateway:
             "revoke_required_chat_invite": self._revoke_required_chat_invite,
             "send_draw_result": self._send_draw_result,
             "send_winner_notice": self._send_winner_notice,
+            "send_creator_draw_notice": self._send_creator_draw_notice,
             "send_progress_notice": self._send_progress_notice,
             TEMPORARY_REMINDER_OPERATION: self._send_temporary_reminder,
             "delete_message": self._delete_message,
@@ -332,6 +333,20 @@ class TelegramGateway:
             outbox.recipient_chat_id, int(outbox.payload["message_id"])
         )
         return GatewayResult(remote_result={"ok": bool(result)})
+
+    async def _send_creator_draw_notice(
+        self, outbox: GatewayRequest, _: InviteLink | None
+    ) -> GatewayResult:
+        message = await self._bot.send_message(
+            outbox.recipient_chat_id,
+            creator_draw_notice_text(outbox.payload | {"bot_username": self._bot_username}),
+            disable_notification=False,
+            parse_mode="HTML",
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+        )
+        return GatewayResult(
+            remote_result=remote_object(message), remote_message_id=message.message_id
+        )
 
 
 def _campaign_deep_link(payload: dict[str, Any], action: str) -> str:

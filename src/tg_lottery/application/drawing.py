@@ -3,17 +3,16 @@ from uuid import UUID
 
 from sqlalchemy import select
 
-from tg_lottery.application.campaign_notifications import add_campaign_card_state_fanout
 from tg_lottery.application.campaign_targets import (
-    participation_chat_ids,
     release_participation_groups,
     require_campaign_admin,
 )
 from tg_lottery.application.draw_commitments import draw_seed
+from tg_lottery.application.draw_notifications import queue_draw_notifications
 from tg_lottery.application.operational_blocks import has_active_campaign_block
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.prize_plan import prize_plan_hash
-from tg_lottery.application.records import add_outbox, utcnow
+from tg_lottery.application.records import utcnow
 from tg_lottery.domain.action_confirmation import ExpectedCampaign, validate_expected
 from tg_lottery.domain.draw import ALGORITHM_VERSION, Selection, WeightedEntry, select_weighted
 from tg_lottery.domain.enums import CampaignState
@@ -31,7 +30,6 @@ from tg_lottery.infrastructure.db import (
     Winner,
     WinnerDesignation,
 )
-from tg_lottery.presentation.draw_messages import draw_result_pages
 
 
 @dataclass(frozen=True)
@@ -101,7 +99,7 @@ class DrawingService:
                 prizes=prizes,
                 unique_winner=CampaignRules.model_validate(campaign.rules).unique_winner,
             )
-            await self._queue_notifications(
+            await queue_draw_notifications(
                 uow.session,
                 campaign=campaign,
                 draw_run=draw_run,
@@ -334,117 +332,6 @@ class DrawingService:
         if snapshot is None:
             raise ValueError("campaign has no immutable draw snapshot")
         return snapshot
-
-    async def _queue_notifications(
-        self,
-        session: object,
-        *,
-        campaign: Campaign,
-        draw_run: DrawRun,
-        outcome: DrawOutcome,
-    ) -> None:
-        winners = [self._winner_payload(item) for item in outcome.awards]
-        await add_campaign_card_state_fanout(
-            session,
-            campaign,
-            state="drawn",
-            winners=winners,
-        )
-        presentation = campaign.presentation or {}
-        extended_tips = bool(presentation.get("message_tips", True))
-        chat_ids = await participation_chat_ids(session, campaign.id, confirmed_only=True)
-        for chat_id in chat_ids:
-            await self._queue_group_result(
-                session,
-                campaign=campaign,
-                draw_run=draw_run,
-                outcome=outcome,
-                chat_id=chat_id,
-                extended_tips=extended_tips,
-            )
-        self._queue_winner_notices(
-            session,
-            campaign=campaign,
-            outcome=outcome,
-            presentation=presentation,
-            extended_tips=extended_tips,
-        )
-
-    async def _queue_group_result(
-        self,
-        session: object,
-        *,
-        campaign: Campaign,
-        draw_run: DrawRun,
-        outcome: DrawOutcome,
-        chat_id: int,
-        extended_tips: bool,
-    ) -> None:
-        payload = {
-            "campaign_name": campaign.name,
-            "campaign_ref": campaign.public_ref,
-            "winners": [self._winner_payload(item) for item in outcome.awards],
-            "undistributed": [
-                {
-                    "prize_position": item.prize.position,
-                    "prize_name": item.prize.name,
-                    "count": item.count,
-                }
-                for item in outcome.undistributed
-            ],
-            "extended_tips": extended_tips,
-        }
-        for index, page in enumerate(draw_result_pages(payload)):
-            suffix = f":page:{index + 1}" if index else ""
-            add_outbox(
-                session,
-                operation="send_draw_result",
-                aggregate_type="draw_run",
-                aggregate_id=str(draw_run.id),
-                recipient_chat_id=chat_id,
-                business_key=f"draw_result_group:{draw_run.id}:{chat_id}{suffix}",
-                payload=page,
-            )
-
-    def _queue_winner_notices(
-        self,
-        session: object,
-        *,
-        campaign: Campaign,
-        outcome: DrawOutcome,
-        presentation: dict[str, object],
-        extended_tips: bool,
-    ) -> None:
-        for item in outcome.awards:
-            add_outbox(
-                session,
-                operation="send_winner_notice",
-                aggregate_type="winner",
-                aggregate_id=str(item.winner.id),
-                recipient_chat_id=item.participant.user_id,
-                business_key=f"winner_notice:{item.winner.id}:{item.participant.user_id}",
-                payload={
-                    "campaign_name": campaign.name,
-                    "campaign_ref": campaign.public_ref,
-                    "prize_name": item.prize.name,
-                    "prize_slot_no": item.prize_slot_no,
-                    "claim_instructions": item.prize.claim_instructions,
-                    "extended_tips": extended_tips,
-                    "issuer_name": presentation.get("issuer_name") or "活动创建者",
-                    "issuer_user_id": presentation.get("issuer_user_id") or campaign.created_by,
-                    "issuer_username": presentation.get("issuer_username_at_publish"),
-                },
-            )
-
-    def _winner_payload(self, item: Award) -> dict[str, object]:
-        return {
-            "user_id": item.participant.user_id,
-            "display_name": item.participant.display_name,
-            "username": item.participant.username,
-            "prize_position": item.prize.position,
-            "prize_name": item.prize.name,
-            "prize_slot_no": item.prize_slot_no,
-        }
 
 
 def _available_candidates(

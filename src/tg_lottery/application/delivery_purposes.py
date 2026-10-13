@@ -10,6 +10,7 @@ PURPOSE_LABELS = {
     "send_campaign_rules": "完整规则页",
     "send_draw_result": "开奖结果群公告",
     "send_winner_notice": "中奖私信",
+    "send_creator_draw_notice": "创建者开奖完成私信",
     "create_invite_link": "个人邀请入口创建",
     "send_invite_link": "个人邀请入口私信",
     "create_required_chat_invite": "群/频道加入入口创建",
