@@ -409,7 +409,12 @@ async def test_settlement_blocks_without_draw_qualification_then_draws_once(
     first = await drawing.run(campaign_id, actor_user_id=101)
     second = await drawing.run(campaign_id, actor_user_id=101)
     deliveries = await QueryService(session_factory).delivery_summary(campaign_id)
-    assert deliveries.pending == 2
+    assert deliveries.pending == 3
+    assert {purpose.label for purpose in deliveries.purposes} == {
+        "开奖结果群公告",
+        "中奖私信",
+        "创建者开奖完成私信",
+    }
     assert deliveries.confirmed == 0
     await _assert_draw_result(
         session_factory,
@@ -487,7 +492,7 @@ async def _assert_draw_result(
         assert snapshot_count == 1
         assert entry_count == 1
         assert winner_count == 1
-        assert outbox_count == 2
+        assert outbox_count == 3
         assert all(row.aggregate_id != "None" for row in outboxes)
         assert all("None" not in row.business_key for row in outboxes)
         assert first_id == second_id
