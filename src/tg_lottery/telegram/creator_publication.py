@@ -258,10 +258,12 @@ def confirmation_view(data: dict[str, Any]) -> tuple[str, ButtonRows]:
     activity_rules = _enabled_rules(data, "activity")
     invite_unlimited = sum(rule["cap_mode"] == "unlimited" for rule in invite_rules)
     activity_unlimited = sum(rule["daily_cap_mode"] == "unlimited" for rule in activity_rules)
+    cover = "已设置（将随公告发送）" if data.get("cover_file_id") else "未设置（公告无照片）"
     text = (
         "发布前确认\n\n"
         f"{platform_summary(data)}"
         f"参与群：{len(selected_chat_ids(data))} 个\n"
+        f"封面：{cover}\n"
         f"邀请加成：{len(invite_rules)} 个群开启，其中 {invite_unlimited} 个不设上限\n"
         f"{retention_summary(data)}"
         f"活跃加成（人品）：{len(activity_rules)} 个群开启，"
@@ -274,6 +276,8 @@ def confirmation_view(data: dict[str, Any]) -> tuple[str, ButtonRows]:
         [("确认发布", "draft_publish_confirm")],
         [("返回修改", "draft_back")],
     ]
+    if data.get("cover_file_id"):
+        rows.insert(0, [("预览封面", "draft_cover_preview")])
     return text, rows
 
 

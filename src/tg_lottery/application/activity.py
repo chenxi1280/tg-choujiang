@@ -12,8 +12,9 @@ from tg_lottery.application.activity_rules import (
     activity_ticket_target,
 )
 from tg_lottery.application.activity_targets import locked_message_campaign, message_rule_chat_id
-from tg_lottery.application.admission_qualification import source_qualification_reason
+from tg_lottery.application.admission_qualification import uses_counting_start
 from tg_lottery.application.base_activity import record_base_activity
+from tg_lottery.application.blocked_speech_reminders import countable_speech_reason
 from tg_lottery.application.group_activity_progress import increment_group_activity_progress
 from tg_lottery.application.message_rules import normalized_content, rejection_reason
 from tg_lottery.application.ports import UnitOfWorkFactory
@@ -99,7 +100,7 @@ class ActivityService:
             rule_chat_id=await message_rule_chat_id(session, campaign.id, observation.chat_id),
         )
         participant = await self._eligible_participant(
-            session, campaign.id, observation.user_id, include_registered=bool(rules.admission)
+            session, campaign.id, observation.user_id, include_registered=uses_counting_start(rules)
         )
         if participant is None:
             return await self._record_unregistered_activity(session, campaign, observation)
@@ -220,8 +221,10 @@ class ActivityService:
         content_hash = sha256(normalized.encode()).hexdigest()
         local_date = observation.event_at.astimezone(ZoneInfo(campaign.timezone)).date()
         reason = rejection_reason(observation)
-        if rules.admission is not None and reason is None:
-            reason = await source_qualification_reason(session, participant, observation)
+        if reason is None:
+            reason = await countable_speech_reason(
+                session, campaign=campaign, participant=participant, observation=observation
+            )
         if reason is None:
             reason = await self._duplicate_reason(
                 session,

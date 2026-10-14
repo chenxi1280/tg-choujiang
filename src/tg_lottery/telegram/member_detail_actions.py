@@ -34,9 +34,10 @@ def _available_task(detail, now):
             if detail.qualification is QualificationState.UNKNOWN
             else "查看并补齐参与条件"
         )
-        return "请先核查成员和资料条件；历史门槛及奖励不会重置。", _button(
-            label, f"m:conditions:{ref}:0"
-        )
+        return (
+            "请先补齐入群、关注及资料条件并重新核验；前置条件未通过时发言不计数，"
+            "此前发言不补算，历史门槛及奖励不会重置。"
+        ), _button(label, f"m:conditions:{ref}:0")
     if not detail.base_qualified:
         return _gate_task(detail, now)
     if detail.bonus_enabled:

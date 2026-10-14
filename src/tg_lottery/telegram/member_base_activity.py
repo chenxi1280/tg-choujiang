@@ -28,7 +28,8 @@ async def base_registration_reply(
         return
     rules = CampaignRules.model_validate(campaign.rules)
     await message.answer(
-        "已登记参与本期活动。\n" + detail.base_progress,
+        "已登记，入群/关注等前置条件已通过，本场发言已开始计数；此前发言不补算。\n"
+        + detail.base_progress,
         reply_markup=member_keyboard(
             campaign.public_ref,
             bool(rules.bonus_types),

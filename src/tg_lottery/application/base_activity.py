@@ -145,9 +145,9 @@ async def _event(
     content_hash = sha256(normalized.encode()).hexdigest()
     reason = rejection_reason(observation)
     group_id = None
+    if reason is None and (rules.participation_rules_version == "v3.0" or rules.platform_policy):
+        reason = await source_qualification_reason(session, participant, observation)
     if rules.admission is not None:
-        if reason is None:
-            reason = await source_qualification_reason(session, participant, observation)
         group_id = await session.scalar(
             select(CampaignParticipationGroup.id).where(
                 CampaignParticipationGroup.campaign_id == participant.campaign_id,

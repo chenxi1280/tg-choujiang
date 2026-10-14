@@ -3,6 +3,7 @@ import logging
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton
 
+from tg_lottery.application.participation_progress import COUNTING_NOTICE
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
@@ -44,12 +45,16 @@ async def condition_check_payload(
             [InlineKeyboardButton(text="重新核验" if detail else "登记参与", callback_data=action)]
         )
     rows.append([InlineKeyboardButton(text="返回活动详情", callback_data=f"m:detail:{ref}")])
+    if detail is not None:
+        lines.append(detail.base_progress)
+    lines.append(COUNTING_NOTICE)
     text = f"参与条件检查 · {campaign.name}\n\n" + "\n\n".join(lines)
     return text, row_keyboard(rows)
 
 
 async def target_conditions(bot, user_id, *, targets, cipher):
     lines, rows = [], []
+    completed = 0
     duplicates = duplicate_names(target.title for target in targets)
     for number, target in enumerate(targets, 1):
         title = target_name(
@@ -62,7 +67,8 @@ async def target_conditions(bot, user_id, *, targets, cipher):
             present = str(member.status) in {"creator", "administrator", "member"} or (
                 str(member.status) == "restricted" and member.is_member
             )
-            status = "已加入/关注" if present else "尚未满足（已申请者请等待批准）"
+            completed += int(present)
+            status = "✅ 已加入/关注" if present else "尚未满足（已申请者请等待批准）"
             lines.append(f"{title}：{status}")
         except TelegramAPIError:
             logging.getLogger(__name__).warning(
@@ -78,6 +84,7 @@ async def target_conditions(bot, user_id, *, targets, cipher):
             rows.append([InlineKeyboardButton(text=short_label(number, title), url=url)])
         else:
             lines.append(f"{title}：目前没有已确认可用的加入入口")
+    lines.insert(0, f"入群/关注条件进度：已完成 {completed}/{len(targets)} 项（本次检查）")
     return lines, pair_rows(rows)
 
 

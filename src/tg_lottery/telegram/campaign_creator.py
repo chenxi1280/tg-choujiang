@@ -267,8 +267,16 @@ class CampaignCreator:
             return True
         if not state.startswith("draft:"):
             return False
-        await message.answer("当前正在创建抽奖，请点击上方草稿中的按钮继续。")
+        await self._unhandled_input(message)
         return True
+
+    async def _unhandled_input(self, message):
+        text = (
+            "图片未保存为封面。请打开「封面与说明」后发送图片；当前草稿保持不变。"
+            if message.photo
+            else "当前正在创建抽奖，请点击上方草稿中的按钮继续。"
+        )
+        await message.answer(text)
 
     @log_creator_action
     async def handle_grant(self, query: CallbackQuery, grant: CallbackGrant) -> None:

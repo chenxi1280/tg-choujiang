@@ -14,19 +14,21 @@ from tg_lottery.domain.rules import CampaignRules
 BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
-async def base_progress_text(session: object, campaign: object, participant: object) -> str:
+async def base_progress_text(
+    session: object, campaign: object, participant: object, *, now: datetime | None = None
+) -> str:
     rules = CampaignRules.model_validate(campaign.rules)
     if rules.admission is not None:
         from tg_lottery.application.admission_views import admission_progress_text
 
-        return await admission_progress_text(session, campaign, participant)
-    return await _legacy_progress_text(session, campaign, participant, rules=rules)
+        return await admission_progress_text(session, campaign, participant, now=now)
+    return await _legacy_progress_text(session, campaign, participant, rules=rules, now=now)
 
 
-async def _legacy_progress_text(session, campaign, participant, *, rules):
+async def _legacy_progress_text(session, campaign, participant, *, rules, now=None):
     if not rules.base_activity_rules:
         return ""
-    now = utcnow()
+    now = now or utcnow()
     observed_at = await _progress_observed_at(session, campaign, now)
     if observed_at is None:
         return _unconfirmed_terminal_progress(campaign, participant, rules)

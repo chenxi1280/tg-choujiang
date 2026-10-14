@@ -2,6 +2,7 @@ from sqlalchemy import select
 
 from tg_lottery.application.activity_targets import message_rule_chat_id
 from tg_lottery.application.admission_qualification import behavior_qualified
+from tg_lottery.application.participation_progress import brief_task_progress
 from tg_lottery.application.records import add_outbox
 from tg_lottery.domain.enums import QualificationState
 from tg_lottery.infrastructure.db import CampaignParticipationGroup, Group, TelegramOutbox
@@ -89,6 +90,8 @@ async def invitation_notice_chat(session: object, invitation: object) -> int | N
 async def flush_progress_notices(
     session: object, *, campaign: object, participant: object, source_ref: str, event_at: object
 ) -> None:
+    from tg_lottery.application.base_activity_views import base_progress_text
+
     batch = dict(session.info.get("progress_notices") or {})
     matching = {
         key: events for key, events in batch.items() if key[:2] == (campaign.id, participant.id)
@@ -115,7 +118,11 @@ async def flush_progress_notices(
                 "display_name": participant.display_name,
                 "campaign_name": campaign.name,
                 "campaign_ref": campaign.public_ref,
-                "text": "\n".join(events.values()),
+                "text": "\n".join(events.values())
+                + "\n\n"
+                + brief_task_progress(
+                    await base_progress_text(session, campaign, participant, now=event_at)
+                ),
                 "event_refs": list(events),
                 "occurred_at": event_at.isoformat(),
                 "ticket_status": "完成时: " + ticket_status(participant, campaign),

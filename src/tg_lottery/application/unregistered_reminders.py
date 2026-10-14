@@ -48,7 +48,8 @@ async def remind_unregistered_speaker(session, campaign, observation) -> None:
         user_id=observation.user_id,
         observed_at=event_at.isoformat(timespec="microseconds"),
         text=f"「{campaign.name}」: 你尚未报名, 本条发言未计入本人抽奖进度。"
-        "请点击「参与抽奖」查看条件并登记参与。",
+        "请点击「参与抽奖」查看条件并登记参与。"
+        "全部必需入群、关注及其他前置条件通过后才开始计数;此前发言不补算。",
     )
 
 

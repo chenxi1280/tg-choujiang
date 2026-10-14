@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.application.campaign_targets import QualificationTarget
+from tg_lottery.application.participation_progress import COUNTING_NOTICE, membership_progress_text
 from tg_lottery.domain.enums import QualificationState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import member_condition_views
@@ -45,7 +46,8 @@ def build_missing_targets_reply(
         unknown=list(selected.unknown),
         page=(selected.number, selected.count),
     )
-    return text, row_keyboard(rows)
+    summary = membership_progress_text(targets, observations, include_targets=False)
+    return "\n\n".join(filter(None, [text, summary, COUNTING_NOTICE])), row_keyboard(rows)
 
 
 def missing_target_page(

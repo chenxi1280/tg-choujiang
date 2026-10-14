@@ -80,6 +80,7 @@ def _ticket_summary(detail: ParticipantCampaignDetail) -> str:
         f"🎟️ 基础次数: {detail.registration}",
         f"🌱 活跃加成（人品）: {detail.activity}",
         f"🤝 邀请加成: {detail.invitation}",
+        detail.membership_progress,
         detail.base_progress,
     ]
     if not active and not detail.base_qualified:

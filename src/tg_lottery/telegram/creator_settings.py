@@ -116,6 +116,10 @@ class CreatorSettings:
                 message, data, searching=state == "draft:admission_search"
             )
             return True
+        if state == "draft:idle" and data.get("creator_path", [])[-1:] == ["cover"]:
+            if message.photo:
+                await self._cover.receive(message, data)
+                return True
         handler = self._text_handlers().get(state)
         if handler is None:
             return False
@@ -137,6 +141,7 @@ class CreatorSettings:
             "draft_claim_default": self._default_claim,
             "draft_rules": self._edit_bonus,
             "draft_cover": self._cover.show,
+            "draft_cover_preview": self._cover.preview,
             "draft_cover_clear": self._clear_cover,
             "draft_user_limits": self._show_user_limits,
             "draft_username_on": self._set_username,

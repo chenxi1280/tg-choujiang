@@ -251,3 +251,43 @@ async def test_old_panel_continue_button_opens_preserved_draft(flow, monkeypatch
     assert flow.sessions.data["cover_file_id"] == original["cover_file_id"]
     assert flow.sessions.data["title"] == original["title"]
     assert "草稿已保留" in flow.renderer.render.call_args.kwargs["text"]
+
+
+async def test_photo_sent_directly_on_cover_summary_is_saved(flow, monkeypatch):
+    panel = _message(message_id=9)
+    await flow.creator.handle_grant(
+        SimpleNamespace(from_user=panel.from_user, message=panel),
+        SimpleNamespace(action="draft_cover_summary"),
+    )
+    monkeypatch.setattr(Message, "answer", AsyncMock(return_value=_message(message_id=40)))
+    monkeypatch.setattr(Message, "edit_reply_markup", AsyncMock())
+    assert await flow.creator.handle_text(
+        _message(file_id="direct-cover"), flow.sessions.state, flow.sessions.data
+    )
+    assert flow.sessions.data["cover_file_id"] == "direct-cover"
+    assert flow.sessions.state == "draft:cover"
+    assert flow.sessions.data["panel_message_id"] == 40
+
+
+async def test_photo_on_dashboard_is_explicitly_not_saved(flow, monkeypatch):
+    flow.sessions.data["creator_path"] = ["dashboard"]
+    before = dict(flow.sessions.data)
+    answer = AsyncMock()
+    monkeypatch.setattr(Message, "answer", answer)
+    await flow.creator.handle_text(_message(file_id="wrong-place"), "draft:idle", before)
+    assert "图片未保存为封面" in answer.call_args.args[0]
+    assert flow.sessions.data == before
+
+
+async def test_cover_preview_uses_saved_photo_without_changing_draft(flow, monkeypatch):
+    await _upload(flow, monkeypatch)
+    before = dict(flow.sessions.data)
+    preview = AsyncMock()
+    monkeypatch.setattr(Message, "answer_photo", preview)
+    message = _message(message_id=20)
+    await flow.creator.handle_grant(
+        SimpleNamespace(from_user=message.from_user, message=message),
+        SimpleNamespace(action="draft_cover_preview"),
+    )
+    preview.assert_awaited_once_with("new-cover", caption="当前已保存的抽奖封面 · 未发布")
+    assert flow.sessions.data == before

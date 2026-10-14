@@ -334,5 +334,6 @@ async def test_base_activity_private_reply_sends_progress_message():
     await flow.register(message, PUBLIC_REF, user=_user(), observed_at=datetime.now(UTC))
 
     assert len(message.texts) == 1
-    assert "已登记参与本期活动。" in message.texts[0]
+    assert "前置条件已通过" in message.texts[0]
+    assert "此前发言不补算" in message.texts[0]
     assert "A群" in message.texts[0]

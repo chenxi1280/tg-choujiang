@@ -86,3 +86,7 @@ def effective_ticket_text(participant, *, active: bool):
     if participant.qualification_state is QualificationState.UNKNOWN:
         return "待核查"
     return str(participant.ticket_total_cache if active else 0)
+
+
+def uses_counting_start(rules) -> bool:
+    return rules.participation_rules_version == "v3.0" or bool(rules.platform_policy)

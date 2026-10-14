@@ -16,6 +16,7 @@ from tg_lottery.application.participant_results import (
     ParticipantDrawResult,
     load_participant_draw_result,
 )
+from tg_lottery.application.participation_progress import saved_membership_progress
 from tg_lottery.domain.enums import CampaignState, QualificationState, TicketSource
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import Campaign, Participant, TicketLedger
@@ -35,6 +36,7 @@ class ParticipantCampaignDetail:
     invite_enabled: bool
     draw_at: datetime
     timezone: str
+    membership_progress: str = ""
     base_progress: str = ""
     base_qualified: bool = True
     invite_gate_enabled: bool = False
@@ -69,6 +71,7 @@ async def load_participant_campaign_detail(
             ),
             outcome=outcome,
             base_progress=await base_progress_text(session, campaign, participant),
+            membership_progress=await saved_membership_progress(session, campaign, participant),
             base_qualified=behavior_qualified(participant, campaign),
             public_ref=campaign.public_ref,
             campaign_name=campaign.name,

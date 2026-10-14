@@ -107,11 +107,12 @@ def _cover(data: dict) -> tuple[str, ButtonRows]:
         ],
     ]
     if has_cover:
-        rows.append([("清除封面", "draft_cover_clear")])
+        rows.append([("预览封面", "draft_cover_preview"), ("清除封面", "draft_cover_clear")])
     rows.append([("返回草稿", "draft_back")])
     return (
         f"🖼️ 封面与说明\n\n🖼️ 封面：{'已设置' if has_cover else '未设置（可选）'}\n"
-        f"📃 抽奖说明：{data.get('description') or '未设置（可选）'}",
+        f"📃 抽奖说明：{data.get('description') or '未设置（可选）'}\n\n"
+        "直接发送图片即可保存或替换封面。",
         rows,
     )
 

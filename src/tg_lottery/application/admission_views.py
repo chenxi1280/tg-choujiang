@@ -10,7 +10,9 @@ from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import AdmissionProgress, CampaignParticipationGroup, Invitation
 
 
-async def admission_progress_text(session: object, campaign: object, participant: object) -> str:
+async def admission_progress_text(
+    session: object, campaign: object, participant: object, *, now=None
+) -> str:
     from tg_lottery.application.base_activity_views import (
         _progress_completed,
         _progress_observed_at,
@@ -20,7 +22,7 @@ async def admission_progress_text(session: object, campaign: object, participant
     timezone = ZoneInfo(rules.timezone)
     if rules.admission is None:
         return ""
-    now = utcnow()
+    now = now or utcnow()
     observed_at = await _progress_observed_at(session, campaign, now)
     completed = _progress_completed(campaign, now)
     title = "发言数" if rules.admission.type == "message" else "邀请好友"

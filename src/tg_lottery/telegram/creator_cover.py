@@ -12,7 +12,11 @@ from tg_lottery.telegram.panel_edit import edit_panel_markup
 
 
 def cover_rows(*, has_cover: bool) -> ButtonRows:
-    actions = [[("清除封面", "draft_cover_clear")]] if has_cover else []
+    actions = (
+        [[("预览封面", "draft_cover_preview"), ("清除封面", "draft_cover_clear")]]
+        if has_cover
+        else []
+    )
     return [*actions, [("✅ 完成", "draft_back")]]
 
 
@@ -42,6 +46,13 @@ class CreatorCover:
             text=cover_prompt_text(has_cover=bool(updated.get("cover_file_id"))),
             rows=cover_rows(has_cover=bool(updated.get("cover_file_id"))),
         )
+
+    async def preview(self, query: CallbackQuery, _: object) -> None:
+        data = await required_draft_data(self._sessions, query.from_user.id)
+        cover = data.get("cover_file_id")
+        if not cover:
+            raise UserFacingError("尚未设置封面，请在封面与说明页面发送图片")
+        await _message(query).answer_photo(cover, caption="当前已保存的抽奖封面 · 未发布")
 
     async def receive(self, message: Message, data: dict[str, Any]) -> None:
         if not message.photo:
