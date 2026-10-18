@@ -148,23 +148,24 @@ def test_rollback_requires_both_platform_and_unlimited_capabilities():
         require_capabilities(("platform:official-v1",), {"legacy", "v3.0"})
 
 
-async def test_publication_rechecks_changed_presentation_and_requires_new_confirmation():
+async def test_publication_rechecks_changed_presentation_and_requires_new_confirmation(monkeypatch):
     from datetime import UTC, datetime
     from unittest.mock import AsyncMock
 
     from aiogram.types import CallbackQuery, Chat, Message, User
 
+    from tests.test_creator_settings import ThresholdSessions
+    from tests.test_template_schedule import _complete_draft
     from tg_lottery.telegram.creator_publication import CreatorPublisher
 
-    data = current_draft()
-    sessions = SimpleNamespace(
-        get=AsyncMock(return_value=SimpleNamespace(state="draft:publish_confirm", data=data)),
-        set=AsyncMock(),
-    )
+    data = _complete_draft() | {"cover_file_id": "saved-photo"}
+    sessions = ThresholdSessions(data)
+    sessions.state = "draft:publish_confirm"
+    bot = SimpleNamespace(send_photo=AsyncMock(), send_message=AsyncMock())
     campaigns = SimpleNamespace(platform_policy=None, create_draft=AsyncMock())
     renderer = SimpleNamespace(render=AsyncMock())
     publisher = CreatorPublisher(
-        bot=object(),
+        bot=bot,
         bot_username="lottery_bot",
         sessions=sessions,
         campaigns=campaigns,
@@ -175,8 +176,13 @@ async def test_publication_rechecks_changed_presentation_and_requires_new_confir
     publisher._resolve = AsyncMock(return_value=data | {"issuer_name": "身份已更新"})
     user = User(id=201, is_bot=False, first_name="创建者")
     message = Message(message_id=1, date=datetime.now(UTC), chat=Chat(id=201, type="private"))
+    answer = AsyncMock(return_value=message)
+    monkeypatch.setattr(Message, "answer", answer)
     query = CallbackQuery(id="1", from_user=user, chat_instance="1", message=message)
     await publisher.publish(query, None)
     campaigns.create_draft.assert_not_awaited()
-    assert sessions.set.call_args.args[1] == "draft:publish_confirm"
-    assert "已变化" in renderer.render.call_args.kwargs["text"]
+    assert sessions.state == "draft:publish_confirm"
+    assert sessions.data["issuer_name"] == "身份已更新"
+    assert "身份已更新" in bot.send_photo.await_args.kwargs["caption"]
+    assert "已变化" in answer.await_args_list[0].args[0]
+    assert "确认发布" in str(renderer.render.await_args.kwargs["rows"])
