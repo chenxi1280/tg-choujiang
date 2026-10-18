@@ -175,26 +175,7 @@ class TelegramGateway:
         )
 
     async def _deliver_card(self, outbox):
-        payload = outbox.payload
-        text = _campaign_card_text(payload)
-        options = dict(
-            reply_markup=_campaign_keyboard(payload), parse_mode="HTML", protect_content=False
-        )
-        cover = payload.get("presentation", {}).get("cover_file_id")
-        if cover:
-            return await self._bot.send_photo(
-                outbox.recipient_chat_id,
-                cover,
-                caption=text,
-                show_caption_above_media=False,
-                **options,
-            )
-        return await self._bot.send_message(
-            outbox.recipient_chat_id,
-            text,
-            link_preview_options=LinkPreviewOptions(is_disabled=True),
-            **options,
-        )
+        return await deliver_campaign_card(self._bot, outbox.recipient_chat_id, outbox.payload)
 
     async def _edit_campaign_card_cancelled(
         self, outbox: GatewayRequest, _: InviteLink | None
@@ -385,3 +366,27 @@ def _campaign_card_text(payload: dict[str, Any]) -> str:
         raise ValueError("campaign card timezone is required")
     text, _pages = rule_manifest(payload)
     return text
+
+
+async def deliver_campaign_card(bot, chat_id, payload, *, keyboard=None):
+    text = _campaign_card_text(payload)
+    options = dict(
+        reply_markup=keyboard if keyboard is not None else _campaign_keyboard(payload),
+        parse_mode="HTML",
+        protect_content=False,
+    )
+    cover = payload.get("presentation", {}).get("cover_file_id")
+    if cover:
+        return await bot.send_photo(
+            chat_id,
+            cover,
+            caption=text,
+            show_caption_above_media=False,
+            **options,
+        )
+    return await bot.send_message(
+        chat_id,
+        text,
+        link_preview_options=LinkPreviewOptions(is_disabled=True),
+        **options,
+    )

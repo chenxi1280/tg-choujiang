@@ -42,3 +42,29 @@ async def _condition_payload(flow, message, payload):
     if not separator or not position.isdecimal():
         raise ValueError("invalid participation condition payload")
     await flow.show_condition(message, reference, int(position))
+
+
+async def unpublished_start(message, payload: str) -> bool:
+    if payload in {"join_unpublished", "rules_unpublished"} or payload.startswith(
+        "condition_unpublished_"
+    ):
+        await message.answer("这是未发布的抽奖预览，请返回草稿确认发布后再参与。")
+        return True
+    return False
+
+
+async def dispatch_handler_start(handler, message, payload: str) -> bool:
+    if payload == "create":
+        await handler._admin_flow.start_create_message(message)
+        return True
+    if await unpublished_start(message, payload):
+        return True
+    if payload.startswith(("join_", "rules_")):
+        reference = payload.split("_", 1)[1]
+        campaign = await handler._queries.campaign_by_reference(reference)
+        if campaign is not None and campaign.rules.get("participation_rules_version") == "v3.0":
+            await handler._navigation.open_message(
+                message, reference, rules_only=payload.startswith("rules_")
+            )
+            return True
+    return await dispatch_start_payload(handler._member_flow, message, payload)

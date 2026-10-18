@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from aiogram import Bot
-from aiogram.types import ChatMemberUpdated
+from aiogram.types import ChatMemberUpdated, InlineKeyboardButton, InlineKeyboardMarkup
 
 
 async def send_bot_permission_reminder(bot: Bot, event: ChatMemberUpdated) -> None:
@@ -25,9 +25,22 @@ async def send_bot_permission_reminder(bot: Bot, event: ChatMemberUpdated) -> No
             else "现在可以在机器人私聊中创建抽奖并选择本群；"
             "邀请加成还需要开启邀请用户权限，活跃加成（人品）需要允许普通成员发送文本。"
         )
+        keyboard = None
+        if not channel:
+            me = await bot.get_me()
+            keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="➕ 发起抽奖", url=f"https://t.me/{me.username}?start=create"
+                        )
+                    ]
+                ]
+            )
         await bot.send_message(
             event.chat.id,
             "✅ 抽奖机器人管理员权限已生效。" + purpose,
+            reply_markup=keyboard,
         )
         return
     if _invite_permission_removed(event):

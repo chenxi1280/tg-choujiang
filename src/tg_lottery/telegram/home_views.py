@@ -30,7 +30,7 @@ def creation_entry(data: Mapping[str, object] | None) -> tuple[str, str]:
         return "查看发布状态", "nav:create"
     if data:
         return "继续创建抽奖", "nav:create"
-    return "创建抽奖", "nav:create"
+    return "发起抽奖", "nav:create"
 
 
 def home_text(data: Mapping[str, object] | None = None) -> str:

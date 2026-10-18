@@ -28,6 +28,7 @@ from tg_lottery.telegram.creator_group_selection import (
     selected_chat_ids,
 )
 from tg_lottery.telegram.creator_invite_retention import summary as retention_summary
+from tg_lottery.telegram.creator_public_preview import send_public_preview
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer
 from tg_lottery.telegram.creator_rule_review import review_navigation, rule_review_pages
 from tg_lottery.telegram.creator_share import publication_receipt
@@ -77,11 +78,17 @@ class CreatorPublisher:
         resolved = await self._resolve(data, query.from_user)
         campaign_input(resolved, now=now)
         reviewed = resolved | {"publish_reviewed_at": now.isoformat()}
-        await self._sessions.set(query.from_user.id, "draft:publish_confirm", reviewed)
-        text, rows = confirmation_view(reviewed)
-        await self._renderer.render(
-            _message(query), user_id=query.from_user.id, text=text, rows=rows
+        await send_public_preview(
+            self._bot, _message(query), data=reviewed, bot_username=self._bot_username
         )
+        text, rows = confirmation_view(reviewed)
+        panel = await _message(query).answer(text)
+        await self._sessions.set(
+            query.from_user.id,
+            "draft:publish_confirm",
+            reviewed | {"panel_message_id": panel.message_id},
+        )
+        await self._renderer.render(panel, user_id=query.from_user.id, text=text, rows=rows)
 
     async def publish(self, query: CallbackQuery, _: object) -> None:
         data = await self._required_confirmation(query.from_user.id)
@@ -97,14 +104,8 @@ class CreatorPublisher:
         if canonical_hash(presentation_from_data(resolved)) != canonical_hash(
             presentation_from_data(data)
         ):
-            await self._sessions.set(query.from_user.id, "draft:publish_confirm", resolved)
-            text, rows = confirmation_view(resolved)
-            await self._renderer.render(
-                _message(query),
-                user_id=query.from_user.id,
-                text="参与条件或身份信息已变化，请核对后重新确认。\n\n" + text,
-                rows=rows,
-            )
+            await _message(query).answer("参与条件或身份信息已变化，请核对更新后的预览。")
+            await self.confirm(query, None)
             return
         now = utcnow()
         draft, prizes = campaign_input(data, now=now)

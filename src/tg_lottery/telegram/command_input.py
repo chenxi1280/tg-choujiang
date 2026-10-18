@@ -4,6 +4,7 @@ PRIVATE_BOT_COMMANDS = frozenset(
     {"/start", "/menu", "/new", "/index", "/join", "/help", "/region", "/myid"}
 )
 DEFERRED_CALLBACK_PREFIXES = (
+    "preview:unpublished",
     "member:join:",
     "member:bonus:",
     "member:rules:",

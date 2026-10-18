@@ -31,7 +31,7 @@ from tg_lottery.telegram.help_views import DRAFT_UNAVAILABLE_TEXT
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.message_observation import observe_message
 from tg_lottery.telegram.personal_flow import PersonalFlow
-from tg_lottery.telegram.start_payloads import dispatch_start_payload
+from tg_lottery.telegram.start_payloads import dispatch_handler_start
 from tg_lottery.telegram.ui_style import row_keyboard
 
 
@@ -155,15 +155,7 @@ class LotteryUpdateHandler:
         return True
 
     async def _start_payload(self, message: Message, payload: str) -> bool:
-        if payload.startswith(("join_", "rules_")):
-            reference = payload.split("_", 1)[1]
-            campaign = await self._queries.campaign_by_reference(reference)
-            if campaign is not None and campaign.rules.get("participation_rules_version") == "v3.0":
-                await self._navigation.open_message(
-                    message, reference, rules_only=payload.startswith("rules_")
-                )
-                return True
-        return await dispatch_start_payload(self._member_flow, message, payload)
+        return await dispatch_handler_start(self, message, payload)
 
     async def _callback(self, query: CallbackQuery) -> None:
         data = query.data or ""
@@ -198,6 +190,9 @@ class LotteryUpdateHandler:
         await send_operation_error(self, message, exc)
 
     async def _dispatch_callback(self, query: CallbackQuery, data: str) -> None:
+        if data == "preview:unpublished":
+            await member_callbacks.safe_answer(query, "这是预览，活动尚未发布。", alert=True)
+            return
         message = query.message
         if not isinstance(message, Message):
             return
