@@ -19,7 +19,7 @@ from tg_lottery.telegram.ui_style import plain_label
 @pytest.mark.parametrize(
     "data,label",
     [
-        (None, "创建抽奖"),
+        (None, "发起抽奖"),
         ({"title": "继续本稿"}, "继续创建抽奖"),
         ({"published_campaign_id": "existing"}, "查看发布状态"),
     ],
