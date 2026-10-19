@@ -44,10 +44,14 @@ async def _condition_payload(flow, message, payload):
     await flow.show_condition(message, reference, int(position))
 
 
-async def unpublished_start(message, payload: str) -> bool:
-    if payload in {"join_unpublished", "rules_unpublished"} or payload.startswith(
+def is_unpublished_preview(payload: str) -> bool:
+    return payload in {"join_unpublished", "rules_unpublished"} or payload.startswith(
         "condition_unpublished_"
-    ):
+    )
+
+
+async def unpublished_start(message, payload: str) -> bool:
+    if is_unpublished_preview(payload):
         await message.answer("这是未发布的抽奖预览，请返回草稿确认发布后再参与。")
         return True
     return False

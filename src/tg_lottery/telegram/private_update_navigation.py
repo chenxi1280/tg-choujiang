@@ -1,5 +1,6 @@
 from tg_lottery.domain.errors import DomainError
 from tg_lottery.telegram import command_input
+from tg_lottery.telegram.start_payloads import is_unpublished_preview
 
 
 async def private_message(handler, message):
@@ -26,6 +27,7 @@ def should_suspend(command, *, bot_username):
         command is not None
         and command.addressed_to(bot_username)
         and command.name in {"/start", "/menu", "/help", "/region", "/myid", "/join", "/index"}
+        and not (command.name == "/start" and is_unpublished_preview(command.argument))
     )
 
 
