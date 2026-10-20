@@ -10,6 +10,7 @@ PASSWORD_FILE = Path("/run/secrets/postgres_password")
 DATABASE_NAME = "tg_lottery_test"
 TEST_TIMEOUT_SECONDS = 60
 SHARD_COUNT = 8
+TEST_BATCH_SIZE = 88
 
 
 def _environment() -> dict[str, str]:
@@ -47,7 +48,13 @@ def _run_test_shards(environment: dict[str, str]) -> None:
         if not selected:
             raise RuntimeError(f"pytest shard {index}/{SHARD_COUNT} is empty")
         print(f"pytest shard {index + 1}/{SHARD_COUNT}: {len(selected)} nodes", flush=True)
-        _run([sys.executable, "-m", "pytest", "-q", *selected], environment)
+        for offset in range(0, len(selected), TEST_BATCH_SIZE):
+            batch = selected[offset : offset + TEST_BATCH_SIZE]
+            print(
+                f"shard {index + 1} batch {offset // TEST_BATCH_SIZE + 1}: {len(batch)} nodes",
+                flush=True,
+            )
+            _run([sys.executable, "-m", "pytest", "-q", *batch], environment)
 
 
 def main() -> None:
