@@ -169,7 +169,7 @@ async def test_publication_rechecks_changed_presentation_and_requires_new_confir
         bot_username="lottery_bot",
         sessions=sessions,
         campaigns=campaigns,
-        queries=object(),
+        queries=SimpleNamespace(campaign_for_draft=AsyncMock(return_value=None)),
         profiles=object(),
         renderer=renderer,
     )
