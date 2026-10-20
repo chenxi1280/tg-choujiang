@@ -92,7 +92,7 @@ async def test_confirmation_binds_new_panel_after_preview_and_preserves_cover(mo
     sessions = ThresholdSessions(data)
     publisher = object.__new__(publication.CreatorPublisher)
     publisher._sessions = sessions
-    publisher._queries = object()
+    publisher._queries = SimpleNamespace(campaign_for_draft=AsyncMock(return_value=None))
     publisher._bot, publisher._bot_username = object(), "test_bot"
     publisher._required_draft = AsyncMock(return_value=data)
     publisher._resolve = AsyncMock(return_value=data)
