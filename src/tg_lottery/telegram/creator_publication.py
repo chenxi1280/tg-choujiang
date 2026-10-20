@@ -68,8 +68,7 @@ class CreatorPublisher:
 
     async def confirm(self, query: CallbackQuery, _: object) -> None:
         data = await self._required_draft(query.from_user.id)
-        if data.get("published_campaign_id"):
-            await self._finish(query, data, UUID(str(data["published_campaign_id"])))
+        if await self._recover_existing(query, data):
             return
         data = await normalize_draft_groups(self._queries, data)
         _require_fixed_draw(data)
@@ -92,8 +91,7 @@ class CreatorPublisher:
 
     async def publish(self, query: CallbackQuery, _: object) -> None:
         data = await self._required_confirmation(query.from_user.id)
-        if data.get("published_campaign_id"):
-            await self._finish(query, data, UUID(str(data["published_campaign_id"])))
+        if await self._recover_existing(query, data):
             return
         _require_fixed_draw(data)
         policy = getattr(self._campaigns, "platform_policy", None)
@@ -119,6 +117,17 @@ class CreatorPublisher:
         }
         await self._sessions.set(query.from_user.id, "draft:publishing", progress)
         await self._finish(query, progress, campaign.id)
+
+    async def _recover_existing(self, query: CallbackQuery, data: dict) -> bool:
+        campaign = await self._queries.campaign_for_draft(query.from_user.id, str(data["draft_id"]))
+        if campaign is None:
+            if data.get("published_campaign_id"):
+                raise UserFacingError("原发布活动的身份暂未核实，请从我发起的抽奖核查")
+            return False
+        await self.resume_message(
+            _message(query), user_id=query.from_user.id, data=data, campaign=campaign
+        )
+        return True
 
     async def show_rules(self, query: CallbackQuery, grant: object) -> None:
         data = await self._required_confirmation(query.from_user.id)
