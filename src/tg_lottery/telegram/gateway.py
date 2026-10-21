@@ -335,6 +335,14 @@ def _campaign_deep_link(payload: dict[str, Any], action: str) -> str:
 
 
 def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
+    if payload.get("share_card"):
+        from tg_lottery.telegram.campaign_share_keyboard import campaign_share_keyboard
+
+        return campaign_share_keyboard(payload)
+    return _base_campaign_keyboard(payload)
+
+
+def _base_campaign_keyboard(payload):
     closed = bool(payload.get("share_closed"))
     text = "✨ 查看活动状态与规则" if closed else "✨ 点击参与抽奖"
     action = "rules" if closed else "join"

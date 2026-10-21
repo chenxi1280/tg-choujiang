@@ -49,12 +49,13 @@ def test_platform_configuration_is_explicit_and_never_inferred_from_help_urls():
         guide_channel_url="https://t.me/helpname/12",
     )
     assert Settings(_env_file=None, **values).platform_policy is None
-    with pytest.raises(ValidationError, match="all three"):
+    with pytest.raises(ValidationError, match="official channel roles"):
         Settings(_env_file=None, **values, platform_required_enabled=True)
     enabled = Settings(
         _env_file=None,
         **values,
         platform_required_enabled=True,
+        platform_policy_version="official-v1",
         platform_official_channels=policy().channels,
     )
     assert enabled.platform_policy == policy()

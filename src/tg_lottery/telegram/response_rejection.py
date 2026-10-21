@@ -2,6 +2,7 @@
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.methods import (
+    AnswerInlineQuery,
     EditMessageReplyMarkup,
     EditMessageText,
     SendDocument,
@@ -27,11 +28,19 @@ _BAD_REQUEST_REASONS = frozenset(
         "Bad Request: CHAT_WRITE_FORBIDDEN",
     }
 )
+_EXPIRED_INLINE_REASONS = frozenset(
+    {
+        "Bad Request: query is too old and response timeout expired or query ID is invalid",
+        "Bad Request: QUERY_ID_INVALID",
+    }
+)
 
 
 def rejected_source_response(update, error: Exception) -> bool:
     if not isinstance(error, (TelegramForbiddenError, TelegramBadRequest)):
         return False
+    if isinstance(error.method, AnswerInlineQuery):
+        return _expired_inline_response(update, error)
     reasons = (
         _FORBIDDEN_REASONS if isinstance(error, TelegramForbiddenError) else _BAD_REQUEST_REASONS
     )
@@ -47,3 +56,13 @@ def rejected_source_response(update, error: Exception) -> bool:
         if query.message is not None:
             targets.add(query.message.chat.id)
     return error.method.chat_id in targets
+
+
+def _expired_inline_response(update, error):
+    query = update.inline_query
+    return bool(
+        isinstance(error, TelegramBadRequest)
+        and error.message in _EXPIRED_INLINE_REASONS
+        and query is not None
+        and error.method.inline_query_id == query.id
+    )

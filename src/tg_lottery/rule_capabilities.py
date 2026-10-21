@@ -10,7 +10,7 @@ from sqlalchemy import text
 from tg_lottery.infrastructure.db.session import create_engine
 
 SUPPORTED_RULE_VERSIONS = frozenset(
-    {"legacy", "v3.0", "platform:official-v1", "bonus:unlimited-v1"}
+    {"legacy", "v3.0", "platform:official-v1", "platform:official-v2", "bonus:unlimited-v1"}
 )
 
 

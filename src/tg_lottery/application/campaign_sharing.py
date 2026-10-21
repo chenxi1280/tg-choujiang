@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from tg_lottery.application.campaign_references import resolve_campaign_reference
 from tg_lottery.application.ports import UnitOfWorkFactory
 from tg_lottery.application.publication import campaign_card_payload
 from tg_lottery.application.records import add_outbox, utcnow
@@ -46,8 +47,25 @@ async def request_campaign_share(factory: UnitOfWorkFactory, request: CampaignSh
             aggregate_id=str(campaign.id),
             recipient_chat_id=request.user_id,
             business_key=key,
-            payload=payload | {"rendered_card_text": text},
+            payload=payload | {"rendered_card_text": text, "share_card": True},
         )
+
+
+async def load_inline_share_payload(session_factory, reference, *, bot_username):
+    async with session_factory() as session:
+        campaign = await resolve_campaign_reference(session, reference)
+        try:
+            _require_shareable(campaign)
+        except UserFacingError:
+            return None
+        prizes = tuple(
+            await session.scalars(
+                select(Prize).where(Prize.campaign_id == campaign.id).order_by(Prize.position)
+            )
+        )
+        payload = campaign_card_payload(campaign, bot_username, prizes)
+        text, _pages = rule_manifest(payload)
+        return payload | {"rendered_card_text": text, "share_card": True}
 
 
 def _require_shareable(campaign: Campaign | None) -> None:

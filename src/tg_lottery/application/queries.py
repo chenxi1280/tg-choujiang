@@ -129,6 +129,13 @@ class QueryService(ReputationQueries):
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
+    async def campaign_share_payload(self, reference, *, bot_username):
+        from tg_lottery.application.campaign_sharing import load_inline_share_payload
+
+        return await load_inline_share_payload(
+            self._session_factory, reference, bot_username=bot_username
+        )
+
     async def admin_groups(self, user_id: int) -> list[Group]:
         async with self._session_factory() as session:
             rows = (

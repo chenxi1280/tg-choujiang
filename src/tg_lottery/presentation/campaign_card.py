@@ -72,7 +72,8 @@ def membership_blocks(payload: Mapping) -> tuple[str, ...]:
     blocks = ["🧭 <b>参与条件（必须全部满足）：</b>"]
     if rules.platform_policy:
         url = html.escape(campaign_link(payload), quote=True)
-        blocks.append(f'🤖 <a href="{url}">启动本抽奖机器人</a>，并关注以下三个官方频道')
+        count = len(rules.platform_policy.channels)
+        blocks.append(f'🤖 <a href="{url}">启动本抽奖机器人</a>，并关注以下 {count} 个官方频道')
     if rules.username_required:
         blocks.append("🪪 必须设置 Telegram 用户名")
     if rules.allowed_regions:

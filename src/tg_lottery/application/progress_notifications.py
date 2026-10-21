@@ -1,5 +1,6 @@
 from sqlalchemy import select
 
+from tg_lottery.application.activity_bonus_reminders import activity_bonus_progress_text
 from tg_lottery.application.activity_targets import message_rule_chat_id
 from tg_lottery.application.admission_qualification import behavior_qualified
 from tg_lottery.application.participation_progress import brief_task_progress
@@ -99,6 +100,11 @@ async def flush_progress_notices(
     session.info["progress_notices"] = {
         key: events for key, events in batch.items() if key not in matching
     }
+    if not matching:
+        return
+    progress = await base_progress_text(session, campaign, participant, now=event_at)
+    bonus = await activity_bonus_progress_text(session, campaign, participant, event_at=event_at)
+    detail = brief_task_progress("\n\n".join(text for text in (progress, bonus) if text))
     for (_, _, chat_id), events in matching.items():
         business_key = f"progress:{participant.id}:{chat_id}:{source_ref}"
         if await session.scalar(
@@ -118,11 +124,7 @@ async def flush_progress_notices(
                 "display_name": participant.display_name,
                 "campaign_name": campaign.name,
                 "campaign_ref": campaign.public_ref,
-                "text": "\n".join(events.values())
-                + "\n\n"
-                + brief_task_progress(
-                    await base_progress_text(session, campaign, participant, now=event_at)
-                ),
+                "text": "\n".join(events.values()) + "\n\n" + detail,
                 "event_refs": list(events),
                 "occurred_at": event_at.isoformat(),
                 "ticket_status": "完成时: " + ticket_status(participant, campaign),

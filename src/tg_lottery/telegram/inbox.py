@@ -171,7 +171,7 @@ class InboxProcessor:
                 "bot_id": row.bot_id,
                 "update_id": row.update_id,
                 "operation": type(exc.method).__name__,
-                "chat_id": exc.method.chat_id,
+                "chat_id": getattr(exc.method, "chat_id", None),
                 "completed": False,
             },
         )

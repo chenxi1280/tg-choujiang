@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     navigation_channel_url: str = ""
     featured_channel_url: str = ""
     platform_required_enabled: bool = False
+    platform_policy_version: Literal["official-v1", "official-v2"] = "official-v2"
     platform_official_channels: tuple[OfficialChannel, ...] = ()
     platform_observation_max_age_seconds: int = Field(default=300, ge=30, le=900)
 
@@ -39,6 +40,7 @@ class Settings(BaseSettings):
         if not self.platform_required_enabled:
             return None
         return PlatformPolicy(
+            version=self.platform_policy_version,
             bot_id=self.bot_id,
             channels=self.platform_official_channels,
             max_observation_age_seconds=self.platform_observation_max_age_seconds,

@@ -5,7 +5,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-ROLES = frozenset({"guide", "navigation", "featured"})
+POLICY_ROLES = {
+    "official-v1": frozenset({"guide", "navigation", "featured"}),
+    "official-v2": frozenset({"navigation", "featured"}),
+}
 
 
 class OfficialChannel(BaseModel, frozen=True):
@@ -37,18 +40,19 @@ class OfficialChannel(BaseModel, frozen=True):
 
 
 class PlatformPolicy(BaseModel, frozen=True):
-    version: Literal["official-v1"] = "official-v1"
+    version: Literal["official-v1", "official-v2"] = "official-v1"
     bot_id: int = Field(gt=0)
     channels: tuple[OfficialChannel, ...]
     max_observation_age_seconds: int = Field(default=300, ge=30, le=900)
 
     @model_validator(mode="after")
     def validate_channels(self):
-        if len(self.channels) != 3 or {item.role for item in self.channels} != ROLES:
-            raise ValueError("platform policy requires all three official channel roles")
-        if len({item.chat_id for item in self.channels}) != 3:
+        roles = POLICY_ROLES[self.version]
+        if len(self.channels) != len(roles) or {item.role for item in self.channels} != roles:
+            raise ValueError(f"{self.version} requires official channel roles: {sorted(roles)}")
+        if len({item.chat_id for item in self.channels}) != len(roles):
             raise ValueError("official channels must have distinct stable identities")
-        if len({item.join_url for item in self.channels}) != 3:
+        if len({item.join_url for item in self.channels}) != len(roles):
             raise ValueError("official channels must have distinct join URLs")
         return self
 

@@ -89,7 +89,8 @@ def platform_summary(data):
     if not policy:
         return ""
     names = "、".join(item["title"] for item in policy["channels"])
-    return f"平台必备条件（只读）：启动本机器人 + 关注三个官方频道：{names}。\n"
+    count = len(policy["channels"])
+    return f"平台必备条件（只读）：启动本机器人 + 关注 {count} 个官方频道：{names}。\n"
 
 
 def _creator_overlap(refs, policy, *, platform_only):

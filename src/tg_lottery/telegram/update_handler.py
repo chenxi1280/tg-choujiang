@@ -28,6 +28,7 @@ from tg_lottery.telegram.bot_permission_reminders import send_bot_permission_rem
 from tg_lottery.telegram.callback_feedback import callback_feedback
 from tg_lottery.telegram.group_reputation import GroupReputation
 from tg_lottery.telegram.help_views import DRAFT_UNAVAILABLE_TEXT
+from tg_lottery.telegram.inline_sharing import answer_inline_share
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.message_observation import observe_message
 from tg_lottery.telegram.personal_flow import PersonalFlow
@@ -70,6 +71,14 @@ class LotteryUpdateHandler:
         self._reputation = GroupReputation(queries=queries, bot_username=bot_username)
 
     async def handle(self, update: Update) -> None:
+        if update.inline_query:
+            await answer_inline_share(
+                self._bot,
+                update.inline_query,
+                queries=self._queries,
+                bot_username=self._bot_username,
+            )
+            return
         if update.callback_query:
             await self._callback(update.callback_query)
             return
