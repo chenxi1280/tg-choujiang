@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from operator import attrgetter
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -29,6 +30,7 @@ from tg_lottery.domain.action_confirmation import ExpectedCampaign, validate_exp
 from tg_lottery.domain.admission import validate_admission_window
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.domain.prize_limits import require_supported_winner_count
 from tg_lottery.domain.rules import CampaignDraft, CampaignRules, canonical_hash
 from tg_lottery.domain.transitions import require_campaign_transition
 from tg_lottery.infrastructure.db import Campaign, Group, Prize, RuleRevision, TelegramOutbox
@@ -240,6 +242,7 @@ class CampaignService:
         )
         if any(prize.winner_count < 1 or not prize.name for prize in normalized):
             raise ValueError("each prize requires a name and positive winner count")
+        require_supported_winner_count(map(attrgetter("winner_count"), normalized))
         if any(len(prize.name) > _MAX_PRIZE_NAME_LENGTH for prize in normalized):
             raise ValueError("prize name exceeds 120 characters")
         if any(not prize.claim_instructions for prize in normalized):

@@ -1,6 +1,7 @@
 from typing import Any
 
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.domain.prize_limits import require_supported_winner_count
 from tg_lottery.telegram.creator_message_context import callback_message, message_user, panel_target
 from tg_lottery.telegram.creator_participation import parse_positions
 from tg_lottery.telegram.creator_prize_confirmation import clear_confirmation, delete_confirmation
@@ -82,6 +83,9 @@ class CreatorPrizes:
 
     async def receive_count(self, message, data: dict) -> None:
         count = positive_int(message.text or "", "中奖人数（人）")
+        require_supported_winner_count(
+            [count, *(p["winner_count"] for p in data.get("prizes", []))]
+        )
         prize = {"name": str(data["pending_prize_name"]), "winner_count": count}
         updated = _clean(data) | {"prizes": [*(data.get("prizes") or []), prize]}
         await self._summary(message, updated)

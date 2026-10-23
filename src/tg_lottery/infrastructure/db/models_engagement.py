@@ -269,7 +269,7 @@ class TicketLedger(Base, UuidPkMixin, CreatedAtMixin):
     participation_group_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("campaign_participation_groups.id", ondelete="RESTRICT"), index=True
     )
-    delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    delta: Mapped[int] = mapped_column(BigInteger, nullable=False)
     source_type: Mapped[TicketSource] = mapped_column(
         enum_type(TicketSource, "ticket_source"), nullable=False
     )
