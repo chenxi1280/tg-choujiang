@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import BigInteger, cast, func, select
 
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import QualificationState
@@ -57,7 +57,7 @@ async def _project_blocked_relationship(session, row):
         .where(
             Participant.user_id == row.user_id,
             Campaign.state.in_(("scheduled", "running", "paused", "settling")),
-            Campaign.rules["platform_policy"]["bot_id"].as_integer() == row.bot_id,
+            cast(Campaign.rules["platform_policy"]["bot_id"].as_string(), BigInteger) == row.bot_id,
         )
     )
     for participant in participants:

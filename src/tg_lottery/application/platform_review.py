@@ -3,7 +3,7 @@
 from datetime import timedelta
 from uuid import uuid4
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import BigInteger, cast, func, or_, select
 
 from tg_lottery.application.admission_qualification import behavior_qualified
 from tg_lottery.application.bot_relationship_history import projected_start_exists
@@ -37,9 +37,12 @@ def relevant_inbox(campaign, user_ids, *, chat_ids):
                 & TelegramUpdate.update_type.in_(("chat_member", "my_chat_member"))
                 & or_(
                     TelegramUpdate.update_type == "my_chat_member",
-                    TelegramUpdate.payload["chat_member"]["new_chat_member"]["user"]["id"]
-                    .as_integer()
-                    .in_(user_ids),
+                    cast(
+                        TelegramUpdate.payload["chat_member"]["new_chat_member"]["user"][
+                            "id"
+                        ].as_string(),
+                        BigInteger,
+                    ).in_(user_ids),
                 )
             ),
             (
