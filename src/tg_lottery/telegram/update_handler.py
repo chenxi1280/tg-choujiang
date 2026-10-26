@@ -88,7 +88,7 @@ class LotteryUpdateHandler:
         if update.chat_member:
             await self._chat_member(update.chat_member)
             return
-        if update.my_chat_member:
+        if update.my_chat_member and not update.my_chat_member.chat.is_direct_messages:
             await self._my_chat_member(update.my_chat_member)
             return
         if update.message:

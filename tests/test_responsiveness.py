@@ -205,7 +205,14 @@ async def test_health_ignores_processed_reply_rejection_and_other_bot(session_fa
         await _check_role(session, "app", 123)
 
 
-async def test_permission_reminder_rejection_preserves_membership_update(session_factory):
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "Bad Request: not enough rights to send text messages to the chat",
+        "Bad Request: channel direct messages topic must be specified",
+    ],
+)
+async def test_permission_reminder_rejection_preserves_membership_update(session_factory, reason):
     from aiogram.methods import SendMessage
 
     from tests.test_update_handler import _handler
@@ -234,7 +241,7 @@ async def test_permission_reminder_rejection_preserves_membership_update(session
         handler._groups.deactivate_group.assert_awaited_once()
         raise TelegramBadRequest(
             SendMessage(chat_id=-1001, text="permissions"),
-            "Bad Request: not enough rights to send text messages to the chat",
+            reason,
         )
 
     handler._bot.send_message.side_effect = reject
@@ -244,3 +251,35 @@ async def test_permission_reminder_rejection_preserves_membership_update(session
     assert rows[0].state is UpdateState.PROCESSED
     assert "UI response rejected" in rows[0].last_error
     handler._groups.deactivate_group.assert_awaited_once()
+
+
+async def test_channel_direct_membership_does_not_block_next_command(session_factory):
+    from tests.test_update_handler import _handler
+
+    row = _stored_update(100)
+    timestamp = row.payload["message"]["date"]
+    user = {"id": 123, "is_bot": True, "first_name": "Bot"}
+    row.update_type = "my_chat_member"
+    row.payload = {
+        "update_id": 100,
+        "my_chat_member": {
+            "chat": {"id": -1001, "type": "supergroup", "is_direct_messages": True},
+            "from": {"id": 201, "is_bot": False, "first_name": "Admin"},
+            "date": timestamp,
+            "old_chat_member": {"status": "left", "user": user},
+            "new_chat_member": {"status": "member", "user": user},
+        },
+    }
+    async with session_factory() as session, session.begin():
+        session.add_all([row, _stored_update(101)])
+    handler = _handler()
+    handler._groups = AsyncMock()
+    handler._bot = AsyncMock()
+    handler._message = AsyncMock()
+    processor = _processor(handler, session_factory)
+    assert await processor.process_once() and await processor.process_once()
+    assert all(r.state is UpdateState.PROCESSED for r in await _rows(session_factory))
+    handler._groups.deactivate_group.assert_not_awaited()
+    handler._bot.send_message.assert_not_awaited()
+    handler._bot.get_chat_administrators.assert_not_awaited()
+    handler._message.assert_awaited_once()
