@@ -67,3 +67,33 @@ async def test_stop_reaps_poll_before_releasing_lease_and_preserves_fence(
     async with session_factory() as session:
         protected = await session.get(BotRuntimeLease, 123)
         assert protected.owner_id == "successor" and protected.lease_until == expires_at
+
+
+async def test_polling_respects_retry_after_and_shutdown_interrupts_wait():
+    from unittest.mock import AsyncMock
+
+    from aiogram.exceptions import TelegramRetryAfter
+    from aiogram.methods import GetUpdates
+
+    adapter = _adapter(None, None, "rate-limited")
+    adapter._acquire_or_renew_lease = AsyncMock(return_value=True)
+    adapter.poll_once = AsyncMock(
+        side_effect=TelegramRetryAfter(GetUpdates(), "flood", retry_after=60)
+    )
+    stop = asyncio.Event()
+    delays = []
+    entered_wait = asyncio.Event()
+    original_wait = adapter._wait
+
+    async def record_wait(stop, delay):
+        delays.append(delay)
+        entered_wait.set()
+        await original_wait(stop, delay)
+
+    adapter._wait = record_wait
+    task = asyncio.create_task(adapter._poll_loop(stop))
+    await asyncio.wait_for(entered_wait.wait(), 1)
+    assert delays == [60]
+    stop.set()
+    await asyncio.wait_for(task, 1)
+    adapter.poll_once.assert_awaited_once()

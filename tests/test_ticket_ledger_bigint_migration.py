@@ -35,7 +35,7 @@ async def test_ledger_downgrade_refuses_large_values_without_changing_data(sessi
     async with session_factory() as session:
         assert await session.scalar(select(TicketLedger.delta)) == delta
         assert (
-            await session.scalar(text("SELECT version_num FROM alembic_version")) == "c33a1024bc03"
+            await session.scalar(text("SELECT version_num FROM alembic_version")) == "c33a1026ir01"
         )
 
 

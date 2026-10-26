@@ -8,6 +8,7 @@ from typing import Any
 
 from aiogram import Bot
 from aiogram.enums import UpdateType
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.types import Update
 from aiogram.utils.serialization import deserialize_telegram_object_to_python
 from sqlalchemy import or_, select, update
@@ -74,6 +75,11 @@ class TelegramPollingAdapter:
                 await run_until_stopped(self.poll_once(), stop)
             except asyncio.CancelledError:
                 raise
+            except TelegramRetryAfter as exc:
+                self._logger.warning(
+                    "polling rate limited: %s", exc, extra={"bot_id": self._bot_id}
+                )
+                await self._wait(stop, max(_LEASE_RETRY_SECONDS, exc.retry_after))
             except Exception:
                 self._logger.exception("polling iteration failed", extra={"bot_id": self._bot_id})
                 await self._wait(stop, _LEASE_RETRY_SECONDS)

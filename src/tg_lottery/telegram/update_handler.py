@@ -24,7 +24,7 @@ from tg_lottery.domain.errors import (
 )
 from tg_lottery.telegram import command_input, member_callbacks
 from tg_lottery.telegram.admin_flow import AdminFlow
-from tg_lottery.telegram.bot_permission_reminders import send_bot_permission_reminder
+from tg_lottery.telegram.bot_membership import sync_bot_membership
 from tg_lottery.telegram.callback_feedback import callback_feedback
 from tg_lottery.telegram.group_reputation import GroupReputation
 from tg_lottery.telegram.help_views import DRAFT_UNAVAILABLE_TEXT
@@ -450,38 +450,7 @@ class LotteryUpdateHandler:
         )
 
     async def _my_chat_member(self, event: ChatMemberUpdated) -> None:
-        if event.chat.type == "private":
-            relationships = getattr(self._member_flow, "_relationships", None)
-            if relationships is not None:
-                await relationships.record(
-                    event.chat.id,
-                    event.date,
-                    blocked=str(event.new_chat_member.status) in {"kicked", "left"},
-                )
-            return
-        if not _is_admin(event.new_chat_member):
-            await self._groups.deactivate_group(event.chat.id, event.date)
-            await send_bot_permission_reminder(self._bot, event)
-            return
-        admins = await self._bot.get_chat_administrators(event.chat.id)
-        records = tuple(
-            TelegramAdmin(
-                user_id=admin.user.id,
-                source="owner" if str(admin.status) == "creator" else "telegram_admin",
-            )
-            for admin in admins
-            if not admin.user.is_bot
-        )
-        permissions = event.new_chat_member.model_dump(mode="json", exclude_none=True)
-        await self._groups.sync_group(
-            chat_id=event.chat.id,
-            title=_public_chat_title(event.chat.title),
-            timezone=self._default_timezone,
-            permissions=permissions,
-            admins=records,
-            observed_at=event.date,
-        )
-        await send_bot_permission_reminder(self._bot, event)
+        await sync_bot_membership(self, event)
 
 
 def _is_member(member: object) -> bool:
@@ -489,11 +458,6 @@ def _is_member(member: object) -> bool:
     if status in {"member", "administrator", "creator"}:
         return True
     return status == "restricted" and bool(getattr(member, "is_member", False))
-
-
-def _public_chat_title(title: object) -> str:
-    value = str(title).strip() if title is not None else ""
-    return value or "未命名群组/频道"
 
 
 def _is_admin(member: object) -> bool:

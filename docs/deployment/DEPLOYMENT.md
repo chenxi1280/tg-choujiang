@@ -25,7 +25,11 @@
 
 发布完成必须分别核验：Actions checks/build/deploy 结论；GHCR 镜像 SHA；服务器 `current` 指向；Alembic revision；app/worker 健康；Bot `getMe`；confirmed/unprojected、UNKNOWN 和失败队列；真实群内创建、报名、消息票、邀请留存、截止复核、开奖、群公告和中奖私聊。容器健康不能替代 Telegram 业务闭环。
 
-app 健康检查同时核对轮询连续性与当前 Bot 的处理队列：最早未完成 Update 等待超过 120 秒即明确报告阻塞，不能由新鲜轮询心跳掩盖。`check-services.sh` 单独报告已处理输入中界面回信被 Telegram 明确拒绝的数量；这些记录保留 `last_error`，不表示回信送达或业务成功。未知网络结果、资格核验错误和内部处理错误仍按原 Inbox 顺序重试；Outbox UNKNOWN 不自动重发。
+app 健康检查同时核对轮询连续性与当前 Bot 的处理队列：最早未完成 Update 等待超过 120 秒即明确报告阻塞，不能由新鲜轮询心跳掩盖。`check-services.sh` 单独报告已处理输入中界面回信被 Telegram 明确拒绝的数量；这些记录保留 `last_error`，不表示回信送达或业务成功。明确丢失 Bot 成员身份的历史管理员事件，在撤销本地管理员缓存后单独计入 `unavailable_memberships`，不代表权限同步或提示送达成功。未知网络结果、资格核验错误和内部处理错误仍按原 Inbox 顺序重试；Outbox UNKNOWN 不自动重发。
+
+Inbox 限流通过 `next_attempt_at` 持久保存 Telegram 的最早重试时间；普通失败仍遵循原重试间隔。成功处理会清理当前 `last_error`，但独立保留最近一次 `last_failure` 供追溯。长轮询也遵守 `retry_after`，等待可被正常停机打断。
+
+迁移 `c33a1026ir01` 新增上述两个可空字段并回填现有错误，兼容原有输入；存在尚未到期的 Inbox 限流等待时拒绝数据库降级。回滚运行制品也须支持 Inbox 限流截止时间，不能运行旧逻辑绕过等待。
 
 ## 回滚
 

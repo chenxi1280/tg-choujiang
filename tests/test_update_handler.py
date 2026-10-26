@@ -8,7 +8,8 @@ from aiogram.types import CallbackQuery, Message
 
 from tests.navigation_helpers import PassthroughAdmin, PassthroughNavigation
 from tg_lottery.domain.errors import UserFacingError
-from tg_lottery.telegram.update_handler import LotteryUpdateHandler, _public_chat_title
+from tg_lottery.telegram.bot_membership import _public_chat_title
+from tg_lottery.telegram.update_handler import LotteryUpdateHandler
 
 
 class RecordingMemberFlow:

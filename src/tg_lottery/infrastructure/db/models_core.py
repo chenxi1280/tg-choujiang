@@ -75,6 +75,8 @@ class TelegramUpdate(Base, TimestampMixin):
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_error: Mapped[str | None] = mapped_column(Text)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_failure: Mapped[str | None] = mapped_column(Text)
 
 
 class Group(Base, UuidPkMixin, TimestampMixin):

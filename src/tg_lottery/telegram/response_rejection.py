@@ -27,6 +27,8 @@ _BAD_REQUEST_REASONS = frozenset(
         "Bad Request: not enough rights to send text messages to the chat",
         "Bad Request: CHAT_WRITE_FORBIDDEN",
         "Bad Request: channel direct messages topic must be specified",
+        "Bad Request: TOPIC_CLOSED",
+        "Bad Request: message thread not found",
     }
 )
 _EXPIRED_INLINE_REASONS = frozenset(

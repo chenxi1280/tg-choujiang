@@ -5,6 +5,7 @@ from time import perf_counter
 from typing import Protocol
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.types import Update
 from sqlalchemy import exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -14,7 +15,9 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.application.request_context import bind_update_context
 from tg_lottery.domain.enums import UpdateState
 from tg_lottery.infrastructure.db import TelegramUpdate
+from tg_lottery.telegram.bot_membership import BotMembershipUnavailable
 from tg_lottery.telegram.inbox_execution import run_until_stopped
+from tg_lottery.telegram.qualification import QualificationRateLimited
 from tg_lottery.telegram.response_rejection import rejected_source_response
 
 _PROCESSING_STALE_SECONDS = 300
@@ -73,7 +76,11 @@ class InboxProcessor:
                         TelegramUpdate.state == UpdateState.RECEIVED,
                         (
                             (TelegramUpdate.state == UpdateState.FAILED)
-                            & (TelegramUpdate.updated_at <= retry_before)
+                            & or_(
+                                TelegramUpdate.next_attempt_at <= now,
+                                (TelegramUpdate.next_attempt_at.is_(None))
+                                & (TelegramUpdate.updated_at <= retry_before),
+                            )
                         ),
                         (
                             (TelegramUpdate.state == UpdateState.PROCESSING)
@@ -95,6 +102,7 @@ class InboxProcessor:
             row.state = UpdateState.PROCESSING
             row.attempts += 1
             row.last_error = None
+            row.next_attempt_at = None
             await session.flush()
             session.expunge(row)
             return row
@@ -116,6 +124,8 @@ class InboxProcessor:
             ):
                 row.state = UpdateState.FAILED
                 row.last_error = "CancelledError: processing interrupted"
+                row.last_failure = row.last_error
+                row.next_attempt_at = None
 
     async def _execute(self, row: TelegramUpdate) -> bool:
         started = perf_counter()
@@ -133,14 +143,31 @@ class InboxProcessor:
             async with asyncio.timeout(_HANDLER_TIMEOUT_SECONDS):
                 with bind_update_context(row.bot_id, row.update_id):
                     await self._handler.handle(update)
+        except BotMembershipUnavailable as exc:
+            self._logger.warning(
+                "%s",
+                exc,
+                extra={"bot_id": row.bot_id, "update_id": row.update_id, "completed": False},
+            )
+            await self._mark_processed(row.id, row.attempts, error=str(exc))
+            return True
         except Exception as exc:
             if update is not None and rejected_source_response(update, exc):
                 await self._record_response_rejection(row, exc)
                 return True
             self._log_failure(row, started, queue_wait_ms)
-            await self._mark_failed(row.id, row.attempts, f"{type(exc).__name__}: {exc}")
+            await self._mark_failed(
+                row.id,
+                row.attempts,
+                f"{type(exc).__name__}: {exc}",
+                retry_after=_retry_after(exc),
+            )
             return False
         await self._mark_processed(row.id, row.attempts)
+        self._log_success(row, started, queue_wait_ms)
+        return True
+
+    def _log_success(self, row, started, queue_wait_ms):
         self._logger.info(
             "durable update processed",
             extra={
@@ -150,7 +177,6 @@ class InboxProcessor:
                 "queue_wait_ms": queue_wait_ms,
             },
         )
-        return True
 
     def _log_failure(self, row, started, queue_wait_ms) -> None:
         self._logger.exception(
@@ -185,12 +211,21 @@ class InboxProcessor:
             row.state = UpdateState.PROCESSED
             row.processed_at = utcnow()
             row.last_error = error[:4000] if error else None
+            row.next_attempt_at = None
 
-    async def _mark_failed(self, row_id: int, claimed_attempt: int, error: str) -> None:
+    async def _mark_failed(
+        self, row_id: int, claimed_attempt: int, error: str, *, retry_after: int | None = None
+    ) -> None:
         async with self._session_factory() as session, session.begin():
             row = await self._locked_claim(session, row_id, claimed_attempt)
             row.state = UpdateState.FAILED
             row.last_error = error[:4000]
+            row.last_failure = row.last_error
+            row.next_attempt_at = (
+                utcnow() + timedelta(seconds=max(_FAILED_RETRY_SECONDS, retry_after))
+                if retry_after is not None
+                else None
+            )
 
     async def _locked_claim(
         self, session: AsyncSession, row_id: int, claimed_attempt: int
@@ -210,3 +245,9 @@ class InboxProcessor:
             await asyncio.wait_for(stop.wait(), timeout=_IDLE_WAIT_SECONDS)
         except TimeoutError:
             return
+
+
+def _retry_after(error):
+    if isinstance(error, (TelegramRetryAfter, QualificationRateLimited)):
+        return error.retry_after
+    return None
