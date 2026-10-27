@@ -134,7 +134,8 @@ async def _awards(session, campaign_id, ids):
     )
     result = {}
     for participant_id, source_type, quantity in rows:
-        result.setdefault(participant_id, {})[source_type.value] = quantity
+        # PostgreSQL returns Decimal for SUM(bigint); ticket deltas are integers.
+        result.setdefault(participant_id, {})[source_type.value] = int(quantity)
     return result
 
 
