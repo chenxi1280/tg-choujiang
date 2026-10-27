@@ -34,7 +34,15 @@ echo "==> Running database migrations"
 compose --profile tools run --rm --no-deps migrate
 
 echo "==> Starting app and worker"
-compose up -d --no-build --remove-orphans app worker
+integration_env="${LOTTERY_INTEGRATION_ENV_FILE:-${SHARED_DIR}/lottery-integration.env}"
+integration_enabled=false
+if [[ -f "$integration_env" ]]; then
+  export LOTTERY_INTEGRATION_ENV_FILE="$integration_env"
+  integration_enabled=true
+  compose --profile integration up -d --no-build --remove-orphans app worker integration
+else
+  compose up -d --no-build --remove-orphans app worker
+fi
 
 timeout_seconds="${TG_LOTTERY_HEALTH_TIMEOUT_SECONDS:-600}"
 started_at="$(date +%s)"
@@ -43,20 +51,29 @@ while true; do
   worker_state="$(docker_cmd inspect tg-lottery-worker --format '{{.State.Status}}' 2>/dev/null || true)"
   app_health="$(docker_cmd inspect tg-lottery-app --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
   worker_health="$(docker_cmd inspect tg-lottery-worker --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
-  if [[ "$app_health" == "healthy" && "$worker_health" == "healthy" ]]; then
+  integration_health="healthy"
+  integration_state="running"
+  if [[ "$integration_enabled" == true ]]; then
+    integration_state="$(docker_cmd inspect tg-lottery-integration --format '{{.State.Status}}' 2>/dev/null || true)"
+    integration_health="$(docker_cmd inspect tg-lottery-integration --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' 2>/dev/null || true)"
+  fi
+  if [[ "$app_health" == "healthy" && "$worker_health" == "healthy" && "$integration_health" == "healthy" ]]; then
     break
   fi
   if [[ "$app_state" =~ ^(dead|exited|restarting)$ ]] ||
     [[ "$worker_state" =~ ^(dead|exited|restarting)$ ]] ||
-    [[ "$app_health" == "unhealthy" || "$worker_health" == "unhealthy" ]]; then
+    [[ "$integration_state" =~ ^(dead|exited|restarting)$ ]] ||
+    [[ "$app_health" == "unhealthy" || "$worker_health" == "unhealthy" || "$integration_health" == "unhealthy" ]]; then
     docker_cmd logs --tail 200 tg-lottery-app >&2 || true
     docker_cmd logs --tail 200 tg-lottery-worker >&2 || true
+    [[ "$integration_enabled" == true ]] && docker_cmd logs --tail 50 tg-lottery-integration >&2 || true
     exit 1
   fi
   elapsed=$(( $(date +%s) - started_at ))
   if (( elapsed >= timeout_seconds )); then
     docker_cmd logs --tail 200 tg-lottery-app >&2 || true
     docker_cmd logs --tail 200 tg-lottery-worker >&2 || true
+    [[ "$integration_enabled" == true ]] && docker_cmd logs --tail 50 tg-lottery-integration >&2 || true
     exit 1
   fi
   printf 'Waiting for services (%ss/%ss): app=%s/%s worker=%s/%s\n' \

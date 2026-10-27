@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Auditable Telegram group lottery bot"
 requires-python = ">=3.12"
 dependencies = [
+  "aiohttp>=3.9,<4",
   "aiogram>=3.13,<4",
   "alembic>=1.13,<2",
   "asyncpg>=0.29,<1",
@@ -25,6 +26,7 @@ dev = [
 ]
 
 [project.scripts]
+tg-lottery-integration = "tg_lottery.integration_api:main"
 tg-lottery-app = "tg_lottery.app:main"
 tg-lottery-worker = "tg_lottery.worker:main"
 tg-lottery-ops-bot = "tg_lottery.ops_bot:main"

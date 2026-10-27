@@ -2,6 +2,8 @@
 
 基于 Python 3.12、aiogram 3、SQLAlchemy 2、Alembic 和 PostgreSQL 16 的可审计 Telegram 群抽奖机器人。
 
+运营平台联动开发见[只读状态接口](docs/development/operations-integration-read-api-20261027.md)：独立监听、活动创建者白名单及一致只读快照，默认不启用，不改变报名、计数或开奖规则。
+
 产品与数据合同由 [V1.6 PRD](doc/TG群抽奖机器人PRD_V1.6_极简交互重构版.docx)、[V2.3 多活动与邀请合同](docs/development/v2.3-user-invitation-multi-campaign-prd.md) 和 [V2.5 体验修复](docs/development/v2.5-user-experience-repair-prd.md) 共同定义；创建器调整见 [V2.8 准入与转发参与](docs/development/v2.8-creator-admission-sharing.md)，当前入口、时间校验和历史结果查询见 [V2.9 体验修复](docs/development/v2.9-experience-repair.md)。参与入口与完成提醒见 [2026-10-09 修订](docs/development/v3.2-navigation-and-interaction-prd-20261006.md#2026-10-09-参与入口与提醒修订)。封面接收与前置条件进度见 [2026-10-14 修订](docs/development/v3.3-unified-participation-and-reputation-prd-20261007.md#2026-10-14-封面接收与前置条件进度修订)。后续版本覆盖其明确修改的条款。核心设计包括 `/new` 直达草稿预览、最终卡片预览、数据库先行的 Update Inbox、Telegram Outbox、不可变开奖快照、幂等业务键、Worker 租约和邀请链接密文存储。
 
 新活动规则见 [V3.0 抽奖门槛、独立加成与参与条件反馈 PRD](docs/development/v3.0-participation-rules-and-feedback-prd.md)：行为门槛在邀请好友与发言数中二选一，各配置群分别达标；每日发言及邀请加成独立设置，未达门槛时暂存。新活动的邀请加成不限累计上限，历史活动继续使用冻结规则。实施与各层验收状态见 [V3.0 实施记录](docs/development/v3.0-implementation-progress-20261004.md)。

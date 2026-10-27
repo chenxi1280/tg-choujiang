@@ -53,6 +53,24 @@ services:
       retries: 6
       start_period: 40s
 
+  integration:
+    <<: *runtime
+    container_name: tg-lottery-integration
+    profiles: ["integration"]
+    env_file:
+      - ${ENV_FILE:-.env.docker.example}
+      - path: ${LOTTERY_INTEGRATION_ENV_FILE:-/data/tg-lottery/shared/lottery-integration.env}
+        required: false
+    command: ["env", "LOTTERY_INTEGRATION_HOST=0.0.0.0", "LOTTERY_INTEGRATION_PORT=8094", "python", "-m", "tg_lottery.integration_api"]
+    ports:
+      - "127.0.0.1:8094:8094"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8094), timeout=3).close()"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   ops-bot:
     image: ${TG_LOTTERY_APP_IMAGE:-tg-lottery-app:latest}
     profiles: ["ops"]
