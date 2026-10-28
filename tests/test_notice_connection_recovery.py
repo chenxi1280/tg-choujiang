@@ -2,8 +2,8 @@ from dataclasses import replace
 from datetime import timedelta
 
 import pytest
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.methods import DeleteMessage
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
+from aiogram.methods import DeleteMessage, SendMessage
 from sqlalchemy import select
 
 from tests.helpers import seed_campaign
@@ -12,6 +12,7 @@ from tests.test_outbox_projection import _cipher
 from tg_lottery.application.records import add_outbox, utcnow
 from tg_lottery.domain.enums import DeliveryCertainty, JobState, OutboxState
 from tg_lottery.infrastructure.db import AuditLog, DeliveryAttempt, ScheduledJob, TelegramOutbox
+from tg_lottery.ops.delivery_health import read_delivery_health, render_health
 from tg_lottery.ops.reconcile_invite_connection import RepairOptions, reconcile_notice_connection
 from tg_lottery.telegram.delivery_failures import failed_before_single_request
 from tg_lottery.telegram.gateway import GatewayResult
@@ -70,6 +71,7 @@ async def test_connector_failure_retries_same_notice_and_preserves_attempts(
         assert attempt.certainty is DeliveryCertainty.EXPLICIT_REJECTION
         assert row.run_at > utcnow()
         row.run_at = utcnow()
+    assert render_health(await read_delivery_health(session_factory))[1] == 0
     assert await worker.process_once()
     async with session_factory() as session:
         row = await session.get(TelegramOutbox, row_id)
@@ -85,21 +87,90 @@ async def test_connector_failure_retries_same_notice_and_preserves_attempts(
     assert gateway.calls == [operation, operation]
 
 
-async def test_repeated_connector_errors_stop_after_three_attempts(session_factory):
-    row_id = await _seed_notice(session_factory, "send_progress_notice")
-    gateway = Gateway(["connect", "connect", "connect"])
+@pytest.mark.parametrize("operation", NOTICE_OPERATIONS)
+async def test_connector_errors_retry_five_times_then_fail_health(session_factory, operation):
+    row_id = await _seed_notice(session_factory, operation)
+    gateway = Gateway(["connect"] * 6)
     worker = _worker(session_factory, gateway)
-    for attempt_number in range(1, 4):
-        assert await worker.process_once()
-        async with session_factory() as session, session.begin():
-            row = await session.get(TelegramOutbox, row_id)
-            expected = (
-                OutboxState.RETRY_SCHEDULED if attempt_number < 3 else OutboxState.PRE_ACCEPT_FAILED
-            )
-            assert row.state is expected
-            row.run_at = utcnow()
+    for delay in (5, 15, 30, 60, 90, None):
+        await _assert_failure_schedule(worker, session_factory, (row_id, delay))
     assert not await worker.process_once()
-    assert len(gateway.calls) == 3
+    assert len(gateway.calls) == 6
+    async with session_factory() as session:
+        attempts = tuple(await session.scalars(select(DeliveryAttempt)))
+        assert len(attempts) == 6
+        assert all(a.certainty is DeliveryCertainty.EXPLICIT_REJECTION for a in attempts)
+    output, status = render_health(await read_delivery_health(session_factory))
+    assert status == 1 and "failed_notice_deliveries=1" in output
+
+
+async def _assert_failure_schedule(worker, sessions, spec):
+    row_id, delay = spec
+    before = utcnow()
+    assert await worker.process_once()
+    after = utcnow()
+    async with sessions() as session, session.begin():
+        row = await session.get(TelegramOutbox, row_id)
+        if delay is None:
+            assert row.state is OutboxState.PRE_ACCEPT_FAILED
+        else:
+            assert row.state is OutboxState.RETRY_SCHEDULED
+            assert (
+                before + timedelta(seconds=delay) <= row.run_at <= after + timedelta(seconds=delay)
+            )
+            row.run_at = utcnow()
+
+
+async def test_rate_limit_does_not_consume_connection_retry_budget(session_factory):
+    row_id = await _seed_notice(session_factory, "send_progress_notice")
+    rate_limit = TelegramRetryAfter(SendMessage(chat_id=-1001234, text="test"), "flood", 41)
+    gateway = Gateway(["connect", rate_limit, *(["connect"] * 5)])
+    worker = _worker(session_factory, gateway)
+    for delay in (5, 41, 15, 30, 60, 90, None):
+        await _assert_failure_schedule(worker, session_factory, (row_id, delay))
+    assert len(gateway.calls) == 7
+    assert not await worker.process_once()
+
+
+async def test_fifth_retry_can_confirm_delivery(session_factory):
+    row_id = await _seed_notice(session_factory, "send_progress_notice")
+    gateway = Gateway(["connect"] * 5)
+    worker = _worker(session_factory, gateway)
+    for delay in (5, 15, 30, 60, 90):
+        await _assert_failure_schedule(worker, session_factory, (row_id, delay))
+    assert await worker.process_once()
+    assert not await worker.process_once()
+    async with session_factory() as session:
+        row = await session.get(TelegramOutbox, row_id)
+        attempts = tuple(
+            await session.scalars(select(DeliveryAttempt).order_by(DeliveryAttempt.attempt_number))
+        )
+        assert row.state is OutboxState.CONFIRMED
+        assert [a.certainty for a in attempts] == [DeliveryCertainty.EXPLICIT_REJECTION] * 5 + [
+            DeliveryCertainty.CONFIRMED
+        ]
+    assert len(gateway.calls) == 6
+    assert render_health(await read_delivery_health(session_factory))[1] == 0
+
+
+async def test_ambiguous_failure_after_safe_retry_is_held_without_replay(session_factory):
+    row_id = await _seed_notice(session_factory, "send_temporary_reminder")
+    gateway = Gateway(["connect", "timeout"])
+    worker = _worker(session_factory, gateway)
+    await _assert_failure_schedule(worker, session_factory, (row_id, 5))
+    assert await worker.process_once()
+    assert not await worker.process_once()
+    async with session_factory() as session:
+        row = await session.get(TelegramOutbox, row_id)
+        attempts = tuple(
+            await session.scalars(select(DeliveryAttempt).order_by(DeliveryAttempt.attempt_number))
+        )
+        assert row.state is OutboxState.UNKNOWN_HOLD
+        assert [a.certainty for a in attempts] == [
+            DeliveryCertainty.EXPLICIT_REJECTION,
+            DeliveryCertainty.UNKNOWN,
+        ]
+    assert len(gateway.calls) == 2
 
 
 @pytest.mark.parametrize("kind", ["timeout", "response_reset", "text_only", "unverified_connect"])

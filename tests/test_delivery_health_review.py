@@ -128,6 +128,22 @@ async def test_existing_failed_work_still_fails_with_acknowledged_unknown(sessio
     assert status == 1 and "failed_jobs=1" in output and "::warning" in output
 
 
+async def test_failed_notice_fails_while_preserving_acknowledged_warning(session_factory):
+    old_id = await seed_unknown(session_factory)
+    await acknowledge(session_factory, [old_id])
+    failed_id = await seed_unknown(session_factory, "send_temporary_reminder")
+    async with session_factory() as session, session.begin():
+        row = await session.get(TelegramOutbox, failed_id)
+        row.state = OutboxState.PRE_ACCEPT_FAILED
+        attempt = await session.scalar(
+            select(DeliveryAttempt).where(DeliveryAttempt.outbox_id == failed_id)
+        )
+        attempt.certainty = DeliveryCertainty.EXPLICIT_REJECTION
+    output, status = render_health(await read_delivery_health(session_factory))
+    assert status == 1 and "failed_notice_deliveries=1" in output
+    assert f"UNKNOWN_ACKNOWLEDGED outbox_id={old_id}" in output and "::warning" in output
+
+
 def test_summary_sanitizes_untrusted_operation_names():
     item = ReviewedDelivery("00000000-0000-0000-0000-000000000001", "x\n::notice::injected")
     reviews = UnknownReviewStatus((), (item,), (), 1)

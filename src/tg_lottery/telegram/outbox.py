@@ -27,10 +27,7 @@ from tg_lottery.infrastructure.db import (
 )
 from tg_lottery.infrastructure.heartbeat import run_with_heartbeat
 from tg_lottery.telegram.crypto import SecretCipher
-from tg_lottery.telegram.delivery_failures import (
-    failed_before_single_request,
-    notice_connection_retry_delay,
-)
+from tg_lottery.telegram.delivery_failures import classify_connection_failure
 from tg_lottery.telegram.gateway import GatewayResult, TelegramGateway
 from tg_lottery.telegram.gateway_requests import GatewayCall, build_gateway_call
 from tg_lottery.telegram.outbox_payloads import InviteNameFactory, normalize_pending_invite_name
@@ -152,8 +149,8 @@ class OutboxWorker:
         self, outbox: TelegramOutbox, attempt_number: int, exc: Exception
     ) -> None:
         context = delivery_log_context(outbox, attempt_number) | {"error_code": type(exc).__name__}
-        if failed_before_single_request(outbox.operation, exc):
-            delay = notice_connection_retry_delay(outbox.operation, attempt_number)
+        proven, delay = await classify_connection_failure(self._session_factory, outbox, exc)
+        if proven:
             if delay is not None:
                 await self._retry(
                     outbox.id,

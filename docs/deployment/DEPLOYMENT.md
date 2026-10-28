@@ -27,7 +27,7 @@
 
 app 健康检查同时核对轮询连续性与当前 Bot 的处理队列：最早未完成 Update 等待超过 120 秒即明确报告阻塞，不能由新鲜轮询心跳掩盖。`check-services.sh` 单独报告已处理输入中界面回信被 Telegram 明确拒绝的数量；这些记录保留 `last_error`，不表示回信送达或业务成功。明确丢失 Bot 成员身份的历史管理员事件，在撤销本地管理员缓存后单独计入 `unavailable_memberships`，不代表权限同步或提示送达成功。未知网络结果、资格核验错误和内部处理错误仍按原 Inbox 顺序重试；Outbox UNKNOWN 不自动重发。
 
-经明确授权、逐条核对并写入风险知悉审计的历史通知 UNKNOWN，健康工作流仍逐条显示并发出警告；当它们是唯一异常时输出 `STATUS=DEGRADED_ACKNOWLEDGED`，工作流可以通过，**不表示原投递或提醒删除已确认**。新 UNKNOWN、已知悉记录或审计证据发生变化、确认未投影、失败任务和失败 Update 继续使检查失败；读取失败也必须失败。具体边界及操作见 [未知投递风险知悉](UNKNOWN_DELIVERY_RISK_ACKNOWLEDGEMENT.md)。
+经明确授权、逐条核对并写入风险知悉审计的历史通知 UNKNOWN，健康工作流仍逐条显示并发出警告；当它们是唯一异常时输出 `STATUS=DEGRADED_ACKNOWLEDGED`，工作流可以通过，**不表示原投递或提醒删除已确认**。新 UNKNOWN、已知悉记录或审计证据发生变化、确认未投影、失败任务、失败 Update，以及进度通知/临时提醒/删除请求的明确失败均使检查失败；读取失败也必须失败。具体边界及操作见 [未知投递风险知悉](UNKNOWN_DELIVERY_RISK_ACKNOWLEDGEMENT.md)。
 
 Inbox 限流通过 `next_attempt_at` 持久保存 Telegram 的最早重试时间；普通失败仍遵循原重试间隔。成功处理会清理当前 `last_error`，但独立保留最近一次 `last_failure` 供追溯。长轮询也遵守 `retry_after`，等待可被正常停机打断。
 

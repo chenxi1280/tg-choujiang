@@ -12,6 +12,7 @@ from tg_lottery.domain.enums import JobState, OutboxState, UpdateState
 from tg_lottery.infrastructure.db import ScheduledJob, TelegramOutbox, TelegramUpdate
 from tg_lottery.infrastructure.db.session import create_engine, create_session_factory
 from tg_lottery.ops.delivery_health_review import UnknownReviewStatus, classify_unknowns
+from tg_lottery.telegram.delivery_failures import SINGLE_NOTICE_OPERATIONS
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,7 @@ class DeliveryHealth:
     failed_updates: int
     rejected_ui: int
     unavailable_memberships: int
+    failed_notices: int = 0
 
 
 async def read_delivery_health(sessions):
@@ -46,6 +48,12 @@ async def _health_counts(session):
         "failed_updates": select(func.count())
         .select_from(TelegramUpdate)
         .where(TelegramUpdate.state == UpdateState.FAILED),
+        "failed_notices": select(func.count())
+        .select_from(TelegramOutbox)
+        .where(
+            TelegramOutbox.state == OutboxState.PRE_ACCEPT_FAILED,
+            TelegramOutbox.operation.in_(SINGLE_NOTICE_OPERATIONS),
+        ),
         "rejected_ui": _handled_update_count("UI response rejected:%"),
         "unavailable_memberships": _handled_update_count("Bot membership unavailable:%"),
     }
@@ -64,12 +72,15 @@ def _handled_update_count(pattern):
 
 def render_health(health):
     review = health.reviews
-    failed = bool(
-        review.unreviewed
-        or review.invalidated
-        or health.unprojected
-        or health.failed_jobs
-        or health.failed_updates
+    failed = any(
+        (
+            review.unreviewed,
+            review.invalidated,
+            health.unprojected,
+            health.failed_jobs,
+            health.failed_updates,
+            health.failed_notices,
+        )
     )
     status = "DEGRADED" if failed else "DEGRADED_ACKNOWLEDGED" if review.acknowledged else "HEALTHY"
     lines = [
@@ -78,7 +89,7 @@ def render_health(health):
         f"unreviewed_unknown={len(review.unreviewed)} "
         f"invalidated_reviews={len(review.invalidated)} "
         f"unprojected_confirmations={health.unprojected} failed_jobs={health.failed_jobs} "
-        f"failed_updates={health.failed_updates}",
+        f"failed_updates={health.failed_updates} failed_notice_deliveries={health.failed_notices}",
         f"rejected_ui_responses={health.rejected_ui} "
         f"unavailable_memberships={health.unavailable_memberships}",
     ]
