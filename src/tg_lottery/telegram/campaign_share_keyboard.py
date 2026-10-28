@@ -5,15 +5,15 @@ from tg_lottery.presentation.campaign_card import campaign_link
 from tg_lottery.telegram.ui_style import style_keyboard
 
 
-def share_to_group_button(reference):
+def share_to_chat_button(reference):
     return InlineKeyboardButton(
-        text="分享到群",
+        text="分享到群或频道",
         switch_inline_query_chosen_chat=SwitchInlineQueryChosenChat(
             query=f"share_{reference}",
             allow_group_chats=True,
             allow_user_chats=False,
             allow_bot_chats=False,
-            allow_channel_chats=False,
+            allow_channel_chats=True,
         ),
     )
 
@@ -35,7 +35,6 @@ def campaign_share_keyboard(payload):
     folder = payload.get("presentation", {}).get("folder_link")
     if folder:
         rows.append([InlineKeyboardButton(text="一键加入群和频道", url=str(folder))])
-    rows.append([share_to_group_button(payload["campaign_ref"])])
     return style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
 
 

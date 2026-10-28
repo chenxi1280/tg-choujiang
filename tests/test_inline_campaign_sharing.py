@@ -62,12 +62,9 @@ async def test_group_share_dispatch_returns_complete_card_without_registration(
     assert "参与条件" in text and "奖品内容" in text
     buttons = [button for row in result.reply_markup.inline_keyboard for button in row]
     link = f"https://t.me/lottery_test_bot?start=join_{reference}"
-    assert link in text and buttons[0].url == link
-    assert all(button.callback_data is None for button in buttons)
-    chooser = buttons[-1].switch_inline_query_chosen_chat
-    assert chooser.allow_group_chats and not chooser.allow_user_chats
-    assert not chooser.allow_channel_chats and not chooser.allow_bot_chats
-    assert chooser.query == "share_" + reference
+    assert f'<a href="{link}">点击参与</a>' in text and buttons[0].url == link
+    assert all(button.url and button.callback_data is None for button in buttons)
+    assert all(button.switch_inline_query_chosen_chat is None for button in buttons)
     if cover:
         assert result.photo_file_id == cover
     async with session_factory() as session:
@@ -76,14 +73,14 @@ async def test_group_share_dispatch_returns_complete_card_without_registration(
         assert await session.scalar(select(func.count(TelegramOutbox.id))) == 0
 
 
-async def test_private_share_card_exposes_group_chooser_and_portable_buttons(session_factory):
+async def test_private_share_card_only_has_portable_url_buttons(session_factory):
     cid = await seed_share_campaign(session_factory)
     await request_share(session_factory, cid)
     async with session_factory() as session:
         row = await session.scalar(select(TelegramOutbox))
         buttons = [b for line in _campaign_keyboard(row.payload).inline_keyboard for b in line]
-        assert any(b.switch_inline_query_chosen_chat for b in buttons)
-        assert all(b.callback_data is None for b in buttons)
+        assert all(b.url and b.callback_data is None for b in buttons)
+        assert all(b.switch_inline_query_chosen_chat is None for b in buttons)
 
 
 @pytest.mark.parametrize(

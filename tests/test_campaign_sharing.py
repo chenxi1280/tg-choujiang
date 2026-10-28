@@ -18,8 +18,13 @@ from tg_lottery.domain.enums import CampaignState, OutboxState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.infrastructure.db import Campaign, Participant, TelegramOutbox, TicketLedger
 from tg_lottery.infrastructure.db.uow import UnitOfWork
-from tg_lottery.telegram.gateway import TelegramGateway
-from tg_lottery.telegram.gateway_requests import GatewayRequest, build_gateway_request
+from tg_lottery.presentation.campaign_card import legacy_participation_footer
+from tg_lottery.telegram.gateway import TelegramGateway, _campaign_card_text
+from tg_lottery.telegram.gateway_requests import (
+    GatewayRequest,
+    _share_card_state,
+    build_gateway_request,
+)
 from tg_lottery.telegram.start_payloads import dispatch_start_payload
 
 SHARE_USER = 202
@@ -95,7 +100,8 @@ async def test_queued_share_freezes_content_but_delivery_exposes_closed_state(se
     assert "测试活动" in request.payload["rendered_card_text"]
     assert "已取消" in request.payload["rendered_card_text"]
     assert "新的说明" not in request.payload["rendered_card_text"]
-    assert "点击链接参与抽奖" not in request.payload["rendered_card_text"]
+    assert ">点击参与</a>" not in request.payload["rendered_card_text"]
+    assert ">查看活动规则与结果</a>" in request.payload["rendered_card_text"]
     bot = FakeCardBot()
     await TelegramGateway(bot, object()).execute(request)
     button = bot.sent[0][2]["reply_markup"].inline_keyboard[0][0]
@@ -116,6 +122,17 @@ async def test_queued_share_after_cutoff_does_not_claim_campaign_is_still_open(s
     assert "报名已截止" in request.payload["rendered_card_text"]
     assert "本期当前状态\uff1a进行中" not in request.payload["rendered_card_text"]
     assert request.payload["share_closed"] is True
+
+
+def test_queued_legacy_share_updates_link_label_and_closed_state():
+    payload = card_payload()
+    payload["rendered_card_text"] = "冻结正文\n" + legacy_participation_footer(payload)
+    assert ">点击参与</a>" in _campaign_card_text(payload)
+    campaign = SimpleNamespace(state=CampaignState.CANCELLED, cutoff_at=datetime.now(UTC))
+    closed = _share_card_state(payload, campaign)
+    assert ">查看活动规则与结果</a>" in closed["rendered_card_text"]
+    assert "点击链接参与抽奖" not in closed["rendered_card_text"]
+    assert "start=join_" not in closed["rendered_card_text"]
 
 
 @pytest.mark.parametrize("cover", [None, "cover-file"])
@@ -139,7 +156,7 @@ async def test_public_and_private_cards_use_same_native_caption_and_link(cover):
 
 
 async def test_share_start_requests_card_for_sender_and_never_registers():
-    campaign = SimpleNamespace(id="campaign-id")
+    campaign = SimpleNamespace(id="campaign-id", public_ref="abcdefgh")
     flow = SimpleNamespace(
         _queries=SimpleNamespace(campaign_by_reference=AsyncMock(return_value=campaign)),
         _participants=SimpleNamespace(request_share_card=AsyncMock()),
@@ -153,6 +170,25 @@ async def test_share_start_requests_card_for_sender_and_never_registers():
     )
     flow.register.assert_not_awaited()
     assert "已提交" in message.answer.call_args.args[0]
+    markup = message.answer.call_args.kwargs["reply_markup"]
+    chooser = markup.inline_keyboard[0][0].switch_inline_query_chosen_chat
+    assert chooser.allow_group_chats and chooser.allow_channel_chats
+    assert not chooser.allow_user_chats and not chooser.allow_bot_chats
+    assert chooser.query == "share_abcdefgh"
+
+
+async def test_legacy_share_reference_chooser_uses_public_reference():
+    campaign = SimpleNamespace(id="campaign-id", public_ref="x" * 22)
+    flow = SimpleNamespace(
+        _queries=SimpleNamespace(campaign_by_reference=AsyncMock(return_value=campaign)),
+        _participants=SimpleNamespace(request_share_card=AsyncMock()),
+        _bot_username="lottery_test_bot",
+    )
+    message = SimpleNamespace(from_user=SimpleNamespace(id=SHARE_USER), answer=AsyncMock())
+    legacy_id = "fc99b181-47cc-faf6-b7c3-ab660c4ed6e6"
+    await dispatch_start_payload(flow, message, "share_" + legacy_id)
+    chooser = message.answer.call_args.kwargs["reply_markup"].inline_keyboard[0][0]
+    assert chooser.switch_inline_query_chosen_chat.query == "share_" + campaign.public_ref
 
 
 async def test_share_delivery_failure_surfaces_without_pinning_or_remote_success():

@@ -1,3 +1,4 @@
+import html
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -18,7 +19,11 @@ from tg_lottery.infrastructure.db import (
     TelegramOutbox,
     Winner,
 )
-from tg_lottery.presentation.campaign_card import campaign_link
+from tg_lottery.presentation.campaign_card import (
+    campaign_link,
+    legacy_participation_footer,
+    participation_footer,
+)
 from tg_lottery.telegram.member_bonus_text import historical_outcome_status
 from tg_lottery.telegram.member_group_invites import HIDDEN_INVITE_STATES
 from tg_lottery.telegram.member_invites import legacy_invite_note, unavailable_invite_link_note
@@ -82,9 +87,10 @@ def _share_card_state(payload: dict[str, Any], campaign: Campaign) -> dict[str, 
         return payload
     status = "报名已截止" if open_state else campaign_state_text(campaign.state)
     prefix = f"本期当前状态：{status}；参与入口已关闭，请查看规则及结果。\n\n"
-    footer = "🔗 点击链接参与抽奖（长按本消息可转发）：\n" + campaign_link(payload)
-    historical = "🔗 查看活动规则与结果：\n" + campaign_link(payload, "rules")
-    text = payload["rendered_card_text"].replace(footer, historical)
+    url = html.escape(campaign_link(payload, "rules"), quote=True)
+    historical = f'🔗 <a href="{url}">查看活动规则与结果</a>'
+    text = payload["rendered_card_text"].replace(participation_footer(payload), historical)
+    text = text.replace(legacy_participation_footer(payload), historical)
     return payload | {
         "share_closed": True,
         "rendered_card_text": prefix + text,

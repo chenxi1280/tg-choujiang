@@ -142,7 +142,7 @@ def test_publication_receipt_keeps_join_link_when_forwarded_without_buttons():
         if button.url and "start=join_" in button.url
     )
     assert link == "https://t.me/test_bot?start=join_abc"
-    assert link in text and "长按" in text
+    assert f'<a href="{link}">点击参与</a>' in text and "长按" in text
     assert "发布请求已提交" in text and "确认送达后" in text
     share_query = parse_qs(
         urlparse(

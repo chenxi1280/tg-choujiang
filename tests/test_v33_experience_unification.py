@@ -41,9 +41,13 @@ def test_help_topics_do_not_include_the_next_topic(key):
 def test_card_actions_match_the_frozen_enabled_capabilities(bonuses):
     payload = card_payload(bonuses=bonuses)
     markup = _campaign_keyboard(payload)
-    routes = {button.callback_data for row in markup.inline_keyboard for button in row}
-    assert ("member:invite:abcdefgh" in routes) == ("invite" in bonuses)
-    assert ("member:bonus:abcdefgh" in routes) == bool(bonuses)
+    buttons = [button for row in markup.inline_keyboard for button in row]
+    routes = {button.url for button in buttons}
+    assert ("https://t.me/lottery_test_bot?start=invite_abcdefgh" in routes) == (
+        "invite" in bonuses
+    )
+    assert ("https://t.me/lottery_test_bot?start=bonus_abcdefgh" in routes) == bool(bonuses)
+    assert all(button.url and button.callback_data is None for button in buttons)
     assert markup.inline_keyboard[0][0].url == "https://t.me/lottery_test_bot?start=join_abcdefgh"
     assert markup.inline_keyboard[0][0].callback_data is None
     text = bonus_block(payload)
@@ -53,13 +57,9 @@ def test_card_actions_match_the_frozen_enabled_capabilities(bonuses):
 
 def test_invite_gate_without_rewards_still_has_invitation_entry():
     payload = card_payload(mode="invite", bonuses=())
-    routes = {
-        button.callback_data
-        for row in _campaign_keyboard(payload).inline_keyboard
-        for button in row
-    }
-    assert "member:invite:abcdefgh" in routes
-    assert "member:bonus:abcdefgh" not in routes
+    routes = {button.url for row in _campaign_keyboard(payload).inline_keyboard for button in row}
+    assert "https://t.me/lottery_test_bot?start=invite_abcdefgh" in routes
+    assert "https://t.me/lottery_test_bot?start=bonus_abcdefgh" not in routes
 
 
 async def test_invitation_entry_filters_activity_only_groups_before_pagination():

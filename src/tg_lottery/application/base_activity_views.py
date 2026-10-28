@@ -15,17 +15,28 @@ BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
 async def base_progress_text(
-    session: object, campaign: object, participant: object, *, now: datetime | None = None
+    session: object,
+    campaign: object,
+    participant: object,
+    *,
+    now: datetime | None = None,
+    group_label=None,
 ) -> str:
     rules = CampaignRules.model_validate(campaign.rules)
     if rules.admission is not None:
         from tg_lottery.application.admission_views import admission_progress_text
 
-        return await admission_progress_text(session, campaign, participant, now=now)
-    return await _legacy_progress_text(session, campaign, participant, rules=rules, now=now)
+        return await admission_progress_text(
+            session, campaign, participant, now=now, group_label=group_label
+        )
+    return await _legacy_progress_text(
+        session, campaign, participant, rules=rules, now=now, group_label=group_label
+    )
 
 
-async def _legacy_progress_text(session, campaign, participant, *, rules, now=None):
+async def _legacy_progress_text(
+    session, campaign, participant, *, rules, now=None, group_label=None
+):
     if not rules.base_activity_rules:
         return ""
     now = now or utcnow()
@@ -40,14 +51,14 @@ async def _legacy_progress_text(session, campaign, participant, *, rules, now=No
     date_label = f"记录日期 {today}" if completed else "今日"
     for key, item in progress.items():
         rule = rules.base_activity_rules[key]
+        name = _group_label(key, groups.get(key) or "名称待更新", group_label)
         status = (
             "本群已达标"
             if item.qualified
             else f"连续 {item.consecutive_days}/{rule.consecutive_days} 天"
         )
         lines.append(
-            f"{groups.get(key) or '名称待更新'}: {date_label} "
-            f"{item.today_messages}/{rule.daily_messages} 条; {status}"
+            f"{name}: {date_label} {item.today_messages}/{rule.daily_messages} 条; {status}"
         )
     if completed:
         lines.append("本期基础发言已停止累计; 此处为历史进度, 开奖结果请查看参与详情。")
@@ -60,6 +71,10 @@ async def _legacy_progress_text(session, campaign, participant, *, rules, now=No
     lines.append(f"当前有效抽奖次数: {effective}")
     lines.append("未达标时加成暂存; 缺勤会中断连续进度; 完成一次后保留本期达标资格。")
     return "\n".join(lines)
+
+
+def _group_label(key, name, formatter):
+    return formatter(key, name) if formatter else name
 
 
 def _qualification_text(qualified: bool, *, completed: bool) -> str:

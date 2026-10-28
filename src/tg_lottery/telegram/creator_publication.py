@@ -192,7 +192,7 @@ class CreatorPublisher:
         if campaign is None:
             raise UserFacingError("找不到已创建的活动，请在抽奖管理中核对")
         text, keyboard = publication_receipt(campaign, self._bot_username)
-        await edit_panel(_message(query), text, reply_markup=keyboard)
+        await edit_panel(_message(query), text, reply_markup=keyboard, parse_mode="HTML")
         await self._sessions.clear(query.from_user.id)
 
     async def _verify_frozen_platform(self, campaign):

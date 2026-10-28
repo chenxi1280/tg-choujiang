@@ -10,15 +10,19 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LinkPreviewOptions
 
 from tg_lottery.application.message_deletion import TEMPORARY_REMINDER_OPERATION
-from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import InviteLink
-from tg_lottery.presentation.campaign_card import campaign_link
+from tg_lottery.presentation.campaign_card import (
+    campaign_link,
+    legacy_participation_footer,
+    participation_footer,
+)
 from tg_lottery.presentation.draw_messages import creator_draw_notice_text, winner_notice_text
 from tg_lottery.presentation.draw_messages import draw_result_text as _draw_result_text
 from tg_lottery.presentation.mentions import (
     user_mention,
 )
 from tg_lottery.presentation.participation_rules import rule_manifest
+from tg_lottery.presentation.progress_notice import progress_notice_html
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway_card_states import (
     campaign_state_card_text as _campaign_state_card_text,
@@ -81,7 +85,8 @@ class TelegramGateway:
         mention = user_mention(payload)
         text = (
             f"{mention}\n{html.escape(str(payload['campaign_name']))}\n"
-            f"{html.escape(str(payload['text']))}\n{html.escape(str(payload['ticket_status']))}"
+            f"{progress_notice_html(payload, bot_username=self._bot_username)}\n"
+            f"{html.escape(str(payload['ticket_status']))}"
         )
         if payload.get("occurred_at"):
             from tg_lottery.telegram.public_projection import format_public_time
@@ -92,6 +97,7 @@ class TelegramGateway:
             text,
             parse_mode="HTML",
             disable_notification=False,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
             reply_markup=style_keyboard(
                 InlineKeyboardMarkup(
                     inline_keyboard=[
@@ -115,28 +121,31 @@ class TelegramGateway:
         payload = outbox.payload
         options = {"disable_notification": False}
         text = str(payload["text"])
+        link = None
         if payload.get("campaign_ref"):
             if not self._bot_username:
                 raise ValueError("temporary reminder participation link requires a bot username")
+            link = campaign_link(payload | {"bot_username": self._bot_username})
             options["reply_markup"] = style_keyboard(
                 InlineKeyboardMarkup(
                     inline_keyboard=[
                         [
                             InlineKeyboardButton(
                                 text="参与抽奖",
-                                url=campaign_link(payload | {"bot_username": self._bot_username}),
+                                url=link,
                             ),
                         ]
                     ]
                 )
             )
-            text += "\n查看本场活动：" + campaign_link(
-                payload | {"bot_username": self._bot_username}
-            )
+        if link or payload.get("user_id"):
+            text = html.escape(text)
+            options["parse_mode"] = "HTML"
+        if link:
+            text += f'\n查看本场活动：<a href="{html.escape(link, quote=True)}">点击参与</a>'
         if payload.get("user_id"):
             mention = user_mention(payload | {"display_name": "这位成员"})
-            text = mention + "\n" + html.escape(text)
-            options["parse_mode"] = "HTML"
+            text = mention + "\n" + text
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
             text,
@@ -335,41 +344,16 @@ def _campaign_deep_link(payload: dict[str, Any], action: str) -> str:
 
 
 def _campaign_keyboard(payload: dict[str, Any]) -> InlineKeyboardMarkup:
-    if payload.get("share_card"):
-        from tg_lottery.telegram.campaign_share_keyboard import campaign_share_keyboard
+    from tg_lottery.telegram.campaign_share_keyboard import campaign_share_keyboard
 
-        return campaign_share_keyboard(payload)
-    return _base_campaign_keyboard(payload)
-
-
-def _base_campaign_keyboard(payload):
-    closed = bool(payload.get("share_closed"))
-    text = "✨ 查看活动状态与规则" if closed else "✨ 点击参与抽奖"
-    action = "rules" if closed else "join"
-    rows = [[InlineKeyboardButton(text=text, url=_campaign_deep_link(payload, action))]]
-    if not closed:
-        reference = payload["campaign_ref"]
-        rules = CampaignRules.model_validate(payload.get("rules") or {})
-        bonus_buttons = []
-        if rules.invitation_enabled:
-            bonus_buttons.append(
-                InlineKeyboardButton(text="邀请入口", callback_data=f"member:invite:{reference}")
-            )
-        if rules.bonus_types:
-            bonus_buttons.append(
-                InlineKeyboardButton(text="我的加成", callback_data=f"member:bonus:{reference}")
-            )
-        if bonus_buttons:
-            rows.append(bonus_buttons)
-    folder_link = payload.get("presentation", {}).get("folder_link")
-    if folder_link and not closed:
-        rows.append([InlineKeyboardButton(text="🗂 一键加入群和频道", url=str(folder_link))])
-    return style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
+    return campaign_share_keyboard(payload)
 
 
 def _campaign_card_text(payload: dict[str, Any]) -> str:
     if payload.get("rendered_card_text"):
-        return str(payload["rendered_card_text"])
+        return str(payload["rendered_card_text"]).replace(
+            legacy_participation_footer(payload), participation_footer(payload)
+        )
     if not payload.get("timezone"):
         raise ValueError("campaign card timezone is required")
     text, _pages = rule_manifest(payload)

@@ -428,7 +428,11 @@ async def test_campaign_keyboard_emphasizes_participation_with_rules_in_body() -
     assert buttons[0].url == _campaign_deep_link(_lotterybest_card_payload(), "join")
     assert buttons[0].callback_data is None
     assert [plain_label(button.text) for button in buttons[1:]] == ["邀请入口", "我的加成"]
-    assert all(len(button.callback_data.encode()) <= 64 for button in buttons[1:])
+    assert [button.url for button in buttons[1:]] == [
+        _campaign_deep_link(_lotterybest_card_payload(), "invite"),
+        _campaign_deep_link(_lotterybest_card_payload(), "bonus"),
+    ]
+    assert all(button.callback_data is None for button in buttons)
     assert _campaign_deep_link(_lotterybest_card_payload(), "rules") in bot.sent[0][1][1]
 
 

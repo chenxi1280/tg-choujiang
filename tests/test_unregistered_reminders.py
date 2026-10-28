@@ -255,7 +255,7 @@ async def test_speech_reminder_delivers_mention_and_same_campaign_link_then_sche
     button = options["reply_markup"].inline_keyboard[0][0]
     assert button.url == f"https://t.me/lottery_test_bot?start=join_{reference}"
     assert button.callback_data is None
-    assert f"https://t.me/lottery_test_bot?start=join_{reference}" in text
+    assert f'<a href="{button.url}">点击参与</a>' in text
     assert len(options["reply_markup"].inline_keyboard[0]) == 1
 
 

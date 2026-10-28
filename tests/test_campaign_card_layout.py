@@ -59,7 +59,7 @@ def test_caption_keeps_group_gate_under_its_link_and_reference_section_order():
     button = _campaign_keyboard(card_payload()).inline_keyboard[0][0]
     assert button.url == "https://t.me/lottery_test_bot?start=join_abcdefgh"
     assert button.callback_data is None
-    assert "https://t.me/lottery_test_bot?start=join_abcdefgh" in text
+    assert '<a href="https://t.me/lottery_test_bot?start=join_abcdefgh">点击参与</a>' in text
 
 
 def test_private_target_never_exposes_plain_invite_even_when_present():

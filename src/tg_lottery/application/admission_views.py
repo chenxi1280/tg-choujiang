@@ -11,7 +11,7 @@ from tg_lottery.infrastructure.db import AdmissionProgress, CampaignParticipatio
 
 
 async def admission_progress_text(
-    session: object, campaign: object, participant: object, *, now=None
+    session: object, campaign: object, participant: object, *, now=None, group_label=None
 ) -> str:
     from tg_lottery.application.base_activity_views import (
         _progress_completed,
@@ -40,6 +40,7 @@ async def admission_progress_text(
             observed_at=observed_at,
             records=records,
             completed=completed,
+            group_label=group_label,
         )
     )
     if completed:
@@ -56,13 +57,17 @@ async def admission_progress_text(
     return "\n".join(lines)
 
 
-async def _group_lines(session, *, campaign, participant, rules, observed_at, records, completed):
+async def _group_lines(
+    session, *, campaign, participant, rules, observed_at, records, completed, group_label
+):
     gate = rules.admission
     timezone = ZoneInfo(rules.timezone)
     names = {
         str(item["id"]): item["title"]
         for item in campaign.presentation.get("participation_groups", [])
     }
+    if group_label:
+        names = {key: group_label(key, names.get(key, key)) for key in gate.groups}
     if gate.type == "invite":
         result = await session.execute(
             select(CampaignParticipationGroup.chat_id_snapshot, func.count(Invitation.id))

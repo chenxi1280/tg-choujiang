@@ -162,10 +162,17 @@ def card_time(value: str, timezone: str) -> str:
 def footer_blocks(payload: Mapping) -> tuple[str, ...]:
     issuer = payload["presentation"].get("issuer_name")
     blocks = [f"🧑‍💼 发奖人员：{html.escape(str(issuer))}"] if issuer else []
-    blocks.append(
-        "🔗 点击链接参与抽奖（长按本消息可转发）：\n" + html.escape(campaign_link(payload))
-    )
+    blocks.append(participation_footer(payload))
     return tuple(blocks)
+
+
+def participation_footer(payload: Mapping) -> str:
+    url = html.escape(campaign_link(payload), quote=True)
+    return f'🔗 <a href="{url}">点击参与</a>（长按本消息可转发）'
+
+
+def legacy_participation_footer(payload: Mapping) -> str:
+    return "🔗 点击链接参与抽奖（长按本消息可转发）：\n" + html.escape(campaign_link(payload))
 
 
 def card_blocks(payload: Mapping) -> tuple[str, ...]:

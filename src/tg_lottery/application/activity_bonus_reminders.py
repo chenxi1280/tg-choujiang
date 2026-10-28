@@ -8,7 +8,9 @@ from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import CampaignParticipationGroup, DailyProgress
 
 
-async def activity_bonus_progress_text(session, campaign, participant, *, event_at):
+async def activity_bonus_progress_text(
+    session, campaign, participant, *, event_at, group_label=None
+):
     rules = CampaignRules.model_validate(campaign.rules)
     if not rules.activity_bonus_enabled or event_at >= campaign.cutoff_at:
         return ""
@@ -35,6 +37,8 @@ async def activity_bonus_progress_text(session, campaign, participant, *, event_
         str(item["id"]): item["title"]
         for item in campaign.presentation.get("participation_groups", [])
     }
+    if group_label:
+        names = {key: group_label(key, names.get(key, key)) for key in targets}
     lines = ["人品加成(今日):"]
     lines.extend(
         f"{names.get(key, key)}: " + bonus_cycle_text(rule, counts.get(key, 0))

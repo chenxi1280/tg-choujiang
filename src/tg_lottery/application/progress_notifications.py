@@ -4,6 +4,7 @@ from tg_lottery.application.activity_bonus_reminders import activity_bonus_progr
 from tg_lottery.application.activity_targets import message_rule_chat_id
 from tg_lottery.application.admission_qualification import behavior_qualified
 from tg_lottery.application.participation_progress import brief_task_progress
+from tg_lottery.application.progress_group_links import ProgressGroupLabels, progress_group_links
 from tg_lottery.application.records import add_outbox
 from tg_lottery.domain.enums import QualificationState
 from tg_lottery.infrastructure.db import CampaignParticipationGroup, Group, TelegramOutbox
@@ -91,8 +92,6 @@ async def invitation_notice_chat(session: object, invitation: object) -> int | N
 async def flush_progress_notices(
     session: object, *, campaign: object, participant: object, source_ref: str, event_at: object
 ) -> None:
-    from tg_lottery.application.base_activity_views import base_progress_text
-
     batch = dict(session.info.get("progress_notices") or {})
     matching = {
         key: events for key, events in batch.items() if key[:2] == (campaign.id, participant.id)
@@ -102,9 +101,7 @@ async def flush_progress_notices(
     }
     if not matching:
         return
-    progress = await base_progress_text(session, campaign, participant, now=event_at)
-    bonus = await activity_bonus_progress_text(session, campaign, participant, event_at=event_at)
-    detail = brief_task_progress("\n\n".join(text for text in (progress, bonus) if text))
+    detail, spans = await _linked_progress_detail(session, campaign, participant, event_at=event_at)
     for (_, _, chat_id), events in matching.items():
         business_key = f"progress:{participant.id}:{chat_id}:{source_ref}"
         if await session.scalar(
@@ -112,6 +109,7 @@ async def flush_progress_notices(
         ):
             continue
         recipient = await _current_chat(session, campaign.id, chat_id)
+        event_text = "\n".join(events.values()) + "\n\n"
         add_outbox(
             session,
             operation="send_progress_notice",
@@ -124,12 +122,33 @@ async def flush_progress_notices(
                 "display_name": participant.display_name,
                 "campaign_name": campaign.name,
                 "campaign_ref": campaign.public_ref,
-                "text": "\n".join(events.values()) + "\n\n" + detail,
+                "text": event_text + detail,
+                "group_links": [
+                    span | {"offset": span["offset"] + len(event_text)} for span in spans
+                ],
                 "event_refs": list(events),
                 "occurred_at": event_at.isoformat(),
                 "ticket_status": "完成时: " + ticket_status(participant, campaign),
             },
         )
+
+
+async def _linked_progress_detail(session, campaign, participant, *, event_at):
+    from tg_lottery.application.base_activity_views import base_progress_text
+
+    labels = ProgressGroupLabels(await progress_group_links(session, campaign))
+    progress = await base_progress_text(
+        session, campaign, participant, now=event_at, group_label=labels.label
+    )
+    bonus = await activity_bonus_progress_text(
+        session, campaign, participant, event_at=event_at, group_label=labels.label
+    )
+    full_detail, spans = labels.resolve("\n\n".join(text for text in (progress, bonus) if text))
+    detail = brief_task_progress(full_detail)
+    spans = [
+        span for span in spans if detail.startswith(full_detail[: span["offset"] + span["length"]])
+    ]
+    return detail, spans
 
 
 async def _current_chat(session, campaign_id, chat_id):
