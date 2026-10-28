@@ -139,4 +139,9 @@ async def _seed_unknown(sessions) -> RepairOptions:
                 finished_at=utcnow(),
             )
         )
-    return RepairOptions(outbox_id=row_id, runtime_ref=RUNTIME_REF, repair_ref="test-incident")
+    return RepairOptions(
+        outbox_id=row_id,
+        runtime_ref=RUNTIME_REF,
+        repair_ref="test-incident",
+        unredirected_evidence_ref="test-no-redirect-evidence",
+    )

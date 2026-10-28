@@ -16,6 +16,7 @@ from tg_lottery.infrastructure.db import DeliveryAttempt, TelegramOutbox
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.delivery_failures import failed_before_invite_request
 from tg_lottery.telegram.outbox import OutboxWorker
+from tg_lottery.telegram.single_request_session import PreRequestConnectionError
 
 CONNECTOR_DESCRIPTION = (
     "ClientConnectorError: Cannot connect to host api.telegram.org:443 "
@@ -32,10 +33,13 @@ def network_error(kind: str) -> TelegramNetworkError:
         "response_reset": ClientOSError(104, "Connection reset by peer"),
         "timeout": TimeoutError("response timeout"),
         "text_only": None,
+        "unverified_connect": ClientConnectorError(
+            SimpleNamespace(host="api.telegram.org", port=443, ssl=True),
+            ConnectionResetError(104, "Connection reset by peer"),
+        ),
     }[kind]
-    error = TelegramNetworkError(
-        method=CreateChatInviteLink(chat_id=-100123), message=CONNECTOR_DESCRIPTION
-    )
+    error_type = PreRequestConnectionError if kind == "connect" else TelegramNetworkError
+    error = error_type(method=CreateChatInviteLink(chat_id=-100123), message=CONNECTOR_DESCRIPTION)
     error.__cause__ = cause
     return error
 
@@ -55,7 +59,7 @@ def test_only_actual_connector_cause_proves_invite_was_not_sent(operation) -> No
     assert failed_before_invite_request(operation, network_error("connect"))
 
 
-@pytest.mark.parametrize("kind", ["response_reset", "timeout", "text_only"])
+@pytest.mark.parametrize("kind", ["response_reset", "timeout", "text_only", "unverified_connect"])
 def test_error_text_does_not_replace_transport_evidence(kind) -> None:
     assert not failed_before_invite_request("create_invite_link", network_error(kind))
 
@@ -71,6 +75,7 @@ def test_compound_delivery_connection_error_cannot_disprove_an_earlier_write() -
         ("response_reset", OutboxState.UNKNOWN_HOLD),
         ("timeout", OutboxState.UNKNOWN_HOLD),
         ("text_only", OutboxState.UNKNOWN_HOLD),
+        ("unverified_connect", OutboxState.UNKNOWN_HOLD),
     ],
 )
 async def test_worker_records_connection_phase_without_automatic_replay(

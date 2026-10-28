@@ -13,12 +13,13 @@ from tg_lottery.runtime import configure_logging, owner_id, stop_event, validate
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.gateway import TelegramGateway
 from tg_lottery.telegram.outbox import OutboxWorker
+from tg_lottery.telegram.single_request_session import SingleRequestSession
 
 
 async def run() -> None:
     settings = get_settings()
     configure_logging(settings.log_level)
-    container = build_container(settings)
+    container = build_container(settings, bot_session=SingleRequestSession())
     stop = stop_event()
     job_owner = owner_id("jobs")
     try:

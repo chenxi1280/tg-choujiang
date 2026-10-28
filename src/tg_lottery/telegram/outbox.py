@@ -27,7 +27,10 @@ from tg_lottery.infrastructure.db import (
 )
 from tg_lottery.infrastructure.heartbeat import run_with_heartbeat
 from tg_lottery.telegram.crypto import SecretCipher
-from tg_lottery.telegram.delivery_failures import failed_before_invite_request
+from tg_lottery.telegram.delivery_failures import (
+    failed_before_single_request,
+    notice_connection_retry_delay,
+)
 from tg_lottery.telegram.gateway import GatewayResult, TelegramGateway
 from tg_lottery.telegram.gateway_requests import GatewayCall, build_gateway_call
 from tg_lottery.telegram.outbox_payloads import InviteNameFactory, normalize_pending_invite_name
@@ -36,6 +39,7 @@ from tg_lottery.telegram.outbox_records import (
     add_delivery_attempt,
     delivery_log_context,
     sanitized_remote_result,
+    state_after_explicit_failure,
 )
 
 _CLAIM_LEASE_SECONDS = 120
@@ -108,7 +112,13 @@ class OutboxWorker:
         try:
             result = await self._execute_gateway(outbox.id, call)
         except TelegramRetryAfter as exc:
-            await self._retry(outbox.id, attempt_number, exc)
+            await self._retry(
+                outbox.id,
+                attempt_number,
+                exc,
+                delay_seconds=exc.retry_after,
+                error_code="retry_after",
+            )
             self._logger.warning(
                 "Telegram delivery rate limited",
                 extra=log_context
@@ -142,10 +152,25 @@ class OutboxWorker:
         self, outbox: TelegramOutbox, attempt_number: int, exc: Exception
     ) -> None:
         context = delivery_log_context(outbox, attempt_number) | {"error_code": type(exc).__name__}
-        if failed_before_invite_request(outbox.operation, exc):
+        if failed_before_single_request(outbox.operation, exc):
+            delay = notice_connection_retry_delay(outbox.operation, attempt_number)
+            if delay is not None:
+                await self._retry(
+                    outbox.id,
+                    attempt_number,
+                    exc,
+                    delay_seconds=delay,
+                    error_code=type(exc).__name__,
+                    preserve_error=True,
+                )
+                self._logger.warning(
+                    "Telegram connection failed before request; retry scheduled",
+                    extra=context | {"certainty": "explicit_rejection", "retry_after": delay},
+                )
+                return
             await self._pre_accept_failed(outbox.id, attempt_number, exc)
             self._logger.error(
-                "Telegram invite request failed before connection; request was not sent",
+                "Telegram request failed before connection; request was not sent",
                 extra=context | {"certainty": "explicit_rejection", "transport_phase": "connect"},
             )
             return
@@ -256,7 +281,16 @@ class OutboxWorker:
             row.lease_owner = None
             row.lease_until = None
 
-    async def _retry(self, outbox_id: UUID, attempt_number: int, exc: TelegramRetryAfter) -> None:
+    async def _retry(
+        self,
+        outbox_id: UUID,
+        attempt_number: int,
+        exc: Exception,
+        *,
+        delay_seconds: int,
+        error_code: str,
+        preserve_error: bool = False,
+    ) -> None:
         async with self._session_factory() as session, session.begin():
             row = await self._locked_owned_claim(session, outbox_id)
             add_delivery_attempt(
@@ -264,14 +298,16 @@ class OutboxWorker:
                 row,
                 attempt_number=attempt_number,
                 certainty=DeliveryCertainty.EXPLICIT_REJECTION,
-                error_code="retry_after",
+                error_code=error_code,
                 error_description=str(exc),
             )
             row.state = OutboxState.RETRY_SCHEDULED
-            row.run_at = utcnow() + timedelta(seconds=exc.retry_after)
+            row.run_at = utcnow() + timedelta(seconds=delay_seconds)
             row.gateway_started_at = None
             row.lease_owner = None
             row.lease_until = None
+            if preserve_error:
+                row.last_error = str(exc)[:4000]
 
     async def _pre_accept_failed(
         self, outbox_id: UUID, attempt_number: int | None, exc: Exception
@@ -293,7 +329,7 @@ class OutboxWorker:
                 error_code=type(exc).__name__,
                 error_description=str(exc),
             )
-            row.state = OutboxState.PRE_ACCEPT_FAILED
+            row.state = await state_after_explicit_failure(session, row)
             row.last_error = str(exc)[:4000]
             row.lease_owner = None
             row.lease_until = None

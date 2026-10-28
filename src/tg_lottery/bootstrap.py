@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from functools import partial
 
 from aiogram import Bot
+from aiogram.client.session.base import BaseSession
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from tg_lottery.application.activity import ActivityService
@@ -59,7 +60,7 @@ class Container:
     services: Services
 
 
-def build_container(settings: Settings) -> Container:
+def build_container(settings: Settings, *, bot_session: BaseSession | None = None) -> Container:
     engine = create_engine(settings.database_url)
     session_factory = create_session_factory(engine)
     uow_factory = partial(UnitOfWork, session_factory)
@@ -80,7 +81,7 @@ def build_container(settings: Settings) -> Container:
     )
     return Container(
         settings=settings,
-        bot=Bot(settings.bot_token),
+        bot=Bot(settings.bot_token, session=bot_session),
         engine=engine,
         session_factory=session_factory,
         services=services,

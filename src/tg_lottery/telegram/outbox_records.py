@@ -1,7 +1,8 @@
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tg_lottery.application.records import utcnow
-from tg_lottery.domain.enums import DeliveryCertainty
+from tg_lottery.domain.enums import DeliveryCertainty, OutboxState
 from tg_lottery.infrastructure.db import DeliveryAttempt, TelegramOutbox
 
 
@@ -17,6 +18,16 @@ def sanitized_remote_result(remote_result: dict[str, object]) -> dict[str, objec
     sanitized = dict(remote_result)
     sanitized.pop("invite_link", None)
     return sanitized
+
+
+async def state_after_explicit_failure(session: AsyncSession, row: TelegramOutbox) -> OutboxState:
+    prior_unknown = await session.scalar(
+        select(DeliveryAttempt.id).where(
+            DeliveryAttempt.outbox_id == row.id,
+            DeliveryAttempt.certainty == DeliveryCertainty.UNKNOWN,
+        )
+    )
+    return OutboxState.UNKNOWN_HOLD if prior_unknown is not None else OutboxState.PRE_ACCEPT_FAILED
 
 
 def add_delivery_attempt(
