@@ -8,29 +8,28 @@ source "$SCRIPT_DIR/docker-env.sh"
 
 ensure_runtime_env
 
-docker_cmd inspect tg-lottery-app --format 'app {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}'
-docker_cmd inspect tg-lottery-worker --format 'worker {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}'
-docker_cmd exec tg-lottery-app python -m tg_lottery.healthcheck --role app
-docker_cmd exec tg-lottery-worker python -m tg_lottery.healthcheck --role worker
-docker_cmd exec tg-lottery-worker alembic current
+container_status() {
+  local role="$1" observed state health
+  if ! observed="$(docker_cmd inspect "tg-lottery-${role}" \
+      --format '{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}')"; then
+    printf '%s status unavailable\n' "$role" >&2
+    return 1
+  fi
+  IFS='|' read -r state health <<< "$observed"
+  printf '%s %s %s\n' "$role" "$state" "$health"
+  [[ "$state" == running && "$health" == healthy ]]
+}
 
-IFS='|' read -r unknown_deliveries unprojected_confirmations failed_jobs failed_updates rejected_ui_responses unavailable_memberships < <(
-  docker_cmd exec app-infra-postgres psql -U postgres -d tg_lottery -tA -F '|' -c \
-    "SELECT
-       (SELECT count(*) FROM telegram_outbox WHERE state = 'unknown_hold'),
-       (SELECT count(*) FROM telegram_outbox WHERE state = 'confirmed' AND projected_at IS NULL),
-       (SELECT count(*) FROM scheduled_jobs WHERE state IN ('blocked', 'failed_terminal')),
-       (SELECT count(*) FROM telegram_updates WHERE state = 'failed'),
-       (SELECT count(*) FROM telegram_updates WHERE state = 'processed' AND last_error LIKE 'UI response rejected:%'),
-       (SELECT count(*) FROM telegram_updates WHERE state = 'processed' AND last_error LIKE 'Bot membership unavailable:%');"
-)
-
-if (( unknown_deliveries > 0 || unprojected_confirmations > 0 || failed_jobs > 0 || failed_updates > 0 )); then
-  printf 'STATUS=DEGRADED unknown_deliveries=%s unprojected_confirmations=%s failed_jobs=%s failed_updates=%s\n' \
-    "$unknown_deliveries" "$unprojected_confirmations" "$failed_jobs" "$failed_updates" >&2
-  exit 1
+status=0
+container_status app || status=$?
+container_status worker || status=$?
+docker_cmd exec tg-lottery-app python -m tg_lottery.healthcheck --role app || status=$?
+docker_cmd exec tg-lottery-worker python -m tg_lottery.healthcheck --role worker || status=$?
+docker_cmd exec tg-lottery-worker alembic current || status=$?
+docker_cmd exec tg-lottery-worker python -m tg_lottery.ops.delivery_health || status=$?
+if (( status == 0 )); then
+  echo 'CHECK_STATUS=PASSED'
+else
+  echo 'CHECK_STATUS=FAILED'
 fi
-
-printf 'rejected_ui_responses=%s (handled inputs, response delivery rejected)\n' "$rejected_ui_responses"
-printf 'unavailable_memberships=%s (handled historical events, cached administrators revoked)\n' "$unavailable_memberships"
-echo "STATUS=HEALTHY"
+exit "$status"

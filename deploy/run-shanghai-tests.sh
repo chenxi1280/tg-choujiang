@@ -18,6 +18,7 @@ cd "$root_dir"
 COPYFILE_DISABLE=1 tar --format=ustar -cf - \
   --exclude='._*' --exclude='__pycache__' --exclude='*.pyc' \
   pyproject.toml alembic.ini src tests alembic scripts \
+  deploy/check-services.sh deploy/docker-env.sh \
   deploy/test-runner.Dockerfile deploy/install_test_dependencies.py \
   deploy/run_remote_tests.py |
   ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 "$ssh_target" \
