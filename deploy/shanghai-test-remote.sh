@@ -12,9 +12,15 @@ flock -w 900 9
 work_dir="$(mktemp -d /tmp/tg-lottery-test.XXXXXX)"
 trap 'rm -rf "$work_dir"' EXIT
 tar -xf - -C "$work_dir"
+proxy="${TG_LOTTERY_TEST_BUILD_PROXY:-}"
+if [[ -n "$proxy" && ! "$proxy" =~ ^http://127\.0\.0\.1:[0-9]{1,5}$ ]]; then
+  echo "TG_LOTTERY_TEST_BUILD_PROXY must be a loopback HTTP proxy" >&2
+  exit 2
+fi
 docker build --network host \
-  --build-arg HTTP_PROXY=http://127.0.0.1:7890 \
-  --build-arg HTTPS_PROXY=http://127.0.0.1:7890 \
+  --build-arg "HTTP_PROXY=$proxy" --build-arg "http_proxy=$proxy" \
+  --build-arg "HTTPS_PROXY=$proxy" --build-arg "https_proxy=$proxy" \
+  --build-arg ALL_PROXY= --build-arg all_proxy= \
   -f "$work_dir/deploy/test-runner.Dockerfile" \
   -t tg-lottery-test-runner:current "$work_dir"
 docker run --rm --network container:tg-lottery-test-postgres \
