@@ -18,6 +18,6 @@ COPY alembic /workspace/alembic
 COPY tests /workspace/tests
 COPY scripts /workspace/scripts
 COPY deploy/run_remote_tests.py /workspace/deploy/run_remote_tests.py
-COPY deploy/check-services.sh deploy/docker-env.sh /workspace/deploy/
+COPY deploy/check-services.sh deploy/docker-env.sh deploy/release.sh /workspace/deploy/
 
 ENTRYPOINT ["python", "deploy/run_remote_tests.py"]

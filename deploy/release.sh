@@ -57,8 +57,11 @@ run_with_retries() {
   local label="$1"; shift
   local attempt status
   for ((attempt = 1; attempt <= RELEASE_SSH_ATTEMPTS; attempt++)); do
-    if "$@"; then return 0; fi
-    status=$?
+    if "$@"; then
+      return 0
+    else
+      status=$?
+    fi
     if (( attempt == RELEASE_SSH_ATTEMPTS )); then
       echo "${label} failed after ${RELEASE_SSH_ATTEMPTS} attempts" >&2
       return "$status"
