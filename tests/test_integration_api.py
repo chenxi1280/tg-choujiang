@@ -14,6 +14,12 @@ def test_settings_require_explicit_creator_scope():
         IntegrationSettings(token="x" * 32, creator_ids=[])
     with pytest.raises(ValidationError):
         IntegrationSettings(token="short", creator_ids=[1])
+    settings = IntegrationSettings(
+        token="x" * 32, creator_ids=[1], campaign_refs="abcdefghijklmnop,qrstuvwxyzABCDEF"
+    )
+    assert settings.campaign_refs == {"abcdefghijklmnop", "qrstuvwxyzABCDEF"}
+    with pytest.raises(ValidationError):
+        IntegrationSettings(token="x" * 32, creator_ids=[1], campaign_refs="invalid")
 
 
 @pytest.mark.parametrize(
@@ -62,12 +68,15 @@ async def test_valid_read_uses_readonly_transaction_and_owner_scope():
         async def execute(self, statement):
             statements.append(str(statement))
 
-    async def snapshot(session, reference, request, *, creator_ids, bot_id):
+    async def snapshot(session, reference, request, *, creator_ids, bot_id, campaign_refs):
         assert creator_ids == frozenset({7}) and bot_id == 123
+        assert campaign_refs == {"abcdefghijklmnopqrstuv"}
         assert request.user_ids == [9999999999]
         return {"campaign_ref": reference, "registered": False}
 
-    settings = IntegrationSettings(token="x" * 32, creator_ids=[7])
+    settings = IntegrationSettings(
+        token="x" * 32, creator_ids=[7], campaign_refs=["abcdefghijklmnopqrstuv"]
+    )
     app = create_app(Session, settings, bot_id=123, snapshot=snapshot)
     async with TestClient(TestServer(app)) as client:
         response = await client.post(

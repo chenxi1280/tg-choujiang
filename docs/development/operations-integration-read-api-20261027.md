@@ -12,6 +12,8 @@
 
 - `LOTTERY_INTEGRATION_TOKEN`：至少 32 字符的独立高强度凭据；不得复用 Bot Token。
 - `LOTTERY_INTEGRATION_CREATOR_IDS`：允许查询的活动创建者 Telegram ID，逗号分隔，禁止为空。
+- `LOTTERY_INTEGRATION_CAMPAIGN_REFS`：可选的精确活动编号白名单，逗号分隔，默认空；
+  与创建者白名单取并集，仅开放列出的活动，不开放其创建者的其他活动。
 - `LOTTERY_INTEGRATION_HOST`：默认 `127.0.0.1`。
 - `LOTTERY_INTEGRATION_PORT`：默认 `8094`。
 
@@ -34,6 +36,9 @@ JSON 字段为 `user_ids` 或 `user_digests`（二选一）、`date_from`、`dat
 ## 响应与事实边界
 
 包含版本、Bot ID、活动稳定 ref/ID、观察时间、计数截止、开奖时刻、经过模型校验的规则及 hash。
+公开参与群和公开群前置的用户名与数字 peer 也作为该活动的只读身份快照返回；
+不返回私有群用户名或邀请链接。运营端必须在真实加入和发送前再次核验当前
+Telegram 身份；该字段不扩大创建者授权或改变抽奖规则。
 只返回请求用户的参与状态：登记、计数起点、资格、按群按日有效基础/活跃消息数、按来源票账总量、中奖条目。
 Telegram ID 使用十进制字符串返回，避免浏览器数字精度损失。
 不存在的参与者明确返回 `registered=false`；不会自动创建参与者。

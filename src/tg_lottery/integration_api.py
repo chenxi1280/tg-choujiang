@@ -39,7 +39,12 @@ def create_app(factory, settings, *, bot_id, snapshot=campaign_snapshot):
             )
             await session.execute(text("SET LOCAL statement_timeout = '5000ms'"))
             value = await snapshot(
-                session, public_ref, scope, creator_ids=settings.creator_ids, bot_id=bot_id
+                session,
+                public_ref,
+                scope,
+                creator_ids=settings.creator_ids,
+                bot_id=bot_id,
+                campaign_refs=settings.campaign_refs,
             )
         if value is None:
             raise web.HTTPNotFound()

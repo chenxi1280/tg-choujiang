@@ -2,10 +2,11 @@
 
 import hashlib
 import json
+import re
 from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import String, cast, func, or_, select
 
 from tg_lottery.application.admission_qualification import behavior_qualified
 from tg_lottery.application.integration_notifications import participant_notifications
@@ -13,6 +14,8 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import (
     Campaign,
+    CampaignParticipationGroup,
+    CampaignRequirement,
     DrawRun,
     DrawSnapshot,
     Participant,
@@ -47,10 +50,13 @@ class SnapshotRequest(BaseModel):
         return self
 
 
-async def campaign_snapshot(session, public_ref, request, *, creator_ids, bot_id):
+async def campaign_snapshot(
+    session, public_ref, request, *, creator_ids, bot_id, campaign_refs=frozenset()
+):
     campaign = await session.scalar(
         select(Campaign).where(
-            Campaign.public_ref == public_ref, Campaign.created_by.in_(creator_ids)
+            Campaign.public_ref == public_ref,
+            or_(Campaign.created_by.in_(creator_ids), Campaign.public_ref.in_(campaign_refs)),
         )
     )
     if campaign is None:
@@ -74,6 +80,10 @@ async def campaign_snapshot(session, public_ref, request, *, creator_ids, bot_id
     notices = await participant_notifications(session, campaign.id, ids)
     for participant in participants:
         rows[participant.user_id]["notification_delivery"] = notices.get(participant.id, [])
+    return await _snapshot_document(session, campaign, request, bot_id=bot_id, rows=rows)
+
+
+async def _snapshot_document(session, campaign, request, *, bot_id, rows):
     rules = CampaignRules.model_validate(campaign.rules).model_dump(mode="json")
     rules_hash = hashlib.sha256(
         json.dumps(rules, sort_keys=True, separators=(",", ":")).encode()
@@ -91,11 +101,47 @@ async def campaign_snapshot(session, public_ref, request, *, creator_ids, bot_id
         "draw_at": campaign.draw_at.isoformat(),
         "rules_hash": rules_hash,
         "rules": rules,
+        "group_identities": await _public_group_identities(session, campaign.id),
         "date_from": request.date_from.isoformat(),
         "date_to": request.date_to.isoformat(),
         "participants": _scoped_rows(rows, request),
         "group_result_notifications": await _group_notifications(session, campaign.id),
     }
+
+
+async def _public_group_identities(session, campaign_id):
+    published = await session.execute(
+        select(
+            CampaignParticipationGroup.chat_id_snapshot,
+            CampaignParticipationGroup.username_snapshot,
+        )
+        .where(
+            CampaignParticipationGroup.campaign_id == campaign_id,
+            CampaignParticipationGroup.private.is_(False),
+            CampaignParticipationGroup.publication_state == "confirmed",
+        )
+        .limit(101)
+    )
+    required = await session.execute(
+        select(CampaignRequirement.chat_id_snapshot, CampaignRequirement.username)
+        .where(
+            CampaignRequirement.campaign_id == campaign_id,
+            CampaignRequirement.private.is_(False),
+            CampaignRequirement.chat_type.in_(("group", "supergroup")),
+        )
+        .limit(101)
+    )
+    rows = list(published) + list(required)
+    if len(rows) > 100:
+        raise ValueError("lottery_group_identity_scope_exceeds_limit")
+    identities = {
+        (str(chat_id), str(username).lstrip("@"))
+        for chat_id, username in rows
+        if username
+        and re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}", str(username).lstrip("@"))
+        and re.fullmatch(r"-\d+", str(chat_id))
+    }
+    return [{"chat_id": peer, "username": username} for peer, username in sorted(identities)]
 
 
 async def _counts(session, model, campaign_id, *, ids, request):
