@@ -10,7 +10,14 @@ from sqlalchemy import text
 from tg_lottery.infrastructure.db.session import create_engine
 
 SUPPORTED_RULE_VERSIONS = frozenset(
-    {"legacy", "v3.0", "platform:official-v1", "platform:official-v2", "bonus:unlimited-v1"}
+    {
+        "legacy",
+        "v3.0",
+        "platform:official-v1",
+        "platform:official-v2",
+        "bonus:unlimited-v1",
+        "message-calendar:campaign-days-v1",
+    }
 )
 
 
@@ -32,6 +39,8 @@ async def check_database(supported):
                     "FROM campaigns WHERE rules->'platform_policy'->>'version' IS NOT NULL"
                     " UNION SELECT 'bonus:' || (rules->>'bonus_policy_version') "
                     "FROM campaigns WHERE rules->>'bonus_policy_version' IS NOT NULL"
+                    " UNION SELECT 'message-calendar:' || (rules->>'message_task_calendar') "
+                    "FROM campaigns WHERE rules->>'message_task_calendar' IS NOT NULL"
                 )
             )
             require_capabilities(versions, supported)

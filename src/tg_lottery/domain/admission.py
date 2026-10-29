@@ -56,5 +56,8 @@ def validate_admission_window(rules: object, *, start_at: datetime, cutoff_at: d
     first_day = start_at.astimezone(timezone).date()
     last_day = cutoff_at.astimezone(timezone).date()
     for chat_id, rule in admission.groups.items():
+        if getattr(rules, "message_task_calendar", None):
+            if (last_day - first_day).days + 1 != rule.consecutive_days:
+                raise ValueError("固定任务日期数必须与发言门槛天数一致")
         if first_day + timedelta(days=rule.consecutive_days - 1) > last_day:
             raise ValueError(f"群 {chat_id} 的连续发言门槛无法在截止前完成, 请调整时间或天数")

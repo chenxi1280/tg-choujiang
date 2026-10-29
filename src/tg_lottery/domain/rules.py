@@ -107,6 +107,7 @@ class CampaignRules(BaseModel, frozen=True):
     participation_rules_version: Literal["v3.0"] | None = None
     bonus_policy_version: Literal["unlimited-v1"] | None = None
     admission: Admission | None = None
+    message_task_calendar: Literal["campaign-days-v1"] | None = None
     timezone: str = "Asia/Shanghai"
     activity: ActivityRule = ActivityRule()
     invite: InviteRule = InviteRule()
@@ -138,6 +139,16 @@ class CampaignRules(BaseModel, frozen=True):
         if self.invite.require_activity:
             raise ValueError("V3.0 invited members do not require activity")
         self._validate_unlimited_invites()
+        return self
+
+    @model_validator(mode="after")
+    def validate_message_calendar(self) -> CampaignRules:
+        if self.message_task_calendar and (
+            self.participation_rules_version != "v3.0"
+            or self.admission is None
+            or self.admission.type != "message"
+        ):
+            raise ValueError("message task calendar requires V3.0 message admission")
         return self
 
     def _validate_unlimited_invites(self) -> None:

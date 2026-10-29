@@ -16,8 +16,14 @@ from tg_lottery.application.progress_notifications import queue_progress_notice
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.base_activity import base_progress
 from tg_lottery.domain.enums import QualificationState
+from tg_lottery.domain.message_calendar import calendar_progress, task_dates
 from tg_lottery.domain.rules import CampaignRules
-from tg_lottery.infrastructure.db import AdmissionProgress, CampaignParticipationGroup, Participant
+from tg_lottery.infrastructure.db import (
+    AdmissionProgress,
+    Campaign,
+    CampaignParticipationGroup,
+    Participant,
+)
 from tg_lottery.infrastructure.db.models_base_activity import BaseActivityEvent
 
 
@@ -114,6 +120,7 @@ async def _apply_admission_progress(
         select(AdmissionProgress.id).where(
             AdmissionProgress.participant_id == participant.id,
             AdmissionProgress.participation_group_id == event.participation_group_id,
+            AdmissionProgress.qualified.is_(True),
         )
     )
     if previous is not None:
@@ -157,19 +164,9 @@ async def _event(
         if group_id is None:
             raise ValueError("message admission group is missing")
     if reason is None:
-        duplicate = await session.scalar(
-            select(BaseActivityEvent.id).where(
-                BaseActivityEvent.participant_id == participant.id,
-                BaseActivityEvent.chat_id == observation.chat_id,
-                BaseActivityEvent.content_hash == content_hash,
-                BaseActivityEvent.accepted.is_(True),
-                BaseActivityEvent.event_at
-                >= observation.event_at
-                - timedelta(minutes=rules.activity.duplicate_window_minutes),
-                BaseActivityEvent.event_at <= observation.event_at,
-            )
+        reason = await _base_duplicate_reason(
+            session, participant, observation=observation, rules=rules, content_hash=content_hash
         )
-        reason = "duplicate_text_window" if duplicate else None
     return BaseActivityEvent(
         campaign_id=participant.campaign_id,
         participant_id=participant.id,
@@ -183,6 +180,29 @@ async def _event(
         rejection_reason=reason,
         source_update_id=current_update_id(),
     )
+
+
+async def _base_duplicate_reason(session, participant, *, observation, rules, content_hash):
+    duplicate = await session.scalar(
+        select(BaseActivityEvent.id).where(
+            BaseActivityEvent.participant_id == participant.id,
+            BaseActivityEvent.chat_id == observation.chat_id,
+            BaseActivityEvent.content_hash == content_hash,
+            BaseActivityEvent.accepted.is_(True),
+            BaseActivityEvent.event_at
+            >= (
+                select(Campaign.preheat_at)
+                .where(Campaign.id == participant.campaign_id)
+                .scalar_subquery()
+            )
+            if rules.message_task_calendar
+            else True,
+            BaseActivityEvent.event_at
+            >= observation.event_at - timedelta(minutes=rules.activity.duplicate_window_minutes),
+            BaseActivityEvent.event_at <= observation.event_at,
+        )
+    )
+    return "duplicate_text_window" if duplicate else None
 
 
 async def load_base_progress(
@@ -210,12 +230,21 @@ async def load_base_progress(
             CampaignParticipationGroup,
             CampaignParticipationGroup.id == BaseActivityEvent.participation_group_id,
         )
+    if rules.message_task_calendar:
+        statement = statement.where(
+            BaseActivityEvent.event_at >= campaign.preheat_at,
+            BaseActivityEvent.local_date <= today,
+        )
     rows = await session.execute(statement)
     counts = {}
     for chat_id, day, count in rows:
         counts.setdefault(str(chat_id), {})[day] = count
     return {
-        key: base_progress(counts.get(key, {}), rule, today)
+        key: (
+            calendar_progress(counts.get(key, {}), rule, today=today, dates=task_dates(campaign))
+            if rules.message_task_calendar
+            else base_progress(counts.get(key, {}), rule, today)
+        )
         for key, rule in rules.message_gate_rules.items()
     }
 
@@ -255,19 +284,26 @@ async def _daily_notice(
     rule_chat_id: int | None = None,
 ) -> None:
     current = progress[str(rule_chat_id if rule_chat_id is not None else event.chat_id)]
-    if current.today_messages == 1 and not current.qualified:
+    if (
+        current.today_messages == 1
+        and not current.qualified
+        and not campaign.rules.get("message_task_calendar")
+    ):
         await notify_streak_restart(
             session, campaign=campaign, participant=participant, event=event, rule=rule
         )
     if current.today_messages == rule.daily_messages:
+        days_label = "本期完成任务日" if campaign.rules.get("message_task_calendar") else "连续进度"
         text = (
-            f"{event.local_date} 基础发言任务完成: "
+            f"{event.local_date} 今日发言任务已完成: "
             f"{current.today_messages}/{rule.daily_messages} 条; "
-            f"连续进度 {min(current.consecutive_days, rule.consecutive_days)}"
+            f"{days_label} {min(current.consecutive_days, rule.consecutive_days)}"
             f"/{rule.consecutive_days} 天。"
         )
         if current.qualified:
-            text += "本群基础门槛已达标。"
+            text += "本群整场发言门槛已完成。"
+        else:
+            text += "整场门槛尚未完成, 其余任务日仍须分别达标。"
         await queue_progress_notice(
             session,
             campaign=campaign,
