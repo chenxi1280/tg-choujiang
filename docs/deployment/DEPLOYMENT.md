@@ -21,6 +21,8 @@
 
 每次迁移前会通过共享 PostgreSQL 容器生成 custom-format 备份到 `/data/tg-lottery/backups/postgres`，默认保留最近 14 份。`admin` 发布用户通过 `sudo -n docker` 操作 Docker，不依赖 Docker socket 组权限。
 
+迁移前停止旧app/worker，迁移后启动新制品，避免新Worker持久化R14删除策略时点后仍有旧消费者发送消息。停机期间不改变活动状态、原截止时间或计数事实，输入恢复后仍按原事件时间处理；迁移失败时尝试启动原容器并保留失败退出码。切换前后分别核对原活动规则和票数账本，未知投递不自动重发。
+
 ## 验收证据
 
 发布完成必须分别核验：Actions checks/build/deploy 结论；GHCR 镜像 SHA；服务器 `current` 指向；Alembic revision；app/worker 健康；Bot `getMe`；confirmed/unprojected、UNKNOWN 和失败队列；真实群内创建、报名、消息票、邀请留存、截止复核、开奖、群公告和中奖私聊。容器健康不能替代 Telegram 业务闭环。

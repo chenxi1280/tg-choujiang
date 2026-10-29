@@ -31,7 +31,20 @@ APP_DIR="$APP_DIR" BASE_DIR="$BASE_DIR" ENV_FILE="$ENV_FILE" IMAGE_ENV_FILE="$IM
   bash "$SCRIPT_DIR/backup-database.sh"
 
 echo "==> Running database migrations"
-compose --profile tools run --rm --no-deps migrate
+# Quiesce both public Telegram consumers before enabling a new runtime policy.
+# Otherwise the new worker could persist its activation boundary while an old
+# consumer still sends messages using the previous retention policy.
+compose stop app worker
+if compose --profile tools run --rm --no-deps migrate; then
+  :
+else
+  migration_status=$?
+  echo "Migration failed; restarting the previous app/worker containers" >&2
+  if ! compose start app worker; then
+    echo "Previous app/worker restart failed; manual recovery required" >&2
+  fi
+  exit "$migration_status"
+fi
 
 echo "==> Starting app and worker"
 integration_env="${LOTTERY_INTEGRATION_ENV_FILE:-${SHARED_DIR}/lottery-integration.env}"

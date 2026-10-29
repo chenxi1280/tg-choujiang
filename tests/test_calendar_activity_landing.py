@@ -54,6 +54,7 @@ async def test_real_preview_entry_renders_fixed_calendar_without_missing_start()
         _campaign=AsyncMock(return_value=campaign),
         _queries=SimpleNamespace(
             prizes=AsyncMock(return_value=[]),
+            public_participation=AsyncMock(return_value="参与情况: 0人达标 / 0人报名"),
             operational_issues=AsyncMock(return_value=[]),
             campaign_outcome=AsyncMock(return_value=SimpleNamespace(kind="open")),
         ),
