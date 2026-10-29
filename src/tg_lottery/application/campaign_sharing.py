@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from tg_lottery.application.campaign_references import resolve_campaign_reference
 from tg_lottery.application.ports import UnitOfWorkFactory
+from tg_lottery.application.public_participation import public_participation
 from tg_lottery.application.publication import campaign_card_payload
 from tg_lottery.application.records import add_outbox, utcnow
 from tg_lottery.application.request_context import current_update
@@ -38,7 +39,9 @@ async def request_campaign_share(factory: UnitOfWorkFactory, request: CampaignSh
                 select(Prize).where(Prize.campaign_id == campaign.id).order_by(Prize.position)
             )
         )
-        payload = campaign_card_payload(campaign, request.bot_username, prizes)
+        payload = campaign_card_payload(campaign, request.bot_username, prizes) | {
+            "public_participation": await public_participation(uow.session, campaign.id)
+        }
         text, _pages = rule_manifest(payload)
         add_outbox(
             uow.session,
@@ -63,7 +66,9 @@ async def load_inline_share_payload(session_factory, reference, *, bot_username)
                 select(Prize).where(Prize.campaign_id == campaign.id).order_by(Prize.position)
             )
         )
-        payload = campaign_card_payload(campaign, bot_username, prizes)
+        payload = campaign_card_payload(campaign, bot_username, prizes) | {
+            "public_participation": await public_participation(session, campaign.id)
+        }
         text, _pages = rule_manifest(payload)
         return payload | {"rendered_card_text": text, "share_card": True}
 

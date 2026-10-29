@@ -50,6 +50,7 @@ async def test_return_anchor_relocates_after_insertion_and_is_scoped_to_person(
         _, first, participant = await seed_campaign(session)
         first.rules = first.rules | {"bonus_types": ["invite"]}
         first.created_at = participant.created_at = now - timedelta(days=1)
+        participant.counting_started_at = first.preheat_at
         anchor = first.public_ref
         for number in range(INSERTED_CAMPAIGNS):
             campaign = _copy_campaign(first, number)
@@ -58,6 +59,7 @@ async def test_return_anchor_relocates_after_insertion_and_is_scoped_to_person(
             await session.flush()
             added = _participant(campaign)
             added.created_at = now
+            added.counting_started_at = campaign.preheat_at
             session.add(added)
     queries = QueryService(session_factory)
     creator = await queries.creator_campaign_page(

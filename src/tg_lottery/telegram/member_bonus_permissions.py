@@ -50,7 +50,7 @@ async def _permission_error(bot: Bot, chat_id: int, kinds: set[str]) -> str | No
     permissions = getattr(chat, "permissions", None)
     can_send = getattr(permissions, "can_send_messages", None)
     if can_send is False:
-        return "群已禁止普通成员发言，当前无法累计活跃加成（人品）"
+        return "群已禁止普通成员发言，当前无法累计发言抽奖加成"
     if can_send is not True:
         return "暂时无法确认普通成员发言权限，请联系活动管理员"
     return None

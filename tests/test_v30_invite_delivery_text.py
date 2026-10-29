@@ -25,9 +25,9 @@ def campaign_clock(monkeypatch):
     ("mode", "bonuses", "chat_id", "expected"),
     [
         ("invite", (), FIRST, "完成邀请门槛"),
-        ("invite", ("invite",), FIRST, "完成邀请门槛并增加邀请加成"),
-        ("message", ("invite",), FIRST, "增加邀请加成"),
-        ("invite", ("invite",), SECOND, "增加邀请加成"),
+        ("invite", ("invite",), FIRST, "完成邀请门槛并增加邀请抽奖加成"),
+        ("message", ("invite",), FIRST, "增加邀请抽奖加成"),
+        ("invite", ("invite",), SECOND, "增加邀请抽奖加成"),
     ],
 )
 async def test_ready_delivery_describes_the_actual_group_purpose(
@@ -50,7 +50,7 @@ async def test_ready_delivery_describes_the_actual_group_purpose(
     assert call.request.payload["invite_bonus_active"] is True
     if expected == "完成邀请门槛":
         assert "加成" not in note
-    if expected == "增加邀请加成":
+    if expected == "增加邀请抽奖加成":
         assert "门槛" not in note
 
 

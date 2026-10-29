@@ -24,6 +24,12 @@ def detail_task(detail, now):
 
 def _available_task(detail, now):
     ref = detail.public_ref
+    if not detail.registration_completed and detail.state is CampaignState.PAUSED:
+        return "⏸️ 活动暂停，报名尚未完成；恢复后可继续核验，原进度保留。", None
+    if not detail.registration_completed:
+        return "⏳ 报名待完成，请补齐条件后点击核验并报名。", _button(
+            "核验并报名", f"member:join:{ref}"
+        )
     if detail.operational_issues:
         return "请查看具体故障目标，历史奖励保留。", _button(
             "查看运行阻断与条件", f"m:conditions:{ref}:0"

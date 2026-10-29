@@ -41,7 +41,7 @@ def current_bonus_policy(data: dict[str, Any]) -> dict[str, Any]:
         }
     updated.update(_editor_policy(data))
     if updated != data:
-        note = "新场活跃和邀请加成都不设上限，邀请留存固定24小时；历史活动不变。"
+        note = "新场发言抽奖加成和邀请抽奖加成都不设上限，邀请留存固定24小时；历史活动不变。"
         updated["import_notes"] = list(dict.fromkeys([*(data.get("import_notes") or []), note]))
     return updated
 
@@ -78,4 +78,4 @@ def require_current_bonus_action(data: dict[str, Any], action: str) -> None:
     if not uses_unlimited_policy(data):
         return
     if "cap" in action or action.endswith(("_limited", "_activity_daily")):
-        raise UserFacingError("新场活跃和邀请加成都不设上限，请使用当前加成设置页")
+        raise UserFacingError("新场发言抽奖加成和邀请抽奖加成都不设上限，请使用当前加成设置页")

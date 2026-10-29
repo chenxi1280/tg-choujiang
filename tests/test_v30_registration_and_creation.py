@@ -45,7 +45,7 @@ async def test_rules_landing_and_group_join_do_not_enroll(session_factory, monke
     message = SimpleNamespace(answer=AsyncMock())
     await open_activity(flow, message, campaign.public_ref)
     assert "参与条件" in message.answer.call_args.args[0]
-    assert "我已阅读" in message.answer.call_args.kwargs["reply_markup"].inline_keyboard[0][0].text
+    assert "一键报名" in message.answer.call_args.kwargs["reply_markup"].inline_keyboard[0][0].text
     await flow.membership_changed(
         campaign_id=cid,
         user=User(id=202, is_bot=False, first_name="测试"),

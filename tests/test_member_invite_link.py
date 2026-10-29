@@ -104,7 +104,7 @@ async def test_legacy_invite_link_before_preheat_does_not_say_campaign_has_ended
     )
     message = RecordingMessage()
     await flow.show_invite_link(message, campaign.public_ref, user_id=201)
-    assert "邀请加成尚未开始" in plain_label(message.text)
+    assert "邀请抽奖加成尚未开始" in plain_label(message.text)
     assert "已截止" not in plain_label(message.text)
     assert plain_label(message.markup.inline_keyboard[0][0].text) == "复制入群链接"
 

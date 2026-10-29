@@ -55,7 +55,7 @@ def _import_notes(data: dict[str, Any]) -> list[str]:
         if old:
             notes.append("原发言条件: " + str(old))
     if _has_limited_invites(data):
-        notes.append("本场邀请加成改为不限累计上限；原活动规则保持不变。")
+        notes.append("本场邀请抽奖加成改为不限累计上限；原活动规则保持不变。")
     if data.get("invite_reward_mode") == "tiered":
         ratio = data["valid_invites_per_ticket"]
         notes.append(

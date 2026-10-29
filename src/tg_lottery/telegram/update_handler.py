@@ -29,6 +29,7 @@ from tg_lottery.telegram.callback_feedback import callback_feedback
 from tg_lottery.telegram.group_reputation import GroupReputation
 from tg_lottery.telegram.help_views import DRAFT_UNAVAILABLE_TEXT
 from tg_lottery.telegram.inline_sharing import answer_inline_share
+from tg_lottery.telegram.lottery_queries import LotteryQueries
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.message_observation import observe_message
 from tg_lottery.telegram.personal_flow import PersonalFlow
@@ -69,6 +70,7 @@ class LotteryUpdateHandler:
         self._navigation = navigation
         self._logger = logging.getLogger(__name__)
         self._reputation = GroupReputation(queries=queries, bot_username=bot_username)
+        self._lottery_queries = LotteryQueries(queries, bot_username=bot_username)
 
     async def handle(self, update: Update) -> None:
         if update.inline_query:
@@ -101,14 +103,21 @@ class LotteryUpdateHandler:
         if message.chat.type == "private":
             await self._private_message(message)
             return
+        text = (message.text or "").strip()
+        if await self._lottery_queries.message(message, text):
+            if message.from_user is not None and not text.startswith("/"):
+                await self._record_message_activity(message)
+            return
         if message.from_user is None:
             return
-        text = (message.text or "").strip()
         if text.startswith("/"):
             await self._group_command(message, text)
             return
         if await self._reputation.message(message, text):
             return
+        await self._record_message_activity(message)
+
+    async def _record_message_activity(self, message):
         observation = observe_message(message)
         await self._stats.record(observation)
         await self._activity.record_message(observation)
@@ -281,13 +290,10 @@ class LotteryUpdateHandler:
             reference, separator, page = payload.rpartition(":")
             if not separator or not page.isdecimal():
                 raise ValueError("invalid missing targets callback")
-            await self._member_flow.register(
-                message,
-                reference,
-                user=query.from_user,
-                observed_at=utcnow(),
-                callback=query,
-                missing_page=int(page),
+            await self._navigation.handle_route(
+                query,
+                data=f"m:conditions:{reference}:{max(0, int(page) - 1)}",
+                personal=self._personal_flow,
             )
             return True
         if data.startswith("member:condition:"):

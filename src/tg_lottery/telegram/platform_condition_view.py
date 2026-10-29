@@ -13,7 +13,8 @@ async def platform_condition_lines(relationships, *, campaign, user_id, bot_user
         "bot_blocked": "已屏蔽，请解除屏蔽并发送/start",
         "bot_relationship_unknown": "证据冲突或未知，请重新发送/start核验",
     }
-    lines = ["平台必备条件 · 启动本机器人：" + labels[relation["observed_status"]]]
+    icon = {"eligible": "✅", "ineligible": "❌"}.get(relation["state"], "⏳")
+    lines = [icon + " 平台必备条件 · 启动本机器人：" + labels[relation["observed_status"]]]
     rows = []
     if relation["state"] != "eligible":
         rows.append(

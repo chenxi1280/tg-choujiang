@@ -177,14 +177,14 @@ def _append_pending_lines(lines: list[str], targets: list[QualificationTarget]) 
     if not targets:
         return
     lines.append("\n等待管理员批准：")
-    lines.extend(f"- {item.title}（等待批准）" for item in targets)
+    lines.extend(f"⏳ {item.title}（等待批准）" for item in targets)
 
 
 def _append_unknown_lines(lines: list[str], targets: list[QualificationTarget]) -> None:
     if not targets:
         return
     lines.append("\n暂时无法核验：")
-    lines.extend(f"- {item.title}" for item in targets)
+    lines.extend(f"⏳ {item.title}" for item in targets)
 
 
 def _append_target_lines(lines: list[str], title: str, targets: list[QualificationTarget]) -> None:
@@ -195,4 +195,4 @@ def _append_target_lines(lines: list[str], title: str, targets: list[Qualificati
         action = "关注" if target.chat_type == "channel" else "加入"
         unavailable = not target.public_join_url and not target.encrypted_join_url
         suffix = "（入口不可用）" if unavailable else ""
-        lines.append(f"- {action}「{target.title}」{suffix}")
+        lines.append(f"❌ {action}「{target.title}」{suffix}")

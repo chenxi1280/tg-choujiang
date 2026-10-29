@@ -5,12 +5,12 @@ from tg_lottery.telegram.ui_style import plain_label, style_keyboard, style_labe
 
 
 def test_semantic_icons_preserve_numeric_density_and_selected_state():
-    assert style_label("活跃加成") == "🌱 活跃加成"
-    assert style_label("邀请加成") == "🤝 邀请加成"
+    assert style_label("发言抽奖加成") == "🌱 发言抽奖加成"
+    assert style_label("邀请抽奖加成") == "🤝 邀请抽奖加成"
     assert style_label("发起抽奖") == "\u2795 发起抽奖"
     assert style_label("创建抽奖") == "\u2795 创建抽奖"
     assert style_label("返回首页") == "🏠 返回首页"
-    assert style_label("✅ 发言数") == "✅ 💬 发言数"
+    assert style_label("✅ 发言数") == "✅ 发言数"
     for text in (
         "5条/天",
         "8条/天",
@@ -72,15 +72,17 @@ def test_existing_system_badges_follow_the_specific_function(label, expected):
 def test_opaque_labels_and_selected_markers_are_preserved():
     assert style_label("🌱 用户自己的活动标题", action="m:detail:ref") == "🌱 用户自己的活动标题"
     assert style_label("🌱 有效活动标题", action="m:detail:ref") == "🌱 有效活动标题"
-    assert style_label("✅ 🤝 添加到频道") == "✅ 📡 添加到频道"
-    assert style_label("⬜️ 🌱 活跃加成") == "⬜️ 🌱 活跃加成"
+    assert style_label("✅ 🤝 添加到频道") == "✅ 🤝 添加到频道"
+    assert style_label("⬜️ 🌱 发言抽奖加成") == "⬜️ 🌱 发言抽奖加成"
 
 
 def test_keyboard_styling_is_idempotent_and_preserves_all_action_payloads():
     original = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="邀请加成", callback_data="member:bonus_invites:ref:0"),
+                InlineKeyboardButton(
+                    text="邀请抽奖加成", callback_data="member:bonus_invites:ref:0"
+                ),
                 InlineKeyboardButton(
                     text="复制邀请链接", copy_text=CopyTextButton(text="https://t.me/synthetic")
                 ),
@@ -97,4 +99,4 @@ def test_keyboard_styling_is_idempotent_and_preserves_all_action_payloads():
         strict=True,
     ):
         assert before.model_dump(exclude={"text"}) == after.model_dump(exclude={"text"})
-    assert original.inline_keyboard[0][0].text == "邀请加成"
+    assert original.inline_keyboard[0][0].text == "邀请抽奖加成"

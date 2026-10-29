@@ -125,14 +125,13 @@ def _bonus_lines(payload: Mapping, *, rules: CampaignRules, unlimited: bool) -> 
     url = html.escape(campaign_link(payload, "rules"), quote=True)
     rule_link = f'<a href="{url}">规则</a>'
     activity = (
-        ("活跃加成，不设上限" if unlimited else "活跃加成，按本场规则")
-        if rules.activity_bonus_enabled
-        else "未开启"
+        ("不设上限" if unlimited else "按本场规则") if rules.activity_bonus_enabled else "未开启"
     )
     invite = ("不设上限" if unlimited else "按本场规则") if rules.invite_bonus_enabled else "未开启"
     lines = [
-        f"🌱 <b>人品加成：</b>{activity}　{rule_link}",
-        f"🤝 <b>邀请加成：</b>{invite}　{rule_link}",
+        "📈 <b>抽奖加成：</b>",
+        f"🌱 <b>发言抽奖加成：</b>{activity}　{rule_link}",
+        f"🤝 <b>邀请抽奖加成：</b>{invite}　{rule_link}",
     ]
     if rules.activity_bonus_enabled:
         lines.append("└ 群内输入：<b>人品</b> · <b>人品排行</b> · <b>人品规则</b>")
@@ -149,7 +148,12 @@ def time_blocks(payload: Mapping) -> tuple[str, ...]:
     else:
         moment = card_time(payload["draw_at"], timezone)
         draw = "⏰ <b>开奖日期：</b>（北京时间）\n" + moment
-    return ("⏳ <b>报名及行为统计截止：</b>（北京时间）\n" + cutoff, draw)
+    start = payload["presentation"].get("start_at")
+    beginning = ("▶️ <b>计划开始：</b>（北京时间）\n" + card_time(start, timezone),) if start else ()
+    actual = payload.get("started_at")
+    if actual:
+        beginning += ("▶️ <b>实际启动：</b>（北京时间）\n" + card_time(actual, timezone),)
+    return (*beginning, "⏳ <b>报名及行为统计截止：</b>（北京时间）\n" + cutoff, draw)
 
 
 def card_time(value: str, timezone: str) -> str:
@@ -182,6 +186,14 @@ def card_blocks(payload: Mapping) -> tuple[str, ...]:
         prize_block(payload),
         *description_blocks(payload),
         bonus_block(payload),
+        *participation_blocks(payload),
         *time_blocks(payload),
         *footer_blocks(payload),
     )
+
+
+def participation_blocks(payload):
+    value = payload.get("public_participation") or payload["presentation"].get(
+        "public_participation"
+    )
+    return (html.escape(value),) if value else ()

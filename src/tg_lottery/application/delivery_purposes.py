@@ -6,6 +6,11 @@ from tg_lottery.domain.enums import OutboxState
 from tg_lottery.infrastructure.db import TelegramOutbox
 
 PURPOSE_LABELS = {
+    "send_start_card": "开始完整活动卡",
+    "send_start_rules": "开始活动完整续页",
+    "send_channel_shortcut": "频道个人交互入口",
+    "send_lottery_query": "活动与个人进度查询",
+    "delete_message": "临时消息删除",
     "send_campaign_card": "参与群活动卡",
     "send_campaign_rules": "完整规则页",
     "send_draw_result": "开奖结果群公告",

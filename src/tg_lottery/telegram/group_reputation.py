@@ -35,7 +35,7 @@ class GroupReputation:
         if user is None or user.is_bot:
             return True
         if self._duplicate((message.chat.id, user.id, action)):
-            await message.answer("刚刚已查询，请等10秒后刷新；查询不会增加人品。")
+            await message.answer("刚刚已查询，请等10秒后刷新；查询不会增加抽奖次数。")
             return True
         await self._select(message, user.id, action=action)
         return True
@@ -134,25 +134,29 @@ class GroupReputation:
         title = html.escape(campaign.name)
         detail = await self._queries.participant_campaign_detail(user_id, campaign.public_ref)
         if detail is None:
-            return f"{title} · 我的人品\n尚未登记，本次查询不会自动报名。请进入本场详情登记。"
+            return (
+                f"{title} · 我的发言抽奖加成\n尚未登记，本次查询不会自动报名。请进入本场详情登记。"
+            )
         rule = rules.activity_rule_for(chat_id)
         if rule is None:
             if rules.activity_bonus_enabled and not rules.group_activity_rules:
                 return await self._legacy(
                     campaign, rules, user_id=user_id, chat_id=chat_id, detail=detail
                 )
-            return f"{title} · 我的人品\n本场本群未开启活跃加成。\n" + _personal_totals(detail)
+            return f"{title} · 我的发言抽奖加成\n本场本群未开启发言抽奖加成。\n" + _personal_totals(
+                detail
+            )
         progress = await self._queries.group_bonus_progress(campaign.id, user_id)
         item = next((row for row in progress.activities if row.chat_id == chat_id), None)
         if item is None:
-            raise ValueError("本人活跃进度缺少冻结目标")
+            raise ValueError("本人发言抽奖加成进度缺少冻结目标")
         needed = rule.messages_per_cycle - item.valid_messages % rule.messages_per_cycle
         notice = _next_reward_notice(
             campaign, rule, needed=needed, awarded_today=item.awarded_tickets
         )
         return (
-            f"{title} · 我的人品（本群）\n今日有效发言：{item.valid_messages} 条\n"
-            f"本群活跃加成累计已入账：{item.total_awarded_tickets} 次\n"
+            f"{title} · 我的发言抽奖加成（本群）\n今日有效发言：{item.valid_messages} 条\n"
+            f"本群发言抽奖加成累计已入账：{item.total_awarded_tickets} 次\n"
             f"{notice}\n"
             f"{_personal_totals(detail)}"
         )
@@ -163,7 +167,7 @@ class GroupReputation:
             raise ValueError("本人旧活动进度不可读")
         count = dict(progress.group_counts).get(chat_id, 0)
         return (
-            f"{html.escape(campaign.name)} · 我的人品（原活动规则）\n"
+            f"{html.escape(campaign.name)} · 我的发言抽奖加成（原活动规则）\n"
             f"今日本群有效发言：{count}/{rules.activity.message_threshold} 条\n"
             "冻结的每日上限与全部群达标要求继续有效。\n" + _personal_totals(detail)
         )
@@ -171,29 +175,29 @@ class GroupReputation:
     async def _ranking(self, campaign, user_id, *, page):
         result = await self._queries.reputation_ranking(campaign.id, page=page)
         lines = [
-            f"{html.escape(campaign.name)} · 人品排行 {result.page + 1}/{result.pages}",
-            "按本场活跃加成已入账次数排序（含暂存），同分并列；排名不代表开奖资格。",
+            f"{html.escape(campaign.name)} · 发言抽奖加成排行 {result.page + 1}/{result.pages}",
+            "按本场发言抽奖加成已入账次数排序（含暂存），同分并列；排名不代表开奖资格。",
         ]
         lines.extend(
             f"{row.rank}. {html.escape(row.name[:40])}：{row.tickets} 次" for row in result.rows
         )
         if not result.rows:
-            lines.append("暂无活跃加成入账记录。")
+            lines.append("暂无发言抽奖加成入账记录。")
         return "\n".join(lines), _pages(
             "rank", campaign.public_ref, user_id=user_id, page=result.page, pages=result.pages
         )
 
 
 def _rules(campaign, rules, chat_id):
-    lines = [f"{campaign.name} · 人品规则（本群）"]
+    lines = [f"{campaign.name} · 发言抽奖加成规则（本群）"]
     rule = rules.activity_rule_for(chat_id)
     if rule:
         lines.append(
-            f"活跃：每 {rule.messages_per_cycle} 条有效发言增加 {rule.reward_tickets} 次；"
+            f"发言抽奖加成：每 {rule.messages_per_cycle} 条有效发言增加 {rule.reward_tickets} 次；"
             f"{activity_cap(rule)}。"
         )
     elif rules.group_activity_rules or not rules.activity_bonus_enabled:
-        lines.append("本群未开启活跃加成。")
+        lines.append("本群未开启发言抽奖加成。")
     lines.extend(global_bonus_lines(rules))
     invite = rules.invite_rule_for(chat_id)
     if invite:
@@ -209,11 +213,11 @@ def _rules(campaign, rules, chat_id):
         )
     lines.extend(
         [
-            "人品就是本场活跃奖励，没有永久积分或兑换扣分。",
+            "发言抽奖加成就是本场发言奖励，没有永久积分或兑换扣分。",
             "先明确登记且通过成员等条件再计数；命令、查询、机器人、转发、空白不计数。",
             f"有效文字/图片/表情按北京时间自然日统计，相同内容在"
             f"{rules.activity.duplicate_window_minutes}分钟内只计第一条。",
-            "邀请规则与活跃独立；同群同一人只能计一次。",
+            "邀请规则与发言抽奖加成独立；同群同一人只能计一次。",
             "两类加成不替代门槛，旧活动保持本场冻结参数。",
         ]
     )
@@ -228,7 +232,7 @@ def _next_reward_notice(campaign, rule, *, needed, awarded_today):
         rule.daily_cap_mode == "limited"
         and awarded_today >= rule.reward_tickets * rule.daily_max_cycles
     ):
-        return "今日活跃奖励已达本场冻结上限，明日可继续；本场累计奖励保留。"
+        return "今日发言抽奖加成奖励已达本场冻结上限，明日可继续；本场累计奖励保留。"
     return f"下一轮还需 {needed} 条，达标增加 {rule.reward_tickets} 次；{activity_cap(rule)}。"
 
 
@@ -271,8 +275,9 @@ def _parse_button(data):
 
 def _personal_totals(detail):
     lines = [
-        f"本场活跃加成累计（所有群）：{detail.activity} 次",
-        f"基础：{detail.registration} 次；邀请加成：{detail.invitation} 次（不计入人品排行）",
+        f"本场发言抽奖加成累计（所有群）：{detail.activity} 次",
+        f"基础：{detail.registration} 次；邀请抽奖加成：{detail.invitation} 次"
+        "（不计入发言抽奖加成排行）",
         f"当前参与资格：{qualification_state_text(detail.qualification)}；当前有效次数：{current_effective_count(detail)}",
     ]
     if not detail.base_qualified:

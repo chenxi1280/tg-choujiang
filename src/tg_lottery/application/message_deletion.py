@@ -3,6 +3,11 @@ from datetime import timedelta
 from sqlalchemy import select
 
 from tg_lottery.application.records import add_job
+from tg_lottery.application.retention_policy import (
+    apply_retention,
+    is_progress_notice,
+    progress_retired,
+)
 from tg_lottery.domain.enums import DeliveryCertainty
 from tg_lottery.infrastructure.db import DeliveryAttempt, ScheduledJob
 
@@ -11,6 +16,10 @@ TEMPORARY_REMINDER_DELETE_SECONDS = 15
 
 
 async def project_message_deletion(session, row) -> None:
+    if is_progress_notice(row):
+        if await progress_retired(session, row):
+            return
+        await apply_retention(session, row)
     if "delete_after_seconds" not in row.payload:
         return
     seconds = row.payload["delete_after_seconds"]
@@ -41,5 +50,9 @@ async def project_message_deletion(session, row) -> None:
         aggregate_id=row.aggregate_id,
         business_key=business_key,
         run_at=confirmed_at + timedelta(seconds=seconds),
-        payload={"chat_id": row.recipient_chat_id, "message_id": row.remote_message_id},
+        payload={
+            "chat_id": row.recipient_chat_id,
+            "message_id": row.remote_message_id,
+            "source_outbox_id": str(row.id),
+        },
     )

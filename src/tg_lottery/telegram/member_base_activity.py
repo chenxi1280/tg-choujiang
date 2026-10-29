@@ -1,8 +1,11 @@
 from aiogram.types import CallbackQuery, Message
 
+from tg_lottery.application.records import utcnow
+from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.telegram import member_callbacks
 from tg_lottery.telegram.member_invites import member_keyboard
+from tg_lottery.telegram.panel_edit import edit_panel
 
 
 async def base_registration_reply(
@@ -27,9 +30,16 @@ async def base_registration_reply(
         await member_callbacks.safe_answer(callback, text, alert=False)
         return
     rules = CampaignRules.model_validate(campaign.rules)
-    await message.answer(
-        "已登记，入群/关注等前置条件已通过，本场发言已开始计数；此前发言不补算。\n"
-        + detail.base_progress,
+    respond = (
+        message.answer if callback is None else lambda text, **kw: edit_panel(message, text, **kw)
+    )
+    await respond(
+        "✅ 报名成功，入群/关注等前置条件已通过。\n"
+        + _counting_notice(campaign)
+        + "\n"
+        + detail.base_progress
+        + f"\n🎟️ 当前有效抽奖次数：{detail.total if detail.base_qualified else 0}"
+        + ("；门槛未全部完成，加成暂存。" if not detail.base_qualified else ""),
         reply_markup=member_keyboard(
             campaign.public_ref,
             bool(rules.bonus_types),
@@ -82,3 +92,15 @@ async def qualification_retry_reply(message: Message, callback: CallbackQuery | 
         await member_callbacks.safe_answer(callback, text, alert=True)
         return
     await message.answer(text)
+
+
+def _counting_notice(campaign):
+    state = getattr(campaign, "state", CampaignState.RUNNING)
+    cutoff = getattr(campaign, "cutoff_at", None)
+    if cutoff is not None and utcnow() >= cutoff:
+        return "⏳ 本场已截止，保留已有进度，等待最终复核。"
+    if state == CampaignState.SCHEDULED:
+        return "⏰ 活动尚未开始；开始后才在规则允许的时段累计任务，此前记录不补算。"
+    if state == CampaignState.PAUSED:
+        return "⏸️ 活动暂停，发言停止新增计数，已有进度保留。"
+    return "📊 任务仅在本场规则允许的时段累计，登记及前置条件通过前不补算。"

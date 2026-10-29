@@ -50,9 +50,8 @@ def _detail_body(detail, *, pages, now):
         pages = (pages[0] + f"\n\n我的进度 · 当前有效次数：{effective}", *pages[1:])
     notice, primary = detail_task(detail, now)
     if detail.cutoff_at is not None:
-        notice = (
-            f"报名/行为统计截止：{format_public_time(detail.cutoff_at, detail.timezone)}\n" + notice
-        )
+        cutoff = format_public_time(detail.cutoff_at, detail.timezone, seconds=True)
+        notice = f"报名/行为统计截止：{cutoff}\n" + notice
     if detail.operational_issues:
         notice += "\n" + operational_issue_text(detail.operational_issues)
     if notice:

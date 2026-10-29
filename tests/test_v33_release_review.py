@@ -70,7 +70,7 @@ def test_old_capped_activity_query_does_not_promise_another_reward_today():
         update={"daily_cap_mode": "limited", "daily_max_cycles": 1}
     )
     text = _next_reward_notice(campaign(), rule, needed=1, awarded_today=rule.reward_tickets)
-    assert "今日活跃奖励已达" in text and "下一轮" not in text
+    assert "今日发言抽奖加成奖励已达" in text and "下一轮" not in text
     text = _rules(campaign(), rules, FIRST)
     assert f"入群满{rules.invite.retention_hours}小时" in text
     assert "新场入群满24小时" not in text

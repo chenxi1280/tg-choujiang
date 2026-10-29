@@ -9,7 +9,10 @@ async def show_activity_preview(flow, query, context):
     reference = context.route.split(":")[2]
     campaign = await flow._campaign(reference)
     prizes = await flow._queries.prizes(campaign.id)
-    text, _ = rule_manifest(_rules_payload(flow, campaign, prizes))
+    payload = _rules_payload(flow, campaign, prizes) | {
+        "public_participation": await flow._queries.public_participation(campaign.id)
+    }
+    text, _ = rule_manifest(payload)
     issues = await flow._queries.operational_issues(campaign.id)
     rows = flow._rule_rows(campaign, None, blocked=bool(issues))
     rows.insert(-1, [InlineKeyboardButton(text="完整规则", callback_data=f"m:rules:{reference}:0")])

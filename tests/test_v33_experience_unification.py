@@ -29,7 +29,7 @@ def test_help_topics_do_not_include_the_next_topic(key):
     markers = {
         "create": "➕ 发起抽奖",
         "member": "🛂 参加抽奖",
-        "bonus": "📈 邀请与活跃加成",
+        "bonus": "📈 邀请与发言抽奖加成",
         "results": "🏆 开奖与领奖",
     }
     text, _keyboard = guide_topic(key, bot_username="lottery_bot")
@@ -80,7 +80,7 @@ async def test_invitation_entry_filters_activity_only_groups_before_pagination()
         cipher=SimpleNamespace(decrypt=lambda *_args, **_kwargs: "https://t.me/+test-link"),
         bot_username="lottery_bot",
     )
-    assert "邀请加成入口" in text and "入群满 1 小时" in text
+    assert "邀请抽奖加成入口" in text and "入群满 1 小时" in text
     assert "仅活跃群" not in text and "今日发言" not in text
     buttons = [button for row in keyboard.inline_keyboard for button in row]
     assert not any(button.callback_data == "member:noop" for button in buttons)
@@ -121,10 +121,10 @@ async def test_reputation_query_distinguishes_all_group_rewards_from_effective_t
     incoming = message()
     await GroupReputation(queries=queries, bot_username="lottery_bot").message(incoming, "人品")
     text = incoming.answer.call_args.args[0]
-    assert "本群活跃加成累计已入账：2" in text
-    assert "本场活跃加成累计（所有群）：5" in text
+    assert "本群发言抽奖加成累计已入账：2" in text
+    assert "本场发言抽奖加成累计（所有群）：5" in text
     assert f"当前有效次数：{expected}" in text
-    assert "基础：1 次；邀请加成：2 次（不计入人品排行）" in text
+    assert "基础：1 次；邀请抽奖加成：2 次（不计入发言抽奖加成排行）" in text
     assert ("加成暂存" in text) == (not base)
 
 

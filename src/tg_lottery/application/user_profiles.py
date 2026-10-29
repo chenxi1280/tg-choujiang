@@ -16,6 +16,7 @@ _DRAFT_KEYS = frozenset(
         "timezone",
         "title",
         "draw_at",
+        "start_at",
         "draw_mode",
         "participant_target",
         "claim_instructions",

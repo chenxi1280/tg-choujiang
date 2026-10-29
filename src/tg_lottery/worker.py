@@ -28,6 +28,9 @@ async def run() -> None:
         bot_username = await validate_bot(container.bot, settings.bot_id)
         await ensure_maintenance_jobs(container.session_factory, utcnow())
         await queue_legacy_commitment_notice_cleanup(container.session_factory)
+        from tg_lottery.application.retention_policy import activate_retention
+
+        await activate_retention(container.session_factory)
         featured = await _featured_service(container, bot_username)
         handlers = JobHandlers(
             bot=container.bot,

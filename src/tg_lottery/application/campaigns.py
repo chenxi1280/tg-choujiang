@@ -181,6 +181,10 @@ class CampaignService:
                 return
             require_campaign_transition(campaign.state, target)
             campaign.state = target
+            if target is CampaignState.RUNNING:
+                from tg_lottery.application.start_notices import resume_start_notices
+
+                await resume_start_notices(uow.session, campaign)
             await release_participation_groups(uow.session, campaign, utcnow())
             if target is CampaignState.SETTLING:
                 await ensure_draw_commitment(uow.session, campaign, utcnow())
@@ -201,6 +205,13 @@ class CampaignService:
         self, campaign_id: UUID, actor_user_id: int, *, expected: ExpectedCampaign | None = None
     ) -> int:
         return await retry_failed_publication(
+            self._uow_factory, campaign_id, actor_user_id, expected=expected
+        )
+
+    async def retry_failed_notices(self, campaign_id, actor_user_id, *, expected=None):
+        from tg_lottery.application.notice_recovery import retry_failed_notices
+
+        return await retry_failed_notices(
             self._uow_factory, campaign_id, actor_user_id, expected=expected
         )
 
@@ -258,7 +269,7 @@ class CampaignService:
         try:
             validate_admission_window(
                 CampaignRules.model_validate(campaign.rules),
-                start_at=now,
+                start_at=max(now, campaign.preheat_at),
                 cutoff_at=campaign.cutoff_at,
             )
         except ValueError as exc:

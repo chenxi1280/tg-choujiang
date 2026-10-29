@@ -17,6 +17,7 @@ from tg_lottery.domain.rules import (
     InviteRewardTier,
     InviteRule,
 )
+from tg_lottery.presentation.lottery_defaults import DEFAULT_DESCRIPTION, UX_POLICY_VERSION
 from tg_lottery.telegram.creator_bonus_policy import current_bonus_policy, policy_version
 from tg_lottery.telegram.creator_invite_retention import retention_hours
 from tg_lottery.telegram.public_projection import BEIJING_TIMEZONE
@@ -79,7 +80,9 @@ def _draft_defaults() -> dict[str, Any]:
         "folder_link": "",
         "chat_message_thresholds": {},
         "cover_file_id": None,
-        "description": "",
+        "description": DEFAULT_DESCRIPTION,
+        "ux_policy_version": UX_POLICY_VERSION,
+        "start_at": "",
         "username_required": False,
         "allowed_regions": [],
         "issuer": "",
@@ -98,7 +101,7 @@ def _draft_defaults() -> dict[str, Any]:
         "base_activity_rules": {},
         "message_tips": True,
         "delete_trigger_message": False,
-        "completion_delete_after_seconds": None,
+        "completion_delete_after_seconds": 20,
     }
 
 
@@ -106,6 +109,7 @@ def ensure_draft_identity(data: dict[str, Any]) -> dict[str, Any]:
     if data.get("published_campaign_id") or data.get("publish_snapshot"):
         return dict(data)
     defaults = new_draft()
+    defaults.update(description="", completion_delete_after_seconds=None, ux_policy_version=None)
     merged = defaults | data
     if data.get("participation_rules_version") != "v3.0":
         from tg_lottery.telegram.creator_reuse import reusable_v3_draft
@@ -163,7 +167,7 @@ def _campaign_draft(
             int(value) for value in data.get("participation_group_ids") or [data["chat_id"]]
         ),
         name=str(data["title"]),
-        preheat_at=now,
+        preheat_at=_start_at(data, now=now, cutoff_at=cutoff_at),
         cutoff_at=cutoff_at,
         draw_at=draw_at,
         rules=rules,
@@ -259,9 +263,9 @@ def _missing_group_bonus_fields(data: dict[str, Any]) -> list[str]:
     missing: list[str] = []
     types = set(data.get("bonus_types") or [])
     if "invite" in types and not _has_enabled_group_rule(data, "invite"):
-        missing.append("至少配置一个群的邀请加成")
+        missing.append("至少配置一个群的邀请抽奖加成")
     if "activity" in types and not _has_enabled_group_rule(data, "activity"):
-        missing.append("至少配置一个群的活跃加成（人品）")
+        missing.append("至少配置一个群的发言抽奖加成")
     return missing
 
 
@@ -272,6 +276,8 @@ def _has_enabled_group_rule(data: dict[str, Any], kind: str) -> bool:
 def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
     keys = (
         "platform_policy",
+        "ux_policy_version",
+        "start_at",
         "participation_rules_version",
         "bonus_policy_version",
         "admission",
@@ -311,7 +317,7 @@ def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
         "draw_mode",
         "participant_target",
     )
-    return {key: data.get(key) for key in keys}
+    return {key: data.get(key) for key in keys} | {"ux_policy_version": "r14"}
 
 
 def _draw_at(data: dict[str, Any], now: datetime) -> datetime:
@@ -351,3 +357,12 @@ def _invite_cap(data: dict[str, Any]) -> int | None:
     if data.get("invite_cap_mode") == "unlimited":
         return None
     return int(data.get("invite_bonus_cap", DEFAULT_INVITE_BONUS_CAP))
+
+
+def _start_at(data, *, now, cutoff_at):
+    if not data.get("start_at"):
+        return now
+    start = datetime.fromisoformat(str(data["start_at"]))
+    if start <= now or start >= cutoff_at:
+        raise UserFacingError("预约开始时间必须晚于当前时间且早于报名截止，请修改开始时间")
+    return start

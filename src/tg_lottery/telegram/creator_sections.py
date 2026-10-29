@@ -122,6 +122,7 @@ def _more(data: dict) -> tuple[str, ButtonRows]:
         "⚙️ 更多设置\n\n普通设置立即保存；载入和清空会先显示影响并要求确认。\n"
         f"🧑‍💼 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}",
         [
+            [("开始时间", "draft_start")],
             [("发奖人员", "draft_issuer"), ("消息提示", "draft_messages")],
             [("载入上次抽奖配置", "draft_load_last")],
             [("清空并新建草稿", "draft_clear")],

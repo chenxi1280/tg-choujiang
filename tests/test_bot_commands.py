@@ -15,6 +15,7 @@ async def test_register_commands_sets_private_and_group_scopes():
     assert len(bot.calls) == 2
     private = bot.calls[0][0]
     assert [c.command for c in private] == [
+        "progress",
         "start",
         "new",
         "index",
@@ -24,5 +25,5 @@ async def test_register_commands_sets_private_and_group_scopes():
         "myid",
     ]
     group = bot.calls[1][0]
-    assert [c.command for c in group] == ["getid"]
+    assert [c.command for c in group] == ["lottery", "progress", "getid"]
     assert bot.calls[1][1] is not None  # group scope

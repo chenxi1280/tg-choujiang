@@ -58,6 +58,9 @@ async def unpublished_start(message, payload: str) -> bool:
 
 
 async def dispatch_handler_start(handler, message, payload: str) -> bool:
+    if payload == "myrecords":
+        await handler._personal_flow.show_joined(message)
+        return True
     if payload == "create":
         await handler._admin_flow.start_create_message(message)
         return True
@@ -66,7 +69,7 @@ async def dispatch_handler_start(handler, message, payload: str) -> bool:
     if payload.startswith(("join_", "rules_")):
         reference = payload.split("_", 1)[1]
         campaign = await handler._queries.campaign_by_reference(reference)
-        if campaign is not None and campaign.rules.get("participation_rules_version") == "v3.0":
+        if campaign is not None:
             await handler._navigation.open_message(
                 message, reference, rules_only=payload.startswith("rules_")
             )

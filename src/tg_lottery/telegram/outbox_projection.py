@@ -6,6 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tg_lottery.application.campaign_notifications import add_cancelled_campaign_card
+from tg_lottery.application.channel_shortcuts import queue_channel_shortcut
 from tg_lottery.application.message_deletion import project_message_deletion
 from tg_lottery.application.records import add_outbox, utcnow
 from tg_lottery.application.required_chat_links import project_required_chat_operation
@@ -34,6 +35,10 @@ async def project_outbox_success(
     *,
     cipher: SecretCipher,
 ) -> None:
+    from tg_lottery.application.start_notices import project_start_notice
+
+    if await project_start_notice(session, row):
+        return
     await project_message_deletion(session, row)
     if await project_rule_page(session, row):
         return
@@ -41,6 +46,11 @@ async def project_outbox_success(
         return
     if row.operation == "send_campaign_card":
         await _project_campaign_card(session, row)
+        await _project_delayed_start(session, row)
+        await queue_channel_shortcut(session, row)
+        return
+    if row.operation == "send_featured_campaign":
+        await queue_channel_shortcut(session, row)
         return
     if row.operation == "create_invite_link":
         await _project_invite_link(session, row, result, cipher=cipher)
@@ -127,7 +137,7 @@ async def _project_multi_group_card(
         try:
             validate_admission_window(
                 CampaignRules.model_validate(campaign.rules),
-                start_at=utcnow(),
+                start_at=max(utcnow(), campaign.preheat_at),
                 cutoff_at=campaign.cutoff_at,
             )
         except ValueError as exc:
@@ -271,3 +281,19 @@ async def _required_link(session: AsyncSession, row: TelegramOutbox) -> InviteLi
     if link is None:
         raise RuntimeError("invite link projection target is missing")
     return link
+
+
+async def _project_delayed_start(session, row):
+    from tg_lottery.application.start_notices import queue_start_notices
+
+    campaign = await session.get(Campaign, UUID(row.aggregate_id), with_for_update=True)
+    if (
+        campaign
+        and campaign.state == CampaignState.RUNNING
+        and (
+            campaign.presentation.get("start_at")
+            or campaign.preheat_at > campaign.created_at
+            or campaign.presentation.get("start_notice_intent")
+        )
+    ):
+        await queue_start_notices(session, campaign)

@@ -40,7 +40,8 @@ async def send_public_preview(bot, message, *, data: dict, bot_username: str) ->
     text, pages = rule_manifest(payload)
     await message.answer(
         "以下为发布效果预览（未发布）。图片、正文和按钮布局沿用正式公告；"
-        "活动链接及群内规则定位在发布后生成，预览不能报名。"
+        "活动链接及群内规则定位在发布后生成，预览不能报名。\n"
+        "📝 说明为自定义文案，实际条件请核对上方配置。"
     )
     for index, page in enumerate(pages, start=1):
         await bot.send_message(

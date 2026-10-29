@@ -12,6 +12,9 @@ SINGLE_NOTICE_OPERATIONS = frozenset(
     {
         "send_progress_notice",
         "send_temporary_reminder",
+        "send_channel_shortcut",
+        "send_start_card",
+        "send_start_rules",
         "delete_message",
         "send_featured_campaign",
         "send_featured_digest",

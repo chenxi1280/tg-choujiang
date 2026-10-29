@@ -56,7 +56,7 @@ async def build_group_invite_payload(
     visible = groups[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]
     lines = _invite_intro(campaign, rules, outcome=outcome)
     if any(rules.invite_rule_for(int(group["id"])) for group in groups):
-        lines.append("邀请加成：")
+        lines.append("邀请抽奖加成：")
     invite_lines, rows = _invite_section(
         campaign,
         rules,
@@ -184,9 +184,9 @@ def _invite_group_progress(
         gate = rules.admission.groups[str(group["id"])]
         count = progress.valid_invites if progress is not None else 0
         notice = (
-            "邀请加成关闭，以下为本期记录。"
+            "邀请抽奖加成关闭，以下为本期记录。"
             if campaign_bonus_completed(campaign)
-            else "邀请加成关闭，人数继续累计。"
+            else "邀请抽奖加成关闭，人数继续累计。"
         )
         link_note = ""
         if campaign.state not in HIDDEN_INVITE_STATES:
@@ -381,11 +381,11 @@ def _invite_link_note(
     if historical_status is not None:
         return _completed_invite_note(link_note, status=historical_status)
     if campaign_bonus_completed(campaign):
-        return "；活动已截止，不再计算新增邀请加成" + link_note
+        return "；活动已截止，不再计算新增邀请抽奖加成" + link_note
     if link_note:
         return link_note
     if utcnow() < campaign.preheat_at:
-        return "；邀请加成尚未开始"
+        return "；邀请抽奖加成尚未开始"
     if bonus_deadline is not None and utcnow() > bonus_deadline:
         return "；最晚计奖入群时间已过；仅核验此前邀请，不再创建新邀请入口"
     if status is not None and status.delivery_state is OutboxState.UNKNOWN_HOLD:
@@ -394,7 +394,7 @@ def _invite_link_note(
 
 
 def _completed_invite_note(link_note: str, *, status: str) -> str:
-    notice = f"；{status}，邀请入口已隐藏，不再计算新增邀请加成"
+    notice = f"；{status}，邀请入口已隐藏，不再计算新增邀请抽奖加成"
     if link_note:
         return notice + link_note
     return notice + "；仍有效的旧链接可入群"
@@ -406,7 +406,7 @@ def _invite_progress_line(
     valid = int(getattr(progress, "valid_invites", 0))
     awarded = int(getattr(progress, "awarded_tickets", 0))
     if rule is None:
-        return f"· {title}：有效邀请 {valid} 人，邀请加成关闭；门槛进度见下方。"
+        return f"· {title}：有效邀请 {valid} 人，邀请抽奖加成关闭；门槛进度见下方。"
     if rule.cap_mode == "limited" and awarded >= int(rule.max_bonus_tickets or 0):
         status = f"已达上限 {awarded}/{rule.max_bonus_tickets} 次"
     elif completed:

@@ -9,7 +9,7 @@ async def verify_platform_inviter(flow, campaign, *, user):
     if not campaign.rules.get("platform_policy"):
         return
     detail = await flow._queries.participant_campaign_detail(user.id, campaign.public_ref)
-    if detail is None:
+    if detail is None or not detail.registration_completed:
         raise UserFacingError("请先在本场明确登记；获取邀请入口不会自动报名")
     attempt = await flow._participants.begin_registration(
         registration_request(campaign.id, user, utcnow())

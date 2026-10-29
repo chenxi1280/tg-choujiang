@@ -60,7 +60,7 @@ def qualification_state_text(state: QualificationState) -> str:
     return _QUALIFICATION_STATE_TEXT[state]
 
 
-def format_public_time(value: datetime | str, timezone: str) -> str:
+def format_public_time(value: datetime | str, timezone: str, *, seconds=False) -> str:
     if not timezone:
         raise ValueError("public time requires an explicit timezone")
     moment = datetime.fromisoformat(value) if isinstance(value, str) else value
@@ -71,7 +71,8 @@ def format_public_time(value: datetime | str, timezone: str) -> str:
     localized = moment.replace(tzinfo=zone) if moment.tzinfo is None else moment.astimezone(zone)
     localized = localized.astimezone(ZoneInfo(BEIJING_TIMEZONE))
     label = public_timezone_label(BEIJING_TIMEZONE)
-    return f"{localized.strftime(PUBLIC_TIME_FORMAT)} ({label})"
+    pattern = PUBLIC_TIME_FORMAT + ":%S" if seconds else PUBLIC_TIME_FORMAT
+    return f"{localized.strftime(pattern)} ({label})"
 
 
 def public_timezone_label(timezone: str) -> str:

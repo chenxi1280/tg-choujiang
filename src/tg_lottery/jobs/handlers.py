@@ -131,13 +131,22 @@ class JobHandlers:
         async with self._session_factory() as session, session.begin():
             campaign = await self._locked_campaign(session, job.aggregate_id)
             if campaign.state is CampaignState.RUNNING:
+                if campaign.presentation.get("start_notice_intent"):
+                    from tg_lottery.application.start_notices import queue_start_notices
+
+                    await queue_start_notices(session, campaign)
                 return
             if campaign.state in _START_NOOP_STATES:
                 return
             if campaign.state is not CampaignState.SCHEDULED:
                 raise JobRetry(f"campaign cannot start from {campaign.state}")
+            if utcnow() < campaign.preheat_at:
+                raise JobRetry("campaign start time has not arrived")
             require_campaign_transition(campaign.state, CampaignState.RUNNING)
             campaign.state = CampaignState.RUNNING
+            from tg_lottery.application.start_notices import queue_start_notices
+
+            await queue_start_notices(session, campaign)
 
     async def _campaign_cutoff(self, job: ScheduledJob) -> None:
         async with self._session_factory() as session, session.begin():
@@ -311,6 +320,12 @@ class JobHandlers:
         message_id = int(job.payload["message_id"])
         business_key = f"delete_message:{chat_id}:{message_id}"
         async with self._session_factory() as session, session.begin():
+            from tg_lottery.application.retention_policy import retired_deletion
+
+            if await retired_deletion(session, chat_id=chat_id, message_id=message_id):
+                stored = await session.get(ScheduledJob, job.id)
+                stored.payload = dict(stored.payload) | {"skip_reason": "pre_activation_progress"}
+                return
             existing = await session.scalar(
                 select(TelegramOutbox.id).where(TelegramOutbox.business_key == business_key)
             )

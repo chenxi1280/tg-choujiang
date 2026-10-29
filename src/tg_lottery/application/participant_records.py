@@ -20,6 +20,7 @@ from tg_lottery.application.participant_details import (
 from tg_lottery.application.participant_details import (
     load_participant_campaign_detail as load_participant_campaign_detail,
 )
+from tg_lottery.application.public_participation import successful_registration
 from tg_lottery.domain.enums import (
     CampaignState,
     InvitationState,
@@ -42,7 +43,7 @@ _PENDING_INVITATION_STATES = (
 )
 INVITATION_RECORD_PAGE_SIZE = 10
 PARTICIPATED_CAMPAIGN_PAGE_SIZE = 10
-ParticipationCategory = Literal["active", "pending", "ended"]
+ParticipationCategory = Literal["active", "pending", "ended", "incomplete"]
 InvitationRecordFilter = Literal["all", "pending", "valid", "invalid"]
 
 
@@ -57,6 +58,7 @@ class ParticipatedCampaign:
     timezone: str
     base_qualified: bool = True
     outcome_kind: str | None = None
+    registered: bool = True
 
 
 @dataclass(frozen=True)
@@ -121,11 +123,16 @@ async def load_participated_campaign_page(
     invitation_only: bool = False,
     anchor: str | None = None,
 ) -> ParticipatedCampaignPage:
-    if page < 0:
-        raise ValueError("participated campaign page cannot be negative")
+    page = _nonnegative_page(page)
     statement = _participated_campaigns_statement(user_id).where(
         Campaign.state.in_(_participation_category_states(category))
     )
+    if category == "incomplete":
+        statement = statement.where(
+            ~successful_registration(), Participant.registration_intent_at.is_not(None)
+        )
+    else:
+        statement = statement.where(successful_registration())
     if invitation_only:
         statement = statement.where(_has_invitation_surface())
     async with session_factory() as session:
@@ -179,6 +186,7 @@ def _participated_campaigns_statement(user_id: int):
             Campaign.timezone,
             behavior_clause(),
             campaign_outcome_expression().label("outcome_kind"),
+            successful_registration(),
         )
         .join(Participant, Participant.campaign_id == Campaign.id)
         .outerjoin(ticket_totals, ticket_totals.c.participant_id == Participant.id)
@@ -190,6 +198,12 @@ def _participated_campaigns_statement(user_id: int):
 def _participation_category_states(
     category: ParticipationCategory,
 ) -> tuple[CampaignState, ...]:
+    if category == "incomplete":
+        return tuple(
+            state
+            for state in CampaignState
+            if state not in {CampaignState.DRAFT, CampaignState.PUBLISHING}
+        )
     if category == "active":
         return (CampaignState.SCHEDULED, CampaignState.RUNNING, CampaignState.PAUSED)
     if category == "pending":
@@ -223,11 +237,20 @@ def _has_invitation_surface():
 
 
 def _participated_values(row: object) -> tuple[object, ...]:
-    public_ref, name, state, qualification, tickets, draw_at, timezone, base_qualified, outcome = (
-        row
-    )
+    (
+        public_ref,
+        name,
+        state,
+        qualification,
+        tickets,
+        draw_at,
+        timezone,
+        base_qualified,
+        outcome,
+        registered,
+    ) = row
     participation = (public_ref, name, state, qualification, int(tickets))
-    return (*participation, draw_at, timezone, base_qualified, outcome)
+    return (*participation, draw_at, timezone, base_qualified, outcome, registered)
 
 
 async def load_campaign_invitation_records(
@@ -434,3 +457,9 @@ def _invitation_record(row: object) -> InvitationRecordRow:
         final_reason=invitation.final_reason,
         observed_at=invitation.joined_at or invitation.created_at,
     )
+
+
+def _nonnegative_page(page):
+    if page < 0:
+        raise ValueError("participated campaign page cannot be negative")
+    return page

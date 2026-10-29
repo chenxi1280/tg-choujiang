@@ -88,7 +88,7 @@ def test_early_cutoff_shortens_displayed_invitation_deadline() -> None:
     text = _landing_text(landing, False, now=NOW)
     assert "2026年09月05日 15:30 (北京时间)" in text
     assert "17:00" not in text
-    assert "本期邀请加成已经结束" in text
+    assert "本期邀请抽奖加成已经结束" in text
 
 
 @pytest.mark.parametrize(("offset_seconds", "active"), [(-1, False), (0, True), (1, True)])
@@ -101,7 +101,7 @@ def test_referral_bonus_starts_at_preheat_boundary(offset_seconds, active) -> No
     if active:
         assert "完成留存后可计入邀请人的本期加成" in text
     else:
-        assert "邀请加成尚未开始" in text
+        assert "邀请抽奖加成尚未开始" in text
         assert "当前入群不会给邀请人增加本期抽奖次数" in text
         assert "已经结束" not in text
 
@@ -123,7 +123,7 @@ def test_referral_before_preheat_keeps_ordinary_join_and_registration_options() 
     text = _landing_text(landing, None, now=NOW)
     keyboard = _landing_keyboard(flow, landing, False)
     buttons = [button for row in keyboard.inline_keyboard for button in row]
-    assert "邀请加成尚未开始" in text
+    assert "邀请抽奖加成尚未开始" in text
     assert "暂时无法核验" in text
     assert buttons[0].url == "https://t.me/+persistent"
     assert "报名本次抽奖" in [plain_label(button.text) for button in buttons]

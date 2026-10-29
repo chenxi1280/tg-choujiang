@@ -118,6 +118,7 @@ async def test_personal_lists_render_business_states_and_local_time() -> None:
     assert category_callbacks == {
         "nav:join:active:0",
         "nav:join:pending:0",
+        "nav:join:incomplete:0",
         "nav:join:ended:0",
     }
 
@@ -158,7 +159,8 @@ async def test_participated_query_carries_frozen_campaign_timezone(session_facto
 
 async def test_participated_pages_filter_state_and_invitation_surface(session_factory) -> None:
     async with session_factory() as session, session.begin():
-        _, campaign, _ = await seed_campaign(session)
+        _, campaign, participant = await seed_campaign(session)
+        participant.counting_started_at = datetime.now(UTC)
         campaign_id = campaign.id
     queries = QueryService(session_factory)
 

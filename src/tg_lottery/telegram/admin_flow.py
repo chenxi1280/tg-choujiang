@@ -28,6 +28,7 @@ from tg_lottery.telegram.admin_confirmations import (
 )
 from tg_lottery.telegram.admin_content_pages import render_management_panel
 from tg_lottery.telegram.admin_management_views import MANAGEMENT_ACTION_LABELS, management_text
+from tg_lottery.telegram.admin_notice_recovery import notice_actions, retry_notices
 from tg_lottery.telegram.admin_winner_pages import winner_page_view
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.campaign_authorization import verify_campaign_admin
@@ -136,6 +137,7 @@ class AdminFlow:
             "refresh_publication": self._refresh_publication,
             "publication_issues": self._publication_issues,
             "retry_publication": self._retry_publication,
+            "retry_notices": lambda q, g: retry_notices(self, q, g),
             "retry_qualification": self._retry_qualification,
         }
         handler = handlers.get(grant.action)
@@ -188,6 +190,7 @@ class AdminFlow:
             "draw": self._draw,
             "mark_claimed": self._mark_claimed,
             "retry_publication": self._retry_publication,
+            "retry_notices": lambda q, g: retry_notices(self, q, g),
         }
         await handlers[action](query, replace(grant, action=action))
         await self._show_campaign(
@@ -329,6 +332,7 @@ class AdminFlow:
         actions = (
             _campaign_actions(campaign.state)
             + _publication_actions(campaign.state, issues)
+            + notice_actions(campaign, deliveries)
             + (("view_campaign",) if campaign.state is not CampaignState.PUBLISHING else ())
         )
         if await self._queries.qualification_review_blocked(campaign.id):
@@ -351,14 +355,13 @@ class AdminFlow:
             for action, token in zip(actions, tokens, strict=True)
         ]
         text = management_text(campaign, stats=stats, deliveries=deliveries, details=details)
-        buttons = [*_management_sections(actions, buttons), *_management_footer(origin)]
         await render_management_panel(
             self._tokens,
             message=message,
             user_id=user_id,
             campaign_id=campaign_id,
             text=text,
-            buttons=buttons,
+            buttons=[*_management_sections(actions, buttons), *_management_footer(origin)],
             origin=origin,
             content_page=content_page,
         )

@@ -242,9 +242,9 @@ def _category_payload(context: BonusViewContext) -> tuple[str, InlineKeyboardMar
     )
     ref = context.campaign.public_ref
     activity_label = (
-        f"🌱 活跃加成（人品）｜累计 {cumulative} 次"
+        f"🌱 发言抽奖加成｜累计 {cumulative} 次"
         if campaign_bonus_completed(context.campaign)
-        else f"🌱 活跃加成（人品）｜今日 {activity_total} 次 · 累计 {cumulative} 次"
+        else f"🌱 发言抽奖加成｜今日 {activity_total} 次 · 累计 {cumulative} 次"
     )
     rows = [
         [
@@ -255,7 +255,7 @@ def _category_payload(context: BonusViewContext) -> tuple[str, InlineKeyboardMar
         ],
         [
             InlineKeyboardButton(
-                text="🌱 活跃加成（人品）",
+                text="🌱 发言抽奖加成",
                 callback_data=f"member:bonus_activity:{ref}:0",
             )
         ],
@@ -332,7 +332,7 @@ def build_activity_group_list(
         return _activity_group_detail(context, int(groups[0]["id"]), return_page=0)
     visible, selected, total_pages = _visible_page(groups, page)
     lines = [
-        _header(context.campaign, "活跃加成（人品）", outcome=context.outcome),
+        _header(context.campaign, "发言抽奖加成", outcome=context.outcome),
         "请选择一个群查看今日进度和累计加成：",
     ]
     completed = campaign_bonus_completed(context.campaign)
@@ -440,7 +440,7 @@ def _invite_bonus_completed(context: BonusViewContext) -> bool:
 
 def _invite_rule_text(rule):
     if rule is None:
-        return "邀请加成关闭; 有效邀请仍用于本场门槛。"
+        return "邀请抽奖加成关闭; 有效邀请仍用于本场门槛。"
     return f"规则：每 {rule.invites_per_cycle} 名有效新成员 +1；{_invite_cap(rule)}"
 
 

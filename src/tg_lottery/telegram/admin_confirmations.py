@@ -2,9 +2,10 @@ from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
 
 CONFIRMED_ACTIONS = frozenset(
-    {"cancel", "early_cutoff", "draw", "mark_claimed", "retry_publication"}
+    {"cancel", "early_cutoff", "draw", "mark_claimed", "retry_publication", "retry_notices"}
 )
 ACTION_LABELS = {
+    "retry_notices": "重试失败通知",
     "cancel": "取消活动",
     "early_cutoff": "提前截止",
     "draw": "立即开奖",
@@ -12,6 +13,7 @@ ACTION_LABELS = {
     "retry_publication": "重试明确失败项",
 }
 ACTION_IMPACTS = {
+    "retry_notices": "只重试明确未发送的频道个人入口或开始通知，保留主卡、已确认页及未知投递。",
     "cancel": "本场停止后续参与和计奖，既有记录保留。在途或未知投递仍需核查，不代表消息没有发出。",
     "early_cutoff": (
         "将按当前北京时间提前截止并进入结算；资格复核完成后才能开奖，不会直接生成结果。"
@@ -43,6 +45,7 @@ def validate_confirmation(campaign, payload: dict) -> None:
 
 def validate_available_action(campaign, action):
     allowed = {
+        "retry_notices": {CampaignState.SCHEDULED, CampaignState.RUNNING, CampaignState.PAUSED},
         "cancel": {
             CampaignState.DRAFT,
             CampaignState.PUBLISHING,

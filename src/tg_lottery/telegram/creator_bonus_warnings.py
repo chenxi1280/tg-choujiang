@@ -13,4 +13,4 @@ def bonus_window_warning(data, *, now=None):
     cutoff = datetime.fromisoformat(data["draw_at"]) - timedelta(seconds=300)
     if (now or utcnow()) <= cutoff - timedelta(hours=retention_hours(data)):
         return ""
-    return "\n提示：本场剩余时间不足以完成邀请留存，邀请加成无可完成窗口；发言门槛仍可完成。\n"
+    return "\n提示：本场剩余时间不足以完成邀请留存，邀请抽奖加成无可完成窗口；发言门槛仍可完成。\n"

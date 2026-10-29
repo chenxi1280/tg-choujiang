@@ -23,7 +23,7 @@ def task_back(context, category: str, *, page: int):
     if len(groups) == 1:
         return InlineKeyboardButton(text="返回活动详情", callback_data=f"member:tickets:{ref}")
     prefix = "bonus_invites" if category == "invites" else "bonus_activity"
-    label = "返回邀请群列表" if category == "invites" else "返回活跃群列表"
+    label = "返回邀请群列表" if category == "invites" else "返回发言加成群列表"
     return InlineKeyboardButton(text=label, callback_data=f"member:{prefix}:{ref}:{page}")
 
 
@@ -52,13 +52,11 @@ def activity_group_detail(context, chat_id: int, *, return_page: int):
     group = required_group(context, chat_id)
     rule = context.rules.activity_rule_for(chat_id)
     if rule is None:
-        raise ValueError("该群未开启活跃加成（人品）")
+        raise ValueError("该群未开启发言抽奖加成")
     progress = context.activity_progress.get(chat_id)
     closed = campaign_bonus_completed(context.campaign)
     lines = [
-        bonus_header(
-            context.campaign, f"{group['title']} 活跃加成（人品）", outcome=context.outcome
-        ),
+        bonus_header(context.campaign, f"{group['title']} 发言抽奖加成", outcome=context.outcome),
         f"规则：每{rule.messages_per_cycle}条有效消息增加{rule.reward_tickets}次抽奖机会",
         "文字、图片、表情均计数；" + activity_cap(rule),
     ]
@@ -68,7 +66,7 @@ def activity_group_detail(context, chat_id: int, *, return_page: int):
         lines.append(_activity_progress_line(str(group["title"]), rule, progress, completed=closed))
     lines.extend(
         [
-            bonus_closed_notice(context.campaign, category="活跃", outcome=context.outcome),
+            bonus_closed_notice(context.campaign, category="发言", outcome=context.outcome),
             context.base_progress,
         ]
     )
@@ -90,7 +88,7 @@ def _activity_rows(context, group, *, chat_id: int, return_page: int, closed: bo
         [
             [
                 InlineKeyboardButton(
-                    text="刷新活跃进度", callback_data=f"m:ad:{ref}:{chat_id}:{return_page}"
+                    text="刷新发言加成进度", callback_data=f"m:ad:{ref}:{chat_id}:{return_page}"
                 )
             ],
             [task_back(context, "activity", page=return_page)],

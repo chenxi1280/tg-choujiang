@@ -23,7 +23,8 @@ PARTICIPANT_ID = 201
 
 async def test_real_cancel_then_archive_keeps_cancelled_result_in_detail_and_list(session_factory):
     async with session_factory() as session, session.begin():
-        _, campaign, _ = await seed_campaign(session)
+        _, campaign, participant = await seed_campaign(session)
+        participant.counting_started_at = campaign.preheat_at
         campaign_id, public_ref = campaign.id, campaign.public_ref
         original_times = campaign.cutoff_at, campaign.draw_at
     service = CampaignService(partial(UnitOfWork, session_factory))
@@ -66,7 +67,8 @@ async def test_archived_result_without_its_own_completed_or_cancel_fact_is_uncon
     session_factory, *, evidence, state
 ):
     async with session_factory() as session, session.begin():
-        _, campaign, _ = await seed_campaign(session, state=state)
+        _, campaign, participant = await seed_campaign(session, state=state)
+        participant.counting_started_at = campaign.preheat_at
         public_ref = campaign.public_ref
         if evidence in {"other_campaign", "other_action"}:
             session.add(

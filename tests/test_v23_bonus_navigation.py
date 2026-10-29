@@ -206,7 +206,7 @@ async def test_drawn_campaign_hides_entries_but_keeps_invitation_history() -> No
     )
 
     assert "邀请入口已隐藏" in detail
-    assert "不再计算新增邀请加成" in detail
+    assert "不再计算新增邀请抽奖加成" in detail
     assert "已获得 1 次" in detail
     assert "距下一次还差" not in detail
     buttons = [button for row in keyboard.inline_keyboard for button in row]
@@ -225,7 +225,7 @@ async def test_drawn_campaign_hides_entries_but_keeps_invitation_history() -> No
         unavailable={},
     )
     assert "累计达标 2 天、获得 2 次" in activity_detail
-    assert "不再计算新增活跃加成" in activity_detail
+    assert "不再计算新增发言抽奖加成" in activity_detail
     assert "距下一次还差" not in activity_detail
 
 
@@ -305,7 +305,7 @@ async def test_scheduled_bonus_before_preheat_is_not_described_as_completed() ->
         return_page=0,
         **_view_dependencies(progress, statuses),
     )
-    assert "邀请加成尚未开始" in detail
+    assert "邀请抽奖加成尚未开始" in detail
     assert "活动已截止" not in detail
     assert "距下一次还差 1 人" in detail
 

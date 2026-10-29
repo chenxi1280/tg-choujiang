@@ -4,6 +4,7 @@ from tg_lottery.telegram.operational_issue_views import operational_issue_text
 from tg_lottery.telegram.public_projection import campaign_state_text, format_public_time
 
 MANAGEMENT_ACTION_LABELS = {
+    "retry_notices": "重试失败通知",
     "view_campaign": "刷新活动状态",
     "view_winners": "查看中奖名单/登记已领奖",
     "pause": "暂停",
@@ -39,6 +40,7 @@ def management_text(campaign, *, stats, deliveries, details):
             else ""
         )
         + _purpose_text(deliveries)
+        + _shortcut_status_note(deliveries)
     )
 
 
@@ -82,3 +84,15 @@ def _management_details_text(details):
         )
         lines.append(f"{i}. {target.title}：活动卡{state}；{rule}")
     return "\n\n" + "\n".join(lines)
+
+
+def _shortcut_status_note(deliveries):
+    unfinished = any(
+        row.label == "频道个人交互入口" and (row.pending or row.failed or row.unknown)
+        for row in deliveries.purposes
+    )
+    return (
+        "\n\n⚠️ 对应主卡已发布，原地查看入口未完成；明确失败可重试，未知结果须先核对。"
+        if unfinished
+        else ""
+    )

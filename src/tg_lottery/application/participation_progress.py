@@ -43,10 +43,15 @@ async def saved_membership_progress(session, campaign, participant) -> str:
     targets = await qualification_targets(session, campaign)
     if not targets:
         return ""
+    latest = await membership_observations(session, participant.id)
+    return membership_progress_text(targets, latest.values())
+
+
+async def membership_observations(session, participant_id):
     checks = await session.scalars(
         select(QualificationCheck)
         .where(
-            QualificationCheck.participant_id == participant.id,
+            QualificationCheck.participant_id == participant_id,
             QualificationCheck.state != QualificationState.PENDING,
             QualificationCheck.phase.in_(["registration", "membership_event"]),
         )
@@ -56,13 +61,13 @@ async def saved_membership_progress(session, campaign, participant) -> str:
     for check in checks:
         for item in (check.observations or {}).get("chats", []):
             latest.setdefault(int(item["chat_id"]), item)
-    return membership_progress_text(targets, latest.values())
+    return latest
 
 
 def _condition_label(item):
     if item.get("observed_status") == "join_request_pending":
         return "⏳ 等待管理员批准"
-    return {"eligible": "✅ 已完成", "ineligible": "⬜ 未完成"}.get(
+    return {"eligible": "✅ 已完成", "ineligible": "❌ 未完成"}.get(
         str(item.get("state", "unknown")), "⏳ 待核验"
     )
 
@@ -77,3 +82,12 @@ def brief_task_progress(text: str, *, limit: int = 2000) -> str:
         lines.append(line)
         units += size
     return "\n".join(lines)
+
+
+async def pending_membership_chats(session, participant_id):
+    latest = await membership_observations(session, participant_id)
+    return tuple(
+        chat
+        for chat, fact in latest.items()
+        if fact.get("observed_status") == "join_request_pending"
+    )

@@ -151,11 +151,14 @@ async def test_missing_targets_page_callback_preserves_requested_page() -> None:
     handler = _handler(member_flow=flow)
     public_ref = "AbCdEfGhIjKlMnOpQrSt-_"
     query = _callback(f"member:missing:{public_ref}:2")
+    handler._navigation.handle_route = AsyncMock(side_effect=[False, True])
 
     await handler._dispatch_callback(query, query.data)
 
-    assert flow.campaign_reference == public_ref
-    assert flow.missing_page == 2
+    assert flow.campaign_reference is None
+    assert (
+        handler._navigation.handle_route.await_args.kwargs["data"] == f"m:conditions:{public_ref}:1"
+    )
 
 
 async def test_join_request_projects_waiting_approval_without_personal_invite() -> None:

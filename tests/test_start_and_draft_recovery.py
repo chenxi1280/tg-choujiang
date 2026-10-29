@@ -47,13 +47,16 @@ async def test_plain_start_opens_short_home_without_full_guide() -> None:
     handler._personal_flow.show_guide.assert_not_awaited()
 
 
-async def test_start_deep_link_keeps_registration_route() -> None:
+async def test_missing_start_target_never_calls_registration() -> None:
     handler = _handler()
-    message = SimpleNamespace(from_user=SimpleNamespace(id=USER_ID), text="/start join_campaign")
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=USER_ID), text="/start join_campaign", answer=AsyncMock()
+    )
 
     await handler._private_message(message)
 
-    handler._member_flow.register.assert_awaited_once_with(message, "campaign")
+    handler._member_flow.register.assert_not_awaited()
+    message.answer.assert_awaited_once_with("活动不存在或已失效。")
     handler._personal_flow.show_index.assert_not_awaited()
 
 

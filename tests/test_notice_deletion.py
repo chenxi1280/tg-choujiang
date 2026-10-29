@@ -115,7 +115,11 @@ async def _deletion_facts(session_factory, outbox_id):
         job = jobs[0]
         assert job.job_type == "delete_telegram_message"
         assert job.run_at == attempt.finished_at + timedelta(seconds=DELETE_DELAY_SECONDS)
-        assert job.payload == {"chat_id": GROUP_CHAT_ID, "message_id": NOTICE_MESSAGE_ID}
+        assert job.payload == {
+            "chat_id": GROUP_CHAT_ID,
+            "message_id": NOTICE_MESSAGE_ID,
+            "source_outbox_id": str(outbox_id),
+        }
         assert job.business_key == f"delete_message:{GROUP_CHAT_ID}:{NOTICE_MESSAGE_ID}"
         return job.id, job.run_at
 

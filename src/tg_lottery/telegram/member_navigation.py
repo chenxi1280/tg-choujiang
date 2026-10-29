@@ -149,6 +149,12 @@ class MemberNavigation:
         pages, keyboard = participant_detail_view(
             detail, user_id=query.from_user.id, bot_username=self._bot_username
         )
+        campaign = await self._campaign(reference)
+        counts = await self._queries.public_participation(campaign.id)
+        from tg_lottery.telegram.lottery_query_views import current_task_summary
+
+        tasks = await current_task_summary(self._queries, campaign, user_id=query.from_user.id)
+        pages = (pages[0] + "\n\n" + tasks + "\n\n" + counts, *pages[1:])
         await self._render(query, context, pages=pages, keyboard=keyboard)
 
     async def _rules(self, query, context):
@@ -194,8 +200,8 @@ class MemberNavigation:
             and (detail is not None or not blocked)
         ):
             action = (
-                _button("登记参与", f"member:join:{ref}")
-                if detail is None
+                _button("🎟️ 一键报名", f"member:join:{ref}")
+                if detail is None or not detail.registration_completed
                 else _button("查看本人进度", f"m:detail:{ref}")
             )
             rows.insert(0, [action])
@@ -256,11 +262,13 @@ class MemberNavigation:
         await self._render(query, context, pages=(text,), keyboard=keyboard)
 
     async def _conditions(self, query, context):
-        campaign = await self._campaign(context.route.split(":")[2])
+        parts = context.route.split(":")
+        campaign = await self._campaign(parts[2])
         text, keyboard = await condition_check_payload(
             query,
             relationships=self._relationships,
             bot_username=self._bot_username,
+            page=int(parts[3]) if len(parts) > 3 else 0,
             campaign=campaign,
             queries=self._queries,
             bot=self._bot,

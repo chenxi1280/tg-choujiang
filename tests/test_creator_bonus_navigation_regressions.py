@@ -62,9 +62,7 @@ def test_changing_message_count_does_not_change_remembered_daily_cap():
     assert data["bonus_working_copy"]["rule"]["daily_max_cycles"] == 7
 
 
-@pytest.mark.parametrize(
-    "kind,label", [("invite", "邀请加成"), ("activity", "活跃加成\uff08人品\uff09")]
-)
+@pytest.mark.parametrize("kind,label", [("invite", "邀请抽奖加成"), ("activity", "发言抽奖加成")])
 def test_new_bonus_without_groups_shows_pending_configuration(kind, label):
     summary = bonus_summary(new_draft() | {"bonus_types": [kind]})
     assert f"{label}待逐群设置" in summary

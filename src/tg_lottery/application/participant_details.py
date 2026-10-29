@@ -16,7 +16,10 @@ from tg_lottery.application.participant_results import (
     ParticipantDrawResult,
     load_participant_draw_result,
 )
-from tg_lottery.application.participation_progress import saved_membership_progress
+from tg_lottery.application.participation_progress import (
+    pending_membership_chats,
+    saved_membership_progress,
+)
 from tg_lottery.domain.enums import CampaignState, QualificationState, TicketSource
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.infrastructure.db import Campaign, Participant, TicketLedger
@@ -36,6 +39,8 @@ class ParticipantCampaignDetail:
     invite_enabled: bool
     draw_at: datetime
     timezone: str
+    pending_chat_ids: tuple[int, ...] = ()
+    registered: bool = False
     membership_progress: str = ""
     base_progress: str = ""
     base_qualified: bool = True
@@ -46,6 +51,10 @@ class ParticipantCampaignDetail:
     admission_type: str | None = None
     invite_join_deadline: datetime | None = None
     operational_issues: tuple[OperationalIssue, ...] = ()
+
+    @property
+    def registration_completed(self):
+        return self.registered or self.registration > 0
 
 
 async def load_participant_campaign_detail(
@@ -79,6 +88,8 @@ async def load_participant_campaign_detail(
             qualification=participant.qualification_state,
             total=sum(totals.values()),
             registration=totals.get(TicketSource.REGISTRATION, 0),
+            registered=participant.counting_started_at is not None,
+            pending_chat_ids=await pending_membership_chats(session, participant.id),
             activity=totals.get(TicketSource.POPULARITY, 0),
             invitation=totals.get(TicketSource.INVITATION, 0)
             + totals.get(TicketSource.REVERSAL, 0),

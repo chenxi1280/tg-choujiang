@@ -152,8 +152,8 @@ def test_campaign_card_explains_per_group_messages_and_channel_following() -> No
     for position in range(1, 4):
         assert f"condition_{payload['campaign_ref']}_{position}" in text
     assert text.count("累计发言至少 <b>10</b> 条") == 2
-    assert "🌱 <b>人品加成" in text
-    assert "活跃加成" in text and text.count(">规则</a>") == 2
+    assert "🌱 <b>发言抽奖加成" in text
+    assert "发言抽奖加成" in text and text.count(">规则</a>") == 2
 
 
 def test_draw_result_keeps_internal_hash_out_of_public_message() -> None:
@@ -401,8 +401,8 @@ async def test_campaign_card_matches_lotterybest_format() -> None:
     assert "🎁 <b>奖品内容" in text
     assert "📦 一等奖" in text
     assert "<b>2</b>" in text
-    assert "🌱 <b>人品加成" in text
-    assert "活跃加成" in text and "邀请加成" in text
+    assert "🌱 <b>发言抽奖加成" in text
+    assert "发言抽奖加成" in text and "邀请抽奖加成" in text
     assert text.count(">规则</a>") == 2
     assert ">规则</a>" in text
     assert "⏰ <b>开奖日期" in text

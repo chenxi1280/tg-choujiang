@@ -6,7 +6,6 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import func, select
 
-import tg_lottery.telegram.outbox as outbox_module
 from tests.helpers import seed_campaign
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState, OutboxState
@@ -90,7 +89,7 @@ async def test_local_projection_failure_does_not_mark_gateway_started(
     async def fail_projection(*_args):
         raise RuntimeError("local campaign projection unavailable")
 
-    monkeypatch.setattr(outbox_module, "build_gateway_call", fail_projection)
+    monkeypatch.setattr("tg_lottery.telegram.outbox_preflight.build_gateway_call", fail_projection)
 
     with pytest.raises(RuntimeError, match="projection unavailable"):
         await _worker(session_factory, gateway, _cipher()).process_once()
@@ -109,7 +108,9 @@ async def test_invalid_local_projection_fails_before_gateway(session_factory, mo
     async def reject_projection(*_args):
         raise ValueError("invalid local campaign projection")
 
-    monkeypatch.setattr(outbox_module, "build_gateway_call", reject_projection)
+    monkeypatch.setattr(
+        "tg_lottery.telegram.outbox_preflight.build_gateway_call", reject_projection
+    )
 
     assert await _worker(session_factory, gateway, _cipher()).process_once() is True
 

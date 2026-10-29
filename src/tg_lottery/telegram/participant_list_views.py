@@ -20,6 +20,7 @@ _LIST_ROUTE_WITH_PARENT_FIELDS = 4
 
 _CATEGORY_LABELS = {
     "active": "进行中",
+    "incomplete": "待完成报名",
     "pending": "待开奖",
     "ended": "已结束",
 }
@@ -47,6 +48,8 @@ def build_participated_campaign_list(
 
 
 def _campaign_line(row: object, *, position: int) -> str:
+    if not row.registered:
+        return f"{position}. {row.name}｜⏳ 报名待完成｜{_state_label(row)}"
     return (
         f"{position}. {row.name}｜{_state_label(row)}｜"
         f"{_ticket_label(row)}｜{qualification_state_text(row.qualification)}\n"

@@ -28,6 +28,7 @@ async def remind_blocked_speaker(session, *, campaign, participant, observation,
     key = f"blocked_speech:{participant.id}:{observation.rule_target}:{check_key}"
     if await session.scalar(select(TelegramOutbox.id).where(TelegramOutbox.business_key == key)):
         return
+    status = "已报名" if participant.counting_started_at else "已提交报名请求,尚未成功"
     progress = brief_task_progress(await saved_membership_progress(session, campaign, participant))
     await add_temporary_reminder(
         session,
@@ -37,7 +38,7 @@ async def remind_blocked_speaker(session, *, campaign, participant, observation,
         campaign_ref=campaign.public_ref,
         user_id=participant.user_id,
         observed_at=observation.event_at.isoformat(),
-        text=f"「{campaign.name}」:已登记,但前置条件尚未通过,本条发言不计数。\n"
+        text=f"「{campaign.name}」:{status},前置条件尚未通过,本条发言不计数。\n"
         + progress
         + "\n"
         + COUNTING_NOTICE

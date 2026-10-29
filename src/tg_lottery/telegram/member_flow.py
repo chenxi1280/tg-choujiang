@@ -101,10 +101,9 @@ class MemberFlow:
         campaign = await self._queries.campaign(campaign_id)
         if campaign is None:
             return
-        if campaign.rules.get("participation_rules_version") == "v3.0":
-            detail = await self._queries.participant_campaign_detail(user.id, campaign.public_ref)
-            if detail is None:
-                return
+        detail = await self._queries.participant_campaign_detail(user.id, campaign.public_ref)
+        if detail is None or not detail.registration_completed:
+            return
         attempt = await self._participants.begin_registration(
             registration_request(campaign.id, user, observed_at)
         )
@@ -140,20 +139,18 @@ class MemberFlow:
         if campaign is None:
             raise UserFacingError("活动不存在或已经失效")
         user = user or required_user(message)
+        if await self._redirect_public_registration(message, campaign, callback=callback):
+            return
         existing = await self._participants.eligible_participant(campaign.id, user.id)
         if existing is not None and not campaign.rules.get("platform_policy"):
             await reply_existing(
                 message, campaign, participant=existing, callback=callback, queries=self._queries
             )
             return
-        attempt = await self._participants.begin_registration(
-            registration_request_from_message(
-                campaign.id,
-                user,
-                message,
-                observed_at=observed_at,
-            )
+        request = registration_request_from_message(
+            campaign.id, user, message, observed_at=observed_at
         )
+        attempt = await self._participants.begin_registration(request)
         try:
             state, observations, total = await self._registration_result(
                 attempt, user_id=user.id, campaign=campaign
@@ -175,6 +172,28 @@ class MemberFlow:
             page=missing_page,
             callback=callback,
         )
+
+    async def _redirect_public_registration(self, message, campaign, *, callback):
+        if message.chat.type == "private":
+            return False
+        url = f"https://t.me/{self._bot_username}?start=join_{campaign.public_ref}"
+        if callback is not None:
+            await callback.answer(url=url)
+            return True
+        await message.answer(
+            "🤖 请进入机器人，明确点击报名并核验资格。",
+            reply_markup=row_keyboard(
+                [
+                    [
+                        InlineKeyboardButton(
+                            text="去机器人报名",
+                            url=url,
+                        )
+                    ]
+                ]
+            ),
+        )
+        return True
 
     async def _registration_result(
         self, attempt: RegistrationAttempt, *, user_id: int, campaign: object
@@ -242,7 +261,7 @@ class MemberFlow:
                 run_at=now,
             )
         seconds = presentation.get("completion_delete_after_seconds")
-        if seconds is None:
+        if seconds is None or getattr(completion, "reply_markup", None) is not None:
             return
         await self._participants.schedule_message_deletion(
             campaign_id=campaign.id,
@@ -324,6 +343,11 @@ class MemberFlow:
         text, keyboard = await self._qualification_reply(campaign, state, observations, page=page)
         text, keyboard = await platform_feedback(
             self, campaign, user_id=user_id, text=text, keyboard=keyboard
+        )
+        from tg_lottery.telegram.member_missing_targets import registration_failure_feedback
+
+        text, keyboard = await registration_failure_feedback(
+            self._queries, campaign, user_id=user_id, text=text, keyboard=keyboard
         )
         chat_type = getattr(getattr(message, "chat", None), "type", None)
         if callback is not None:
@@ -422,7 +446,7 @@ class MemberFlow:
             raise UserFacingError("活动不存在或已经失效")
         rules = CampaignRules.model_validate(campaign.rules)
         if not rules.invitation_enabled:
-            raise UserFacingError("本期抽奖没有开启邀请加成")
+            raise UserFacingError("本期抽奖没有开启邀请抽奖加成")
         text, markup = await self._invite_link_payload(campaign, user_id, page=page)
         await message.answer(text, reply_markup=markup)
 

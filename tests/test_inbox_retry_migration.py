@@ -20,7 +20,7 @@ async def test_downgrade_preserves_active_rate_limit(session_factory):
     async with session_factory() as session:
         assert await session.scalar(select(TelegramUpdate.next_attempt_at)) == row.next_attempt_at
         assert (
-            await session.scalar(text("SELECT version_num FROM alembic_version")) == "c33a1026ir01"
+            await session.scalar(text("SELECT version_num FROM alembic_version")) == "c34a1030ux14"
         )
 
 

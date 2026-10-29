@@ -54,6 +54,7 @@ from tg_lottery.application.participant_records import (
     load_participated_campaign_page,
     load_participated_campaigns,
 )
+from tg_lottery.application.public_participation import LotteryReadQueries
 from tg_lottery.application.publication_queries import (
     PublicationIssue,
     load_publication_issues,
@@ -125,7 +126,7 @@ class DeliverySummary:
     purposes: tuple[DeliveryPurpose, ...] = ()
 
 
-class QueryService(ReputationQueries):
+class QueryService(ReputationQueries, LotteryReadQueries):
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 

@@ -172,7 +172,7 @@ async def test_each_long_rule_page_keeps_campaign_identity_version_and_join(monk
     assert "完整活动名称&lt;验收&gt;" in text and "规则版本：7" in text
     assert "第2/" in text and f"start=join_{campaign.public_ref}" in text
     keyboard = edit.await_args.kwargs["reply_markup"]
-    assert any(plain_label(b.text) == "登记参与" for row in keyboard.inline_keyboard for b in row)
+    assert any(plain_label(b.text) == "一键报名" for row in keyboard.inline_keyboard for b in row)
 
 
 def test_creator_categories_and_origin_distinguish_lifecycle_and_stable_anchor():

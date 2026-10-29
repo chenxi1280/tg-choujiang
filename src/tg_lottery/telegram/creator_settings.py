@@ -13,6 +13,7 @@ from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import creator_bonus as bonus
 from tg_lottery.telegram import creator_group_bonus as group_bonus
 from tg_lottery.telegram import creator_participation as participation
+from tg_lottery.telegram import creator_start_time
 from tg_lottery.telegram.creator_admission_picker import (
     PREFIX as ADMISSION_PREFIX,
 )
@@ -28,6 +29,7 @@ from tg_lottery.telegram.creator_messages import (
     MESSAGE_DELAYS,
     message_settings_rows,
     message_settings_text,
+    show_more_delays,
 )
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer
 from tg_lottery.telegram.creator_required_chats_data import (
@@ -128,6 +130,8 @@ class CreatorSettings:
 
     def _grant_handlers(self) -> dict[str, Handler]:
         handlers = {
+            "draft_start": lambda q, g: creator_start_time.edit(self, q),
+            "draft_start_now": lambda q, g: creator_start_time.immediate(self, q),
             "draft_draw": self._edit_custom_draw,
             "draft_draw_fixed": self._edit_custom_draw,
             "draft_draw_full": self._edit_full_draw,
@@ -156,6 +160,7 @@ class CreatorSettings:
             "draft_description": self._edit_description,
             "draft_issuer": self._edit_issuer,
             "draft_messages": self._show_messages,
+            "draft_messages_more": lambda q, g: show_more_delays(self, q, g),
             "draft_messages_on": self._set_messages,
             "draft_messages_off": self._set_messages,
             "draft_load_last": self._reuse.show,
@@ -175,6 +180,7 @@ class CreatorSettings:
 
     def _text_handlers(self) -> dict[str, TextHandler]:
         return {
+            "draft:start": lambda m, d: creator_start_time.receive(self, m, d),
             "draft:draw": self._receive_draw,
             "draft:chat_threshold": self._threshold_input.receive,
             "draft:full_target": self._receive_full_target,
@@ -375,10 +381,19 @@ class CreatorSettings:
     async def _edit_description(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:description")
         await self._render(
-            query, data=data, text="⚠️ 请回复抽奖说明（最多 500 字）：", rows=_back_rows()
+            query,
+            data=data,
+            text=(
+                "📝 请回复抽奖说明（最多500字），发送 /clear 可清空；"
+                "说明仅为文案，实际条件以配置为准："
+            ),
+            rows=_back_rows(),
         )
 
     async def _receive_description(self, message: Message, data: dict[str, Any]) -> None:
+        if (message.text or "").strip() == "/clear":
+            await self._dashboard_from_message(message, data | {"description": ""})
+            return
         await self._receive_text(message, data, key="description", label="抽奖说明", limit=500)
 
     async def _edit_issuer(self, query: CallbackQuery, _: CallbackGrant) -> None:
@@ -404,6 +419,9 @@ class CreatorSettings:
 
     async def _show_messages(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = enter_section(await self._set_state(query, "draft:idle"), "messages")
+        from tg_lottery.telegram.message_delete_permissions import inspect_deletion_permissions
+
+        data |= await inspect_deletion_permissions(self._bot, data)
         await self._sessions.set(query.from_user.id, "draft:idle", data)
         await self._render(
             query, data=data, text=message_settings_text(data), rows=message_settings_rows(data)

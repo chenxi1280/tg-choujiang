@@ -87,7 +87,7 @@ def handles_action(action: str) -> bool:
 def apply_action(data: dict[str, Any], action: str) -> dict[str, Any]:
     require_current_bonus_action(data, action)
     if "length" in action:
-        raise UserFacingError("字数设置已移除，请重新打开活跃加成（人品）编辑页")
+        raise UserFacingError("字数设置已移除，请重新打开发言抽奖加成编辑页")
     _validate_v3_invite_action(data, action)
     direct = _apply_direct_action(data, action)
     if direct is not None:
@@ -150,7 +150,7 @@ def _validate_input_field(data, *, working, field):
         and working["kind"] == "invite"
         and field == "cap"
     ):
-        raise UserFacingError("新活动邀请加成不限累计上限，请重新打开邀请加成编辑页")
+        raise UserFacingError("新活动邀请抽奖加成不限累计上限，请重新打开邀请抽奖加成编辑页")
 
 
 def input_prompt(data: dict[str, Any]) -> str:
@@ -178,8 +178,8 @@ def summary(data: dict[str, Any]) -> str:
     invite_unlimited = sum(rule.get("cap_mode") == "unlimited" for rule in invite)
     activity_unlimited = sum(rule.get("daily_cap_mode") == "unlimited" for rule in activity)
     return (
-        f"邀请加成 {len(invite)} 个群（{invite_unlimited} 个不限）；"
-        f"活跃加成（人品） {len(activity)} 个群（{activity_unlimited} 个不限）"
+        f"邀请抽奖加成 {len(invite)} 个群（{invite_unlimited} 个不限）；"
+        f"发言抽奖加成 {len(activity)} 个群（{activity_unlimited} 个不限）"
     )
 
 
@@ -204,7 +204,7 @@ def list_view(data: dict[str, Any], kind: str) -> tuple[str, ButtonRows]:
     if kind == "invite":
         rows.append([("有效邀请要求", "draft_retention")])
     rows.append([("↩ 返回加成设置", "draft_bonus_menu")])
-    title = "🤝 邀请加成" if kind == "invite" else "🌱 活跃加成（人品）"
+    title = "🤝 邀请抽奖加成" if kind == "invite" else "🌱 发言抽奖加成"
     reminder = "机器人必须在每个参与群中且拥有管理员权限。"
     if not groups:
         reminder += "\n当前没有参与群，请先选择参与活动的群，再设置本群加成。"
@@ -325,7 +325,7 @@ def _invite_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str, 
         rows.append(_preset_row("cap", (1, 5, 10, 20), "次", selected=cap))
     rows.extend(_editor_footer("invite", data, working))
     title = _group_title(data, int(working["chat_id"]))
-    text = f"🤝 {title}邀请加成\n\n每 {rule['invites_per_cycle']} 个有效邀请 +1次；上限：{cap}"
+    text = f"🤝 {title}邀请抽奖加成\n\n每 {rule['invites_per_cycle']} 个有效邀请 +1次；上限：{cap}"
     text += activation_notice(data, "invite", chat_id=int(working["chat_id"]))
     return text, rows
 
@@ -346,7 +346,7 @@ def _activity_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str
         rows.append(_preset_row("cap", (1, 5, 10, 20), "轮", selected=cap))
     rows.extend(_editor_footer("activity", data, working))
     title = _group_title(data, int(working["chat_id"]))
-    text = f"🌱 {title}活跃加成（人品）\n\n" + _activity_description(rule, cap)
+    text = f"🌱 {title}发言抽奖加成\n\n" + _activity_description(rule, cap)
     text += activation_notice(data, "activity", chat_id=int(working["chat_id"]))
     return text, rows
 
@@ -496,4 +496,4 @@ def _validate_v3_invite_action(data, action):
     invite_action = "invite" in action or kind == "invite"
     cap_action = "cap" in action or ("limited" in action and "unlimited" not in action)
     if invite_action and cap_action:
-        raise UserFacingError("本场邀请加成固定不限累计上限")
+        raise UserFacingError("本场邀请抽奖加成固定不限累计上限")

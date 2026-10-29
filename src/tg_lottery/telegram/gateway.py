@@ -55,6 +55,10 @@ class TelegramGateway:
         invite_link: InviteLink | None = None,
     ) -> GatewayResult:
         handlers = {
+            "send_channel_shortcut": self._channel_shortcut,
+            "send_start_card": self._start_notice,
+            "send_start_rules": self._start_notice,
+            "send_lottery_query": self._lottery_query,
             "send_campaign_card": self._send_campaign_card,
             "send_campaign_share_card": self._send_campaign_share_card,
             "send_featured_campaign": self._featured_message,
@@ -117,6 +121,21 @@ class TelegramGateway:
         return GatewayResult(
             remote_result=remote_object(message), remote_message_id=message.message_id
         )
+
+    async def _channel_shortcut(self, outbox, invite_link):
+        from tg_lottery.telegram.channel_shortcuts import deliver_shortcut
+
+        return await deliver_shortcut(self._bot, outbox)
+
+    async def _start_notice(self, outbox, invite_link):
+        from tg_lottery.telegram.gateway_start import deliver_start
+
+        return await deliver_start(self._bot, outbox)
+
+    async def _lottery_query(self, outbox, invite_link):
+        from tg_lottery.telegram.gateway_lottery_query import deliver_query
+
+        return await deliver_query(self._bot, outbox)
 
     async def _featured_message(self, outbox, invite_link):
         from tg_lottery.telegram.gateway_featured import deliver_featured
@@ -375,6 +394,8 @@ async def deliver_campaign_card(bot, chat_id, payload, *, keyboard=None):
         parse_mode="HTML",
         protect_content=False,
     )
+    if payload.get("message_thread_id") is not None:
+        options["message_thread_id"] = payload["message_thread_id"]
     cover = payload.get("presentation", {}).get("cover_file_id")
     if cover:
         return await bot.send_photo(

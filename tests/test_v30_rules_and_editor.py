@@ -100,7 +100,9 @@ def test_reuse_legacy_does_not_invent_gate_and_capability_guard_rejects_old_imag
     )
     assert reused["admission"] is None
     assert reused["invite_bonus_cap"] is None
-    assert any("新场活跃和邀请加成都不设上限" in note for note in reused["import_notes"])
+    assert any(
+        "新场发言抽奖加成和邀请抽奖加成都不设上限" in note for note in reused["import_notes"]
+    )
     with pytest.raises(RuntimeError, match=r"v3\.0"):
         require_capabilities(["legacy", "v3.0"], ["legacy"])
     require_capabilities(["legacy", "v3.0"], ["legacy", "v3.0"])

@@ -10,6 +10,7 @@ INPUT_LABELS = {
     "draft:prize_name": "奖品名称",
     "draft:prize_count": "中奖人数（正整数人）",
     "draft:prize_delete": "要删除的奖品编号",
+    "draft:start": "开始时间（北京时间）",
     "draft:draw": "开奖时间（北京时间）",
     "draft:claim": "领奖说明",
     "draft:cover": "封面图片",

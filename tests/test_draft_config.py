@@ -38,11 +38,11 @@ def test_new_draft_requires_title_prize_time_and_admission() -> None:
     assert len(fields) == 4 and fields[3].startswith("抽奖门槛")
 
 
-def test_new_draft_does_not_delete_completion_messages_by_default() -> None:
+def test_new_draft_deletes_completion_messages_after_twenty_seconds_by_default() -> None:
     data = new_draft()
 
     assert data["delete_trigger_message"] is False
-    assert data["completion_delete_after_seconds"] is None
+    assert data["completion_delete_after_seconds"] == 20
 
 
 def test_new_draft_starts_with_empty_chat_message_thresholds() -> None:

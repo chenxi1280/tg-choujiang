@@ -12,6 +12,8 @@ async def private_message(handler, message):
         await project_private_start(handler, message, command=command)
         if should_suspend(command, bot_username=handler._bot_username):
             await handler._admin_flow.suspend_draft(message.from_user.id)
+        if await lottery_message(handler, message, text=text, command=command):
+            return
         if await handler._private_navigation(message, text):
             return
         if await handler._personal_flow.handle_command(message, text):
@@ -44,6 +46,12 @@ async def project_private_start(handler, message, *, command):
 
 
 async def read_callback(handler, query, *, data):
+    from tg_lottery.telegram.channel_shortcuts import handle_shortcut
+
+    if data.startswith("cp:") and await handle_shortcut(handler._navigation, query):
+        return True
+    if data.startswith("lq:") and await handler._lottery_queries.callback(query):
+        return True
     if await handler._reputation.callback(query):
         return True
     if await handler._navigation.handle_route(query, data=data, personal=handler._personal_flow):
@@ -80,3 +88,18 @@ async def callback_error(handler, query, exc):
     await member_callbacks.safe_answer(
         query, public_error_text(exc, handler._default_timezone), alert=True
     )
+
+
+async def lottery_message(handler, message, *, text, command):
+    if (
+        command
+        and command.addressed_to(handler._bot_username)
+        and command.name == "/start"
+        and command.argument == "myprogress"
+    ):
+        text = "抽奖进度"
+    from tg_lottery.telegram.lottery_queries import query_kind
+
+    if query_kind(text, handler._bot_username) is None:
+        return False
+    return await handler._lottery_queries.message(message, text)

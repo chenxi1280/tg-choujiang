@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from sqlalchemy import select
 
 from tg_lottery.application.campaign_targets import uses_multi_group_contract
+from tg_lottery.application.public_participation import public_participation
 from tg_lottery.application.records import add_outbox
 from tg_lottery.application.rule_publication import prepare_rule_publication
 from tg_lottery.domain.public_refs import new_invite_link_name
@@ -23,6 +24,9 @@ async def add_publication_outboxes(
     bot_username: str,
     prizes: Sequence[Prize],
 ) -> None:
+    campaign.presentation = campaign.presentation | {
+        "public_participation": await public_participation(session, campaign.id)
+    }
     private_chats = await _private_chats(session, campaign)
     if not private_chats:
         _add_campaign_cards(

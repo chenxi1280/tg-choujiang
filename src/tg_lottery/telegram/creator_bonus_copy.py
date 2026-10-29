@@ -245,7 +245,7 @@ def _last_cap(kind: str, rule: dict[str, Any]) -> int:
 
 
 def _kind_title(kind: str) -> str:
-    return "邀请加成" if kind == "invite" else "活跃加成（人品）"
+    return "邀请抽奖加成" if kind == "invite" else "发言抽奖加成"
 
 
 def _group_title(data: dict[str, Any], chat_id: int) -> str:

@@ -68,6 +68,9 @@ class ObservingParticipants:
 
 
 class CampaignQueries:
+    async def participant_campaign_detail(self, user_id, reference):
+        return None
+
     def __init__(self, campaign):
         self._campaign = campaign
 
@@ -79,6 +82,8 @@ class CampaignQueries:
 
 
 class RecordingMessage:
+    chat = SimpleNamespace(type="private", id=201)
+
     def __init__(self):
         self.texts = []
         self.markups = []
@@ -154,78 +159,19 @@ async def test_register_success_keeps_eligible_when_threshold_met():
     )
 
 
-async def test_callback_success_popup_answers_participation_success():
+async def test_group_registration_click_opens_private_same_activity_without_registering():
     campaign = _campaign({str(THRESHOLD_CHAT_ID): 10})
-    callback = RecordingCallback()
+    callback = SimpleNamespace(answer=AsyncMock())
     message = RecordingMessage()
     message.chat = SimpleNamespace(id=MAIN_CHAT_ID, type="supergroup")
-    flow = _flow(ObservingParticipants(), campaign, {THRESHOLD_CHAT_ID: 12})
-
+    participants = ObservingParticipants()
+    flow = _flow(participants, campaign, {THRESHOLD_CHAT_ID: 12})
     await flow.register(
-        message,
-        PUBLIC_REF,
-        user=_user(),
-        observed_at=datetime.now(UTC),
-        callback=callback,
+        message, PUBLIC_REF, user=_user(), observed_at=datetime.now(UTC), callback=callback
     )
-
-    assert len(callback.answers) == 1
-    text, show_alert = callback.answers[0]
-    assert text.startswith("✅ 参与成功")
-    assert "当前共 3 次抽奖机会" in text
-    assert show_alert is False
+    assert callback.answer.await_args.kwargs["url"].endswith("?start=join_" + PUBLIC_REF)
+    assert participants.begun == 0 and participants.result is None
     assert message.texts == []
-
-
-async def test_callback_failure_popup_alerts_threshold_gap():
-    campaign = _campaign({str(THRESHOLD_CHAT_ID): 10})
-    callback = RecordingCallback()
-    message = RecordingMessage()
-    message.chat = SimpleNamespace(id=MAIN_CHAT_ID, type="supergroup")
-    flow = _flow(ObservingParticipants(), campaign, {THRESHOLD_CHAT_ID: 3})
-
-    await flow.register(
-        message,
-        PUBLIC_REF,
-        user=_user(),
-        observed_at=datetime.now(UTC),
-        callback=callback,
-    )
-
-    assert len(callback.answers) == 1
-    text, show_alert = callback.answers[0]
-    assert show_alert is True
-    assert text == "尚未满足参与条件，详情已发送到本人私聊"  # noqa: RUF001
-    assert message.texts == []
-
-
-async def test_callback_failure_with_unreachable_private_chat_never_posts_to_group():
-    error = TelegramForbiddenError(
-        method=SendMessage(chat_id=201, text="x"), message="Forbidden: bot blocked"
-    )
-    message = RecordingMessage()
-    message.chat = SimpleNamespace(id=MAIN_CHAT_ID, type="supergroup")
-    callback = RecordingCallback()
-    flow = _flow(
-        ObservingParticipants(),
-        _campaign({str(THRESHOLD_CHAT_ID): 10}),
-        {THRESHOLD_CHAT_ID: 3},
-        bot=SendingBot(error=error),
-    )
-
-    await flow.register(
-        message,
-        PUBLIC_REF,
-        user=_user(),
-        observed_at=datetime.now(UTC),
-        callback=callback,
-    )
-
-    assert message.texts == []
-    assert len(callback.answers) == 1
-    text, show_alert = callback.answers[0]
-    assert show_alert is True
-    assert "私聊不可达" in text and "解除屏蔽" in text
 
 
 class SendingBot:

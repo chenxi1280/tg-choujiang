@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -109,13 +110,16 @@ class CampaignQueries:
 
 
 class RecordingMessage:
-    def __init__(self, chat_type=None):
+    def __init__(self, chat_type="private"):
         self.texts = []
         self.chat = (
             SimpleNamespace(id=201, type=chat_type)
             if chat_type is not None
             else SimpleNamespace(id=201)
         )
+
+    async def edit_text(self, text, *, reply_markup=None, **kwargs):
+        self.edited_text = text
 
     async def answer(self, text, *, reply_markup=None):
         self.texts.append(text)
@@ -287,7 +291,7 @@ def test_popup_failure_two_missing_groups_without_count_suffix():
     assert "个群" not in text
 
 
-async def test_base_activity_group_callback_answers_popup_without_sending_message():
+async def test_base_activity_group_callback_only_opens_private_activity():
     campaign = SimpleNamespace(
         id=uuid4(),
         public_ref=PUBLIC_REF,
@@ -301,17 +305,14 @@ async def test_base_activity_group_callback_answers_popup_without_sending_messag
     )
     participants = AlreadyEligibleParticipants(1)
     flow = _flow(participants, campaign, detail=detail)
-    callback = RecordingCallback()
+    callback = SimpleNamespace(answer=AsyncMock())
     message = RecordingMessage(chat_type="supergroup")
 
     await flow.register(
         message, PUBLIC_REF, user=_user(), observed_at=datetime.now(UTC), callback=callback
     )
 
-    assert len(callback.answers) == 1
-    text, show_alert = callback.answers[0]
-    assert "基础发言门槛未完成" in text
-    assert show_alert is False
+    assert callback.answer.await_args.kwargs["url"].endswith("?start=join_" + PUBLIC_REF)
     assert message.texts == []
 
 
@@ -335,5 +336,5 @@ async def test_base_activity_private_reply_sends_progress_message():
 
     assert len(message.texts) == 1
     assert "前置条件已通过" in message.texts[0]
-    assert "此前发言不补算" in message.texts[0]
+    assert "登记及前置条件通过前不补算" in message.texts[0]
     assert "A群" in message.texts[0]

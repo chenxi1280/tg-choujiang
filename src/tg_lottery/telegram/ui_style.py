@@ -4,6 +4,8 @@ import re
 
 from aiogram.types import InlineKeyboardMarkup
 
+from tg_lottery.telegram.keyboard_layout import fit_rows
+
 # Ordered from specific actions/statuses to their broader objects.
 LABEL_ICONS = (
     (("返回首页",), "🏠"),
@@ -58,7 +60,7 @@ LABEL_ICONS = (
     (("邀请记录", "我的邀请记录", "查看邀请记录"), "🧾"),
     (("邀请入口", "我的邀请链接", "查看个人邀请入口"), "🔗"),
     (("邀请", "我的邀请", "有效邀请", "打开邀请", "查看个人邀请", "设置邀请"), "🤝"),
-    (("活跃", "人品规则", "人品加成", "设置活跃"), "🌱"),
+    (("活跃", "人品规则", "发言抽奖加成", "设置活跃"), "🌱"),
     (("人品排行",), "🏅"),
     (("人品",), "🌱"),
     (("开启本加成",), "▶️"),
@@ -164,7 +166,8 @@ def plain_label(label: str) -> str:
     text = label
     while True:
         prefix = next(
-            (value for value in (*ICONS, "✅", "⬜", "✓") if text.startswith(value)), None
+            (value for value in (*ICONS, "✅", "❌", "⏳", "⬜", "✓") if text.startswith(value)),
+            None,
         )
         if prefix is None:
             return text
@@ -172,15 +175,15 @@ def plain_label(label: str) -> str:
 
 
 def style_label(label: str, *, action: str = "") -> str:
-    marker = re.match(r"^(?:✅|⬜|✓)\ufe0f?\s+", label)
+    marker = re.match(r"^(?:✅|❌|⏳|⬜|✓)\ufe0f?\s*", label)
     selected = marker.group() if marker else ""
+    if selected:
+        return label
     raw = label[len(selected) :]
     text = plain_label(raw)
     if _short_number(text):
         return label
-    icon = STATUS_FILTER_ICONS.get(text) or next(
-        (icon for prefixes, icon in LABEL_ICONS if text.startswith(prefixes)), ""
-    )
+    icon = _known_label_icon(text)
     if icon:
         return selected + icon + " " + text
     # Unknown/user-derived labels keep their existing decoration.
@@ -208,7 +211,7 @@ def style_keyboard(keyboard: InlineKeyboardMarkup | None) -> InlineKeyboardMarku
                     )
                     for button in row
                 ]
-                for row in keyboard.inline_keyboard
+                for row in fit_rows(keyboard.inline_keyboard)
             ]
         }
     )
@@ -216,3 +219,9 @@ def style_keyboard(keyboard: InlineKeyboardMarkup | None) -> InlineKeyboardMarku
 
 def row_keyboard(rows):
     return style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+def _known_label_icon(text):
+    return STATUS_FILTER_ICONS.get(text) or next(
+        (icon for prefixes, icon in LABEL_ICONS if text.startswith(prefixes)), ""
+    )

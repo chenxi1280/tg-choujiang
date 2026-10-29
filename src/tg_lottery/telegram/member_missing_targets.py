@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.application.campaign_targets import QualificationTarget
-from tg_lottery.application.participation_progress import COUNTING_NOTICE, membership_progress_text
+from tg_lottery.application.participation_progress import membership_progress_text
 from tg_lottery.domain.enums import QualificationState
-from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import member_condition_views
+from tg_lottery.telegram.keyboard_layout import columns
 from tg_lottery.telegram.ui_style import row_keyboard
 
 MISSING_TARGETS_PAGE_SIZE = 6
@@ -47,7 +47,7 @@ def build_missing_targets_reply(
         page=(selected.number, selected.count),
     )
     summary = membership_progress_text(targets, observations, include_targets=False)
-    return "\n\n".join(filter(None, [text, summary, COUNTING_NOTICE])), row_keyboard(rows)
+    return "\n\n".join(filter(None, [text, summary])), row_keyboard(rows)
 
 
 def missing_target_page(
@@ -59,8 +59,7 @@ def missing_target_page(
     by_chat = {int(item["chat_id"]): item for item in observations}
     candidates = tuple(target for target in targets if _category(target, by_chat))
     count = max(1, (len(candidates) + MISSING_TARGETS_PAGE_SIZE - 1) // MISSING_TARGETS_PAGE_SIZE)
-    if page < 1 or page > count:
-        raise UserFacingError("缺失条件页码已经失效，请重新验证资格")
+    page = min(max(1, page), count)
     start = (page - 1) * MISSING_TARGETS_PAGE_SIZE
     selected = candidates[start : start + MISSING_TARGETS_PAGE_SIZE]
     return MissingTargetPage(
@@ -90,16 +89,15 @@ def _join_rows(
     *,
     target_url: Callable[[object, QualificationTarget], str],
 ) -> list[list[InlineKeyboardButton]]:
-    return [
+    return columns(
         [
             InlineKeyboardButton(
-                text=member_condition_views.target_button(target),
-                url=target_url(campaign, target),
+                text=member_condition_views.target_button(target), url=target_url(campaign, target)
             )
+            for target in targets
+            if member_condition_views.target_joinable(campaign, target)
         ]
-        for target in targets
-        if member_condition_views.target_joinable(campaign, target)
-    ]
+    )
 
 
 def _navigation_rows(reference: str, page: MissingTargetPage) -> list[list[InlineKeyboardButton]]:
@@ -117,3 +115,24 @@ def _page_button(text: str, reference: str, page: int) -> InlineKeyboardButton:
 
 def _verify_button(reference: str) -> InlineKeyboardButton:
     return InlineKeyboardButton(text="验证资格", callback_data=f"member:verify:{reference}")
+
+
+async def registration_failure_feedback(queries, campaign, *, user_id, text, keyboard):
+    detail = await queries.participant_campaign_detail(user_id, campaign.public_ref)
+    registered = detail is not None and detail.registration_completed
+    status = (
+        "⚠️ 已报名，当前资格未通过；原登记与进度保留。"
+        if registered
+        else "⏳ 报名待完成；补齐前置条件后点击核验并报名。"
+    )
+    label = "🔄 核验并刷新" if registered else "🎟️ 核验并报名"
+    rows = [
+        [
+            button.model_copy(update={"text": label})
+            if button.callback_data == f"member:verify:{campaign.public_ref}"
+            else button
+            for button in row
+        ]
+        for row in keyboard.inline_keyboard
+    ]
+    return status + "\n\n" + text, row_keyboard(rows)

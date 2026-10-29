@@ -15,6 +15,9 @@ PUBLIC_REF = "AbCdEfGhIjKlMnOpQrSt-_"
 
 
 class ReferenceQueries:
+    async def participant_campaign_detail(self, user_id, reference):
+        return None
+
     def __init__(self) -> None:
         self.reference = None
 
@@ -68,13 +71,13 @@ class RecordingMessage:
     def __init__(self) -> None:
         self.reply_markup = None
         self.texts = []
-        self.chat = SimpleNamespace(id=201)
+        self.chat = SimpleNamespace(id=201, type="private")
         self.message_id = 77
 
     async def answer(self, text, *, reply_markup=None, parse_mode=None):
         self.texts.append(text)
         self.reply_markup = reply_markup
-        return SimpleNamespace(chat=self.chat, message_id=88)
+        return SimpleNamespace(chat=self.chat, message_id=88, reply_markup=reply_markup)
 
 
 async def test_verification_callback_uses_campaign_public_reference() -> None:
@@ -100,7 +103,7 @@ async def test_verification_callback_uses_campaign_public_reference() -> None:
     assert button.callback_data == f"member:verify:{PUBLIC_REF}"
 
 
-async def test_success_deletion_policy_schedules_command_and_completion() -> None:
+async def test_success_deletion_policy_preserves_action_panel() -> None:
     queries = ReferenceQueries()
     campaign_id = uuid4()
 
@@ -128,8 +131,7 @@ async def test_success_deletion_policy_schedules_command_and_completion() -> Non
 
     await flow.register(message, PUBLIC_REF, user=user, observed_at=datetime.now(UTC))
 
-    assert [item["message_id"] for item in participants.deletions] == [77, 88]
-    assert participants.deletions[0]["run_at"] < participants.deletions[1]["run_at"]
+    assert [item["message_id"] for item in participants.deletions] == [77]
     assert message.texts[0].startswith("✅ 参与成功")
     assert "当前共 1 次抽奖机会" in message.texts[0]
 
@@ -252,7 +254,7 @@ async def test_missing_target_page_lists_multiple_join_links_and_unknown_separat
     assert urls == ["https://t.me/group_b", "https://t.me/group_c"]
     assert "参与群" in text and "必须全部加入" in text
     assert "准入条件" in text and "必须全部满足" in text
-    assert "暂时无法核验" in text and "- 公告频道 D" in text
+    assert "暂时无法核验" in text and "⏳ 公告频道 D" in text
 
 
 async def test_missing_target_page_paginates_without_limiting_reverification() -> None:

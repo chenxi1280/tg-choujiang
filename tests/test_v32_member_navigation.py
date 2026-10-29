@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -55,7 +55,20 @@ def _detail():
 
 
 def _navigation():
-    queries = SimpleNamespace(participant_campaign_detail=AsyncMock(return_value=_detail()))
+    queries = SimpleNamespace(
+        participant_campaign_detail=AsyncMock(return_value=_detail()),
+        campaign_by_reference=AsyncMock(
+            return_value=SimpleNamespace(
+                id="test",
+                rules={},
+                presentation={},
+                state=CampaignState.RUNNING,
+                preheat_at=datetime.now(UTC) - timedelta(hours=1),
+                cutoff_at=datetime.now(UTC) + timedelta(hours=1),
+            )
+        ),
+        public_participation=AsyncMock(return_value="参与情况: 1人已记录达标 / 2人报名"),
+    )
 
     async def issue(**options):
         return tuple(f"token{index}" for index, _ in enumerate(options["requests"]))

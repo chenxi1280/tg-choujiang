@@ -54,8 +54,8 @@ def view(data: dict[str, Any]) -> tuple[str, list[list[tuple[str, str]]]]:
     rows = [
         [("入群后立即核验", "draft_retention_now")],
         [("留存 24 小时", "draft_retention_day"), ("留存 48 小时", "draft_retention_two_days")],
-        [("返回邀请加成", "draft_bonus_invite")],
+        [("返回邀请抽奖加成", "draft_bonus_invite")],
     ]
     if uses_unlimited_policy(data):
-        rows = [[("返回邀请加成", "draft_bonus_invite")]]
+        rows = [[("返回邀请抽奖加成", "draft_bonus_invite")]]
     return text, rows

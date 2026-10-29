@@ -19,7 +19,12 @@ from tg_lottery.application.operational_blocks import (
     record_outbox_target_block,
     resolve_outbox_target_block,
 )
+from tg_lottery.application.outbox_claims import (
+    lock_presend_claim,
+    start_claimed_gateway,
+)
 from tg_lottery.application.records import utcnow
+from tg_lottery.application.retention_policy import apply_retention
 from tg_lottery.domain.enums import DeliveryCertainty, OutboxState
 from tg_lottery.infrastructure.db import (
     DeliveryAttempt,
@@ -29,8 +34,13 @@ from tg_lottery.infrastructure.heartbeat import run_with_heartbeat
 from tg_lottery.telegram.crypto import SecretCipher
 from tg_lottery.telegram.delivery_failures import classify_connection_failure
 from tg_lottery.telegram.gateway import GatewayResult, TelegramGateway
-from tg_lottery.telegram.gateway_requests import GatewayCall, build_gateway_call
+from tg_lottery.telegram.gateway_requests import GatewayCall
 from tg_lottery.telegram.outbox_payloads import InviteNameFactory, normalize_pending_invite_name
+from tg_lottery.telegram.outbox_preflight import (
+    PROJECTED_OPERATIONS,
+    prepare_call,
+    prepare_owned_delivery,
+)
 from tg_lottery.telegram.outbox_projection import project_outbox_success
 from tg_lottery.telegram.outbox_records import (
     add_delivery_attempt,
@@ -44,15 +54,6 @@ _LEASE_RENEW_INTERVAL_SECONDS = 30
 _IDLE_WAIT_SECONDS = 0.5
 _EXPLICIT_ERRORS = (TelegramBadRequest, TelegramForbiddenError, TelegramUnauthorizedError)
 _UNKNOWN_ERRORS = (TelegramNetworkError, TelegramServerError, TimeoutError, ConnectionError)
-_PROJECTED_OPERATIONS = frozenset(
-    {
-        "send_campaign_card",
-        "create_invite_link",
-        "revoke_invite_link",
-        "create_required_chat_invite",
-        "revoke_required_chat_invite",
-    }
-)
 _PROJECTION_RETRY_SECONDS = 30
 
 
@@ -101,10 +102,10 @@ class OutboxWorker:
         return True
 
     async def _deliver(self, outbox: TelegramOutbox) -> None:
-        call = await self._prepare_gateway_call(outbox)
-        if call is None:
+        prepared = await prepare_owned_delivery(self, outbox)
+        if prepared is None:
             return
-        attempt_number = await self._mark_gateway_started(outbox.id)
+        call, attempt_number = prepared
         log_context = delivery_log_context(outbox, attempt_number)
         try:
             result = await self._execute_gateway(outbox.id, call)
@@ -179,9 +180,9 @@ class OutboxWorker:
 
     async def _prepare_gateway_call(self, outbox: TelegramOutbox) -> GatewayCall | None:
         try:
-            return await build_gateway_call(self._session_factory, outbox)
+            return await prepare_call(self._session_factory, outbox)
         except ValueError as exc:
-            attempt_number = await self._pre_accept_failed(outbox.id, None, exc)
+            attempt_number = await self._pre_accept_failed(outbox.id, None, exc, claim=outbox)
             self._logger.warning(
                 "Telegram delivery payload rejected before gateway",
                 extra=delivery_log_context(outbox, attempt_number)
@@ -220,6 +221,7 @@ class OutboxWorker:
             )
             if row is None:
                 return None
+            await apply_retention(session, row)
             normalize_pending_invite_name(row, self._invite_name_factory)
             row.state = OutboxState.CLAIMED
             row.lease_owner = self._owner_id
@@ -233,18 +235,10 @@ class OutboxWorker:
             row = await self._locked_owned_claim(session, outbox_id)
             row.lease_until = utcnow() + timedelta(seconds=self._lease_seconds)
 
-    async def _mark_gateway_started(self, outbox_id: UUID) -> int:
-        async with self._session_factory() as session, session.begin():
-            row = await self._locked(session, outbox_id)
-            if row.state is not OutboxState.CLAIMED or row.lease_owner != self._owner_id:
-                raise RuntimeError("outbox claim ownership was lost")
-            if row.gateway_started_at is not None:
-                raise RuntimeError("gateway was already started for this mutation")
-            row.gateway_started_at = utcnow()
-            count = await session.scalar(
-                select(func.count(DeliveryAttempt.id)).where(DeliveryAttempt.outbox_id == outbox_id)
-            )
-            return int(count or 0) + 1
+    async def _mark_gateway_started(self, outbox_id: UUID, *, claim=None) -> int:
+        return await start_claimed_gateway(
+            self._session_factory, outbox_id, self._owner_id, claim=claim
+        )
 
     async def _confirm(self, outbox_id: UUID, attempt_number: int, result: GatewayResult) -> None:
         await self._store_confirmation(outbox_id, attempt_number, result)
@@ -270,7 +264,7 @@ class OutboxWorker:
                     context=f"outbox-result:{row.id}",
                 )
             if (
-                row.operation not in _PROJECTED_OPERATIONS
+                row.operation not in PROJECTED_OPERATIONS
                 and "delete_after_seconds" not in row.payload
             ):
                 row.projected_at = utcnow()
@@ -307,10 +301,13 @@ class OutboxWorker:
                 row.last_error = str(exc)[:4000]
 
     async def _pre_accept_failed(
-        self, outbox_id: UUID, attempt_number: int | None, exc: Exception
+        self, outbox_id: UUID, attempt_number: int | None, exc: Exception, *, claim=None
     ) -> int:
         async with self._session_factory() as session, session.begin():
-            row = await self._locked_owned_claim(session, outbox_id)
+            if claim is not None:
+                row = await lock_presend_claim(session, claim)
+            else:
+                row = await self._locked_owned_claim(session, outbox_id)
             if attempt_number is None:
                 count = await session.scalar(
                     select(func.count(DeliveryAttempt.id)).where(

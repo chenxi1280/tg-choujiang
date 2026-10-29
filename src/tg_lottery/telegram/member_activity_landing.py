@@ -5,7 +5,11 @@ from aiogram.types import InlineKeyboardButton
 
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignRules
-from tg_lottery.presentation.participation_rules import complete_rule_pages, public_rule_blocks
+from tg_lottery.presentation.participation_rules import (
+    complete_rule_pages,
+    public_rule_blocks,
+    rule_manifest,
+)
 from tg_lottery.telegram import member_condition_views
 from tg_lottery.telegram.public_projection import campaign_state_text
 from tg_lottery.telegram.ui_style import row_keyboard
@@ -13,10 +17,16 @@ from tg_lottery.telegram.ui_style import row_keyboard
 
 async def open_activity(flow: Any, message: Any, reference: str) -> None:
     campaign = await flow._queries.campaign_by_reference(reference)
-    if campaign is None or campaign.rules.get("participation_rules_version") != "v3.0":
-        await flow.register(message, reference)
+    if campaign is None:
+        await message.answer("活动不存在或已失效。")
         return
-    await show_v3_rules(flow, message, campaign)
+    prizes = await flow._queries.prizes(campaign.id)
+    text, _ = rule_manifest(_rules_payload(flow, campaign, prizes))
+    await message.answer(
+        "🎟️ 查看活动不会自动报名，请明确点击报名按钮。\n\n" + text,
+        parse_mode="HTML",
+        reply_markup=row_keyboard(_v3_rules_rows(flow, campaign)),
+    )
 
 
 async def show_v3_rules(flow: Any, message: Any, campaign: Any) -> None:
@@ -52,7 +62,7 @@ def _v3_rules_rows(flow, campaign):
         rows = [
             [
                 InlineKeyboardButton(
-                    text="我已阅读，登记/查看本人进度",
+                    text="🎟️ 一键报名",
                     callback_data=f"member:join:{campaign.public_ref}",
                 )
             ],

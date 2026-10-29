@@ -87,7 +87,7 @@ def _validate_request(
         raise UserFacingError("仅合格参与者可获取本活动群邀请链接")
     rules = CampaignRules.model_validate(campaign.rules)
     if not rules.invite_target_enabled(target.chat_id_snapshot):
-        raise UserFacingError("该群未开启邀请门槛或邀请加成")
+        raise UserFacingError("该群未开启邀请门槛或邀请抽奖加成")
     deadline = campaign.cutoff_at - timedelta(hours=rules.invite.retention_hours)
     now = utcnow()
     if now > deadline:

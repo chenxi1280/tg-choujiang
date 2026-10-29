@@ -137,6 +137,7 @@ async def test_participation_card_link_opens_same_activity_in_users_private_chat
     record = campaign()
     record.config_revision = 1
     queries = queries_for(record, registered=registered)
+    queries.public_participation = AsyncMock(return_value="参与情况: 0人报名")
     queries.prizes = AsyncMock(return_value=())
     queries.operational_issues = AsyncMock(return_value=())
     queries.campaign_outcome = AsyncMock(return_value=SimpleNamespace(kind="unconfirmed"))
@@ -173,5 +174,5 @@ async def test_participation_card_link_opens_same_activity_in_users_private_chat
         assert "提醒回归" in delivered[0][1]
         routes = {r.payload["route"] for r in requests}
         assert f"m:conditions:{REFERENCE}:0" in routes
-        assert "登记参与" in str(delivered[0][2]["reply_markup"])
+        assert "一键报名" in str(delivered[0][2]["reply_markup"])
     flow._participants.queue_temporary_reminder.assert_not_awaited()

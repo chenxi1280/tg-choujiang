@@ -11,6 +11,7 @@ from tg_lottery.presentation.campaign_card import (
     description_blocks,
     footer_blocks,
     membership_blocks,
+    participation_blocks,
     prize_blocks,
     time_blocks,
 )
@@ -98,6 +99,7 @@ def public_rule_blocks(payload: Mapping) -> tuple[str, ...]:
         *prize_blocks(payload),
         *description_blocks(payload),
         bonus_block(payload),
+        *participation_blocks(payload),
         *time_blocks(payload),
         *footer_blocks(payload),
         "📜 完整统计与加成规则",
@@ -155,6 +157,7 @@ def compact_card(payload: Mapping) -> str:
             "\n".join(prize_blocks(payload)),
             f'📃 <b>抽奖说明：</b>正文较长，<a href="{rule_url}">查看完整说明与规则</a>',
             bonus_block(payload),
+            *participation_blocks(payload),
             *time_blocks(payload),
             *footer_blocks(payload),
         )
@@ -169,13 +172,25 @@ def summary_card(payload: Mapping, *, page_count: int, limit: int) -> str:
     )
     url = html.escape(campaign_link(payload, "rules"), quote=True)
     remainder = f'<a href="{url}">查看全部奖品、条件与说明</a>'
-    tail = "\n\n".join((bonus_block(payload), *time_blocks(payload), *footer_blocks(payload)))
+    tail = "\n\n".join(
+        (
+            bonus_block(payload),
+            *participation_blocks(payload),
+            *time_blocks(payload),
+            *footer_blocks(payload),
+        )
+    )
     visible = []
     total = len(payload.get("prizes") or [])
     base = "\n".join((prefix, *_remaining_prizes(total), remainder)) + "\n\n" + tail
     if html_utf16_length(base) > limit:
         tail = "\n\n".join(
-            (bonus_block(payload), *time_blocks(payload), footer_blocks(payload)[-1])
+            (
+                bonus_block(payload),
+                *participation_blocks(payload),
+                *time_blocks(payload),
+                footer_blocks(payload)[-1],
+            )
         )
     for prize in prize_blocks(payload)[1:]:
         remaining = _remaining_prizes(total - len(visible) - 1)

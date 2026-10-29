@@ -50,6 +50,7 @@ from tg_lottery.infrastructure.db.models_engagement import (
     UserGroupMessageTotal,
 )
 from tg_lottery.infrastructure.db.models_ops import WinnerDesignationOperator
+from tg_lottery.infrastructure.db.models_policy import RuntimePolicy
 
 __all__ = [
     "ActivityEvent",
@@ -86,6 +87,7 @@ __all__ = [
     "QualificationCheck",
     "QualificationTargetObservation",
     "RuleRevision",
+    "RuntimePolicy",
     "ScheduledJob",
     "TelegramOutbox",
     "TelegramUpdate",

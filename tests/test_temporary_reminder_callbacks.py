@@ -145,10 +145,7 @@ async def test_no_bonus_rules_queues_group_reminder_with_join_link():
     campaign.rules = CampaignRules().model_dump(mode="json")
     query = _attach_answer(_query())
     await bonus_callback(_flow(campaign, participants), query, PUBLIC_REF)
-    assert (
-        participants.reminders[0]["text"]
-        == "本期抽奖没有开启可用的邀请或活跃加成\uff08人品\uff09。"
-    )
+    assert participants.reminders[0]["text"] == "本期抽奖没有开启可用的邀请或发言抽奖加成。"
     assert participants.reminders[0]["campaign_ref"] == PUBLIC_REF
 
 
