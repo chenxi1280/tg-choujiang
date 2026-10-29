@@ -12,6 +12,8 @@
 
 发言计数以 [V3.1 发言计数调整](docs/development/v3.1-message-counting-20261006.md) 覆盖旧字数条款：门槛和加成不再限制每条字数，短文字、图片、纯表情、贴纸和 GIF 表情均可计数；历史字数字段不再参与新增消息判定。
 
+显式启用固定任务日期的活动按[固定日期任务合同](docs/development/fixed-message-task-calendar-20261029.md)执行：仅本期开始至截止之间的发言和加成生效，每个任务日分别达标，提示区分今日完成与整场完成；未启用的历史活动维持原规则。
+
 创建条数预设与响应修复见 [2026-10-06 修复记录](docs/development/v3.2-creation-response-repair-20261006.md)。
 
 首页、创建面板和成员操作见 [V3.2 升级 PRD（R2实现与验证进行中）](docs/development/v3.2-navigation-and-interaction-prd-20261006.md)，统一入口、控件、排版、完整用户路径和此前操作优化，附[控件与体验规范](docs/development/v3.2-controls-and-experience-contract-20261006.md)及创建/成员按钮清单。代码、隔离验证、发布与真实客户端验收分别记录在[实现与验收记录](docs/development/v3.2-implementation-and-acceptance-20261006.md)。
@@ -108,7 +110,7 @@ docker compose --profile ops run --rm ops-bot
 - `NAVIGATION_CHANNEL_URL`：抽奖导航频道。
 - `FEATURED_CHANNEL_URL`：精选推荐频道。
 
-接受 `https://t.me/` 频道或消息链接，未配置的入口不显示。2026-10-18 按用户要求，生产机器人已切换为[土豆抽奖](https://t.me/potato_lottery_bot)，三个入口分别改为[使用说明](https://t.me/potato_lottery_guide)、[抽奖导航](https://t.me/potato_lottery_nav)、[精选推荐](https://t.me/potato_lottery_featured)。历史[测试频道配置样例](.env.channels.test.example)仅供测试部署使用。链接配置只提供跳转入口；精选频道自动推送与每日北京时间 10:00 汇总需另行启用 `FEATURED_PUSH_ENABLED` 并指定稳定频道 ID，规则与验收边界见[精选频道推送修订](docs/development/featured-channel-push-20261029.md)。本轮不自动推送导航、不增加人工审核。机器人切换证据见[机器人与频道配置记录](docs/deployment/potato-bot-switch-20261018.md)。
+接受 `https://t.me/` 频道或消息链接，未配置的入口不显示。现有正式入口为[使用说明](https://t.me/potato_lottery_guide)、[抽奖导航](https://t.me/potato_lottery_nav)和[精选推荐](https://t.me/potato_lottery_featured)。链接配置只提供跳转入口；精选频道自动推送及每日北京时间 10:00 汇总需另行启用 `FEATURED_PUSH_ENABLED` 并指定稳定频道 ID。所有群内发布成功、仍可参与的活动均收录，首次启用也补推现有活动；规则与验收边界见[精选频道推送修订](docs/development/featured-channel-push-20261029.md)。历史[测试频道配置样例](.env.channels.test.example)仅供测试部署使用，不含凭据。
 
 后台指定中奖人通过隔离运维 Bot 操作，前台继续正常展示中奖结果并通知中奖者。
 

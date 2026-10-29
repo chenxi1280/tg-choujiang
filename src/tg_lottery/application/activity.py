@@ -233,6 +233,7 @@ class ActivityService:
                 content_hash=content_hash,
                 event_at=observation.event_at,
                 rules=rules,
+                campaign_start=campaign.preheat_at if rules.message_task_calendar else None,
             )
         event = _activity_event(
             campaign=campaign,
@@ -442,8 +443,11 @@ class ActivityService:
         content_hash: str,
         event_at: datetime,
         rules: CampaignRules,
+        campaign_start: datetime | None = None,
     ) -> str | None:
         lower_bound = event_at - timedelta(minutes=rules.activity.duplicate_window_minutes)
+        if campaign_start is not None:
+            lower_bound = max(lower_bound, campaign_start)
         duplicate = await session.scalar(
             select(ActivityEvent.id).where(
                 ActivityEvent.participant_id == participant_id,

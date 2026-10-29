@@ -44,7 +44,11 @@ def gate_lines(rules: CampaignRules, chats: tuple) -> tuple[str, ...]:
         else:
             value = f"已确认有效新成员 {rule.required_valid_invites} 人"
         lines.append(f"{names.get(key, key)}: {value}")
-    lines.append("先明确登记并通过成员等条件再统计；本场完成一次即可，每日发言加成另算。")
+    lines.append(
+        "本期开始后且本人登记通过才统计；本期每个任务日须分别达标，多发不抵次日，每日加成另算。"
+        if rules.message_task_calendar
+        else "先明确登记并通过成员等条件再统计；本场完成一次即可，每日发言加成另算。"
+    )
     return tuple(lines)
 
 
@@ -56,6 +60,19 @@ def detail_rule_blocks(payload: Mapping) -> tuple[str, ...]:
     rules = CampaignRules.model_validate(payload["rules"])
     chats = condition_chats(payload)
     blocks = []
+    if rules.message_task_calendar:
+        blocks.append(
+            html.escape(
+                "本期任务时间: "
+                + format_public_time(
+                    datetime.fromisoformat(str(payload["preheat_at"])), rules.timezone
+                )
+                + " 至 "
+                + format_public_time(
+                    datetime.fromisoformat(str(payload["cutoff_at"])), rules.timezone
+                )
+            )
+        )
     blocks.extend(html.escape(line) for line in gate_lines(rules, chats))
     blocks.extend(html.escape(line) for line in message_count_blocks(rules))
     blocks.append("额外抽奖次数（不替代门槛）")
@@ -87,8 +104,12 @@ def message_count_blocks(rules: CampaignRules) -> tuple[str, ...]:
         f"重复内容：同一用户在同一群 {rules.activity.duplicate_window_minutes} 分钟内"
         "大小写及空白归一后相同的文字，或文件标识及说明相同的媒体，"
         "只计第一条有效消息；不同群分别判断。",
-        "统计起点：明确登记且首次通过成员等条件后才开始，登记前不补采，"
-        "报名及行为统计截止后不再累计。",
+        (
+            "统计起点：本期任务开始且本人明确登记通过成员等条件后才开始，开始前不补采，"
+            if rules.message_task_calendar
+            else "统计起点：明确登记且首次通过成员等条件后才开始，登记前不补采，"
+        )
+        + "报名及行为统计截止后不再累计。",
     )
 
 

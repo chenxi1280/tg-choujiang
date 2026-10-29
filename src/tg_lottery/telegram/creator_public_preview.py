@@ -19,6 +19,7 @@ def preview_payload(data: dict, bot_username: str) -> dict:
         id=UUID(int=0),
         public_ref="unpublished",
         name=draft.name,
+        preheat_at=draft.preheat_at,
         cutoff_at=draft.cutoff_at,
         draw_at=draft.draw_at,
         timezone=draft.rules.timezone,

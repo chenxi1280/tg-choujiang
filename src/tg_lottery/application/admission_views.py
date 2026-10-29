@@ -4,10 +4,16 @@ from sqlalchemy import func, select
 
 from tg_lottery.application.admission_qualification import effective_ticket_text
 from tg_lottery.application.base_activity import load_base_progress
+from tg_lottery.application.message_calendar_views import calendar_group_lines, calendar_window_text
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import InvitationState, QualificationState
 from tg_lottery.domain.rules import CampaignRules
-from tg_lottery.infrastructure.db import AdmissionProgress, CampaignParticipationGroup, Invitation
+from tg_lottery.infrastructure.db import (
+    AdmissionProgress,
+    BaseActivityEvent,
+    CampaignParticipationGroup,
+    Invitation,
+)
 
 
 async def admission_progress_text(
@@ -33,7 +39,7 @@ async def admission_progress_text(
     completed = _progress_completed(campaign, now)
     title = "发言数" if rules.admission.type == "message" else "邀请好友"
     status = "已完成" if participant.admission_qualified else "待完成"
-    lines = ["🚪 本场门槛" if compact else f"本场{title}门槛: {status}"]
+    lines = [f"🚪 整场门槛: {status}" if compact else f"本场{title}门槛: {status}"]
     if observed_at is None:
         return "\n".join([*lines, "历史记录截止时间未确认, 需要核查取消或开奖记录。"])
     records = await _completion_records(session, participant.id)
@@ -50,10 +56,15 @@ async def admission_progress_text(
             compact=compact,
         )
     )
-    return _progress_footer(lines, participant, timezone, completed=completed, compact=compact)
+    return _progress_footer(
+        lines, participant, timezone, campaign=campaign, completed=completed, compact=compact
+    )
 
 
-def _progress_footer(lines, participant, timezone, *, completed, compact):
+def _progress_footer(lines, participant, timezone, *, campaign, completed, compact):
+    calendar = campaign.rules.get("message_task_calendar")
+    if calendar:
+        lines.append(calendar_window_text(campaign))
     if compact:
         return "\n".join([*lines, *(["⏹️ 本期已停止累计"] if completed else [])])
     if completed:
@@ -65,8 +76,12 @@ def _progress_footer(lines, participant, timezone, *, completed, compact):
         )
         effective = effective_ticket_text(participant, active=active)
         lines.append(f"当前有效抽奖次数: {effective}")
-        lines.append("未完成门槛时加成暂存; 门槛本场完成一次即可, 每日加成另算。")
-    lines.append(_start_text(participant, timezone))
+        lines.append(
+            "全部任务日分别达标后才完成整场门槛; 此前基础次数和加成暂存, 每日加成另算。"
+            if calendar
+            else "未完成门槛时加成暂存; 门槛本场完成一次即可, 每日加成另算。"
+        )
+    lines.append(_start_text(participant, timezone, start_at=campaign.preheat_at))
     return "\n".join(lines)
 
 
@@ -102,6 +117,23 @@ async def _group_lines(
         )
     day = observed_at.astimezone(timezone).date()
     progress = await load_base_progress(session, campaign, participant, today=day)
+    if rules.message_task_calendar:
+        return await _calendar_lines(
+            session, campaign, participant, progress=progress, names=names, day=day
+        )
+    return _message_group_lines(
+        progress,
+        gate,
+        names=names,
+        records=records,
+        timezone=timezone,
+        day=day,
+        completed=completed,
+        compact=compact,
+    )
+
+
+def _message_group_lines(progress, gate, *, names, records, timezone, day, completed, compact):
     if compact:
         return [
             _compact_group_line(
@@ -158,14 +190,55 @@ def _compact_message_progress(item, rule):
     return text
 
 
-def _start_text(participant, timezone):
+def _start_text(participant, timezone, *, start_at=None):
     if participant.counting_started_at:
         return (
             "本场统计起点: "
-            + participant.counting_started_at.astimezone(timezone).strftime("%m-%d %H:%M:%S")
+            + max(participant.counting_started_at, start_at or participant.counting_started_at)
+            .astimezone(timezone)
+            .strftime("%m-%d %H:%M:%S")
             + " (北京时间)"
         )
     return "成员等条件尚未通过, 本场行为统计尚未开始。"
+
+
+async def _calendar_lines(session, campaign, participant, *, progress, names, day):
+    rows = await session.execute(
+        select(
+            CampaignParticipationGroup.chat_id_snapshot,
+            BaseActivityEvent.local_date,
+            func.count(BaseActivityEvent.id),
+        )
+        .join(
+            BaseActivityEvent,
+            BaseActivityEvent.participation_group_id == CampaignParticipationGroup.id,
+        )
+        .where(
+            BaseActivityEvent.participant_id == participant.id,
+            BaseActivityEvent.accepted.is_(True),
+            BaseActivityEvent.event_at >= campaign.preheat_at,
+            BaseActivityEvent.event_at <= campaign.cutoff_at,
+            BaseActivityEvent.local_date <= day,
+        )
+        .group_by(CampaignParticipationGroup.chat_id_snapshot, BaseActivityEvent.local_date)
+    )
+    counts = {}
+    for chat, date, count in rows:
+        counts.setdefault(str(chat), {})[date] = count
+    rules = CampaignRules.model_validate(campaign.rules)
+    lines = []
+    for key, item in progress.items():
+        lines.extend(
+            calendar_group_lines(
+                campaign,
+                rules.admission.groups[key],
+                item,
+                name=names.get(key, "群名称待更新"),
+                day=day,
+                counts=counts.get(key, {}),
+            )
+        )
+    return lines
 
 
 def _completed(records: dict, key: str, timezone: object) -> str:

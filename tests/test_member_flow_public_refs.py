@@ -151,6 +151,7 @@ async def test_rules_remain_visible_after_private_condition_link_is_revoked() ->
         public_ref=PUBLIC_REF,
         name="测试活动",
         state=CampaignState.DRAWN,
+        preheat_at=datetime.now(UTC),
         cutoff_at=datetime.now(UTC),
         draw_at=datetime.now(UTC),
         timezone="Asia/Shanghai",

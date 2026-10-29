@@ -34,20 +34,17 @@ async def record_group_admission(
             AdmissionProgress.mode == rules.admission.type,
         )
     )
-    if existing is not None:
+    if existing is not None and existing.qualified:
         return False
-    session.add(
-        AdmissionProgress(
-            campaign_id=campaign.id,
-            participant_id=participant.id,
-            participation_group_id=target.id,
-            mode=rules.admission.type,
-            config_revision=campaign.config_revision,
-            qualified=True,
-            completed_at=event_at,
-            source_ref=source_ref,
-            source_update_id=current_update_id(),
-        )
+    _save_admission(
+        session,
+        existing,
+        campaign=campaign,
+        participant=participant,
+        target=target,
+        rules=rules,
+        event_at=event_at,
+        source_ref=source_ref,
     )
     await session.flush()
     await _complete_admission(
@@ -59,6 +56,24 @@ async def record_group_admission(
         event_at=event_at,
     )
     return True
+
+
+def _save_admission(
+    session, existing, *, campaign, participant, target, rules, event_at, source_ref
+):
+    if existing is None:
+        existing = AdmissionProgress(
+            campaign_id=campaign.id,
+            participant_id=participant.id,
+            participation_group_id=target.id,
+            mode=rules.admission.type,
+        )
+        session.add(existing)
+    existing.qualified = True
+    existing.config_revision = campaign.config_revision
+    existing.completed_at = event_at
+    existing.source_ref = source_ref
+    existing.source_update_id = current_update_id()
 
 
 async def _complete_admission(

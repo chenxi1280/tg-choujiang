@@ -45,6 +45,7 @@ def _rules_payload(flow, campaign, prizes):
         "bot_username": flow._bot_username,
         "rules": campaign.rules,
         "presentation": campaign.presentation,
+        "preheat_at": campaign.preheat_at.isoformat(),
         "cutoff_at": campaign.cutoff_at.isoformat(),
         "draw_at": campaign.draw_at.isoformat(),
         "timezone": campaign.timezone,

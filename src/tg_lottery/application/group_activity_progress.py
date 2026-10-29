@@ -121,7 +121,13 @@ async def _award_target(
             source_ref=str(progress.id),
             business_key=(
                 f"group_activity:{campaign.id}:{participant.user_id}:"
-                f"{chat_id}:{progress.local_date.isoformat()}:{target}"
+                f"{chat_id}:{progress.local_date.isoformat()}:"
+                + (
+                    f"calendar-r{campaign.config_revision}:"
+                    if campaign.rules.get("message_task_calendar")
+                    else ""
+                )
+                + str(target)
             ),
             occurred_at=event_at,
             source_update_id=current_update_id(),

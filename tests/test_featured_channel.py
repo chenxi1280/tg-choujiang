@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -9,6 +10,8 @@ from sqlalchemy import func, select
 
 from tests.helpers import seed_campaign
 from tests.test_config import _settings
+from tests.test_multi_prize_draw import _seed_multi_prize_case
+from tg_lottery.application.drawing import DrawingService
 from tg_lottery.application.featured_channel import (
     DIGEST_SEND,
     FEATURED_JOB,
@@ -16,11 +19,14 @@ from tg_lottery.application.featured_channel import (
     FeaturedChannelService,
 )
 from tg_lottery.application.records import add_outbox
+from tg_lottery.application.settlement import SettlementService
 from tg_lottery.domain.enums import CampaignState, OutboxState
 from tg_lottery.infrastructure.db import Campaign, ScheduledJob, TelegramOutbox
+from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.ops.delivery_health import read_delivery_health
 from tg_lottery.presentation.featured_channel import featured_content
 from tg_lottery.telegram.gateway import TelegramGateway
+from tg_lottery.telegram.gateway_featured_projection import featured_payload
 from tg_lottery.telegram.gateway_requests import build_gateway_request
 from tg_lottery.worker import _verify_featured_target
 
@@ -142,6 +148,7 @@ async def test_delivery_rechecks_state_and_uses_same_campaign_link(session_facto
     sent = bot.send_message.call_args.kwargs
     button = sent["reply_markup"].inline_keyboard[0][0]
     assert "start=join_" in button.url and button.url in sent["text"]
+    assert ">点击参与</a>" in sent["text"]
     assert sent["chat_id"] == CHANNEL and sent["disable_notification"] is False
     async with session_factory() as session, session.begin():
         (await session.get(Campaign, cid)).state = CampaignState.CANCELLED
@@ -286,3 +293,32 @@ async def test_failed_featured_delivery_is_visible_in_health(session_factory, op
         row.last_error = "channel write rejected"
     health = await read_delivery_health(session_factory)
     assert health.failed_notices == 1
+
+
+async def test_featured_card_refreshes_times_after_early_cutoff_and_actual_draw(session_factory):
+    now = datetime.now(UTC)
+    cid = await _seed_multi_prize_case(session_factory, now)
+    async with session_factory() as session:
+        campaign = await session.get(Campaign, cid)
+        payload = {
+            "bot_username": "lottery_test_bot",
+            "items": [
+                {
+                    "campaign_id": str(cid),
+                    "campaign_ref": campaign.public_ref,
+                    "name": "时间同步验收",
+                    "cutoff_at": (now + timedelta(days=3)).isoformat(),
+                    "draw_at": (now + timedelta(days=3, minutes=5)).isoformat(),
+                }
+            ],
+        }
+        expected_cutoff = campaign.cutoff_at.isoformat()
+    factory = partial(UnitOfWork, session_factory)
+    await SettlementService(factory).settle(cid, now)
+    draw = await DrawingService(factory).run(cid, actor_user_id=101)
+    refreshed = await featured_payload(session_factory, payload)
+    assert refreshed["items"][0]["cutoff_at"] == expected_cutoff
+    assert refreshed["items"][0]["completed_at"] == draw.completed_at.isoformat()
+    text, buttons = featured_content(refreshed, digest=False)
+    assert "实际开奖" in text and "计划开奖" not in text
+    assert "start=rules_" in buttons[0]["url"]
