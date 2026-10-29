@@ -10,6 +10,8 @@
 
 发言计数以 [V3.1 发言计数调整](docs/development/v3.1-message-counting-20261006.md) 覆盖旧字数条款：门槛和加成不再限制每条字数，短文字、图片、纯表情、贴纸和 GIF 表情均可计数；历史字数字段不再参与新增消息判定。
 
+显式启用固定任务日期的活动按[固定日期任务合同](docs/development/fixed-message-task-calendar-20261029.md)执行：仅本期开始至截止之间的发言和加成生效，每个任务日分别达标，提示区分今日完成与整场完成；未启用的历史活动维持原规则。
+
 创建条数预设与响应修复见 [2026-10-06 修复记录](docs/development/v3.2-creation-response-repair-20261006.md)。
 
 首页、创建面板和成员操作见 [V3.2 升级 PRD（R2实现与验证进行中）](docs/development/v3.2-navigation-and-interaction-prd-20261006.md)，统一入口、控件、排版、完整用户路径和此前操作优化，附[控件与体验规范](docs/development/v3.2-controls-and-experience-contract-20261006.md)及创建/成员按钮清单。代码、隔离验证、发布与真实客户端验收分别记录在[实现与验收记录](docs/development/v3.2-implementation-and-acceptance-20261006.md)。
