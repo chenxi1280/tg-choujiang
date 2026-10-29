@@ -39,7 +39,7 @@ async def test_shared_messages_obey_gate_and_bonus_thresholds(
         assert len(rows) == (2 if count == 10 else 1)
         text = rows[-1].payload["text"]
         if gate == 5 and bonus == 10:
-            assert "全部行为门槛已完成" in text and "5/10 条" in text and "还差 5 条" in text
+            assert "全部行为门槛已完成" in text and "再发 5 条 +1 次" in text
         if gate == 10 and count == 5:
             assert "暂存" in rows[-1].payload["ticket_status"]
     await speech(session_factory, count=count, at=START, first_id=1)
@@ -55,8 +55,9 @@ async def test_group_completion_and_remaining_bonus_are_one_notice_then_finish_s
     async with session_factory() as session:
         rows = list(await session.scalars(select(TelegramOutbox)))
         assert len(rows) == 1
-        assert "B群: 今日 0/5 条" in rows[0].payload["text"]
-        assert "测试群: 已完成 0 轮; 本轮 5/10 条, 还差 5 条" in rows[0].payload["text"]
+        assert "⏳ B群 · 今日 0/5 条" in rows[0].payload["text"]
+        assert "✅ 测试群 · 门槛完成" in rows[0].payload["text"]
+        assert "测试群: 已加 0 次 · 再发 5 条 +1 次" in rows[0].payload["text"]
         assert not (await session.get(Participant, pid)).admission_qualified
     await speech(session_factory, chat_id=SECOND, count=5)
     async with session_factory() as session:
@@ -70,3 +71,18 @@ def test_capped_historical_bonus_does_not_ask_for_unrewarded_messages():
     rule = GroupActivityRule(messages_per_cycle=5)
     assert "今日已达加成上限" in bonus_cycle_text(rule, 5)
     assert "还差" not in bonus_cycle_text(rule, 10)
+    assert "已达上限" in bonus_cycle_text(rule, 10, compact=True)
+    assert "再发" not in bonus_cycle_text(rule, 10, compact=True)
+
+
+async def test_compact_gate_completion_survives_midnight_with_daily_bonus_reset(session_factory):
+    _cid, _pid = await seed_v3(session_factory, combined_rules(5, 5, two_groups=True))
+    await speech(session_factory, count=5)
+    await speech(session_factory, count=5, at=START + timedelta(days=1), first_id=6)
+    async with session_factory() as session:
+        notices = list(await session.scalars(select(TelegramOutbox)))
+    latest = max(notices, key=lambda row: row.payload["occurred_at"])
+    assert "✅ 测试群 · 门槛完成" in latest.payload["text"]
+    assert "⏳ B群 · 今日 0/5 条" in latest.payload["text"]
+    assert "已加 1 次 · 再发 5 条 +1 次" in latest.payload["text"]
+    assert "暂存" in latest.payload["ticket_status"]

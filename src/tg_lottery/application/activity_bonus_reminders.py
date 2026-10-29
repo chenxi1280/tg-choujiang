@@ -9,7 +9,7 @@ from tg_lottery.infrastructure.db import CampaignParticipationGroup, DailyProgre
 
 
 async def activity_bonus_progress_text(
-    session, campaign, participant, *, event_at, group_label=None
+    session, campaign, participant, *, event_at, group_label=None, compact=False
 ):
     rules = CampaignRules.model_validate(campaign.rules)
     if not rules.activity_bonus_enabled or event_at >= campaign.cutoff_at:
@@ -39,20 +39,32 @@ async def activity_bonus_progress_text(
     }
     if group_label:
         names = {key: group_label(key, names.get(key, key)) for key in targets}
-    lines = ["人品加成(今日):"]
+    return _bonus_lines(names, targets, counts, compact=compact)
+
+
+def _bonus_lines(names, targets, counts, *, compact):
+    lines = ["🌱 今日加成" if compact else "人品加成(今日):"]
     lines.extend(
-        f"{names.get(key, key)}: " + bonus_cycle_text(rule, counts.get(key, 0))
+        f"{names.get(key, '群名称待更新')}: "
+        + bonus_cycle_text(rule, counts.get(key, 0), compact=compact)
         for key, rule in targets.items()
     )
     return "\n".join(lines)
 
 
-def bonus_cycle_text(rule, count):
+def bonus_cycle_text(rule, count, *, compact=False):
     cycles, progress = divmod(count, rule.messages_per_cycle)
     if rule.daily_cap_mode == "limited" and cycles >= rule.daily_max_cycles:
+        if compact:
+            return f"🏁 今日 +{rule.daily_max_cycles * rule.reward_tickets} 次 · 已达上限"
         return f"已完成 {rule.daily_max_cycles} 轮, 今日已达加成上限。"
     label = "下一轮" if cycles else "本轮"
     remaining = rule.messages_per_cycle - progress
+    if compact:
+        return (
+            f"已加 {cycles * rule.reward_tickets} 次 · "
+            f"再发 {remaining} 条 +{rule.reward_tickets} 次"
+        )
     return (
         f"已完成 {cycles} 轮; {label} {progress}/{rule.messages_per_cycle} 条, "
         f"还差 {remaining} 条有效发言可增加 {rule.reward_tickets} 次。"

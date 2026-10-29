@@ -49,7 +49,9 @@ async def test_notice_links_identical_group_titles_to_their_own_groups(session_f
     assert rendered.count(f'<a href="https://t.me/music_group">{safe_title}</a>') == 2
     assert rendered.count(f'<a href="https://t.me/c/124/456">{safe_title}</a>') == 2
     assert "private-secret" not in rendered
-    assert "当前有效抽奖次数" in rendered and "还差 5 条" in rendered
+    assert "有效抽奖次数" in rendered and "再发 5 条 +1 次" in rendered
+    assert "门槛完成" in rendered and "今日 0/5 条" in rendered
+    assert "统计起点" not in rendered and "未完成门槛时加成暂存" not in rendered
     assert bot.sent[0][2]["parse_mode"] == "HTML"
 
 

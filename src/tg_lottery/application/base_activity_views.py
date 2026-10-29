@@ -21,13 +21,14 @@ async def base_progress_text(
     *,
     now: datetime | None = None,
     group_label=None,
+    compact=False,
 ) -> str:
     rules = CampaignRules.model_validate(campaign.rules)
     if rules.admission is not None:
         from tg_lottery.application.admission_views import admission_progress_text
 
         return await admission_progress_text(
-            session, campaign, participant, now=now, group_label=group_label
+            session, campaign, participant, now=now, group_label=group_label, compact=compact
         )
     return await _legacy_progress_text(
         session, campaign, participant, rules=rules, now=now, group_label=group_label

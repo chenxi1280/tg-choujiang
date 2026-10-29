@@ -11,7 +11,13 @@ from tg_lottery.infrastructure.db import AdmissionProgress, CampaignParticipatio
 
 
 async def admission_progress_text(
-    session: object, campaign: object, participant: object, *, now=None, group_label=None
+    session: object,
+    campaign: object,
+    participant: object,
+    *,
+    now=None,
+    group_label=None,
+    compact=False,
 ) -> str:
     from tg_lottery.application.base_activity_views import (
         _progress_completed,
@@ -27,7 +33,7 @@ async def admission_progress_text(
     completed = _progress_completed(campaign, now)
     title = "发言数" if rules.admission.type == "message" else "邀请好友"
     status = "已完成" if participant.admission_qualified else "待完成"
-    lines = [f"本场{title}门槛: {status}"]
+    lines = ["🚪 本场门槛" if compact else f"本场{title}门槛: {status}"]
     if observed_at is None:
         return "\n".join([*lines, "历史记录截止时间未确认, 需要核查取消或开奖记录。"])
     records = await _completion_records(session, participant.id)
@@ -41,8 +47,15 @@ async def admission_progress_text(
             records=records,
             completed=completed,
             group_label=group_label,
+            compact=compact,
         )
     )
+    return _progress_footer(lines, participant, timezone, completed=completed, compact=compact)
+
+
+def _progress_footer(lines, participant, timezone, *, completed, compact):
+    if compact:
+        return "\n".join([*lines, *(["⏹️ 本期已停止累计"] if completed else [])])
     if completed:
         lines.append("本期已停止累计; 此处为历史进度, 结果请查看参与详情。")
     else:
@@ -58,7 +71,16 @@ async def admission_progress_text(
 
 
 async def _group_lines(
-    session, *, campaign, participant, rules, observed_at, records, completed, group_label
+    session,
+    *,
+    campaign,
+    participant,
+    rules,
+    observed_at,
+    records,
+    completed,
+    group_label,
+    compact=False,
 ):
     gate = rules.admission
     timezone = ZoneInfo(rules.timezone)
@@ -69,23 +91,26 @@ async def _group_lines(
     if group_label:
         names = {key: group_label(key, names.get(key, key)) for key in gate.groups}
     if gate.type == "invite":
-        result = await session.execute(
-            select(CampaignParticipationGroup.chat_id_snapshot, func.count(Invitation.id))
-            .join(Invitation, Invitation.participation_group_id == CampaignParticipationGroup.id)
-            .where(
-                Invitation.inviter_participant_id == participant.id,
-                Invitation.state == InvitationState.VALID,
-            )
-            .group_by(CampaignParticipationGroup.chat_id_snapshot)
+        return await _invite_group_lines(
+            session,
+            participant,
+            gate,
+            names=names,
+            records=records,
+            timezone=timezone,
+            compact=compact,
         )
-        counts = dict(result.all())
-        return [
-            f"{names.get(key, key)}: 已确认 {counts.get(int(key), 0)}"
-            f"/{rule.required_valid_invites} 人" + _completed(records, key, timezone)
-            for key, rule in gate.groups.items()
-        ]
     day = observed_at.astimezone(timezone).date()
     progress = await load_base_progress(session, campaign, participant, today=day)
+    if compact:
+        return [
+            _compact_group_line(
+                names.get(key, "群名称待更新"),
+                int(key) in records,
+                _compact_message_progress(item, gate.groups[key]),
+            )
+            for key, item in progress.items()
+        ]
     label = f"记录日期 {day}" if completed else "今日"
     return [
         f"{names.get(key, key)}: {label} {item.today_messages}"
@@ -93,6 +118,44 @@ async def _group_lines(
         f"/{gate.groups[key].consecutive_days} 天" + _completed(records, key, timezone)
         for key, item in progress.items()
     ]
+
+
+async def _invite_group_lines(session, participant, gate, *, names, records, timezone, compact):
+    result = await session.execute(
+        select(CampaignParticipationGroup.chat_id_snapshot, func.count(Invitation.id))
+        .join(Invitation, Invitation.participation_group_id == CampaignParticipationGroup.id)
+        .where(
+            Invitation.inviter_participant_id == participant.id,
+            Invitation.state == InvitationState.VALID,
+        )
+        .group_by(CampaignParticipationGroup.chat_id_snapshot)
+    )
+    counts = dict(result.all())
+    if compact:
+        return [
+            _compact_group_line(
+                names.get(key, "群名称待更新"),
+                int(key) in records,
+                f"邀请 {counts.get(int(key), 0)}/{rule.required_valid_invites} 人",
+            )
+            for key, rule in gate.groups.items()
+        ]
+    return [
+        f"{names.get(key, key)}: 已确认 {counts.get(int(key), 0)}"
+        f"/{rule.required_valid_invites} 人" + _completed(records, key, timezone)
+        for key, rule in gate.groups.items()
+    ]
+
+
+def _compact_group_line(name, completed, progress):
+    return f"✅ {name} · 门槛完成" if completed else f"⏳ {name} · {progress}"
+
+
+def _compact_message_progress(item, rule):
+    text = f"今日 {item.today_messages}/{rule.daily_messages} 条"
+    if rule.consecutive_days > 1:
+        text += f" · 连续 {item.consecutive_days}/{rule.consecutive_days} 天"
+    return text
 
 
 def _start_text(participant, timezone):
