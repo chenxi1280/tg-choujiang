@@ -57,6 +57,9 @@ class TelegramGateway:
         handlers = {
             "send_campaign_card": self._send_campaign_card,
             "send_campaign_share_card": self._send_campaign_share_card,
+            "send_featured_campaign": self._featured_message,
+            "send_featured_digest": self._featured_message,
+            "edit_featured_campaign": self._featured_message,
             "send_campaign_rules": self._campaign_rules,
             "edit_campaign_rules": self._campaign_rules,
             "edit_campaign_card_cancelled": self._edit_campaign_card_cancelled,
@@ -114,6 +117,11 @@ class TelegramGateway:
         return GatewayResult(
             remote_result=remote_object(message), remote_message_id=message.message_id
         )
+
+    async def _featured_message(self, outbox, invite_link):
+        from tg_lottery.telegram.gateway_featured import deliver_featured
+
+        return await deliver_featured(self._bot, outbox)
 
     async def _send_temporary_reminder(
         self, outbox: GatewayRequest, _: InviteLink | None

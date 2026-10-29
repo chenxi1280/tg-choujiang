@@ -98,7 +98,7 @@ docker compose --profile ops run --rm ops-bot
 正常部署只启动 `app` 与 `worker`，不会启动此运维 Bot。运维 Bot token 若复用正式 Bot 身份，
 启动时会因数据库中已存在正式 polling 身份而拒绝运行。
 
-## 使用指南与测试频道
+## 使用指南与官方频道
 
 私聊 `/help` 或首页“使用指南”打开内置说明。以下配置在首页与指南中增加自有频道入口：
 
@@ -106,7 +106,7 @@ docker compose --profile ops run --rm ops-bot
 - `NAVIGATION_CHANNEL_URL`：抽奖导航频道。
 - `FEATURED_CHANNEL_URL`：精选推荐频道。
 
-接受 `https://t.me/` 频道或消息链接，未配置的入口不显示。按用户要求，三个频道目前继续作为测试入口，线上体验测试沿用现有链接，不替换正式频道。对应配置见[测试频道配置样例](.env.channels.test.example)，样例不含令牌或数据库凭据。这些配置提供跳转入口，活动自动推送导航、人工精选审核不属于当前实现；入口配置与测试成功、正式运营分别记录。
+接受 `https://t.me/` 频道或消息链接，未配置的入口不显示。现有正式入口为[使用说明](https://t.me/potato_lottery_guide)、[抽奖导航](https://t.me/potato_lottery_nav)和[精选推荐](https://t.me/potato_lottery_featured)。链接配置只提供跳转入口；精选频道自动推送及每日北京时间 10:00 汇总需另行启用 `FEATURED_PUSH_ENABLED` 并指定稳定频道 ID。所有群内发布成功、仍可参与的活动均收录，首次启用也补推现有活动；规则与验收边界见[精选频道推送修订](docs/development/featured-channel-push-20261029.md)。历史[测试频道配置样例](.env.channels.test.example)仅供测试部署使用，不含凭据。
 
 后台指定中奖人通过隔离运维 Bot 操作，前台继续正常展示中奖结果并通知中奖者。
 
