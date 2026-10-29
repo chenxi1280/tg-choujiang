@@ -15,7 +15,9 @@ async def queue_draw_notifications(
 ) -> None:
     presentation = campaign.presentation or {}
     winners = [_winner_payload(item) for item in outcome.awards]
-    await add_campaign_card_state_fanout(session, campaign, state="drawn", winners=winners)
+    await add_campaign_card_state_fanout(
+        session, campaign, state="drawn", winners=winners, completed_at=draw_run.completed_at
+    )
     payload = {
         "campaign_name": campaign.name,
         "campaign_ref": campaign.public_ref,

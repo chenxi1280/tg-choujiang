@@ -19,9 +19,13 @@ def campaign_state_card_text(payload: dict[str, Any]) -> str:
     }.get(state)
     if status is None:
         raise ValueError("unsupported campaign card state")
+    if payload.get("time_summary"):
+        status += "\n" + html.escape(str(payload["time_summary"]))
     name = html.escape(str(payload["campaign_name"]))
     text = f"✨ <b>{name}</b>\n\n{status}"
     if payload.get("frozen_rules_text"):
+        if payload.get("time_summary"):
+            status += "\n下方截止及开奖日期为原计划。"
         text = status + "\n\n" + payload["frozen_rules_text"]
     return _with_winner_summary(text, payload)
 
@@ -33,6 +37,8 @@ def _with_winner_summary(text: str, payload: dict[str, Any]) -> str:
     prefix = text + "\n\n🏆 中奖者：\n"
     footer = f"共 {len(winners)} 个中奖名额（完整名单见群内结果公告）"
     limit = CAPTION_UTF16_LIMIT if payload.get("has_cover") else MESSAGE_UTF16_LIMIT
+    if html_utf16_length(prefix + footer) > limit:
+        return text
     rows: list[str] = []
     for winner in winners[:_CARD_WINNER_LIMIT]:
         candidate = [*rows, f"• {user_mention(winner)}"]

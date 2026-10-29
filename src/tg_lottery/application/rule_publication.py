@@ -1,9 +1,11 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
 
 from tg_lottery.application.records import add_outbox
 from tg_lottery.infrastructure.db import Campaign, TelegramOutbox
+from tg_lottery.presentation.campaign_state_times import campaign_state_times
 from tg_lottery.presentation.participation_rules import rule_manifest
 
 MANIFEST_KEY = "publication_rule_manifest"
@@ -105,7 +107,9 @@ async def _advance_publication(
     )
 
 
-def queue_rule_states(session: object, campaign: object, *, state: str) -> None:
+def queue_rule_states(
+    session: object, campaign: object, *, state: str, completed_at: datetime | None = None
+) -> None:
     if campaign.rules.get("participation_rules_version") != "v3.0":
         return
     labels = {
@@ -118,6 +122,15 @@ def queue_rule_states(session: object, campaign: object, *, state: str) -> None:
         "running": "进行中",
         "archived": "已归档",
     }
+    heading = f"当前状态: {labels[state]}"
+    if state in {"settling", "drawn"}:
+        heading += "\n" + campaign_state_times(
+            cutoff_at=campaign.cutoff_at,
+            draw_at=campaign.draw_at,
+            timezone=campaign.timezone,
+            completed_at=completed_at,
+        )
+        heading += "\n以下截止、开奖及相关时间为原计划。"
     emitted = set(campaign.presentation.get("rule_state_intents") or [])
     for chat_id, manifest in (campaign.presentation.get(MANIFEST_KEY) or {}).items():
         for index, message_id in manifest["remote_ids"].items():
@@ -134,7 +147,7 @@ def queue_rule_states(session: object, campaign: object, *, state: str) -> None:
                 business_key=key,
                 payload={
                     "message_id": message_id,
-                    "text": f"当前状态: {labels[state]}\n" + manifest["pages"][int(index)],
+                    "text": heading + "\n" + manifest["pages"][int(index)],
                 },
             )
 
