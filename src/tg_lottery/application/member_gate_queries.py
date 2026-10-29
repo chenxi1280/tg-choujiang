@@ -39,5 +39,6 @@ async def load_gate_group_lines(factory, user_id, reference):
             observed_at=observed,
             records=records,
             completed=_progress_completed(campaign, now),
+            group_label=None,
         )
         return dict(zip(rules.admission.groups, lines, strict=True))
