@@ -1,6 +1,7 @@
 from dataclasses import replace
 from datetime import timedelta
 from functools import partial
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import delete, func, select
@@ -8,6 +9,7 @@ from sqlalchemy import delete, func, select
 from tests.v30_helpers import FIRST, SECOND, START, rules_for, seed_v3, speech
 from tg_lottery.application.activity import ActivityService, MessageObservation
 from tg_lottery.application.admission_views import admission_progress_text
+from tg_lottery.application.integration_snapshot import _counts
 from tg_lottery.application.records import add_outbox
 from tg_lottery.application.settlement import SettlementService
 from tg_lottery.domain.enums import OutboxState
@@ -102,6 +104,12 @@ async def _verify_corrected_state(factory, cid, pid):
         assert await session.scalar(select(func.count(BaseActivityEvent.id))) == 7
         assert (
             await session.scalar(
+                select(func.count(BaseActivityEvent.id)).where(BaseActivityEvent.accepted)
+            )
+            == 1
+        )
+        assert (
+            await session.scalar(
                 select(func.count(AuditLog.id)).where(
                     AuditLog.action == "campaign.message_window_reset"
                 )
@@ -110,6 +118,16 @@ async def _verify_corrected_state(factory, cid, pid):
         )
         assert (await session.scalar(select(AdmissionProgress))).qualified is False
         assert await SettlementService(None)._eligible_entries(session, cid) == []
+        exported = await _counts(
+            session,
+            BaseActivityEvent,
+            cid,
+            ids=[pid],
+            request=SimpleNamespace(
+                date_from=START.date(), date_to=(START + timedelta(days=5)).date()
+            ),
+        )
+        assert sum(item["accepted_messages"] for item in exported[pid]) == 1
 
 
 async def test_stale_identity_and_claimed_delivery_cannot_mutate(session_factory, monkeypatch):
@@ -149,7 +167,10 @@ async def test_repair_restarts_dedup_at_boundary_and_keeps_source_rows(
             )
         )
     report = await reset_message_window(session_factory, options)
-    assert len(report["event_corrections"]["base_activity_events"]) == 1
+    assert (
+        sum(row["after_accepted"] for row in report["event_corrections"]["base_activity_events"])
+        == 1
+    )
     await reset_message_window(
         session_factory, replace(options, expected_fingerprint=report["fingerprint"])
     )

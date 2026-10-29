@@ -70,21 +70,24 @@ async def event_plan(session, campaign, *, starts_at, rules):
                 select(model)
                 .where(
                     model.campaign_id == campaign.id,
-                    model.event_at >= starts_at,
                     model.event_at <= campaign.cutoff_at,
                 )
                 .order_by(model.event_at, model.source_update_id, model.message_id)
             )
         )
         plans[model], counts[model] = recount_events(
-            events, minutes=rules.activity.duplicate_window_minutes
+            events, minutes=rules.activity.duplicate_window_minutes, starts_at=starts_at
         )
     return plans, counts
 
 
-def recount_events(events, *, minutes):
+def recount_events(events, *, minutes, starts_at):
     changes, counts, seen = [], Counter(), {}
     for event in events:
+        if event.event_at < starts_at:
+            if event.accepted:
+                changes.append((event, False, "before_task_window"))
+            continue
         if event.rejection_reason not in (None, "duplicate_text_window"):
             continue
         key = (event.participant_id, event.chat_id, event.content_hash)
