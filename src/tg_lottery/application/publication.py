@@ -85,6 +85,7 @@ def campaign_card_payload(
         "campaign_id": str(campaign.id),
         "campaign_ref": campaign.public_ref,
         "name": campaign.name,
+        "preheat_at": campaign.preheat_at.isoformat(),
         "cutoff_at": campaign.cutoff_at.isoformat(),
         "draw_at": campaign.draw_at.isoformat(),
         "timezone": campaign.timezone,
