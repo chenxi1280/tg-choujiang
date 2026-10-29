@@ -99,13 +99,13 @@ class DrawingService:
                 prizes=prizes,
                 unique_winner=CampaignRules.model_validate(campaign.rules).unique_winner,
             )
+            draw_run.completed_at = now
             await queue_draw_notifications(
                 uow.session,
                 campaign=campaign,
                 draw_run=draw_run,
                 outcome=outcome,
             )
-            draw_run.completed_at = now
             campaign.state = CampaignState.DRAWN
             await release_participation_groups(uow.session, campaign, utcnow())
             return draw_run

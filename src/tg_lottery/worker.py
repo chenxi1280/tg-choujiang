@@ -1,5 +1,7 @@
 import asyncio
+from functools import partial
 
+from tg_lottery.application.featured_channel import FeaturedChannelService
 from tg_lottery.application.legacy_commitment_cleanup import (
     queue_legacy_commitment_notice_cleanup,
 )
@@ -26,6 +28,7 @@ async def run() -> None:
         bot_username = await validate_bot(container.bot, settings.bot_id)
         await ensure_maintenance_jobs(container.session_factory, utcnow())
         await queue_legacy_commitment_notice_cleanup(container.session_factory)
+        featured = await _featured_service(container, bot_username)
         handlers = JobHandlers(
             bot=container.bot,
             session_factory=container.session_factory,
@@ -35,6 +38,7 @@ async def run() -> None:
             drawing=container.services.drawing,
             message_stats=container.services.message_stats,
             qualification_requests_per_second=settings.qualification_requests_per_second,
+            featured_channel=featured,
         )
         job_worker = JobWorker(
             owner_id=job_owner,
@@ -57,6 +61,31 @@ async def run() -> None:
     finally:
         await container.bot.session.close()
         await container.engine.dispose()
+
+
+async def _featured_service(container, bot_username):
+    settings = container.settings
+    if not settings.featured_push_enabled:
+        return None
+    service = FeaturedChannelService(
+        container.session_factory,
+        chat_id=settings.featured_push_chat_id,
+        bot_username=bot_username,
+        digest_hour=settings.featured_digest_hour,
+        verify_target=partial(_verify_featured_target, container),
+    )
+    await service.ensure_job(utcnow())
+    return service
+
+
+async def _verify_featured_target(container):
+    settings = container.settings
+    chat = await container.bot.get_chat(settings.featured_push_chat_id)
+    member = await container.bot.get_chat_member(chat.id, settings.bot_id)
+    if str(chat.type) != "channel" or member.status != "administrator":
+        raise ValueError("featured push target must be a channel administered by this bot")
+    if not member.can_post_messages or not member.can_edit_messages:
+        raise ValueError("featured channel requires post and edit message permissions")
 
 
 def main() -> None:

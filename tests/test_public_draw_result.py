@@ -37,7 +37,8 @@ async def test_result_link_queries_saved_draw_without_registering_and_survives_a
     message = SimpleNamespace(answer=AsyncMock(), from_user=SimpleNamespace(id=999))
     assert await dispatch_start_payload(flow, message, "history_" + reference)
     text = message.answer.call_args.args[0]
-    assert f"CJ-{reference}" in text
+    assert "CJ-" not in text and "结果编号" not in text
+    assert ">查看开奖结果</a>" in text
     assert f"https://t.me/test_bot?start=history_{reference}" in text
     assert "实际开奖时间" in text and "北京时间" in text
     assert "成员一" in text and "未分配名额" in text and "二等奖: 1 人" in text

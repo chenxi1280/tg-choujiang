@@ -17,10 +17,10 @@ def ticket_status(participant: object, campaign: object | None = None) -> str:
     )
     if not qualified:
         label = "行为门槛" if campaign and campaign.rules.get("admission") else "基础门槛"
-        return f"当前累计加成 {bonus} 次, 暂存未生效; {label}未完成, 有效抽奖次数 0。"
+        return f"🎟️ 有效抽奖次数 0 · 加成 {bonus} 次暂存({label}未完成)"
     if participant.qualification_state != QualificationState.ELIGIBLE:
-        return f"当前累计加成 {bonus} 次; 其他参与资格未通过, 有效抽奖次数 0, 请重新验证资格。"
-    return f"当前加成 {bonus} 次, 基础 1 次, 有效抽奖次数 {participant.ticket_total_cache}。"
+        return f"🎟️ 有效抽奖次数 0 · 加成 {bonus} 次 · ⚠️ 请重新验证资格"
+    return f"🎟️ 有效抽奖次数 {participant.ticket_total_cache} · 加成 {bonus} 次 + 基础 1 次"
 
 
 async def queue_progress_notice(
@@ -68,7 +68,7 @@ async def queue_bonus_notice(
         chat_id = await session.scalar(select(Group.chat_id).where(Group.id == campaign.group_id))
     if chat_id is None:
         raise ValueError("bonus notification group is missing")
-    text = f"{label}已完成, 本次 +{delta} 次。"
+    text = f"🎉 {label} +{delta} 次"
     await queue_progress_notice(
         session,
         campaign=campaign,
@@ -138,10 +138,10 @@ async def _linked_progress_detail(session, campaign, participant, *, event_at):
 
     labels = ProgressGroupLabels(await progress_group_links(session, campaign))
     progress = await base_progress_text(
-        session, campaign, participant, now=event_at, group_label=labels.label
+        session, campaign, participant, now=event_at, group_label=labels.label, compact=True
     )
     bonus = await activity_bonus_progress_text(
-        session, campaign, participant, event_at=event_at, group_label=labels.label
+        session, campaign, participant, event_at=event_at, group_label=labels.label, compact=True
     )
     full_detail, spans = labels.resolve("\n\n".join(text for text in (progress, bonus) if text))
     detail = brief_task_progress(full_detail)

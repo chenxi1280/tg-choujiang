@@ -1,8 +1,11 @@
+from datetime import datetime
+
 from sqlalchemy import select
 
 from tg_lottery.application.records import add_outbox
 from tg_lottery.application.rule_publication import queue_rule_states
 from tg_lottery.infrastructure.db import Campaign, CampaignParticipationGroup, Group
+from tg_lottery.presentation.campaign_state_times import campaign_state_times
 
 
 def add_campaign_card_state(
@@ -12,6 +15,7 @@ def add_campaign_card_state(
     *,
     state: str,
     winners: list[dict[str, object]] | None = None,
+    completed_at: datetime | None = None,
     message_id: int | None = None,
     rule_chat_id: int | None = None,
 ) -> None:
@@ -23,6 +27,12 @@ def add_campaign_card_state(
         "message_id": remote_message_id,
         "has_cover": bool(campaign.presentation.get("cover_file_id")),
         "card_state": state,
+        "time_summary": campaign_state_times(
+            cutoff_at=campaign.cutoff_at,
+            draw_at=campaign.draw_at,
+            timezone=campaign.timezone,
+            completed_at=completed_at,
+        ),
         **_rule_text_payload(campaign, rule_chat_id or recipient_chat_id),
     }
     if winners is not None:
@@ -71,13 +81,21 @@ async def add_campaign_card_state_fanout(
     *,
     state: str,
     winners: list[dict[str, object]] | None = None,
+    completed_at: datetime | None = None,
 ) -> None:
-    queue_rule_states(session, campaign, state=state)
+    queue_rule_states(session, campaign, state=state, completed_at=completed_at)
     rows = await _published_targets(session, campaign.id)
     if not rows:
         group = await session.get(Group, campaign.group_id)
         if group is not None:
-            add_campaign_card_state(session, campaign, group.chat_id, state=state, winners=winners)
+            add_campaign_card_state(
+                session,
+                campaign,
+                group.chat_id,
+                state=state,
+                winners=winners,
+                completed_at=completed_at,
+            )
         return
     for target, chat_id in rows:
         add_campaign_card_state(
@@ -86,6 +104,7 @@ async def add_campaign_card_state_fanout(
             chat_id,
             state=state,
             winners=winners,
+            completed_at=completed_at,
             message_id=target.published_message_id,
             rule_chat_id=target.chat_id_snapshot,
         )

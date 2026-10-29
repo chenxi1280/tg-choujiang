@@ -91,7 +91,7 @@ async def test_completion_notice_includes_remaining_group_progress(session_facto
         notices = list(await session.scalars(select(TelegramOutbox)))
         assert len(notices) == 1
         assert "0/2 条" in notices[0].payload["text"]
-        assert "有效抽奖次数: 0" in notices[0].payload["text"]
+        assert "有效抽奖次数 0" in notices[0].payload["ticket_status"]
         assert not (await session.get(Participant, pid)).admission_qualified
 
 

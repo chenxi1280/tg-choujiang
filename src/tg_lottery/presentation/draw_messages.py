@@ -76,13 +76,12 @@ def creator_draw_notice_text(payload: dict[str, Any]) -> str:
 
 
 def result_reference_line(payload: dict[str, Any]) -> str:
-    reference = html.escape(str(payload["campaign_ref"]))
-    label = f"CJ-{reference}"
+    label = "查看开奖结果"
     username = payload.get("bot_username")
     if username:
         url = html.escape(f"https://t.me/{username}?start=history_{payload['campaign_ref']}")
         label = f'<a href="{url}">{label}</a>'
-    return "🔖 结果编号：" + label
+    return "📋 " + label
 
 
 def draw_result_pages(payload: dict[str, Any]) -> tuple[dict[str, Any], ...]:

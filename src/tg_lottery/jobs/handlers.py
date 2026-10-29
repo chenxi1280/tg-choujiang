@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from tg_lottery.application.campaign_notifications import add_campaign_card_state_fanout
 from tg_lottery.application.draw_commitments import ensure_draw_commitment
 from tg_lottery.application.drawing import DrawingService
+from tg_lottery.application.featured_channel import FEATURED_JOB
 from tg_lottery.application.full_draw import (
     FULL_DRAW_VERIFY_JOB,
     confirm_full_draw_candidate,
@@ -84,8 +85,10 @@ class JobHandlers:
         drawing: DrawingService,
         message_stats: MessageStatsService | None = None,
         qualification_requests_per_second: float = _DEFAULT_QUALIFICATION_REQUESTS_PER_SECOND,
+        featured_channel=None,
     ) -> None:
         self._bot = bot
+        self._featured_channel = featured_channel
         self._session_factory = session_factory
         self._invitations = invitations
         self._settlement = settlement
@@ -113,11 +116,16 @@ class JobHandlers:
             TICKET_RECONCILE_JOB_TYPE: self._ticket_cache_reconcile,
             FULL_DRAW_RECONCILE_JOB_TYPE: self._full_draw_reconcile,
             "delete_telegram_message": self._delete_telegram_message,
+            FEATURED_JOB: self._featured_scan,
         }
         handler = handlers.get(job.job_type)
         if handler is None:
             raise ValueError(f"unknown scheduled job type: {job.job_type}")
         await handler(job)
+
+    async def _featured_scan(self, job: ScheduledJob) -> None:
+        if self._featured_channel is not None:
+            await self._featured_channel.run(job)
 
     async def _campaign_start(self, job: ScheduledJob) -> None:
         async with self._session_factory() as session, session.begin():

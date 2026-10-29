@@ -9,7 +9,14 @@ from tg_lottery.telegram.single_request_session import PreRequestConnectionError
 
 SINGLE_INVITE_OPERATIONS = frozenset({"create_invite_link", "create_required_chat_invite"})
 SINGLE_NOTICE_OPERATIONS = frozenset(
-    {"send_progress_notice", "send_temporary_reminder", "delete_message"}
+    {
+        "send_progress_notice",
+        "send_temporary_reminder",
+        "delete_message",
+        "send_featured_campaign",
+        "send_featured_digest",
+        "edit_featured_campaign",
+    }
 )
 SINGLE_CONNECT_OPERATIONS = SINGLE_INVITE_OPERATIONS | SINGLE_NOTICE_OPERATIONS
 _NOTICE_CONNECT_RETRY_DELAYS = (5, 15, 30, 60, 90)

@@ -63,6 +63,14 @@ async def build_gateway_request(
     outbox: TelegramOutbox,
 ) -> GatewayRequest:
     payload = dict(outbox.payload)
+    if outbox.operation in {
+        "send_featured_campaign",
+        "send_featured_digest",
+        "edit_featured_campaign",
+    }:
+        from tg_lottery.telegram.gateway_featured_projection import featured_payload
+
+        payload = await featured_payload(session_factory, payload)
     if outbox.operation in {"send_campaign_card", "send_campaign_share_card"}:
         campaign = await _campaign_projection(session_factory, outbox, payload)
         payload["timezone"] = _payload_timezone(payload) or campaign.timezone

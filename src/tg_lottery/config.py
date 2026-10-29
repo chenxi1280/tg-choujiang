@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     guide_channel_url: str = ""
     navigation_channel_url: str = ""
     featured_channel_url: str = ""
+    featured_push_enabled: bool = False
+    featured_push_chat_id: int = 0
+    featured_digest_hour: int = Field(default=10, ge=0, le=23)
     platform_required_enabled: bool = False
     platform_policy_version: Literal["official-v1", "official-v2"] = "official-v2"
     platform_official_channels: tuple[OfficialChannel, ...] = ()
@@ -87,6 +90,8 @@ class Settings(BaseSettings):
         if self.poll_lease_seconds < self.poll_timeout_seconds + _POLL_LEASE_MARGIN_SECONDS:
             raise ValueError("POLL_LEASE_SECONDS must cover poll timeout plus 10 seconds")
         self.bot_id = token_bot_id
+        if self.featured_push_enabled and self.featured_push_chat_id >= 0:
+            raise ValueError("FEATURED_PUSH_CHAT_ID must be a negative channel id")
         if self.platform_required_enabled:
             _ = self.platform_policy
         return self
