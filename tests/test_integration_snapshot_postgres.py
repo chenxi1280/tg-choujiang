@@ -1,6 +1,9 @@
 import hashlib
+import json
 
+import pytest
 from aiohttp.test_utils import TestClient, TestServer
+from pydantic import ValidationError
 from sqlalchemy import func, select, text
 
 from tests.test_base_activity_integration import START, messages, seed
@@ -15,6 +18,52 @@ from tg_lottery.infrastructure.db import (
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.integration_api import create_app
 from tg_lottery.integration_config import IntegrationSettings
+
+
+@pytest.mark.parametrize("calendar", ["missing", None, "campaign-days-v1"])
+async def test_snapshot_preserves_published_rule_document_and_hash(session_factory, calendar):
+    campaign_id, _ = await seed(session_factory, days=1, messages=2)
+    async with session_factory() as session, session.begin():
+        campaign = await session.get(Campaign, campaign_id)
+        frozen = dict(campaign.rules)
+        if calendar == "missing":
+            frozen.pop("message_task_calendar")
+        elif calendar == "campaign-days-v1":
+            from tests.v30_helpers import rules_for
+
+            frozen = rules_for(
+                "message", groups={"-100123": dict(daily_messages=2, consecutive_days=1)}
+            ).model_dump(mode="json") | {"message_task_calendar": calendar}
+        campaign.rules = frozen
+        reference, creator = campaign.public_ref, campaign.created_by
+    request = SnapshotRequest(user_ids=[201], date_from=START.date(), date_to=START.date())
+    async with session_factory() as session, session.begin():
+        await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
+        snapshot = await campaign_snapshot(
+            session, reference, request, creator_ids={creator}, bot_id=123
+        )
+    assert snapshot["rules"] == frozen
+    assert (
+        snapshot["rules_hash"]
+        == hashlib.sha256(
+            json.dumps(frozen, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    )
+    async with session_factory() as session:
+        assert (await session.get(Campaign, campaign_id)).rules == frozen
+
+
+async def test_snapshot_still_rejects_invalid_published_rules(session_factory):
+    campaign_id, _ = await seed(session_factory, days=1, messages=2)
+    async with session_factory() as session, session.begin():
+        campaign = await session.get(Campaign, campaign_id)
+        campaign.rules = campaign.rules | {"message_task_calendar": "campaign-days-v1"}
+        reference, creator = campaign.public_ref, campaign.created_by
+    request = SnapshotRequest(user_ids=[201], date_from=START.date(), date_to=START.date())
+    async with session_factory() as session, session.begin():
+        await session.execute(text("SET TRANSACTION READ ONLY"))
+        with pytest.raises(ValidationError, match=r"requires V3\.0 message admission"):
+            await campaign_snapshot(session, reference, request, creator_ids={creator}, bot_id=123)
 
 
 async def test_snapshot_reads_accepted_facts_and_does_not_create_participants(session_factory):

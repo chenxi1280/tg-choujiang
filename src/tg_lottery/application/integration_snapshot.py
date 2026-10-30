@@ -84,7 +84,8 @@ async def campaign_snapshot(
 
 
 async def _snapshot_document(session, campaign, request, *, bot_id, rows):
-    rules = CampaignRules.model_validate(campaign.rules).model_dump(mode="json")
+    CampaignRules.model_validate(campaign.rules)
+    rules = campaign.rules
     rules_hash = hashlib.sha256(
         json.dumps(rules, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
