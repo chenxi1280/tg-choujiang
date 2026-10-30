@@ -13,20 +13,21 @@ from tests.test_notice_deletion import _deletion_worker, _delivery_worker
 from tests.test_r14_queries import message
 from tg_lottery.application.queries import QueryService
 from tg_lottery.application.records import utcnow
-from tg_lottery.domain.enums import DeliveryCertainty, OutboxState
+from tg_lottery.domain.enums import OutboxState
 from tg_lottery.infrastructure.db import DeliveryAttempt, Participant, ScheduledJob, TelegramOutbox
 from tg_lottery.telegram.lottery_queries import LotteryQueries
 
 
-def _missing_reply():
+def _missing_reply(chat_id=901):
     return TelegramBadRequest(
-        SendMessage(chat_id=901, text="progress"), "Bad Request: message to be replied not found"
+        SendMessage(chat_id=chat_id, text="progress"),
+        "Bad Request: message to be replied not found",
     )
 
 
-async def _queue_query(sessions):
+async def _queue_query(sessions, chat_id=901):
     flow = LotteryQueries(QueryService(sessions), bot_username="testbot")
-    command = message("/progress", chat_id=901).model_copy(update={"message_thread_id": None})
+    command = message("/抽奖进度", chat_id=chat_id).model_copy(update={"message_thread_id": None})
     await flow.message(command, command.text)
     async with sessions() as session:
         row = await session.scalar(select(TelegramOutbox))
@@ -34,14 +35,15 @@ async def _queue_query(sessions):
 
 
 @pytest.mark.parametrize("missing_reply", [False, True])
-async def test_private_query_safe_retry_confirms_once_and_deletes_after_twenty(
-    session_factory, missing_reply
+@pytest.mark.parametrize("chat_id", [-100123, 901])
+async def test_query_safe_retry_confirms_once_and_preserves_chat_retention(
+    session_factory, missing_reply, chat_id
 ):
-    row_id, business_key, request_hash = await _queue_query(session_factory)
-    reply = message("progress", chat_id=901, number=811)
+    row_id, business_key, request_hash = await _queue_query(session_factory, chat_id)
+    reply = message("progress", chat_id=chat_id, number=811)
     results = [network_error("connect"), reply]
     if missing_reply:
-        results = [_missing_reply(), results[0], _missing_reply(), reply]
+        results = [_missing_reply(chat_id), results[0], _missing_reply(chat_id), reply]
     bot = SimpleNamespace(
         send_message=AsyncMock(side_effect=results), delete_message=AsyncMock(return_value=True)
     )
@@ -66,18 +68,21 @@ async def test_private_query_safe_retry_confirms_once_and_deletes_after_twenty(
                 .order_by(DeliveryAttempt.attempt_number)
             )
         )
-        assert [a.certainty for a in attempts] == [
-            DeliveryCertainty.EXPLICIT_REJECTION,
-            DeliveryCertainty.CONFIRMED,
-        ]
+        assert [a.certainty.value for a in attempts] == ["explicit_rejection", "confirmed"]
         job = await session.scalar(select(ScheduledJob))
-        assert job.run_at == attempts[-1].finished_at + timedelta(seconds=20)
-        assert job.payload["message_id"] == 811
-        job.run_at = utcnow()
+        if chat_id < 0:
+            assert job.run_at == attempts[-1].finished_at + timedelta(seconds=20)
+            assert job.payload["message_id"] == 811
+            job.run_at = utcnow()
+        else:
+            assert job is None
         assert await session.scalar(select(func.count()).select_from(Participant)) == 0
-    assert await _deletion_worker(session_factory).process_once()
-    assert await worker.process_once()
-    bot.delete_message.assert_awaited_once_with(901, 811)
+    assert await _deletion_worker(session_factory).process_once() == (chat_id < 0)
+    if chat_id < 0:
+        assert await worker.process_once()
+        bot.delete_message.assert_awaited_once_with(chat_id, 811)
+    else:
+        bot.delete_message.assert_not_awaited()
     assert bot.send_message.await_count == (4 if missing_reply else 2)
     assert not await worker.process_once()
 

@@ -37,7 +37,9 @@ def test_preview_start_preserves_creation_context(payload, suffix):
     assert not should_suspend(command, bot_username="lottery_test_bot")
 
 
-@pytest.mark.parametrize("text", ["/start", "/menu", "/help", "/start join_real"])
+@pytest.mark.parametrize(
+    "text", ["/start", "/menu", "/help", "/首页", "/使用指南", "/start join_real"]
+)
 def test_other_navigation_still_suspends(text):
     assert should_suspend(command_input.parse_bot_command(text), bot_username="lottery_test_bot")
 

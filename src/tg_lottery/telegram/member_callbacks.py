@@ -41,7 +41,7 @@ async def record_callback(
         await _record_acknowledgement(
             flow,
             query,
-            text="私聊发送失败，请先打开机器人或解除屏蔽，再私聊发送 /join 查看参与记录。",
+            text="私聊发送失败，请先打开机器人或解除屏蔽，再私聊发送 /我参加的抽奖 查看参与记录。",
             alert=True,
         )
         return True

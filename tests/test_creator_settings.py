@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from aiogram.types import Chat, Message, User
@@ -24,6 +25,17 @@ from tg_lottery.telegram.creator_settings import (
 from tg_lottery.telegram.issuer import creator_issuer, resolve_issuer
 from tg_lottery.telegram.personal_flow import _index_keyboard
 from tg_lottery.telegram.ui_style import plain_label
+
+
+@pytest.mark.parametrize("text", ["/清空说明", "/clear"])
+async def test_description_clear_command_keeps_other_draft_fields(text):
+    settings = object.__new__(CreatorSettings)
+    settings._dashboard_from_message = AsyncMock()
+    message = SimpleNamespace(text=text)
+    await settings._receive_description(message, {"description": "旧说明", "title": "活动"})
+    settings._dashboard_from_message.assert_awaited_once_with(
+        message, {"description": "", "title": "活动"}
+    )
 
 
 class RequiredChatBot:

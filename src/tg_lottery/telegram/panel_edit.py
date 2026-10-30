@@ -9,7 +9,7 @@ class PanelUnavailableError(UserFacingError):
     def __init__(self):
         super().__init__(
             "原页面已删除或无法更新，页面显示未完成。已保存的数据保留；"
-            "请发送 /menu 打开首页，再继续草稿或查看原活动。"
+            "请发送 /首页 打开首页，再继续草稿或查看原活动。"
         )
 
 

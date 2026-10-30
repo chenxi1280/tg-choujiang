@@ -123,10 +123,12 @@ class LotteryUpdateHandler:
         await self._activity.record_message(observation)
 
     async def _group_command(self, message: Message, text: str) -> None:
-        command = text.split(maxsplit=1)[0]
-        name, _, mention = command.partition("@")
-        if mention and mention.casefold() != self._bot_username.casefold():
+        if text.split(maxsplit=1)[0].partition("@")[0] not in command_input.CHINESE_COMMANDS:
             return
+        command = command_input.parse_bot_command(text)
+        if not command.addressed_to(self._bot_username):
+            return
+        name = command.name
         if name == "/getid":
             await message.answer(
                 f"本群 ID：{message.chat.id}（以 -100 开头为超级群/频道 ID，可直接复制使用）"
@@ -184,7 +186,7 @@ class LotteryUpdateHandler:
         ):
             if not isinstance(query.message, Message):
                 await member_callbacks.safe_answer(
-                    query, "原页面已失效, 请发送 /menu 重新打开。", alert=True
+                    query, "原页面已失效, 请发送 /首页 重新打开。", alert=True
                 )
                 return
             try:
@@ -238,7 +240,7 @@ class LotteryUpdateHandler:
             await self._dispatch_secure_callback(query, data)
             return
         await member_callbacks.safe_answer(
-            query, "此按钮已失效, 请发送 /menu 重新打开当前页面。", alert=True
+            query, "此按钮已失效, 请发送 /首页 重新打开当前页面。", alert=True
         )
 
     async def _dispatch_member_callback(self, query: CallbackQuery, data: str) -> bool:

@@ -246,7 +246,8 @@ def test_missing_chat_title_never_falls_back_to_raw_chat_id() -> None:
     assert _public_chat_title(" 活动群 ") == "活动群"
 
 
-async def test_new_command_enters_creation_directly() -> None:
+@pytest.mark.parametrize("text", ["/new", "/创建抽奖"])
+async def test_new_command_enters_creation_directly(text) -> None:
     admin_flow = RecordingAdminFlow()
     handler = LotteryUpdateHandler(
         navigation=PassthroughNavigation(),
@@ -263,7 +264,7 @@ async def test_new_command_enters_creation_directly() -> None:
         stats=FakeStats(),
     )
     message = type(
-        "PrivateMessage", (), {"text": "/new", "from_user": SimpleNamespace(id=201, is_bot=False)}
+        "PrivateMessage", (), {"text": text, "from_user": SimpleNamespace(id=201, is_bot=False)}
     )()
 
     await handler._private_message(message)
@@ -271,7 +272,8 @@ async def test_new_command_enters_creation_directly() -> None:
     assert admin_flow.started is True
 
 
-async def test_menu_command_redirects_to_unified_index() -> None:
+@pytest.mark.parametrize("text", ["/menu", "/首页"])
+async def test_menu_command_redirects_to_unified_index(text) -> None:
     personal = PassthroughPersonalFlow()
     handler = LotteryUpdateHandler(
         navigation=PassthroughNavigation(),
@@ -289,7 +291,7 @@ async def test_menu_command_redirects_to_unified_index() -> None:
     )
 
     await handler._private_message(
-        type("PrivateMessage", (), {"text": "/menu", "from_user": SimpleNamespace(id=201)})()
+        type("PrivateMessage", (), {"text": text, "from_user": SimpleNamespace(id=201)})()
     )
 
     assert personal.index_shown == 1
@@ -466,10 +468,11 @@ async def test_group_message_records_stats(fake_bot, make_handler):
     assert handler._activity.recorded == stats.recorded
 
 
-async def test_group_command_skips_stats_and_answers_getid(fake_bot, make_handler):
+@pytest.mark.parametrize("text", ["/本群编号", "/本群编号@TGCCJBOT"])
+async def test_group_command_skips_stats_and_answers_getid(fake_bot, make_handler, text):
     stats = FakeStats()
     handler = make_handler(stats=stats, bot_username="tgccjbot")
-    message = _group_message(text="/getid", chat_id=-100123, user_id=42)
+    message = _group_message(text=text, chat_id=-100123, user_id=42)
     await handler._message(message)
     assert stats.recorded == []
     message.answer.assert_awaited_once()
@@ -479,7 +482,7 @@ async def test_group_command_skips_stats_and_answers_getid(fake_bot, make_handle
 
 async def test_group_private_command_guides_to_dm(fake_bot, make_handler):
     handler = make_handler(stats=FakeStats(), bot_username="tgccjbot")
-    message = _group_message(text="/region@tgccjbot", chat_id=-100123, user_id=42)
+    message = _group_message(text="/设置地区@tgccjbot", chat_id=-100123, user_id=42)
     await handler._message(message)
     text = message.answer.await_args.args[0]
     assert "私聊" in text
@@ -491,7 +494,7 @@ async def test_group_private_command_guides_to_dm(fake_bot, make_handler):
 async def test_group_command_mentioning_other_bot_is_ignored(fake_bot, make_handler):
     stats = FakeStats()
     handler = make_handler(stats=stats, bot_username="tgccjbot")
-    message = _group_message(text="/region@otherbot", chat_id=-100123, user_id=42)
+    message = _group_message(text="/设置地区@otherbot", chat_id=-100123, user_id=42)
     await handler._message(message)
     message.answer.assert_not_awaited()
     assert stats.recorded == []

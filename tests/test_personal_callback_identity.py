@@ -60,11 +60,12 @@ async def test_personal_callback_does_not_open_another_users_menu() -> None:
     flow.show_index.assert_not_awaited()
 
 
-async def test_help_is_accessible_by_command_and_includes_configured_channels() -> None:
+@pytest.mark.parametrize("text", ["/help", "/使用指南"])
+async def test_help_is_accessible_by_command_and_includes_configured_channels(text) -> None:
     message = SimpleNamespace(answer=AsyncMock())
     links = HelpLinks(guide="https://t.me/test_guide", navigation="https://t.me/test_nav")
     flow = PersonalFlow(profiles=None, queries=None, bot_username="lottery_bot", help_links=links)
-    assert await flow.handle_command(message, "/help")
+    assert await flow.handle_command(message, text)
     assert "选择你正在办理的事项" in message.answer.call_args.args[0]
     markup = message.answer.call_args.kwargs["reply_markup"]
     urls = [button.url for row in markup.inline_keyboard for button in row if button.url]
@@ -72,3 +73,21 @@ async def test_help_is_accessible_by_command_and_includes_configured_channels() 
     assert all(
         button.url is None for row in guide_keyboard(HelpLinks()).inline_keyboard for button in row
     )
+
+
+@pytest.mark.parametrize(
+    "text,method",
+    [
+        ("/我发起的抽奖", "show_created"),
+        ("/我参加的抽奖", "show_joined"),
+        ("/设置地区", "show_regions"),
+        ("/我的编号@LOTTERY_BOT", "show_user_id"),
+    ],
+)
+async def test_chinese_personal_commands_open_existing_pages(text, method):
+    flow = PersonalFlow(profiles=None, queries=None, bot_username="lottery_bot")
+    target = AsyncMock()
+    setattr(flow, method, target)
+    message = SimpleNamespace(from_user=SimpleNamespace(id=USER_ID))
+    assert await flow.handle_command(message, text)
+    target.assert_awaited_once_with(message)

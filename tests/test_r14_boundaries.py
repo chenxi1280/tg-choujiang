@@ -19,26 +19,28 @@ from tg_lottery.telegram.member_base_activity import base_registration_reply
 from tg_lottery.telegram.update_handler import LotteryUpdateHandler
 
 
-async def test_personal_progress_reads_real_intent_without_registering(session_factory):
+@pytest.mark.parametrize("chat_id", [-100123, 901])
+async def test_personal_progress_reads_real_intent_without_registering(session_factory, chat_id):
     async with session_factory() as session, session.begin():
         _, campaign, participant = await seed_campaign(session)
         participant.registration_intent_at = utcnow()
         campaign.rules = dict(campaign.rules) | {"bonus_types": []}
         campaign_ref = campaign.public_ref
     flow = LotteryQueries(QueryService(session_factory), bot_username="testbot")
-    await flow.message(message("/progress", user_id=201), "/progress")
+    await flow.message(message("/抽奖进度", user_id=201, chat_id=chat_id), "/抽奖进度")
     async with session_factory() as session:
         row = await session.scalar(select(TelegramOutbox))
         text = row.payload["text"]
         assert all(word in text for word in ("门槛进度", "加成进度", "邀请进度", "报名待完成"))
         assert campaign_ref in text
-        assert row.payload["delete_after_seconds"] == 20
+        assert row.payload.get("delete_after_seconds") == (20 if chat_id < 0 else None)
+        assert ("20秒后删除" in text) == (chat_id < 0)
         participant = await session.scalar(select(Participant))
         assert participant.counting_started_at is None
         assert participant.ticket_total_cache == 0
 
 
-@pytest.mark.parametrize("text,counts", [("抽奖进度", True), ("/progress", False)])
+@pytest.mark.parametrize("text,counts", [("抽奖进度", True), ("/抽奖进度", False)])
 async def test_query_does_not_change_original_plain_text_vs_slash_counting(text, counts):
     handler = object.__new__(LotteryUpdateHandler)
     handler._lottery_queries = SimpleNamespace(message=AsyncMock(return_value=True))
@@ -188,12 +190,14 @@ async def test_summary_preserves_existing_daily_cycles_and_does_not_write_ledger
         assert await session.scalar(select(func.count()).select_from(TicketLedger)) == before
 
 
-async def test_expired_progress_callback_does_not_refresh_or_extend_lifetime(session_factory):
+@pytest.mark.parametrize("chat_id", [-100123, 901])
+async def test_progress_callback_lifetime_matches_chat_retention(session_factory, chat_id):
     from tg_lottery.domain.enums import DeliveryCertainty
     from tg_lottery.infrastructure.db import DeliveryAttempt
 
     flow = LotteryQueries(QueryService(session_factory), bot_username="testbot")
-    await flow.message(message("/progress"), "/progress")
+    await flow.message(message("/抽奖进度", chat_id=chat_id), "/抽奖进度")
+    flow.view = AsyncMock(return_value=("📊 最新进度", []))
     async with session_factory() as session, session.begin():
         row = await session.scalar(select(TelegramOutbox))
         row.state, row.remote_message_id = OutboxState.CONFIRMED, 55
@@ -208,13 +212,19 @@ async def test_expired_progress_callback_does_not_refresh_or_extend_lifetime(ses
             )
         )
         key = row.id.hex
-    panel = SimpleNamespace(chat=SimpleNamespace(id=-100123), message_id=55, edit_text=AsyncMock())
+    panel = SimpleNamespace(chat=SimpleNamespace(id=chat_id), message_id=55, edit_text=AsyncMock())
     query = SimpleNamespace(
         data=f"lq:{key}:0:0", message=panel, from_user=SimpleNamespace(id=901), answer=AsyncMock()
     )
     assert await flow.callback(query)
-    assert "过期" in query.answer.await_args.args[0]
-    panel.edit_text.assert_not_called()
+    if chat_id < 0:
+        assert "过期" in query.answer.await_args.args[0]
+        panel.edit_text.assert_not_called()
+        flow.view.assert_not_awaited()
+    else:
+        panel.edit_text.assert_awaited_once()
+        flow.view.assert_awaited_once()
+        query.answer.assert_not_awaited()
     async with session_factory() as session:
         assert len(list(await session.scalars(select(TelegramOutbox)))) == 1
 

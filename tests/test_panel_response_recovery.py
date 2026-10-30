@@ -53,7 +53,7 @@ async def test_unavailable_panel_provides_recovery_and_next_start_is_processed(
         states = (await session.scalars(select(TelegramUpdate.state))).all()
     assert states == [UpdateState.PROCESSED] * 2
     recovery = next(method for method in bot.methods if isinstance(method, SendMessage))
-    assert "/menu" in recovery.text and "已保存的数据保留" in recovery.text
+    assert "/首页" in recovery.text and "已保存的数据保留" in recovery.text
     assert recovery.text.startswith("页面显示未完成:")
     handler._personal_flow.show_index.assert_awaited_once()
 
@@ -111,9 +111,9 @@ async def test_unknown_and_inaccessible_buttons_have_visible_feedback():
         query = _RecordingCallbackQuery("unknown:old", message)
         await handler._callback(query)
         assert (
-            ("此按钮已失效, 请发送 /menu 重新打开当前页面。", True) in query.answers
+            ("此按钮已失效, 请发送 /首页 重新打开当前页面。", True) in query.answers
             if message
-            else ("原页面已失效, 请发送 /menu 重新打开。", True) in query.answers
+            else ("原页面已失效, 请发送 /首页 重新打开。", True) in query.answers
         )
 
 

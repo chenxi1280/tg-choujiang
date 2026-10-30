@@ -430,7 +430,7 @@ class ParticipantService:
         profile = await session.get(UserProfile, request.user_id)
         if profile is None or profile.region not in rules.allowed_regions:
             allowed = "、".join(rules.allowed_regions)
-            raise UserFacingError(f"本抽奖仅限地区: {allowed}, 请先使用 /region 设置")
+            raise UserFacingError(f"本抽奖仅限地区: {allowed}, 请先使用 /设置地区 设置")
 
     async def _ensure_registration_ticket(
         self,

@@ -89,7 +89,7 @@ class CreatorRenderer:
             return text, rows
         session = await self._sessions.get(target.user_id)
         if session is None or not session.state.startswith("draft:"):
-            raise UserFacingError("创建草稿已过期，请发送 /new 重新打开创建入口")
+            raise UserFacingError("创建草稿已过期，请发送 /创建抽奖 重新打开创建入口")
         serialized = [
             [item if isinstance(item, tuple) else item.model_dump(mode="json") for item in row]
             for row in rows
@@ -108,7 +108,7 @@ class CreatorRenderer:
     async def page(self, query, grant):
         session = await self._sessions.get(query.from_user.id)
         if session is None or not session.state.startswith("draft:"):
-            raise UserFacingError("创建草稿已过期，请发送 /new 重新打开创建入口")
+            raise UserFacingError("创建草稿已过期，请发送 /创建抽奖 重新打开创建入口")
         pages = session.data.get("content_pages")
         content_rows = session.data.get("content_rows")
         if not pages or not isinstance(content_rows, list):

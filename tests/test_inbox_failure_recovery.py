@@ -90,7 +90,7 @@ async def test_topic_reply_rejection_releases_other_chat(session_factory, reason
         chat={"id": -1001, "type": "supergroup", "is_forum": True},
         message_thread_id=17,
         is_topic_message=True,
-        text="/getid",
+        text="/本群编号",
     )
     async with session_factory() as session, session.begin():
         session.add_all([first, _stored_update(101)])

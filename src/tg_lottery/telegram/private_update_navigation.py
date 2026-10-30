@@ -100,6 +100,6 @@ async def lottery_message(handler, message, *, text, command):
         text = "抽奖进度"
     from tg_lottery.telegram.lottery_queries import query_kind
 
-    if query_kind(text, handler._bot_username) is None:
+    if query_kind(text, handler._bot_username, private=True) is None:
         return False
     return await handler._lottery_queries.message(message, text)

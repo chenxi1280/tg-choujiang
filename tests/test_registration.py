@@ -215,7 +215,7 @@ async def test_registration_enforces_username_region_and_all_required_chats(
     )
     with pytest.raises(UserFacingError, match="Telegram 用户名"):
         await service.begin_registration(no_username)
-    with pytest.raises(UserFacingError, match="请先使用 /region"):
+    with pytest.raises(UserFacingError, match="请先使用 /设置地区"):
         await service.begin_registration(_request(campaign_id, now))
     async with session_factory() as session, session.begin():
         session.add(UserProfile(user_id=202, region="河南", last_draft={}))

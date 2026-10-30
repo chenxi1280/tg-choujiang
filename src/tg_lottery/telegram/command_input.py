@@ -1,5 +1,16 @@
 from dataclasses import dataclass
 
+CHINESE_COMMANDS = {
+    "/首页": "/menu",
+    "/创建抽奖": "/new",
+    "/我发起的抽奖": "/index",
+    "/我参加的抽奖": "/join",
+    "/使用指南": "/help",
+    "/设置地区": "/region",
+    "/我的编号": "/myid",
+    "/本群编号": "/getid",
+}
+
 PRIVATE_BOT_COMMANDS = frozenset(
     {"/start", "/menu", "/new", "/index", "/join", "/help", "/region", "/myid"}
 )
@@ -33,4 +44,4 @@ def parse_bot_command(text: str) -> BotCommandInput | None:
         return None
     name, _, recipient = parts[0].partition("@")
     argument = parts[1] if len(parts) > 1 else ""
-    return BotCommandInput(name, argument, recipient)
+    return BotCommandInput(CHINESE_COMMANDS.get(name, name), argument, recipient)

@@ -250,7 +250,7 @@ class CreatorPublisher:
     async def _required_draft(self, user_id: int) -> dict[str, Any]:
         session = await self._sessions.get(user_id)
         if session is None or not session.state.startswith("draft:"):
-            raise UserFacingError("创建草稿已过期，请发送 /new 重新创建")
+            raise UserFacingError("创建草稿已过期，请发送 /创建抽奖 重新创建")
         return attach_platform_policy(
             current_bonus_policy(dict(session.data)),
             getattr(self._campaigns, "platform_policy", None),

@@ -140,7 +140,7 @@ async def test_unreachable_private_result_reports_failure_and_never_posts_to_gro
     assert len(requests) == 2
     assert isinstance(requests[0], SendMessage) and requests[0].chat_id == USER_ID
     assert isinstance(requests[1], AnswerCallbackQuery) and requests[1].show_alert
-    assert "私聊发送失败" in requests[1].text and "/join" in requests[1].text
+    assert "私聊发送失败" in requests[1].text and "/我参加的抽奖" in requests[1].text
     assert "private delivery forbidden" in caplog.text
 
 

@@ -22,19 +22,19 @@ from tg_lottery.telegram.lottery_query_views import (
 from tg_lottery.telegram.panel_edit import edit_panel
 from tg_lottery.telegram.ui_style import row_keyboard
 
-PROGRESS_ALIASES = {"抽奖进度", "发言进度", "门槛进度", "progress", "抽奖加成"}
+PROGRESS_ALIASES = {"抽奖进度", "发言进度", "门槛进度", "抽奖加成"}
 
 
-def query_kind(text, username):
+def query_kind(text, username, *, private=False):
     raw = text.strip()
     if raw.startswith("/"):
         word, separator, target = raw[1:].partition("@")
         if separator and target.casefold() != username.casefold():
             return None
         raw = word
-    if raw in {"抽奖", "lottery"}:
+    if raw == "抽奖" or (private and raw == "lottery"):
         return "lottery"
-    return "progress" if raw in PROGRESS_ALIASES else None
+    return "progress" if raw in PROGRESS_ALIASES or (private and raw == "progress") else None
 
 
 class LotteryQueries:
@@ -44,7 +44,7 @@ class LotteryQueries:
         self.sessions = getattr(queries, "_session_factory", None)
 
     async def message(self, message, text):
-        kind = query_kind(text, self.username)
+        kind = query_kind(text, self.username, private=message.chat.type == "private")
         if kind is None:
             return False
         owner = message.from_user.id if message.from_user and not message.sender_chat else None
@@ -76,7 +76,7 @@ class LotteryQueries:
                 "text": text,
                 "reply_markup": row_keyboard(rows).model_dump(mode="json"),
             }
-            if context["kind"] == "progress":
+            if context["kind"] == "progress" and context["scope"] is not None:
                 payload["delete_after_seconds"] = 20
             row = add_outbox(
                 session,
@@ -92,21 +92,23 @@ class LotteryQueries:
     async def view(self, context, *, key, page=0, section=0):
         if context["kind"] == "progress" and context["owner"] is None:
             return (
-                "📊 抽奖进度\n请切换个人身份或私聊机器人查询。\n🕒 本回复20秒后删除。",
+                "📊 抽奖进度\n请切换个人身份或私聊机器人查询。" + _deletion_hint(context),
                 self._home_rows(),
             )
         try:
             return await self._view(context, key=key, page=page, section=section)
         except (ValueError, LookupError, SQLAlchemyError):
             logging.getLogger(__name__).exception("lottery query projection failed")
-            suffix = "\n🕒 本回复20秒后删除。" if context["kind"] == "progress" else ""
-            return "⚠️ 暂时无法获取抽奖进度或活动，请稍后重试。" + suffix, self._home_rows()
+            return (
+                "⚠️ 暂时无法获取抽奖进度或活动，请稍后重试。" + _deletion_hint(context),
+                self._home_rows(),
+            )
 
     async def _view(self, context, *, key, page, section):
         personal = context["kind"] == "progress"
         if not personal and context["scope"] is None:
             return (
-                "🎁 请在群内发送 /lottery 查看本群抽奖；本人进度可从下方查询。",
+                "🎁 请在群内发送 /抽奖 查看本群抽奖；本人进度可从下方查询。",
                 self._home_rows(),
             )
         campaigns = await query_campaigns(
@@ -118,7 +120,7 @@ class LotteryQueries:
         if not campaigns:
             scope = "本群关联的" if context["scope"] else "进行中的"
             return (
-                f"📊 抽奖进度\n📭 暂无{scope}本人抽奖进度。\n🕒 本回复20秒后删除。",
+                f"📊 抽奖进度\n📭 暂无{scope}本人抽奖进度。" + _deletion_hint(context),
                 self._home_rows(),
             )
         page = min(max(page, 0), len(campaigns) - 1)
@@ -128,7 +130,7 @@ class LotteryQueries:
         text = (
             f"📊 抽奖进度 · 第{page + 1}/{len(campaigns)}场 · 第{section + 1}/{len(parts)}段\n"
             + html.escape(parts[section])
-            + "\n🕒 本回复20秒后删除，完整进度可在机器人查看。"
+            + _deletion_hint(context)
         )
         rows = page_buttons(
             key, page=page, pages=len(campaigns), section=section, sections=len(parts)
@@ -144,8 +146,7 @@ class LotteryQueries:
 
     @staticmethod
     def _limited_view(context):
-        suffix = "\n🕒 本回复20秒后删除。" if context["kind"] == "progress" else ""
-        return "📊 抽奖进度\n⏳ 查询较频繁，请稍候几秒再试。" + suffix
+        return "📊 抽奖进度\n⏳ 查询较频繁，请稍候几秒再试。" + _deletion_hint(context)
 
     def _home_rows(self):
         return [
@@ -201,6 +202,14 @@ class LotteryQueries:
         )
 
 
+def _deletion_hint(context):
+    return (
+        "\n🕒 本回复20秒后删除。"
+        if context["kind"] == "progress" and context["scope"] is not None
+        else ""
+    )
+
+
 async def _rate_limited(session, context):
     key = f"lottery_rate:{context['chat_id']}:{context['owner']}"
     await session.execute(select(func.pg_advisory_xact_lock(func.hashtext(key))))
@@ -223,7 +232,8 @@ async def _expired(session, source):
     from tg_lottery.domain.enums import DeliveryCertainty
     from tg_lottery.infrastructure.db import DeliveryAttempt
 
-    if source.payload["kind"] != "progress":
+    seconds = source.payload.get("delete_after_seconds")
+    if source.payload["kind"] != "progress" or seconds is None:
         return False
     confirmed = await session.scalar(
         select(DeliveryAttempt.finished_at)
@@ -234,4 +244,4 @@ async def _expired(session, source):
         .order_by(DeliveryAttempt.attempt_number.desc())
         .limit(1)
     )
-    return confirmed is None or utcnow() >= confirmed + timedelta(seconds=20)
+    return confirmed is None or utcnow() >= confirmed + timedelta(seconds=seconds)

@@ -70,7 +70,9 @@ async def test_other_command_never_triggers_start_registration() -> None:
     handler._admin_flow.handle_text.assert_awaited_once_with(message)
 
 
-@pytest.mark.parametrize("name", ["start", "new", "menu", "help", "region"])
+@pytest.mark.parametrize(
+    "name", ["start", "new", "menu", "help", "region", "创建抽奖", "首页", "使用指南"]
+)
 async def test_command_for_other_bot_never_enters_current_draft(name: str) -> None:
     handler = _handler()
     message = SimpleNamespace(
@@ -93,6 +95,10 @@ async def test_command_for_other_bot_never_enters_current_draft(name: str) -> No
         ("/start@LOTTERY_BOT join_campaign", ("/start", "join_campaign", "LOTTERY_BOT")),
         ("/start\njoin_campaign", ("/start", "join_campaign", "")),
         ("/start_extra join_campaign", ("/start_extra", "join_campaign", "")),
+        ("/首页@LOTTERY_BOT", ("/menu", "", "LOTTERY_BOT")),
+        ("/创建抽奖 草稿", ("/new", "草稿", "")),
+        ("/本群编号", ("/getid", "", "")),
+        ("/首页abc", ("/首页abc", "", "")),
     ],
 )
 def test_command_parser_preserves_exact_name_and_recipient(
@@ -103,7 +109,7 @@ def test_command_parser_preserves_exact_name_and_recipient(
     assert actual == expected
 
 
-@pytest.mark.parametrize("name", ["new", "menu"])
+@pytest.mark.parametrize("name", ["new", "menu", "创建抽奖", "首页"])
 async def test_current_bot_mentioned_commands_keep_navigation(name: str) -> None:
     handler = _handler()
     handler._admin_flow.start_create_message = AsyncMock()
@@ -111,7 +117,7 @@ async def test_current_bot_mentioned_commands_keep_navigation(name: str) -> None
 
     await handler._private_message(message)
 
-    if name == "new":
+    if name in {"new", "创建抽奖"}:
         handler._admin_flow.start_create_message.assert_awaited_once_with(message)
     else:
         handler._personal_flow.show_index.assert_awaited_once_with(message)
@@ -147,7 +153,7 @@ async def test_group_help_directs_user_to_private_bot() -> None:
     handler = _handler()
     message = SimpleNamespace(chat=SimpleNamespace(id=-100123), answer=AsyncMock())
 
-    await handler._group_command(message, "/help@LOTTERY_BOT")
+    await handler._group_command(message, "/使用指南@LOTTERY_BOT")
 
     message.answer.assert_awaited_once()
     assert message.answer.await_args.args[0] == "该命令请在私聊中使用。"

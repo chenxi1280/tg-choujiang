@@ -34,7 +34,7 @@ def message(text, *, chat_id=-100123, user_id=901, number=55):
         "/抽奖进度",
         "/发言进度",
         "/门槛进度",
-        "/progress@TestBot",
+        "/抽奖进度@TestBot",
     ],
 )
 def test_progress_aliases(text):
@@ -46,6 +46,32 @@ def test_progress_aliases(text):
 )
 def test_unrelated_input_is_not_a_query(text):
     assert query_kind(text, "testbot") is None
+
+
+@pytest.mark.parametrize("text", ["/progress@TestBot", "progress", "/lottery", "lottery"])
+async def test_english_queries_are_private_only(text):
+    flow = LotteryQueries(SimpleNamespace(), bot_username="testbot")
+    flow._queue = AsyncMock()
+    assert not await flow.message(message(text), text)
+    flow._queue.assert_not_awaited()
+    assert await flow.message(message(text, chat_id=901), text)
+    assert flow._queue.await_args.args[0]["scope"] is None
+    assert query_kind(text, "testbot", private=True) in {"progress", "lottery"}
+
+
+@pytest.mark.parametrize("chat_id", [-100123, 901])
+@pytest.mark.parametrize("text", ["抽奖进度", "/抽奖进度@TestBot", "/发言进度", "/门槛进度"])
+async def test_chinese_progress_uses_chat_retention_policy(session_factory, chat_id, text):
+    flow = LotteryQueries(QueryService(session_factory), bot_username="testbot")
+    assert await flow.message(message(text, chat_id=chat_id), text)
+    async with session_factory() as session:
+        row = await session.scalar(select(TelegramOutbox))
+        assert row.payload["kind"] == "progress"
+        assert row.payload["owner"] == 901
+        assert row.payload["request_id"] == 55
+        assert row.payload.get("delete_after_seconds") == (20 if chat_id < 0 else None)
+        assert ("20秒后删除" in row.payload["text"]) == (chat_id < 0)
+        assert await session.scalar(select(func.count()).select_from(Participant)) == 0
 
 
 async def test_public_discovery_is_blue_link_without_registration(session_factory):
@@ -64,20 +90,24 @@ async def test_public_discovery_is_blue_link_without_registration(session_factor
         assert await session.scalar(select(func.count()).select_from(TicketLedger)) == 0
 
 
-async def test_empty_rate_limited_and_error_progress_all_delete_after_twenty(
-    session_factory, monkeypatch
+@pytest.mark.parametrize("chat_id", [-100123, 901])
+async def test_empty_rate_limited_and_error_progress_use_chat_retention(
+    session_factory, monkeypatch, chat_id
 ):
     flow = LotteryQueries(QueryService(session_factory), bot_username="testbot")
-    await flow.message(message("抽奖进度", number=1), "抽奖进度")
-    await flow.message(message("发言进度", number=2), "发言进度")
+    await flow.message(message("抽奖进度", number=1, chat_id=chat_id), "抽奖进度")
+    await flow.message(message("发言进度", number=2, chat_id=chat_id), "发言进度")
     monkeypatch.setattr(flow, "_view", AsyncMock(side_effect=ValueError("projection unavailable")))
-    await flow.message(message("门槛进度", number=3, user_id=902), "门槛进度")
+    await flow.message(message("门槛进度", number=3, user_id=902, chat_id=chat_id), "门槛进度")
     async with session_factory() as session:
         rows = list(
             await session.scalars(select(TelegramOutbox).order_by(TelegramOutbox.created_at))
         )
         assert len(rows) == 3
-        assert all(row.payload["delete_after_seconds"] == 20 for row in rows)
+        assert all(
+            row.payload.get("delete_after_seconds") == (20 if chat_id < 0 else None) for row in rows
+        )
+        assert all(("20秒后删除" in row.payload["text"]) == (chat_id < 0) for row in rows)
         assert "暂无" in rows[0].payload["text"]
         assert "频繁" in rows[1].payload["text"]
         assert "暂时无法" in rows[2].payload["text"]

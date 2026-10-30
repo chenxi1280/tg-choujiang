@@ -384,14 +384,14 @@ class CreatorSettings:
             query,
             data=data,
             text=(
-                "📝 请回复抽奖说明（最多500字），发送 /clear 可清空；"
+                "📝 请回复抽奖说明（最多500字），发送 /清空说明 可清空；"
                 "说明仅为文案，实际条件以配置为准："
             ),
             rows=_back_rows(),
         )
 
     async def _receive_description(self, message: Message, data: dict[str, Any]) -> None:
-        if (message.text or "").strip() == "/clear":
+        if (message.text or "").strip() in {"/清空说明", "/clear"}:
             await self._dashboard_from_message(message, data | {"description": ""})
             return
         await self._receive_text(message, data, key="description", label="抽奖说明", limit=500)
