@@ -4,9 +4,9 @@
 
 运营平台联动开发见[只读状态接口](docs/development/operations-integration-read-api-20261027.md)：独立监听、活动创建者白名单及一致只读快照，默认不启用，不改变报名、计数或开奖规则。
 
-产品与数据合同由 [V1.6 PRD](doc/TG群抽奖机器人PRD_V1.6_极简交互重构版.docx)、[V2.3 多活动与邀请合同](docs/development/v2.3-user-invitation-multi-campaign-prd.md) 和 [V2.5 体验修复](docs/development/v2.5-user-experience-repair-prd.md) 共同定义；创建器调整见 [V2.8 准入与转发参与](docs/development/v2.8-creator-admission-sharing.md)，当前入口、时间校验和历史结果查询见 [V2.9 体验修复](docs/development/v2.9-experience-repair.md)。参与入口与完成提醒见 [2026-10-09 修订](docs/development/v3.2-navigation-and-interaction-prd-20261006.md#2026-10-09-参与入口与提醒修订)。封面接收与前置条件进度见 [2026-10-14 修订](docs/development/v3.3-unified-participation-and-reputation-prd-20261007.md#2026-10-14-封面接收与前置条件进度修订)。后续版本覆盖其明确修改的条款。核心设计包括 `/new` 直达草稿预览、最终卡片预览、数据库先行的 Update Inbox、Telegram Outbox、不可变开奖快照、幂等业务键、Worker 租约和邀请链接密文存储。
+产品与数据合同由 [V1.6 PRD](doc/TG群抽奖机器人PRD_V1.6_极简交互重构版.docx)、[V2.3 多活动与邀请合同](docs/development/v2.3-user-invitation-multi-campaign-prd.md) 和 [V2.5 体验修复](docs/development/v2.5-user-experience-repair-prd.md) 共同定义；创建器调整见 [V2.8 准入与转发参与](docs/development/v2.8-creator-admission-sharing.md)，当前入口、时间校验和历史结果查询见 [V2.9 体验修复](docs/development/v2.9-experience-repair.md)。参与入口与完成提醒见 [2026-10-09 修订](docs/development/v3.2-navigation-and-interaction-prd-20261006.md#2026-10-09-参与入口与提醒修订)。封面接收与前置条件进度见 [2026-10-14 修订](docs/development/v3.3-unified-participation-and-reputation-prd-20261007.md#2026-10-14-封面接收与前置条件进度修订)。后续版本覆盖其明确修改的条款。核心设计包括 `/创建抽奖` 直达草稿预览、最终卡片预览、数据库先行的 Update Inbox、Telegram Outbox、不可变开奖快照、幂等业务键、Worker 租约和邀请链接密文存储。
 
-本次本地实现按[抽奖体验优化 PRD R14](docs/development/lottery-experience-optimization-prd-20261029.md)覆盖其明确修改的展示、报名入口、提示保留及查询/开始通知条款，保留原门槛、发言与邀请计算规则。逐项核对和测试证据见[R14实施与验证记录](docs/development/lottery-r14-implementation-20261030.md)；尚未发布，自动测试与真实Telegram验收分别记录。
+当前线上代码 `85feb77` 按[抽奖体验优化 PRD R14](docs/development/lottery-experience-optimization-prd-20261029.md)及2026-10-30中文入口修订执行，保留原门槛、发言与邀请计算规则。群聊只响应中文业务指令；Bot私聊使用中文按钮与中文指令，原生菜单仅保留 `/start`。群内进度回复20秒删除，Bot私聊进度回复保留。master与release两轮各1744项通过，发布及受控客户端证据见[R14实施与验证记录](docs/development/lottery-r14-implementation-20261030.md)。
 
 新活动规则见 [V3.0 抽奖门槛、独立加成与参与条件反馈 PRD](docs/development/v3.0-participation-rules-and-feedback-prd.md)：行为门槛在邀请好友与发言数中二选一，各配置群分别达标；每日发言及邀请加成独立设置，未达门槛时暂存。新活动的邀请加成不限累计上限，历史活动继续使用冻结规则。实施与各层验收状态见 [V3.0 实施记录](docs/development/v3.0-implementation-progress-20261004.md)。
 
@@ -22,9 +22,9 @@
 
 ## 首页与创建草稿
 
-私聊 `/start`、`/menu` 或返回首页显示简短导航，提供创建、本人参与记录、邀请记录和使用指南入口；详细说明通过 `/help` 或“使用指南”查看。活动报名、邀请等 `/start` 参数仍进入对应活动流程。
+私聊 `/start`、`/首页` 或返回首页显示简短导航，提供创建、本人参与记录、邀请记录和使用指南入口；详细说明通过 `/使用指南` 或“使用指南”查看。活动报名、邀请等 `/start` 参数仍进入对应活动流程。
 
-未发布草稿在最后一次更新后保留 24 小时，发送 `/new` 可继续有效草稿。草稿过期时明确说明保留期限；旧面板不能覆盖另一条消息中的当前草稿，提示继续使用当前面板。
+未发布草稿在最后一次更新后保留 24 小时，发送 `/创建抽奖` 可继续有效草稿。草稿过期时明确说明保留期限；旧面板不能覆盖另一条消息中的当前草稿，提示继续使用当前面板。
 
 ## 抽奖时间、分享与开奖提醒
 
@@ -104,7 +104,7 @@ docker compose --profile ops run --rm ops-bot
 
 ## 使用指南与官方频道
 
-私聊 `/help` 或首页“使用指南”打开内置说明。以下配置在首页与指南中增加自有频道入口：
+私聊 `/使用指南` 或首页“使用指南”打开内置说明。以下配置在首页与指南中增加自有频道入口：
 
 - `GUIDE_CHANNEL_URL`：使用说明频道或说明消息。
 - `NAVIGATION_CHANNEL_URL`：抽奖导航频道。
