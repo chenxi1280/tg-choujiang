@@ -18,7 +18,12 @@ from tg_lottery.telegram.delivery_failures import failed_before_single_request
 from tg_lottery.telegram.gateway import GatewayResult
 from tg_lottery.telegram.outbox import OutboxWorker
 
-NOTICE_OPERATIONS = ("send_progress_notice", "send_temporary_reminder", "delete_message")
+NOTICE_OPERATIONS = (
+    "send_progress_notice",
+    "send_temporary_reminder",
+    "send_lottery_query",
+    "delete_message",
+)
 RUNTIME_REF = "verified-artifact:aiogram=3.31.0:aiohttp=3.14.5"
 
 
@@ -121,8 +126,9 @@ async def _assert_failure_schedule(worker, sessions, spec):
             row.run_at = utcnow()
 
 
-async def test_rate_limit_does_not_consume_connection_retry_budget(session_factory):
-    row_id = await _seed_notice(session_factory, "send_progress_notice")
+@pytest.mark.parametrize("operation", ["send_progress_notice", "send_lottery_query"])
+async def test_rate_limit_does_not_consume_connection_retry_budget(session_factory, operation):
+    row_id = await _seed_notice(session_factory, operation)
     rate_limit = TelegramRetryAfter(SendMessage(chat_id=-1001234, text="test"), "flood", 41)
     gateway = Gateway(["connect", rate_limit, *(["connect"] * 5)])
     worker = _worker(session_factory, gateway)
@@ -132,8 +138,9 @@ async def test_rate_limit_does_not_consume_connection_retry_budget(session_facto
     assert not await worker.process_once()
 
 
-async def test_fifth_retry_can_confirm_delivery(session_factory):
-    row_id = await _seed_notice(session_factory, "send_progress_notice")
+@pytest.mark.parametrize("operation", ["send_progress_notice", "send_lottery_query"])
+async def test_fifth_retry_can_confirm_delivery(session_factory, operation):
+    row_id = await _seed_notice(session_factory, operation)
     gateway = Gateway(["connect"] * 5)
     worker = _worker(session_factory, gateway)
     for delay in (5, 15, 30, 60, 90):
@@ -153,8 +160,11 @@ async def test_fifth_retry_can_confirm_delivery(session_factory):
     assert render_health(await read_delivery_health(session_factory))[1] == 0
 
 
-async def test_ambiguous_failure_after_safe_retry_is_held_without_replay(session_factory):
-    row_id = await _seed_notice(session_factory, "send_temporary_reminder")
+@pytest.mark.parametrize("operation", ["send_temporary_reminder", "send_lottery_query"])
+async def test_ambiguous_failure_after_safe_retry_is_held_without_replay(
+    session_factory, operation
+):
+    row_id = await _seed_notice(session_factory, operation)
     gateway = Gateway(["connect", "timeout"])
     worker = _worker(session_factory, gateway)
     await _assert_failure_schedule(worker, session_factory, (row_id, 5))
@@ -174,8 +184,11 @@ async def test_ambiguous_failure_after_safe_retry_is_held_without_replay(session
 
 
 @pytest.mark.parametrize("kind", ["timeout", "response_reset", "text_only", "unverified_connect"])
-async def test_ambiguous_notice_failure_remains_unknown_and_is_not_retried(session_factory, kind):
-    row_id = await _seed_notice(session_factory, "send_temporary_reminder")
+@pytest.mark.parametrize("operation", ["send_temporary_reminder", "send_lottery_query"])
+async def test_ambiguous_notice_failure_remains_unknown_and_is_not_retried(
+    session_factory, kind, operation
+):
+    row_id = await _seed_notice(session_factory, operation)
     gateway = Gateway([kind])
     worker = _worker(session_factory, gateway)
     assert await worker.process_once()

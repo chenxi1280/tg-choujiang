@@ -11,6 +11,7 @@ SINGLE_INVITE_OPERATIONS = frozenset({"create_invite_link", "create_required_cha
 SINGLE_NOTICE_OPERATIONS = frozenset(
     {
         "send_progress_notice",
+        "send_lottery_query",
         "send_temporary_reminder",
         "send_channel_shortcut",
         "send_start_card",
