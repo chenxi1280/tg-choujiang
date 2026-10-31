@@ -16,6 +16,7 @@ from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import creator_group_bonus as group_bonus
 from tg_lottery.telegram.creator_base_activity import CreatorBaseActivity
 from tg_lottery.telegram.creator_behavior_admission import CreatorBehaviorAdmission
+from tg_lottery.telegram.creator_bonus_policy import current_bonus_policy
 from tg_lottery.telegram.creator_folder_link import CreatorFolderLink
 from tg_lottery.telegram.creator_group_picker import CreatorGroupPicker
 from tg_lottery.telegram.creator_group_selection import (
@@ -372,7 +373,7 @@ class CampaignCreator:
         session = await self._sessions.get(query.from_user.id)
         if session is None:
             raise UserFacingError("创建草稿已过期，请发送 /创建抽奖 重新创建")
-        data = dict(session.data)
+        data = current_bonus_policy(dict(session.data))
         if group_bonus.working_copy_dirty(data):
             rows = [
                 [("放弃修改", "draft_bonus_group_cancel")],
@@ -434,6 +435,7 @@ class CampaignCreator:
         await edit_panel(_message(query), home_text(data), reply_markup=home_keyboard(data))
 
     async def _render_dashboard(self, user_id: int, message: Message, data: dict[str, Any]) -> None:
+        data = current_bonus_policy(data)
         updated = attach_platform_policy(data, self._platform_policy) | {"guided": False}
         await self._sessions.set(user_id, "draft:idle", updated)
         await self._render_text(
@@ -452,6 +454,7 @@ class CampaignCreator:
         )
 
     async def _render_dashboard_from_text(self, message: Message, data: dict[str, Any]) -> None:
+        data = current_bonus_policy(data)
         updated = attach_platform_policy(data, self._platform_policy) | {"guided": False}
         await self._sessions.set(_user(message).id, "draft:idle", updated)
         await self._edit_from_text(
