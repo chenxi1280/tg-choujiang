@@ -69,7 +69,7 @@ async def test_legacy_valid_old_link_remains_available_for_joining_after_bonus_c
     text = message.answer.await_args.args[0]
     keyboard = message.answer.await_args.kwargs["reply_markup"]
     assert "本期已截止" in text
-    assert "不再计算本期或以后任何抽奖加成" in text
+    assert "不再计算本期或以后任何抽奖加成票" in text
     assert PERSONAL_LINK in text
     assert plain_label(keyboard.inline_keyboard[0][0].text) == "复制入群链接"
     assert keyboard.inline_keyboard[1][0].url == PERSONAL_LINK

@@ -79,8 +79,8 @@ def _ticket_summary(detail: ParticipantCampaignDetail) -> str:
     lines = [
         f"🎫 {label}: {detail.total}",
         f"🎟️ 基础次数: {detail.registration}",
-        f"🌱 发言抽奖加成: {detail.activity}",
-        f"🤝 邀请抽奖加成: {detail.invitation}",
+        f"🌱 抽奖加成票(发言): {detail.activity}",
+        f"🤝 邀请加成票: {detail.invitation}",
         detail.membership_progress,
         detail.base_progress,
     ]

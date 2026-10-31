@@ -4,7 +4,7 @@ from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import creator_behavior_editor as editor
 from tg_lottery.telegram import creator_behavior_views as views
 from tg_lottery.telegram.creator_bonus_permissions import verify_publication_bonus_permissions
-from tg_lottery.telegram.creator_bonus_policy import uses_unlimited_policy
+from tg_lottery.telegram.creator_bonus_policy import uses_current_bonus_policy
 from tg_lottery.telegram.creator_gate_quick_save import (
     QUICK_PREFIX,
     handles_quick,
@@ -129,7 +129,7 @@ class CreatorBehaviorAdmission:
 
     async def _retention(self, query: Any, data: dict, *, action: str) -> None:
         staged = data[editor.EDITOR_KEY]
-        if uses_unlimited_policy(data) and action not in {
+        if uses_current_bonus_policy(data) and action not in {
             "draft_gate:retention",
             "draft_gate:retention:24",
         }:
@@ -153,7 +153,7 @@ class CreatorBehaviorAdmission:
             [("留存24小时", "draft_gate:retention:24"), ("留存48小时", "draft_gate:retention:48")],
             [("返回邀请门槛", "draft_gate:list")],
         ]
-        if uses_unlimited_policy(data):
+        if uses_current_bonus_policy(data):
             rows = [[("返回邀请门槛", "draft_gate:list")]]
         await self._renderer.render(query.message, user_id=query.from_user.id, text=text, rows=rows)
 

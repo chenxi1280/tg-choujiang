@@ -230,7 +230,7 @@ async def load_base_progress(
             CampaignParticipationGroup,
             CampaignParticipationGroup.id == BaseActivityEvent.participation_group_id,
         )
-    if rules.message_task_calendar:
+    if rules.message_task_calendar or rules.daily_activity_bonus:
         statement = statement.where(
             BaseActivityEvent.event_at >= campaign.preheat_at,
             BaseActivityEvent.local_date <= today,
@@ -293,6 +293,16 @@ async def _daily_notice(
             session, campaign=campaign, participant=participant, event=event, rule=rule
         )
     if current.today_messages == rule.daily_messages:
+        if rule.count_mode == "period":
+            await queue_progress_notice(
+                session,
+                campaign=campaign,
+                participant=participant,
+                chat_id=event.chat_id,
+                key=f"period_gate:{participant.id}:{event.chat_id}",
+                text=f"本期累计抽奖门槛已完成: {current.today_messages}/{rule.daily_messages} 条。",
+            )
+            return
         days_label = "本期完成任务日" if campaign.rules.get("message_task_calendar") else "连续进度"
         text = (
             f"{event.local_date} 今日发言任务已完成: "

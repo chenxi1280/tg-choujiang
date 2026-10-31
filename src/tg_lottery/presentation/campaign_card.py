@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from tg_lottery.domain.condition_targets import frozen_condition_targets
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.presentation.daily_bonus import daily_bonus_dates
 from tg_lottery.presentation.rule_pages import escaped_text_blocks
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.public_projection import BEIJING_TIMEZONE
@@ -59,6 +60,8 @@ def group_gate_lines(key: str, rules: CampaignRules) -> tuple[str, ...]:
         return (f"└ 🚪 有效邀请满 <b>{gate.required_valid_invites}</b> 人",)
     gate = rules.message_gate_rules.get(key)
     if gate is not None:
+        if gate.count_mode == "period":
+            return (f"└ 🚪 本期累计有效发言满 <b>{gate.daily_messages}</b> 条",)
         period = "单日" if gate.consecutive_days == 1 else f"连续 {gate.consecutive_days} 天，每天"
         return (f"└ 🚪 {period}有效发言满 <b>{gate.daily_messages}</b> 条",)
     threshold = rules.message_thresholds.get(key)
@@ -128,11 +131,16 @@ def _bonus_lines(payload: Mapping, *, rules: CampaignRules, unlimited: bool) -> 
         ("不设上限" if unlimited else "按本场规则") if rules.activity_bonus_enabled else "未开启"
     )
     invite = ("不设上限" if unlimited else "按本场规则") if rules.invite_bonus_enabled else "未开启"
+    if rules.daily_activity_bonus and rules.activity_bonus_enabled:
+        activity = "首日不发，第二天起整场每天最多1张；" + (
+            "门槛发言双算" if rules.activity_bonus_double_count else "门槛完成后另算发言"
+        )
     lines = [
-        "📈 <b>抽奖加成：</b>",
-        f"🌱 <b>发言抽奖加成：</b>{activity}　{rule_link}",
-        f"🤝 <b>邀请抽奖加成：</b>{invite}　{rule_link}",
+        "📈 <b>抽奖加成票：</b>",
+        f"🌱 <b>抽奖加成票(发言)：</b>{activity}　{rule_link}",
+        f"🤝 <b>邀请加成票：</b>{invite}　{rule_link}",
     ]
+    lines.extend(_daily_bonus_dates(payload, rules=rules))
     if rules.activity_bonus_enabled:
         lines.append("└ 群内输入：<b>人品</b> · <b>人品排行</b> · <b>人品规则</b>")
     return "\n".join(lines)
@@ -197,3 +205,16 @@ def participation_blocks(payload):
         "public_participation"
     )
     return (html.escape(value),) if value else ()
+
+
+def _daily_bonus_dates(payload, *, rules):
+    if not rules.daily_activity_bonus or not rules.activity_bonus_enabled:
+        return []
+    return [
+        html.escape(
+            daily_bonus_dates(
+                datetime.fromisoformat(str(payload["preheat_at"])),
+                datetime.fromisoformat(str(payload["cutoff_at"])),
+            )
+        )
+    ]

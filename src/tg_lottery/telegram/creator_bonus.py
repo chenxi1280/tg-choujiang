@@ -46,7 +46,7 @@ BONUS_ACTIONS = (
 
 def bonus_text(data: dict[str, Any]) -> str:
     return (
-        "📈 抽奖加成\n\n当前设置："
+        "📈 抽奖加成票\n\n当前设置："
         + bonus_summary(data)
         + "\n邀请资格："
         + retention.retention_text(retention.retention_hours(data))
@@ -79,7 +79,7 @@ def bonus_summary(data: dict[str, Any]) -> str:
 
 def _configured_group_summary(data: dict[str, Any]) -> str:
     pending = []
-    for kind, label in (("invite", "邀请抽奖加成"), ("activity", "发言抽奖加成")):
+    for kind, label in (("invite", "邀请加成票"), ("activity", "抽奖加成票(发言)")):
         configured = data.get(f"group_{kind}_rules") or {}
         if kind in data["bonus_types"] and not any(
             rule.get("enabled") for rule in configured.values()
@@ -91,14 +91,14 @@ def _configured_group_summary(data: dict[str, Any]) -> str:
 
 def bonus_rows(data: dict[str, Any]) -> ButtonRows:
     types = set(data.get("bonus_types", []))
-    invite = "✅ 邀请抽奖加成" if "invite" in types else "⬜ 邀请抽奖加成"
-    activity = "✅ 发言抽奖加成" if "activity" in types else "⬜ 发言抽奖加成"
+    invite = "✅ 邀请加成票" if "invite" in types else "⬜ 邀请加成票"
+    activity = "✅ 抽奖加成票(发言)" if "activity" in types else "⬜ 抽奖加成票(发言)"
     rows = [[(invite, "draft_bonus_toggle_invite"), (activity, "draft_bonus_toggle_activity")]]
     if "invite" in types:
-        rows.append([("设置邀请抽奖加成", "draft_bonus_invite")])
+        rows.append([("设置邀请加成票", "draft_bonus_invite")])
         rows.append([("邀请留存要求", "draft_retention")])
     if "activity" in types:
-        rows.append([("设置发言抽奖加成", "draft_bonus_activity")])
+        rows.append([("设置抽奖加成票(发言)", "draft_bonus_activity")])
     rows.append([("↩ 返回抽奖预览", "draft_back")])
     return rows
 
@@ -106,13 +106,13 @@ def bonus_rows(data: dict[str, Any]) -> ButtonRows:
 def invite_bonus_text(data: dict[str, Any]) -> str:
     if _invite_mode(data) == "ratio":
         return (
-            "🤝 邀请抽奖加成\n\n"
+            "🤝 邀请加成票\n\n"
             f"每 {_ratio(data)} 个有效邀请 +1 次，最多 {data['invite_bonus_cap']} 次。"
         )
     return (
-        "🤝 邀请抽奖加成\n\n"
+        "🤝 邀请加成票\n\n"
         f"当前阶梯：{_tier_summary(data)}\n"
-        "每档表示累计有效邀请人数对应的累计抽奖加成。"
+        "每档表示累计有效邀请人数对应的累计抽奖加成票。"
     )
 
 
@@ -145,13 +145,13 @@ def invite_bonus_rows(data: dict[str, Any]) -> ButtonRows:
             ("＋", "draft_bonus_invite_total_inc"),
         ],
         [("新增下一档", "draft_bonus_invite_add"), ("删除最后一档", "draft_bonus_invite_remove")],
-        [("↩ 返回加成设置", "draft_bonus_menu")],
+        [("↩ 返回加成票设置", "draft_bonus_menu")],
     ]
 
 
 def activity_bonus_text(data: dict[str, Any]) -> str:
     return (
-        "🌱 发言抽奖加成\n\n"
+        "🌱 抽奖加成票(发言)\n\n"
         f"在每个条件群每天分别发送达到 {data['activity_message_threshold']} 条有效消息，"
         f"全部达标后当天增加 {data['activity_reward_tickets']} 次。\n"
         "频道只要求关注，不要求发言。\n"
@@ -171,7 +171,7 @@ def activity_bonus_rows(data: dict[str, Any]) -> ButtonRows:
             (f"+{data['activity_reward_tickets']} 次", "draft_bonus_activity"),
             ("＋", "draft_bonus_activity_reward_inc"),
         ],
-        [("↩ 返回加成设置", "draft_bonus_menu")],
+        [("↩ 返回加成票设置", "draft_bonus_menu")],
     ]
 
 
@@ -204,7 +204,7 @@ def _reject_legacy_invite_action(data: dict, action: str) -> None:
         and action.startswith("draft_bonus_invite_")
         and not group_bonus.handles_action(action)
     ):
-        raise UserFacingError("旧邀请配置入口已失效，请重新打开逐群邀请抽奖加成设置")
+        raise UserFacingError("旧邀请配置入口已失效，请重新打开逐群邀请加成票设置")
 
 
 def bonus_view(data: dict[str, Any], action: str) -> tuple[str, ButtonRows]:
@@ -306,7 +306,7 @@ def _change_last_tier(
 
 def _remove_tier(tiers: list[dict[str, int]]) -> list[dict[str, int]]:
     if len(tiers) == 1:
-        raise UserFacingError("邀请抽奖加成至少保留一个阶梯；如需关闭请返回取消勾选")
+        raise UserFacingError("邀请加成票至少保留一个阶梯；如需关闭请返回取消勾选")
     return tiers[:-1]
 
 
@@ -382,5 +382,5 @@ def _ratio_rows(data: dict[str, Any]) -> ButtonRows:
             (f"最多 {data['invite_bonus_cap']} 次", "draft_bonus_invite"),
             ("＋", "draft_bonus_invite_cap_inc"),
         ],
-        [("↩ 返回加成设置", "draft_bonus_menu")],
+        [("↩ 返回加成票设置", "draft_bonus_menu")],
     ]

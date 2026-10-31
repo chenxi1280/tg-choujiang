@@ -65,7 +65,7 @@ async def test_invite_gate_menu_to_personal_link_request_without_bonus_dependenc
     await base_registration_reply(
         message, campaign, user_id=201, callback=None, queries=flow._queries
     )
-    expected = "我的加成" if bonuses else "邀请门槛与入口"
+    expected = "我的加成票" if bonuses else "邀请门槛与入口"
     assert expected in button_labels(message)
     await show_ticket_record(message, flow._queries, 201, public_ref=campaign.public_ref)
     assert expected in button_labels(message)

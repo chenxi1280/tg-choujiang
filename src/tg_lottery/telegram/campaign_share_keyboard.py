@@ -29,7 +29,7 @@ def campaign_share_keyboard(payload):
     if rules.invitation_enabled:
         bonuses.append(_link(payload, "邀请入口", "invite"))
     if rules.bonus_types:
-        bonuses.append(_link(payload, "我的加成", "bonus"))
+        bonuses.append(_link(payload, "我的加成票", "bonus"))
     if bonuses:
         rows.append(bonuses)
     folder = payload.get("presentation", {}).get("folder_link")

@@ -9,5 +9,5 @@ def invitation_purpose(rules: CampaignRules, chat_id: int) -> str:
     )
     bonus = rules.invite_bonus_enabled and rules.invite_rule_for(chat_id) is not None
     if gate and bonus:
-        return "完成邀请门槛并增加邀请抽奖加成"
-    return "完成邀请门槛" if gate else "增加邀请抽奖加成"
+        return "完成邀请门槛并增加邀请加成票"
+    return "完成邀请门槛" if gate else "增加邀请加成票"

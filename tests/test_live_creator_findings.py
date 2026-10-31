@@ -46,7 +46,7 @@ def test_enabled_bonus_without_group_rules_shows_pending_configuration():
         "bonus_types": ["invite"],
     }
     summary = bonus_summary(data)
-    assert "邀请抽奖加成待逐群设置" in summary
+    assert "邀请加成票待逐群设置" in summary
     assert "每2个" not in summary
     assert "上限3次" not in summary
 

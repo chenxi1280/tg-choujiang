@@ -42,7 +42,7 @@ def preview_text(data: dict[str, Any], *, now: datetime | None = None) -> str:
         f"{_base_summary(data)}\n\n"
         f"🎁 奖品内容：\n{_prize_lines(data.get('prizes', []))}\n"
         f"📃 抽奖说明：{data.get('description') or '【等待设置】'}\n\n"
-        f"📈 抽奖加成：{bonus_summary(data)}\n{retention_summary(data)}\n"
+        f"📈 抽奖加成票：{bonus_summary(data)}\n{retention_summary(data)}\n"
         f"⏰ 开奖时间：{_draw_text(data)}\n"
         f"🧑‍💼 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}\n"
         f"🔔 参与提示：{message_policy_summary(data)}\n\n"
@@ -66,7 +66,7 @@ def dashboard_rows(data: dict[str, Any] | None = None) -> ButtonRows:
     return [
         [("活动标题", "draft_title"), ("奖品与领奖", "draft_prizes")],
         [("参与群", "draft_group"), ("开奖时间", "draft_draw")],
-        [("参与条件", "draft_conditions"), ("加成设置", "draft_rules")],
+        [("参与条件", "draft_conditions"), ("加成票设置", "draft_rules")],
         [("封面与说明", "draft_cover_summary"), ("更多设置", "draft_more")],
         [next_draft_action(data or {})],
         [("返回首页（草稿保留）", "draft_home")],

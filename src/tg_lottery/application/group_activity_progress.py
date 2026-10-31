@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from tg_lottery.application.activity_rules import group_activity_ticket_target
+from tg_lottery.application.daily_bonus import daily_bonus_progress
 from tg_lottery.application.progress_notifications import queue_bonus_notice
 from tg_lottery.application.request_context import current_update_id
 from tg_lottery.domain.enums import TicketSource
@@ -39,7 +40,12 @@ async def increment_group_activity_progress(
     )
     progress.valid_message_count += 1
     progress.valid_message_counts = {str(chat_id): progress.valid_message_count}
-    target = group_activity_ticket_target(progress.valid_message_counts, chat_id, rules)
+    if rules.daily_activity_bonus:
+        await session.flush()
+        state = await daily_bonus_progress(session, campaign, participant, observed_at=event_at)
+        target = int(state.ready and state.awarded == 0)
+    else:
+        target = group_activity_ticket_target(progress.valid_message_counts, chat_id, rules)
     if target is None:
         raise RuntimeError("group activity rule disappeared during progress update")
     await _award_target(
@@ -119,15 +125,8 @@ async def _award_target(
             delta=delta,
             source_type=TicketSource.POPULARITY,
             source_ref=str(progress.id),
-            business_key=(
-                f"group_activity:{campaign.id}:{participant.user_id}:"
-                f"{chat_id}:{progress.local_date.isoformat()}:"
-                + (
-                    f"calendar-r{campaign.config_revision}:"
-                    if campaign.rules.get("message_task_calendar")
-                    else ""
-                )
-                + str(target)
+            business_key=_ticket_key(
+                campaign, participant, progress, chat_id=chat_id, target=target
             ),
             occurred_at=event_at,
             source_update_id=current_update_id(),
@@ -141,7 +140,7 @@ async def _award_target(
         participant=participant,
         chat_id=chat_id,
         key=f"group_activity:{campaign.id}:{participant.user_id}:{chat_id}:{progress.local_date.isoformat()}:{target}",
-        label="发言加成",
+        label="抽奖加成票(发言)",
         delta=delta,
     )
 
@@ -156,3 +155,17 @@ async def _participation_group_id(session: object, campaign_id: object, chat_id:
     if group_id is None:
         raise RuntimeError("group activity rule has no participation group")
     return group_id
+
+
+def _ticket_key(campaign, participant, progress, *, chat_id, target):
+    if campaign.rules.get("bonus_policy_version") == "daily-after-start-v1":
+        return f"daily_activity:{campaign.id}:{participant.user_id}:{progress.local_date}"
+    revision = (
+        f"calendar-r{campaign.config_revision}:"
+        if campaign.rules.get("message_task_calendar")
+        else ""
+    )
+    return (
+        f"group_activity:{campaign.id}:{participant.user_id}:"
+        f"{chat_id}:{progress.local_date.isoformat()}:{revision}{target}"
+    )

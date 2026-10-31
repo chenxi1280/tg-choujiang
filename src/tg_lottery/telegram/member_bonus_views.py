@@ -10,6 +10,7 @@ from tg_lottery.application.campaign_outcomes import CampaignOutcomeFacts
 from tg_lottery.application.query_invites import GroupInviteLinkStatus
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.presentation.daily_bonus import daily_bonus_progress_text, daily_bonus_rule_text
 from tg_lottery.presentation.target_identity import distinct_group_names
 from tg_lottery.telegram.keyboard_layout import list_rows
 from tg_lottery.telegram.member_bonus_navigation import (
@@ -70,6 +71,7 @@ class BonusViewContext:
     bot_username: str
     outcome: CampaignOutcomeFacts | None = None
     base_progress: str = ""
+    daily_progress: str = ""
 
 
 async def build_bonus_overview(
@@ -187,6 +189,13 @@ async def _load_context(
         rules=rules,
         groups=groups,
         base_progress=progress.base_progress,
+        daily_progress=(
+            daily_bonus_progress_text(
+                progress.daily_bonus, names={str(g["id"]): str(g["title"]) for g in groups}
+            )
+            if rules.daily_activity_bonus
+            else ""
+        ),
         invite_progress={item.chat_id: item for item in progress.invitations},
         activity_progress={item.chat_id: item for item in progress.activities},
         link_statuses=statuses,
@@ -235,16 +244,16 @@ def _category_payload(context: BonusViewContext) -> tuple[str, InlineKeyboardMar
     cumulative = sum(item.total_awarded_tickets for item in context.activity_progress.values())
     text = "\n".join(
         [
-            _header(context.campaign, "我的加成", outcome=context.outcome),
+            _header(context.campaign, "我的加成票", outcome=context.outcome),
             bonus_closed_notice(context.campaign, outcome=context.outcome),
             context.base_progress,
         ]
     )
     ref = context.campaign.public_ref
     activity_label = (
-        f"🌱 发言抽奖加成｜累计 {cumulative} 次"
+        f"🌱 抽奖加成票(发言)｜累计 {cumulative} 次"
         if campaign_bonus_completed(context.campaign)
-        else f"🌱 发言抽奖加成｜今日 {activity_total} 次 · 累计 {cumulative} 次"
+        else f"🌱 抽奖加成票(发言)｜今日 {activity_total} 次 · 累计 {cumulative} 次"
     )
     rows = [
         [
@@ -255,7 +264,7 @@ def _category_payload(context: BonusViewContext) -> tuple[str, InlineKeyboardMar
         ],
         [
             InlineKeyboardButton(
-                text="🌱 发言抽奖加成",
+                text="🌱 抽奖加成票(发言)",
                 callback_data=f"member:bonus_activity:{ref}:0",
             )
         ],
@@ -332,15 +341,17 @@ def build_activity_group_list(
         return _activity_group_detail(context, int(groups[0]["id"]), return_page=0)
     visible, selected, total_pages = _visible_page(groups, page)
     lines = [
-        _header(context.campaign, "发言抽奖加成", outcome=context.outcome),
+        _header(context.campaign, "抽奖加成票(发言)", outcome=context.outcome),
         "请选择一个群查看今日进度和累计加成：",
     ]
     completed = campaign_bonus_completed(context.campaign)
     if completed:
         lines[1] = bonus_closed_notice(context.campaign, category="发言", outcome=context.outcome)
+    lines.extend(_daily_bonus_lines(context))
     rows = []
     for group in visible:
-        lines.append(_activity_list_line(context, group, completed=completed))
+        if not context.rules.daily_activity_bonus:
+            lines.append(_activity_list_line(context, group, completed=completed))
         rows.append(
             _group_detail_row(context.campaign.public_ref, "activity", group, group_page=selected)
         )
@@ -440,7 +451,7 @@ def _invite_bonus_completed(context: BonusViewContext) -> bool:
 
 def _invite_rule_text(rule):
     if rule is None:
-        return "邀请抽奖加成关闭; 有效邀请仍用于本场门槛。"
+        return "邀请加成票关闭; 有效邀请仍用于本场门槛。"
     return f"规则：每 {rule.invites_per_cycle} 名有效新成员 +1；{_invite_cap(rule)}"
 
 
@@ -451,3 +462,12 @@ def _activity_list_line(context, group: dict, *, completed: bool) -> str:
     if progress is None:
         return str(group["title"]) + "：当前进度待核查，不能视为0条或已完成"
     return _activity_progress_line(str(group["title"]), rule, progress, completed=completed)
+
+
+def _daily_bonus_lines(context):
+    if not context.rules.daily_activity_bonus:
+        return []
+    return [
+        daily_bonus_rule_text(context.rules.activity_bonus_double_count),
+        context.daily_progress,
+    ]

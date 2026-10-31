@@ -13,6 +13,10 @@ class BaseProgress:
 
 
 def base_progress(counts: Mapping[date, int], rule: BaseActivityRule, today: date) -> BaseProgress:
+    if rule.count_mode == "period":
+        total = sum(count for day, count in counts.items() if day <= today)
+        qualified = total >= rule.daily_messages
+        return BaseProgress(total, int(qualified), qualified)
     completed = sorted(day for day, count in counts.items() if count >= rule.daily_messages)
     streak = best = 0
     previous = None

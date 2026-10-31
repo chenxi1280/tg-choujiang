@@ -8,6 +8,7 @@ PARTICIPATION_RULES_VERSION = "v3.0"
 
 
 class MessageAdmissionRule(BaseModel, frozen=True, extra="forbid"):
+    count_mode: Literal["daily", "period"] = "daily"
     daily_messages: int = Field(default=20, ge=1)
     consecutive_days: int = Field(default=1, ge=1)
     # Retained only to read frozen legacy rules; message counting ignores this value.
@@ -56,6 +57,8 @@ def validate_admission_window(rules: object, *, start_at: datetime, cutoff_at: d
     first_day = start_at.astimezone(timezone).date()
     last_day = cutoff_at.astimezone(timezone).date()
     for chat_id, rule in admission.groups.items():
+        if rule.count_mode == "period":
+            continue
         if getattr(rules, "message_task_calendar", None):
             if (last_day - first_day).days + 1 != rule.consecutive_days:
                 raise ValueError("固定任务日期数必须与发言门槛天数一致")

@@ -140,7 +140,7 @@ def test_partial_bonus_templates_receive_model_defaults_without_changing_rewards
     data = current_draft() | {"group_activity_rules": {"-100123": {"messages_per_cycle": 7}}}
     value = current_bonus_policy(data)["group_activity_rules"]["-100123"]
     assert value["enabled"] and value["reward_tickets"] == 1 and value["messages_per_cycle"] == 7
-    assert value["daily_cap_mode"] == "unlimited" and value["daily_max_cycles"] is None
+    assert value["daily_cap_mode"] == "limited" and value["daily_max_cycles"] == 1
 
 
 def test_rollback_requires_both_platform_and_unlimited_capabilities():

@@ -1,7 +1,7 @@
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.telegram import creator_behavior_editor as editor
 from tg_lottery.telegram.creator_bonus_fields import positive_integer
-from tg_lottery.telegram.creator_bonus_policy import uses_unlimited_policy
+from tg_lottery.telegram.creator_bonus_policy import uses_current_bonus_policy
 from tg_lottery.telegram.creator_retention_revision import checked_retention_editor
 
 QUICK_PREFIX = "draft_gate:quick:"
@@ -57,7 +57,7 @@ def _require_current_group(data, current):
 
 def _require_retention(data):
     retention = checked_retention_editor(data)["retention_hours"]
-    if uses_unlimited_policy(data) and retention != 24:
+    if uses_current_bonus_policy(data) and retention != 24:
         raise UserFacingError("新场邀请留存固定24小时，请返回当前门槛设置页")
     if retention != data.get("invite_retention_hours"):
         raise UserFacingError("请先保存共享邀请留存设置，再快捷保存本群门槛")

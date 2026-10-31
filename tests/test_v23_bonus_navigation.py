@@ -170,7 +170,7 @@ def test_activity_only_ticket_detail_has_no_invitation_entry() -> None:
     )
     labels = [plain_label(button.text) for row in keyboard.inline_keyboard for button in row]
 
-    assert "我的加成" in labels
+    assert "我的加成票" in labels
     assert "查看本期邀请记录" not in labels
 
 
@@ -206,7 +206,7 @@ async def test_drawn_campaign_hides_entries_but_keeps_invitation_history() -> No
     )
 
     assert "邀请入口已隐藏" in detail
-    assert "不再计算新增邀请抽奖加成" in detail
+    assert "不再计算新增邀请加成票" in detail
     assert "已获得 1 次" in detail
     assert "距下一次还差" not in detail
     buttons = [button for row in keyboard.inline_keyboard for button in row]
@@ -225,7 +225,7 @@ async def test_drawn_campaign_hides_entries_but_keeps_invitation_history() -> No
         unavailable={},
     )
     assert "累计达标 2 天、获得 2 次" in activity_detail
-    assert "不再计算新增发言抽奖加成" in activity_detail
+    assert "不再计算新增抽奖加成票(发言)" in activity_detail
     assert "距下一次还差" not in activity_detail
 
 
@@ -247,7 +247,7 @@ async def test_closed_bonus_lists_and_details_keep_history_without_new_reward_pr
     campaign.cutoff_at = datetime.now(UTC) - timedelta(minutes=1)
     common = _view_dependencies(progress, statuses)
     overview, overview_keyboard = await build_bonus_overview(campaign, **common)
-    assert "不再计算新增加成" in overview
+    assert "不再计算新增抽奖加成票" in overview
     assert "累计 2 次" in overview
     assert "今日" not in plain_label(overview_keyboard.inline_keyboard[0][1].text)
     assert "今日" not in overview
@@ -305,7 +305,7 @@ async def test_scheduled_bonus_before_preheat_is_not_described_as_completed() ->
         return_page=0,
         **_view_dependencies(progress, statuses),
     )
-    assert "邀请抽奖加成尚未开始" in detail
+    assert "邀请加成票尚未开始" in detail
     assert "活动已截止" not in detail
     assert "距下一次还差 1 人" in detail
 

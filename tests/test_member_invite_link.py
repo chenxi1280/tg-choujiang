@@ -104,7 +104,7 @@ async def test_legacy_invite_link_before_preheat_does_not_say_campaign_has_ended
     )
     message = RecordingMessage()
     await flow.show_invite_link(message, campaign.public_ref, user_id=201)
-    assert "邀请抽奖加成尚未开始" in plain_label(message.text)
+    assert "邀请加成票尚未开始" in plain_label(message.text)
     assert "已截止" not in plain_label(message.text)
     assert plain_label(message.markup.inline_keyboard[0][0].text) == "复制入群链接"
 
@@ -126,7 +126,7 @@ async def test_expired_campaign_link_still_opens_but_never_counts_again() -> Non
     await flow.show_invite_link(message, campaign.public_ref, user_id=201)
 
     assert "仍有效的旧链接可入群" in plain_label(message.text)
-    assert "不再计算本期或以后任何抽奖加成" in plain_label(message.text)
+    assert "不再计算本期或以后任何抽奖加成票" in plain_label(message.text)
     assert "邀请入口已隐藏" in plain_label(message.text)
     buttons = [button for row in message.markup.inline_keyboard for button in row]
     assert not any(button.url or button.copy_text for button in buttons)
@@ -137,7 +137,7 @@ def test_registration_keyboard_exposes_only_the_current_campaign_link() -> None:
     keyboard = member_keyboard("AbCdEfGhIjKlMnOpQrSt-_", True)
     buttons = [button for row in keyboard.inline_keyboard for button in row]
 
-    invite = next(button for button in buttons if plain_label(button.text) == "我的加成")
+    invite = next(button for button in buttons if plain_label(button.text) == "我的加成票")
     assert invite.callback_data == "member:bonus:AbCdEfGhIjKlMnOpQrSt-_"
     tickets = next(button for button in buttons if plain_label(button.text) == "我的抽奖次数")
     records = next(button for button in buttons if plain_label(button.text) == "邀请记录")

@@ -2,7 +2,7 @@ from typing import Any
 
 from tg_lottery.domain.admission import InviteAdmissionRule, MessageAdmissionRule
 from tg_lottery.domain.errors import UserFacingError
-from tg_lottery.telegram.creator_bonus_policy import uses_unlimited_policy
+from tg_lottery.telegram.creator_bonus_policy import uses_current_bonus_policy
 from tg_lottery.telegram.creator_number_controls import DEFAULT_MESSAGE_COUNT
 from tg_lottery.telegram.creator_retention_revision import checked_retention_editor
 from tg_lottery.telegram.creator_schedule import positive_int
@@ -73,6 +73,8 @@ def apply_action(data: dict[str, Any], action: str) -> dict[str, Any]:
         if parts[1] not in {"message", "invite"}:
             raise UserFacingError("门槛只能选择发言数或邀请好友")
         return data | {EDITOR_KEY: _select_mode(editor, parts[1])}
+    if operation == "count_mode":
+        return data | {EDITOR_KEY: _count_mode(editor, parts[1])}
     if operation == "save":
         return _save_admission(data, editor)
     if operation == "discard":
@@ -234,7 +236,7 @@ def _save_and_continue(data, editor):
 
 def _save_admission(data, editor):
     ready_editor = checked_retention_editor(data)
-    if uses_unlimited_policy(data) and ready_editor["retention_hours"] != 24:
+    if uses_current_bonus_policy(data) and ready_editor["retention_hours"] != 24:
         raise UserFacingError("新场邀请留存固定24小时，请返回当前门槛设置页")
     if editor["type"] not in {"message", "invite"}:
         raise UserFacingError("请先选择一种抽奖门槛")
@@ -254,3 +256,9 @@ def _input_action(editor, *, parts):
     if parts[0] == "input" and parts[1] not in MESSAGE_FIELDS | INVITE_FIELDS:
         raise UserFacingError("门槛输入字段已失效")
     return editor | {"field": "search" if parts[0] == "search" else parts[1]}
+
+
+def _count_mode(editor, mode):
+    if editor["type"] != "message" or mode not in {"daily", "period"}:
+        raise UserFacingError("请选择每日或周期累计抽奖门槛")
+    return editor | {"rule": editor["rule"] | {"count_mode": mode, "consecutive_days": 1}}

@@ -145,7 +145,10 @@ def _message_group_lines(progress, gate, *, names, records, timezone, day, compl
         ]
     label = f"记录日期 {day}" if completed else "今日"
     return [
-        f"{names.get(key, key)}: {label} {item.today_messages}"
+        f"{names.get(key, key)}: 本期累计 {item.today_messages}"
+        f"/{gate.groups[key].daily_messages} 条" + _completed(records, key, timezone)
+        if gate.groups[key].count_mode == "period"
+        else f"{names.get(key, key)}: {label} {item.today_messages}"
         f"/{gate.groups[key].daily_messages} 条; 连续 {item.consecutive_days}"
         f"/{gate.groups[key].consecutive_days} 天" + _completed(records, key, timezone)
         for key, item in progress.items()
@@ -184,6 +187,8 @@ def _compact_group_line(name, completed, progress):
 
 
 def _compact_message_progress(item, rule):
+    if rule.count_mode == "period":
+        return f"本期累计 {item.today_messages}/{rule.daily_messages} 条"
     text = f"今日 {item.today_messages}/{rule.daily_messages} 条"
     if rule.consecutive_days > 1:
         text += f" · 连续 {item.consecutive_days}/{rule.consecutive_days} 天"

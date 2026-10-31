@@ -21,7 +21,7 @@ def current_draft():
     }
 
 
-def test_new_creation_opens_and_saves_both_unlimited_bonuses():
+def test_new_creation_limits_speech_and_preserves_unlimited_invitations():
     data = current_draft()
     for kind in ("activity", "invite"):
         data = bonus.apply_action(data, f"draft_bonus_{kind}_group:{FIRST}")
@@ -31,8 +31,8 @@ def test_new_creation_opens_and_saves_both_unlimited_bonuses():
         )
         data = bonus.apply_action(data, f"draft_bonus_{kind}_save")
     rules = rules_from_data(data)
-    assert rules.activity_rule_for(FIRST).daily_cap_mode == "unlimited"
-    assert rules.activity_rule_for(FIRST).daily_max_cycles is None
+    assert rules.activity_rule_for(FIRST).daily_cap_mode == "limited"
+    assert rules.activity_rule_for(FIRST).daily_max_cycles == 1
     assert rules.invite_rule_for(FIRST).cap_mode == "unlimited"
     assert rules.invite_rule_for(FIRST).max_bonus_tickets is None
     assert set(rules.bonus_types) == {"activity", "invite"}
@@ -51,7 +51,7 @@ def test_obsolete_daily_limit_buttons_cannot_restore_caps(action):
     assert data == before
 
 
-def test_restore_unpublished_old_settings_normalizes_without_changing_source_or_rewards():
+def test_restore_unpublished_settings_normalizes_daily_reward_without_changing_source():
     source = current_draft() | {
         "bonus_policy_version": None,
         "invite_retention_hours": 48,
@@ -67,8 +67,8 @@ def test_restore_unpublished_old_settings_normalizes_without_changing_source_or_
     before = deepcopy(source)
     converted = current_bonus_policy(source)
     rule = converted["group_activity_rules"][str(FIRST)]
-    assert (rule["messages_per_cycle"], rule["reward_tickets"]) == (34, 3)
-    assert rule["daily_cap_mode"] == "unlimited" and rule["daily_max_cycles"] is None
+    assert (rule["messages_per_cycle"], rule["reward_tickets"]) == (34, 1)
+    assert rule["daily_cap_mode"] == "limited" and rule["daily_max_cycles"] == 1
     assert converted["invite_retention_hours"] == 24
     assert "历史活动不变" in converted["import_notes"][-1]
     assert source == before

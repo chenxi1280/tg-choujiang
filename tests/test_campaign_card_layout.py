@@ -79,7 +79,7 @@ def test_invitation_gate_and_disabled_bonuses_are_not_presented_as_speech_rules(
     text, _pages = rule_manifest(payload)
     assert "一群</a>\n└ 🚪 有效邀请满 <b>2</b> 人" in text
     assert "单日有效发言" not in text and "每日发言加成" not in text
-    assert "发言抽奖加成\uff1a</b>未开启" in text
+    assert "抽奖加成票(发言)\uff1a</b>未开启" in text
     assert "有效邀请要求" in "".join(public_rule_blocks(payload))
 
 
@@ -111,7 +111,7 @@ def test_legacy_global_bonus_rules_keep_actual_reward_and_daily_scope():
     assert "每个统计群每天有效发言满 10 条\uff0c全部达标 +3 次" in rules
     assert "每天奖励一次" in rules and "每个有效邀请 +4 次" in rules
     card = _campaign_card_text(payload)
-    assert "发言抽奖加成\uff1a" in card and "邀请抽奖加成\uff1a" in card
+    assert "抽奖加成票(发言)\uff1a" in card and "邀请加成票\uff1a" in card
     assert "按本场规则" in card and "不设上限" not in card
 
 

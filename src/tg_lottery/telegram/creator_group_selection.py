@@ -63,7 +63,7 @@ def validate_activity_target(record: dict[str, Any], *, activity_enabled: bool) 
         return
     title = record["title"]
     if allowed is False:
-        raise UserFacingError(f"强制群「{title}」禁止普通成员发言，无法启用发言抽奖加成")
+        raise UserFacingError(f"强制群「{title}」禁止普通成员发言，无法启用抽奖加成票(发言)")
     raise UserFacingError(f"无法确认强制群「{title}」的普通成员发言权限，请检查群权限后重试")
 
 

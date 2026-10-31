@@ -48,7 +48,7 @@ def _available_task(detail, now):
         return _gate_task(detail, now)
     if detail.bonus_enabled:
         return "门槛已完成，额外奖励自动入账；可查看当前可用任务和奖励来源。", _button(
-            "加成明细", f"m:bo:{ref}"
+            "加成票明细", f"m:bo:{ref}"
         )
     return "当前条件合格，等待截止复核与自然开奖。", _button("刷新本人状态", f"m:detail:{ref}")
 

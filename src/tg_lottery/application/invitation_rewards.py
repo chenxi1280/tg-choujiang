@@ -42,7 +42,7 @@ async def add_invite_bonus(
         participant=participant,
         chat_id=await invitation_notice_chat(session, invitation),
         key=business_key,
-        label="邀请抽奖加成",
+        label="邀请加成票",
         delta=reward,
     )
 

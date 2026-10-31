@@ -18,9 +18,18 @@ from tg_lottery.telegram.creator_bonus_fields import (
     rule_key as _input_rule_key,
 )
 from tg_lottery.telegram.creator_bonus_policy import (
+    cap_keys as _cap_keys,
+)
+from tg_lottery.telegram.creator_bonus_policy import cap_label as _cap_label
+from tg_lottery.telegram.creator_bonus_policy import (
+    creation_rule,
     require_current_bonus_action,
-    unlimited_rule,
-    uses_unlimited_policy,
+    uses_current_bonus_policy,
+)
+from tg_lottery.telegram.creator_daily_bonus import (
+    daily_activity_editor,
+    daily_creation_summary,
+    legacy_activity_description,
 )
 from tg_lottery.telegram.creator_number_controls import (
     DEFAULT_MESSAGE_COUNT,
@@ -38,6 +47,7 @@ GROUP_PREFIXES = (
     "draft_bonus_invite_group:",
     "draft_bonus_activity_group:",
     "draft_bonus_group_page:",
+    "draft_bonus_double:",
 )
 DEFAULT_INVITES_PER_TICKET = 1
 DEFAULT_DAILY_MESSAGES = DEFAULT_MESSAGE_COUNT
@@ -87,8 +97,12 @@ def handles_action(action: str) -> bool:
 def apply_action(data: dict[str, Any], action: str) -> dict[str, Any]:
     require_current_bonus_action(data, action)
     if "length" in action:
-        raise UserFacingError("字数设置已移除，请重新打开发言抽奖加成编辑页")
+        raise UserFacingError("字数设置已移除，请重新打开抽奖加成票(发言)编辑页")
     _validate_v3_invite_action(data, action)
+    if action.startswith("draft_bonus_double:"):
+        working = dict(data["bonus_working_copy"])
+        working["double_count"] = action.endswith(":on")
+        return data | {"bonus_working_copy": working}
     direct = _apply_direct_action(data, action)
     if direct is not None:
         return direct
@@ -143,14 +157,14 @@ def receive_input(data: dict[str, Any], text: str) -> dict[str, Any]:
 def _validate_input_field(data, *, working, field):
     if not working or field not in {"cycle", "cap", "reward"}:
         raise UserFacingError("当前没有待输入的加成字段")
-    if field == "cap" and uses_unlimited_policy(data):
-        raise UserFacingError("新场加成不设上限，请返回当前加成设置页")
+    if field in {"cap", "reward"} and uses_current_bonus_policy(data):
+        raise UserFacingError("新场抽奖加成票每日固定1张，请返回当前加成票设置页")
     if (
         data.get("participation_rules_version") == "v3.0"
         and working["kind"] == "invite"
         and field == "cap"
     ):
-        raise UserFacingError("新活动邀请抽奖加成不限累计上限，请重新打开邀请抽奖加成编辑页")
+        raise UserFacingError("新活动邀请加成票不限累计上限，请重新打开邀请加成票编辑页")
 
 
 def input_prompt(data: dict[str, Any]) -> str:
@@ -167,7 +181,10 @@ def working_copy_dirty(data: dict[str, Any]) -> bool:
         return False
     kind = str(working["kind"])
     stored = (data.get(f"group_{kind}_rules") or {}).get(str(working["chat_id"]))
-    return stored is None or dict(stored) != dict(working["rule"])
+    changed = stored is None or dict(stored) != dict(working["rule"])
+    return changed or working.get("double_count", True) != data.get(
+        "activity_bonus_double_count", True
+    )
 
 
 def summary(data: dict[str, Any]) -> str:
@@ -175,11 +192,13 @@ def summary(data: dict[str, Any]) -> str:
     activity = _enabled_rules(data, "activity")
     if not invite and not activity:
         return "关闭"
+    if data.get("bonus_policy_version") == "daily-after-start-v1":
+        return daily_creation_summary(data, activity=activity, invite=invite)
     invite_unlimited = sum(rule.get("cap_mode") == "unlimited" for rule in invite)
     activity_unlimited = sum(rule.get("daily_cap_mode") == "unlimited" for rule in activity)
     return (
-        f"邀请抽奖加成 {len(invite)} 个群（{invite_unlimited} 个不限）；"
-        f"发言抽奖加成 {len(activity)} 个群（{activity_unlimited} 个不限）"
+        f"邀请加成票 {len(invite)} 个群（{invite_unlimited} 个不限）；"
+        f"抽奖加成票(发言) {len(activity)} 个群（{activity_unlimited} 个不限）"
     )
 
 
@@ -203,8 +222,8 @@ def list_view(data: dict[str, Any], kind: str) -> tuple[str, ButtonRows]:
     rows.append([("关闭本加成" if enabled else "开启本加成", f"draft_bonus_toggle_{kind}")])
     if kind == "invite":
         rows.append([("有效邀请要求", "draft_retention")])
-    rows.append([("↩ 返回加成设置", "draft_bonus_menu")])
-    title = "🤝 邀请抽奖加成" if kind == "invite" else "🌱 发言抽奖加成"
+    rows.append([("↩ 返回加成票设置", "draft_bonus_menu")])
+    title = "🤝 邀请加成票" if kind == "invite" else "🌱 抽奖加成票(发言)"
     reminder = "机器人必须在每个参与群中且拥有管理员权限。"
     if not groups:
         reminder += "\n当前没有参与群，请先选择参与活动的群，再设置本群加成。"
@@ -225,8 +244,8 @@ def _new_working_copy(data: dict[str, Any], kind: str, chat_id: int) -> dict[str
     source = data.get(f"group_{kind}_rules") or {}
     stored = source.get(str(chat_id))
     rule = dict(stored or _default_rule(kind))
-    if uses_unlimited_policy(data):
-        rule = unlimited_rule(kind, rule)
+    if uses_current_bonus_policy(data):
+        rule = creation_rule(kind, rule)
     rule["enabled"] = True
     cap_key = "max_bonus_tickets" if kind == "invite" else "daily_max_cycles"
     return {
@@ -234,6 +253,7 @@ def _new_working_copy(data: dict[str, Any], kind: str, chat_id: int) -> dict[str
         "chat_id": chat_id,
         "rule": rule,
         "last_cap": rule.get(cap_key) or 1,
+        "double_count": data.get("activity_bonus_double_count", True),
     }
 
 
@@ -294,6 +314,8 @@ def _save_working_copy(data: dict[str, Any], working: dict[str, Any]) -> dict[st
     rules[str(working["chat_id"])] = rule
     types = list(dict.fromkeys([*data.get("bonus_types", []), kind]))
     updated = data | {key: rules, "bonus_types": types, "luck_mode": "standard"}
+    if kind == "activity":
+        updated["activity_bonus_double_count"] = working.get("double_count", True)
     return _without_editor(updated)
 
 
@@ -318,19 +340,26 @@ def _invite_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str, 
     cap = _cap_label(rule, "invite")
     rows = [_number_row("邀请数", "invite_cycle", rule["invites_per_cycle"])]
     rows.append(_preset_row("cycle", (1, 2, 3, 5, 10), "人", selected=rule["invites_per_cycle"]))
-    if data.get("participation_rules_version") != "v3.0" and not uses_unlimited_policy(data):
+    if data.get("participation_rules_version") != "v3.0" and not uses_current_bonus_policy(data):
         rows.append(_mode_row("invite", rule["cap_mode"]))
     if rule["cap_mode"] == "limited":
         rows.append(_number_row("上限", "invite_group_cap", cap))
         rows.append(_preset_row("cap", (1, 5, 10, 20), "次", selected=cap))
     rows.extend(_editor_footer("invite", data, working))
     title = _group_title(data, int(working["chat_id"]))
-    text = f"🤝 {title}邀请抽奖加成\n\n每 {rule['invites_per_cycle']} 个有效邀请 +1次；上限：{cap}"
+    text = f"🤝 {title}邀请加成票\n\n每 {rule['invites_per_cycle']} 个有效邀请 +1次；上限：{cap}"
     text += activation_notice(data, "invite", chat_id=int(working["chat_id"]))
     return text, rows
 
 
 def _activity_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str, ButtonRows]:
+    if data.get("bonus_policy_version") == "daily-after-start-v1":
+        return daily_activity_editor(
+            data,
+            working,
+            title=_group_title(data, int(working["chat_id"])),
+            footer=_editor_footer("activity", data, working),
+        )
     rule = working["rule"]
     cap = _cap_label(rule, "activity")
     rows = [_number_row("消息数", "activity_cycle", rule["messages_per_cycle"])]
@@ -338,7 +367,7 @@ def _activity_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str
         _preset_row("cycle", MESSAGE_COUNT_PRESETS, "条", selected=rule["messages_per_cycle"])
     )
     rows.append(_number_row("每轮奖励", "activity_group_reward", rule["reward_tickets"]))
-    if not uses_unlimited_policy(data):
+    if not uses_current_bonus_policy(data):
         rows.append(_mode_row("activity", rule["daily_cap_mode"]))
         rows.append([("每天达标一次（按天累计）", "draft_bonus_activity_daily")])
     if rule["daily_cap_mode"] == "limited":
@@ -346,27 +375,9 @@ def _activity_editor(data: dict[str, Any], working: dict[str, Any]) -> tuple[str
         rows.append(_preset_row("cap", (1, 5, 10, 20), "轮", selected=cap))
     rows.extend(_editor_footer("activity", data, working))
     title = _group_title(data, int(working["chat_id"]))
-    text = f"🌱 {title}发言抽奖加成\n\n" + _activity_description(rule, cap)
+    text = f"🌱 {title}抽奖加成票(发言)\n\n" + legacy_activity_description(rule, cap)
     text += activation_notice(data, "activity", chat_id=int(working["chat_id"]))
     return text, rows
-
-
-def _activity_description(rule: dict[str, Any], cap: object) -> str:
-    reward = rule["reward_tickets"]
-    if rule["daily_cap_mode"] == "unlimited":
-        counting = f"每天每满 {rule['messages_per_cycle']} 条 +{reward}次；不设每日或累计上限。"
-    elif rule["daily_max_cycles"] == DAILY_REWARD_CYCLES:
-        counting = (
-            f"每天发言满 {rule['messages_per_cycle']} 条 +{reward}次；每天只奖励一次，"
-            "按实际达标天数累计，不要求连续。"
-        )
-    else:
-        counting = f"每天每满 {rule['messages_per_cycle']} 条 +{reward}次；每日上限：{cap} 轮。"
-    return (
-        counting + "\n文字、图片、表情均计数，不限制字数。"
-        "\n北京时间每天 00:00 更新当天统计，之前获得的加成保留。"
-        "\n选择预设或点击“自定义”，保存后生效。"
-    )
 
 
 def _apply_preset(data: dict[str, Any], action: str) -> dict[str, Any]:
@@ -461,17 +472,6 @@ def _validated_rule(kind: str, rule: dict[str, Any]) -> dict[str, Any]:
     return model.model_validate(rule).model_dump(mode="json")
 
 
-def _cap_keys(kind: str) -> tuple[str, str]:
-    if kind == "invite":
-        return "cap_mode", "max_bonus_tickets"
-    return "daily_cap_mode", "daily_max_cycles"
-
-
-def _cap_label(rule: dict[str, Any], kind: str) -> str:
-    mode_key, cap_key = _cap_keys(kind)
-    return "不设上限" if rule[mode_key] == "unlimited" else str(rule[cap_key])
-
-
 def _without_editor(data: dict[str, Any]) -> dict[str, Any]:
     result = dict(data)
     result.pop("bonus_working_copy", None)
@@ -496,4 +496,4 @@ def _validate_v3_invite_action(data, action):
     invite_action = "invite" in action or kind == "invite"
     cap_action = "cap" in action or ("limited" in action and "unlimited" not in action)
     if invite_action and cap_action:
-        raise UserFacingError("本场邀请抽奖加成固定不限累计上限")
+        raise UserFacingError("本场邀请加成票固定不限累计上限")

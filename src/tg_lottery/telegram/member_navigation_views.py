@@ -64,7 +64,7 @@ def _progress_rows(detail, now):
     if detail.base_progress:
         rows.append([_callback("查看门槛进度", f"m:gate:{detail.public_ref}")])
     if detail.bonus_enabled:
-        rows.append([_callback("加成明细", f"m:bo:{detail.public_ref}")])
+        rows.append([_callback("加成票明细", f"m:bo:{detail.public_ref}")])
     if detail.invite_enabled or detail.invite_gate_enabled:
         if invitation_task_available(detail, now):
             rows.append([_callback("我的邀请链接", f"member:bonus_invites:{detail.public_ref}:0")])

@@ -115,7 +115,7 @@ def _return_label(route: str) -> str:
         ("nav:index", "返回首页"),
         ("m:detail:", "返回活动详情"),
         ("member:tickets:", "返回活动详情"),
-        ("m:bo:", "返回加成明细"),
+        ("m:bo:", "返回加成票明细"),
         ("m:gate:", "返回门槛进度"),
         ("member:invites:", "返回邀请群列表"),
     )

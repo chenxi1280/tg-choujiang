@@ -43,6 +43,8 @@ def rule_text(rule: dict, mode: str) -> str:
         parsed = InviteAdmissionRule.model_validate(rule)
         return f"有效新成员 {parsed.required_valid_invites} 人；人数继续累计"
     parsed = MessageAdmissionRule.model_validate(rule)
+    if parsed.count_mode == "period":
+        return f"本期累计 {parsed.daily_messages} 条，完成一次即可；周期为活动开始至截止"
     return (
         f"连续 {parsed.consecutive_days} 天，每天 {parsed.daily_messages} 条，"
         "文字、图片、表情均计数；北京时间自然日"
@@ -82,7 +84,11 @@ def _numeric_input_text(data, editor, *, field):
     )
     title = chat_title(group) if group is not None else "当前参与群"
     value = (editor.get("rule") or {}).get(field, "未设置")
-    label = FIELD_LABELS[field]
+    label = (
+        "本期累计条数"
+        if field == "daily_messages" and editor["rule"].get("count_mode") == "period"
+        else FIELD_LABELS[field]
+    )
     return (
         f"🚪 抽奖门槛 · {title}\n当前{label}：{value}\n\n请输入{label}（正整数，只发送数字）："
         "\n💾 回复数字或点快捷值，核验通过后直接保存本群到草稿。"
@@ -156,10 +162,7 @@ def _group_view(data: dict, editor: dict) -> tuple[str, list]:
         item for item in data["participation_groups"] if str(item["id"]) == editor["chat_id"]
     )
     mode = editor["type"]
-    fields = (
-        ("daily_messages", "consecutive_days") if mode == "message" else ("required_valid_invites",)
-    )
-    rows = fit_rows([_field_preset_row(editor, field) for field in fields])
+    rows = _group_field_rows(data, editor)
     rows.extend(
         [
             [("保存本群门槛", "draft_gate:save_group")],
@@ -172,7 +175,7 @@ def _group_view(data: dict, editor: dict) -> tuple[str, list]:
     return (
         f"🚪 抽奖门槛 · {chat_title(group)}\n{rule_text(editor['rule'], mode)}\n"
         "🌱 每日加成独立设置。\n\n💾 快捷值或直接回复正整数，即保存本群门槛到草稿。\n"
-        "默认修改每日条数；连续天数请点对应自定义。"
+        "默认修改条数；周期累计的期限为活动开始至截止，每日门槛可另设连续天数。"
         if mode == "message"
         else f"🚪 抽奖门槛 · {chat_title(group)}\n{rule_text(editor['rule'], mode)}\n\n"
         "💾 快捷值或直接回复正整数，即保存本群有效邀请人数到草稿。",
@@ -279,6 +282,10 @@ def _copy_hint(editor, *, count, selected):
 
 def _field_preset_row(editor: dict, field: str) -> list:
     units = {"daily_messages": "条/天", "consecutive_days": "天", "required_valid_invites": "人"}
+    period = field == "daily_messages" and editor.get("rule", {}).get("count_mode") == "period"
+    if period:
+        units[field] = "条/本期"
+    label = "本期累计条数" if period else FIELD_LABELS[field]
     current = editor.get("rule", {}).get(field)
     values = [
         (
@@ -287,4 +294,24 @@ def _field_preset_row(editor: dict, field: str) -> list:
         )
         for value in PRESETS[field]
     ]
-    return [*values, ("自定义" + FIELD_LABELS[field], f"draft_gate:input:{field}")]
+    return [*values, ("自定义" + label, f"draft_gate:input:{field}")]
+
+
+def _group_field_rows(data, editor):
+    mode = editor["type"]
+    fields = (
+        ("daily_messages", "consecutive_days") if mode == "message" else ("required_valid_invites",)
+    )
+    period = mode == "message" and editor["rule"].get("count_mode") == "period"
+    if period:
+        fields = ("daily_messages",)
+    rows = fit_rows([_field_preset_row(editor, field) for field in fields])
+    if mode == "message" and data.get("bonus_policy_version") == "daily-after-start-v1":
+        rows.insert(
+            0,
+            [
+                ("每日门槛" if period else "✅ 每日门槛", "draft_gate:count_mode:daily"),
+                ("✅ 周期累计" if period else "周期累计", "draft_gate:count_mode:period"),
+            ],
+        )
+    return rows

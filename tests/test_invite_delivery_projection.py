@@ -25,7 +25,7 @@ from tg_lottery.telegram.ui_style import plain_label
     [
         ("active", "最晚计奖入群", True, True),
         ("deadline", "新入群不计加成", False, True),
-        ("preheat", "邀请抽奖加成尚未开始", False, True),
+        ("preheat", "邀请加成票尚未开始", False, True),
         ("settling", "本期已截止", False, True),
         ("drawn", "本场已开奖", False, False),
         ("cancelled", "本场已取消", False, False),

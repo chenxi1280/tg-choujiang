@@ -446,7 +446,7 @@ class MemberFlow:
             raise UserFacingError("活动不存在或已经失效")
         rules = CampaignRules.model_validate(campaign.rules)
         if not rules.invitation_enabled:
-            raise UserFacingError("本期抽奖没有开启邀请抽奖加成")
+            raise UserFacingError("本期抽奖没有开启邀请加成票")
         text, markup = await self._invite_link_payload(campaign, user_id, page=page)
         await message.answer(text, reply_markup=markup)
 

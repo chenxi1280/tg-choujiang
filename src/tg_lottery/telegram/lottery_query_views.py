@@ -6,6 +6,7 @@ from tg_lottery.application.invitation_models import campaign_accepts_attributio
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.presentation.daily_bonus import daily_bonus_progress_text, daily_bonus_rule_text
 from tg_lottery.telegram.member_bonus_text import invite_bonus_completed
 from tg_lottery.telegram.member_record_text import current_effective_count
 from tg_lottery.telegram.panel_pagination import text_pages
@@ -55,12 +56,12 @@ async def personal_progress(queries, campaign, *, user_id):
         detail.membership_progress or "无额外入群/关注条件",
         detail.base_progress or "无额外行为门槛",
         "📈 加成进度\n" + _activity_status(campaign),
-        f"🌱 发言抽奖加成：累计 {detail.activity} 次"
+        f"🌱 抽奖加成票(发言)：累计 {detail.activity} 次"
         if rules.activity_bonus_enabled
-        else "🌱 发言抽奖加成：未开启",
-        f"🤝 邀请抽奖加成：累计 {detail.invitation} 次"
+        else "🌱 抽奖加成票(发言)：未开启",
+        f"🤝 邀请加成票：累计 {detail.invitation} 次"
         if rules.invite_bonus_enabled
-        else "🤝 邀请抽奖加成：未开启",
+        else "🤝 邀请加成票：未开启",
     ]
     blocks.extend(await _daily_bonus(queries, campaign, user_id=user_id, rules=rules))
     blocks.extend(
@@ -102,6 +103,13 @@ async def _daily_bonus(queries, campaign, *, user_id, rules):
     if progress is None:
         raise ValueError("发言加成进度暂时无法获取")
     names = _group_names(campaign)
+    if rules.daily_activity_bonus:
+        return [
+            daily_bonus_rule_text(rules.activity_bonus_double_count),
+            daily_bonus_progress_text(
+                progress.daily_bonus, names={str(k): v for k, v in names.items()}
+            ),
+        ]
     lines = []
     for row in progress.activities:
         rule = rules.activity_rule_for(row.chat_id)
@@ -116,7 +124,7 @@ async def _legacy_activity(queries, campaign, *, user_id, rules):
         detail = await queries.participant_campaign_detail(user_id, campaign.public_ref)
         if detail is None:
             raise ValueError("历史发言加成暂时无法获取")
-        return [f"发言抽奖加成累计 {detail.activity} 次（按本场原规则入账）"]
+        return [f"抽奖加成票(发言)累计 {detail.activity} 次（按本场原规则入账）"]
     legacy = await queries.legacy_activity_progress(campaign.id, user_id)
     if legacy is None:
         raise ValueError("历史发言进度暂时无法获取")
@@ -213,9 +221,11 @@ async def current_task_summary(queries, campaign, *, user_id):
     daily = await _daily_bonus(queries, campaign, user_id=user_id, rules=rules)
     invitation = await _invitations(queries, campaign, user_id=user_id, rules=rules)
     empty = (
-        "未配置可用的发言加成群。" if rules.activity_bonus_enabled else "本场未开启发言抽奖加成。"
+        "未配置可用的发言加成群。"
+        if rules.activity_bonus_enabled
+        else "本场未开启抽奖加成票(发言)。"
     )
-    title = "🌱 发言抽奖加成累计记录" if _tasks_closed(campaign) else "🌱 今日发言抽奖加成"
+    title = "🌱 抽奖加成票(发言)累计记录" if _tasks_closed(campaign) else "🌱 今日抽奖加成票(发言)"
     lines = [title, _activity_status(campaign), *(daily or [empty])]
     lines.extend(["🤝 邀请进度", *invitation])
     return "\n".join(lines)

@@ -61,11 +61,14 @@ def copy_view(data: dict[str, Any]) -> tuple[str, ButtonRows]:
 def _start_copy(data: dict[str, Any]) -> dict[str, Any]:
     working = dict(data.get("bonus_working_copy") or {})
     if not working:
-        raise UserFacingError("请先打开一个群的加成设置")
+        raise UserFacingError("请先打开一个群的加成票设置")
     kind = str(working["kind"])
     source_id = str(working["chat_id"])
     stored = (data.get(f"group_{kind}_rules") or {}).get(source_id)
-    if stored is None or dict(stored) != dict(working["rule"]):
+    dirty_double = working.get("double_count", True) != data.get(
+        "activity_bonus_double_count", True
+    )
+    if stored is None or dict(stored) != dict(working["rule"]) or dirty_double:
         raise UserFacingError("请先保存当前群设置，再复制到其他群")
     copy_state = {
         "kind": kind,
@@ -138,6 +141,7 @@ def _cancel_copy(data: dict[str, Any], copy_state: dict[str, Any]) -> dict[str, 
             "chat_id": chat_id,
             "rule": dict(stored),
             "last_cap": _last_cap(kind, stored),
+            "double_count": data.get("activity_bonus_double_count", True),
         }
     return result
 
@@ -245,7 +249,7 @@ def _last_cap(kind: str, rule: dict[str, Any]) -> int:
 
 
 def _kind_title(kind: str) -> str:
-    return "邀请抽奖加成" if kind == "invite" else "发言抽奖加成"
+    return "邀请加成票" if kind == "invite" else "抽奖加成票(发言)"
 
 
 def _group_title(data: dict[str, Any], chat_id: int) -> str:

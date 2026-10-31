@@ -132,7 +132,10 @@ def test_decimal_integer_remains_supported(value, expected):
     ],
 )
 def test_bonus_input_names_group_field_and_current_value(kind, field, label, *, value):
-    data = bonus.apply_action(editing_data(kind), f"draft_bonus_input_{field}")
+    data = editing_data(kind)
+    if field == "reward":
+        data["bonus_policy_version"] = None
+    data = bonus.apply_action(data, f"draft_bonus_input_{field}")
     text = bonus.input_prompt(data)
     assert "A群" in text and label in text and str(value) in text
     assert "只发送数字" in text and "保存本群后生效" in text

@@ -190,6 +190,7 @@ def rules_from_data(data: dict[str, Any]) -> CampaignRules:
         platform_policy=data.get("platform_policy"),
         participation_rules_version=data.get("participation_rules_version"),
         bonus_policy_version=policy_version(data),
+        activity_bonus_double_count=data.get("activity_bonus_double_count", True),
         admission=data.get("admission"),
         timezone=BEIJING_TIMEZONE,
         activity=activity,
@@ -263,9 +264,9 @@ def _missing_group_bonus_fields(data: dict[str, Any]) -> list[str]:
     missing: list[str] = []
     types = set(data.get("bonus_types") or [])
     if "invite" in types and not _has_enabled_group_rule(data, "invite"):
-        missing.append("至少配置一个群的邀请抽奖加成")
+        missing.append("至少配置一个群的邀请加成票")
     if "activity" in types and not _has_enabled_group_rule(data, "activity"):
-        missing.append("至少配置一个群的发言抽奖加成")
+        missing.append("至少配置一个群的抽奖加成票(发言)")
     return missing
 
 
@@ -280,6 +281,7 @@ def presentation_from_data(data: dict[str, Any]) -> dict[str, Any]:
         "start_at",
         "participation_rules_version",
         "bonus_policy_version",
+        "activity_bonus_double_count",
         "admission",
         "invite_retention_hours",
         "folder_link",

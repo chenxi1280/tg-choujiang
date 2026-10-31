@@ -36,7 +36,9 @@ def gate_lines(rules: CampaignRules, chats: tuple) -> tuple[str, ...]:
     title = "发言数" if gate.type == "message" else "邀请好友"
     lines = [f"本场门槛: {title}（所选群必须分别全部达标）"]
     for key, rule in gate.groups.items():
-        if gate.type == "message":
+        if gate.type == "message" and rule.count_mode == "period":
+            value = f"本期累计 {rule.daily_messages} 条，活动开始至截止内完成一次即可"
+        elif gate.type == "message":
             value = (
                 f"连续 {rule.consecutive_days} 天，每天 {rule.daily_messages} 条，"
                 "文字、图片、表情均计数"

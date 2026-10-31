@@ -14,7 +14,7 @@ def test_preview_is_a_business_card_with_waiting_fields() -> None:
     assert "🧭 准入条件" in text
     assert "🎁 奖品内容" in text
     assert "📃 抽奖说明" in text
-    assert "📈 抽奖加成" in text
+    assert "📈 抽奖加成票" in text
     assert "⏰ 开奖时间" in text
     assert "🧑‍💼 发奖人员" in text
     assert "UTC" not in text
@@ -26,9 +26,9 @@ def test_dashboard_separates_required_settings_bonus_and_submission():
     labels = [label for row in rows for label, _ in row]
     actions = [action for row in rows for _, action in row]
     assert len(labels) == 10
-    assert "加成设置" in labels
-    assert "发言抽奖加成" not in labels
-    assert "邀请抽奖加成" not in labels
+    assert "加成票设置" in labels
+    assert "抽奖加成票(发言)" not in labels
+    assert "邀请加成票" not in labels
     assert "清空配置" not in labels
     assert "draft_conditions" in actions
     assert rows[-1] == [("返回首页\uff08草稿保留\uff09", "draft_home")]

@@ -381,7 +381,7 @@ class CampaignCreator:
                 query.from_user.id,
                 _message(query),
                 data=data,
-                text="当前群的加成设置尚未保存。要放弃修改还是继续编辑？",
+                text="当前群的加成票设置尚未保存。要放弃修改还是继续编辑？",
                 rows=rows,
             )
             return

@@ -371,7 +371,7 @@ class ActivityService:
             participant=participant,
             chat_id=None,
             key=f"popularity:{campaign.id}:{participant.user_id}:{progress.local_date.isoformat()}:{target}",
-            label="发言加成",
+            label="抽奖加成票(发言)",
             delta=delta,
         )
 

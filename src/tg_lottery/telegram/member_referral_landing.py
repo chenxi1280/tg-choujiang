@@ -100,16 +100,15 @@ def _landing_state(
     if historical_status is not None:
         return (
             f"{historical_status}。\n"
-            f"该入口不再产生抽奖加成；如群入口仍可用，你仍可加入「{landing.target.title_snapshot}」。"
+            f"该入口不再产生抽奖加成票；如群入口仍可用，你仍可加入「{landing.target.title_snapshot}」。"
         )
     if membership is True:
         return (
-            f"你已经是「{landing.target.title_snapshot}」成员。\n"
-            "本次打开不会产生新成员邀请抽奖加成。"
+            f"你已经是「{landing.target.title_snapshot}」成员。\n本次打开不会产生新成员邀请加成票。"
         )
     if _registration_open(landing, now) and now < landing.campaign.preheat_at:
         return (
-            "本期邀请抽奖加成尚未开始。\n"
+            "本期邀请加成票尚未开始。\n"
             f"你仍可加入「{landing.target.title_snapshot}」，"
             "但当前入群不会给邀请人增加本期抽奖次数。"
         )
@@ -120,7 +119,7 @@ def _landing_state(
             "完成留存后可计入邀请人的本期加成。"
         )
     return (
-        "本期邀请抽奖加成已经结束。\n"
+        "本期邀请加成票已经结束。\n"
         f"如群入口仍有效，你仍可加入「{landing.target.title_snapshot}」，"
         "但不会再给邀请人增加本期抽奖次数。"
     )

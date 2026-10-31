@@ -3,6 +3,7 @@
 from collections.abc import Mapping, Sequence
 
 from tg_lottery.domain.rules import CampaignRules, GroupActivityRule, GroupInviteRule
+from tg_lottery.presentation.daily_bonus import daily_bonus_rule_text
 from tg_lottery.telegram.creator_invite_retention import retention_text
 
 
@@ -52,10 +53,11 @@ def per_group_bonus_lines(
         if invite is not None:
             parts.append(group_invite_text(invite))
         if activity is not None:
-            parts.append(group_activity_text(activity))
+            parts.append(_activity_description(rules, activity))
         if parts:
             title = chat_title(by_id.get(key, {}))
             lines.append(f"{title}：" + "；".join(parts))
+    lines.extend(_daily_policy_lines(rules))
     lines.extend(global_bonus_lines(rules))
     lines.extend(base_rule_lines(rules, by_id))
     if rules.invitation_enabled:
@@ -101,3 +103,15 @@ def base_rule_lines(rules: CampaignRules, by_id: Mapping[str, object]) -> list[s
     if rules.base_activity_rules:
         lines.append("北京时间每日统计；先报名再累计；全部基础门槛完成前，加成暂存，不能参与开奖。")
     return lines
+
+
+def _activity_description(rules, activity):
+    if rules.daily_activity_bonus:
+        return f"抽奖加成票条件：每天{activity.messages_per_cycle}条（发言获得）"
+    return group_activity_text(activity)
+
+
+def _daily_policy_lines(rules):
+    if rules.daily_activity_bonus and rules.activity_bonus_enabled:
+        return [daily_bonus_rule_text(rules.activity_bonus_double_count)]
+    return []

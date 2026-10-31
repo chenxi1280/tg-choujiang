@@ -43,7 +43,7 @@ def input_prompt_text(working, *, group_title: str, field: str) -> str:
     kind = str(working["kind"])
     label = input_label(kind, field)
     value = working["rule"].get(rule_key(kind, field))
-    module = "🤝 邀请抽奖加成" if kind == "invite" else "🌱 发言抽奖加成"
+    module = "🤝 邀请加成票" if kind == "invite" else "🌱 抽奖加成票(发言)"
     return (
         f"{group_title} · {module}\n当前{label}：{value}\n\n请输入{label}（正整数，只发送数字）："
         "\n提交后返回本群编辑页，保存本群后生效；取消输入保留其他暂存设置。"

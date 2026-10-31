@@ -25,6 +25,7 @@ DAILY_CYCLES = 2
 
 def _draft():
     return new_draft() | {
+        "bonus_policy_version": None,
         "participation_groups": [
             {"id": CHAT_ID, "title": "A群"},
             {"id": SECOND_CHAT, "title": "B群"},

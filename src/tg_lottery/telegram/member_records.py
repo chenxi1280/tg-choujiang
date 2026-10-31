@@ -188,7 +188,7 @@ def _record_keyboard(
             [InlineKeyboardButton(text="联系发奖人员", url=f"tg://user?id={issuer_user_id}")]
         )
     if bonus_enabled or invite_gate_enabled:
-        label = "邀请门槛与入口" if invite_gate_enabled and not bonus_enabled else "我的加成"
+        label = "邀请门槛与入口" if invite_gate_enabled and not bonus_enabled else "我的加成票"
         rows.append([InlineKeyboardButton(text=label, callback_data=f"m:bo:{public_ref}")])
     if invite_enabled:
         rows.append(

@@ -134,14 +134,14 @@ async def test_legacy_activity_only_card_deep_link_and_navigation_read_original_
     query = query.model_copy(update={"from_user": query.from_user.model_copy(update={"id": 201})})
     await bonus_callback(flow, query, campaign.public_ref)
     text = flow._bot.send_message.await_args.args[1]
-    assert "累计发言抽奖加成: 2" in text
+    assert "累计抽奖加成票(发言): 2" in text
     assert "4/10 条" in text if state is CampaignState.RUNNING else "不再计算新增" in text
     private = query.model_copy(update={"message": _query(201).message})
     await show_bonus_message(flow, private.message, campaign.public_ref, user_id=201)
-    assert "累计发言抽奖加成: 2" in answer.await_args.args[0]
+    assert "累计抽奖加成票(发言): 2" in answer.await_args.args[0]
     group = query.model_copy(update={"data": f"m:bo:{campaign.public_ref}"})
     await handler_for(flow)._callback(group)
-    assert "累计发言抽奖加成: 2" in answer.await_args.args[0]
+    assert "累计抽奖加成票(发言): 2" in answer.await_args.args[0]
     async with session_factory() as session:
         assert await session.scalar(select(func.count(InviteLink.id))) == 0
         assert await session.scalar(select(func.count(TicketLedger.id))) == 1
@@ -198,7 +198,7 @@ async def test_legacy_invite_record_stays_readable_before_personal_link_is_confi
     query = query.model_copy(update={"from_user": query.from_user.model_copy(update={"id": 201})})
     await bonus_callback(flow, query, campaign.public_ref)
     assert flow._bot.send_message.await_args.args[0] == 201
-    assert "累计邀请抽奖加成: 0" in flow._bot.send_message.await_args.args[1]
+    assert "累计邀请加成票: 0" in flow._bot.send_message.await_args.args[1]
     async with session_factory() as session:
         assert await session.scalar(select(func.count(TelegramOutbox.id))) == 0
         assert await session.scalar(select(func.count(InviteLink.id))) == int(pending_link)
@@ -262,7 +262,7 @@ async def test_confirmed_legacy_invite_opens_through_actual_bonus_navigation(
         "active": "专属邀请链接",
         "revoked": "个人邀请链接已撤销",
         "expired": "个人邀请链接已过期",
-        "drawn": "不再计算本期或以后任何抽奖加成",
+        "drawn": "不再计算本期或以后任何抽奖加成票",
     }
     assert expected[status] in text
     buttons = [button for row in keyboard.inline_keyboard for button in row]

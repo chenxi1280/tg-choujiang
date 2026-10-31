@@ -331,8 +331,8 @@ def test_publication_confirmation_summarizes_all_group_rules() -> None:
     text, rows = confirmation_view(data)
 
     assert "参与群" in text and "2 个" in text
-    assert "邀请抽奖加成" in text and "2 个群开启" in text
-    assert "发言抽奖加成" in text and "1 个每日不设上限" in text
+    assert "邀请加成票" in text and "2 个群开启" in text
+    assert "抽奖加成票(发言)" in text and "1 个每日不设上限" in text
     assert [(label, action) for row in rows for label, action in row][-2] == (
         "确认发布",
         "draft_publish_confirm",

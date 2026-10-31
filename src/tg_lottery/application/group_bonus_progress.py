@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tg_lottery.application.base_activity_views import base_progress_text
+from tg_lottery.application.daily_bonus import DailyBonusProgress, daily_bonus_progress
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import InvitationState, TicketSource
 from tg_lottery.domain.rules import CampaignRules
@@ -44,6 +45,7 @@ class GroupBonusProgress:
     invitations: tuple[InviteGroupProgress, ...]
     activities: tuple[ActivityGroupProgress, ...]
     base_progress: str = ""
+    daily_bonus: DailyBonusProgress | None = None
 
 
 async def load_group_bonus_progress(
@@ -69,7 +71,7 @@ async def load_group_bonus_progress(
         invite_counts = await _valid_invite_counts(session, campaign_id, participant.id)
         ticket_totals = await _ticket_totals(session, campaign_id, participant.id)
         daily = await _daily_progress(session, campaign_id, participant.id, local_date=local_date)
-        return _build_progress(
+        progress = _build_progress(
             rules,
             local_date=local_date,
             group_ids=group_ids,
@@ -79,6 +81,13 @@ async def load_group_bonus_progress(
             activity_days=await _activity_days(session, campaign_id, participant.id),
             base_text=await base_progress_text(session, campaign, participant),
         )
+
+        if rules.daily_activity_bonus:
+            state = await daily_bonus_progress(
+                session, campaign, participant, observed_at=observed_at or utcnow()
+            )
+            progress = replace(progress, daily_bonus=state)
+        return progress
 
 
 async def _activity_days(

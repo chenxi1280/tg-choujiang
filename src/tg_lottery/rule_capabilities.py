@@ -16,6 +16,8 @@ SUPPORTED_RULE_VERSIONS = frozenset(
         "platform:official-v1",
         "platform:official-v2",
         "bonus:unlimited-v1",
+        "bonus:daily-after-start-v1",
+        "message-admission:period-v1",
         "message-calendar:campaign-days-v1",
     }
 )
@@ -41,6 +43,10 @@ async def check_database(supported):
                     "FROM campaigns WHERE rules->>'bonus_policy_version' IS NOT NULL"
                     " UNION SELECT 'message-calendar:' || (rules->>'message_task_calendar') "
                     "FROM campaigns WHERE rules->>'message_task_calendar' IS NOT NULL"
+                    " UNION SELECT 'message-admission:period-v1' FROM campaigns c WHERE EXISTS ("
+                    "SELECT 1 FROM jsonb_each("
+                    "COALESCE(c.rules->'admission'->'groups', '{}'::jsonb)) g "
+                    "WHERE g.value->>'count_mode' = 'period')"
                 )
             )
             require_capabilities(versions, supported)

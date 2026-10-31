@@ -46,8 +46,12 @@ def bonus_closed_notice(
     if not campaign_bonus_completed(campaign):
         return ""
     status = historical_outcome_status(campaign, outcome=outcome) or "活动已截止"
-    category = {"邀请": "邀请抽奖", "发言": "发言抽奖", "活跃": "发言抽奖"}.get(category, category)
-    return f"{status}，不再计算新增{category}加成；以下保留本期累计记录。"
+    category = {
+        "邀请": "邀请加成票",
+        "发言": "抽奖加成票(发言)",
+        "活跃": "抽奖加成票(发言)",
+    }.get(category, "抽奖加成票")
+    return f"{status}，不再计算新增{category}；以下保留本期累计记录。"
 
 
 def invite_list_prompt(
@@ -86,7 +90,7 @@ def invite_cap(rule: object) -> str:
 def invitation_section_title(rules: object) -> str:
     if rules.admission and rules.admission.type == "invite":
         return "邀请门槛与加成" if rules.invite_bonus_enabled else "邀请门槛与入口"
-    return "邀请抽奖加成"
+    return "邀请加成票"
 
 
 def invitation_category_label(rules: object, total: int) -> str:

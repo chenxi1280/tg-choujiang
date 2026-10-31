@@ -96,6 +96,7 @@ class GroupActivityRule(BaseModel, frozen=True):
 
 
 class BaseActivityRule(BaseModel, frozen=True):
+    count_mode: Literal["daily", "period"] = "daily"
     consecutive_days: int = Field(default=7, ge=1)
     daily_messages: int = Field(default=5, ge=1)
     # Retained only to read frozen legacy rules; message counting ignores this value.
@@ -105,7 +106,8 @@ class BaseActivityRule(BaseModel, frozen=True):
 class CampaignRules(BaseModel, frozen=True):
     platform_policy: PlatformPolicy | None = None
     participation_rules_version: Literal["v3.0"] | None = None
-    bonus_policy_version: Literal["unlimited-v1"] | None = None
+    bonus_policy_version: Literal["unlimited-v1", "daily-after-start-v1"] | None = None
+    activity_bonus_double_count: bool = True
     admission: Admission | None = None
     message_task_calendar: Literal["campaign-days-v1"] | None = None
     timezone: str = "Asia/Shanghai"
@@ -165,13 +167,27 @@ class CampaignRules(BaseModel, frozen=True):
         if self.invite.retention_hours != 24:
             raise ValueError("current invitation retention must be 24 hours")
         self._validate_current_bonus_targets()
-        if any(
-            rule.enabled
-            and (rule.daily_cap_mode != "unlimited" or rule.daily_max_cycles is not None)
+        if self.bonus_policy_version == "unlimited-v1" and any(
+            rule.enabled and (rule.daily_cap_mode, rule.daily_max_cycles) != ("unlimited", None)
             for rule in self.group_activity_rules.values()
         ):
             raise ValueError("current activity bonuses must be unlimited")
         return self
+
+    @model_validator(mode="after")
+    def validate_daily_bonus_policy(self) -> CampaignRules:
+        if self.daily_activity_bonus and any(
+            rule.enabled
+            and (rule.daily_cap_mode, rule.daily_max_cycles, rule.reward_tickets)
+            != ("limited", 1, 1)
+            for rule in self.group_activity_rules.values()
+        ):
+            raise ValueError("daily activity bonuses require exactly one ticket per day")
+        return self
+
+    @property
+    def daily_activity_bonus(self) -> bool:
+        return self.bonus_policy_version == "daily-after-start-v1"
 
     def _validate_current_bonus_targets(self) -> None:
         for kind, rules in (

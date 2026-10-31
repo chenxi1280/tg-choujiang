@@ -24,6 +24,7 @@ from tg_lottery.infrastructure.db import (
 )
 from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.presentation.participation_rules import public_rule_blocks
+from tg_lottery.telegram.creator_bonus_policy import current_bonus_policy
 from tg_lottery.telegram.draft_config import campaign_input, new_draft
 from tg_lottery.telegram.member_activity_landing import open_activity
 from tg_lottery.telegram.member_flow import MemberFlow
@@ -125,7 +126,7 @@ async def test_v3_creator_persists_frozen_rules_and_complete_publication_text(
         ],
         "prizes": [{"name": "测试占位", "winner_count": 1}],
     }
-    draft, prizes = campaign_input(data, now=now)
+    draft, prizes = campaign_input(current_bonus_policy(data), now=now)
     service = CampaignService(partial(UnitOfWork, session_factory))
     campaign = await service.create_draft(draft, prizes, 101)
     await service.publish(campaign.id, 101, "test_bot")

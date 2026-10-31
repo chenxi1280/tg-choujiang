@@ -56,9 +56,9 @@ async def _legacy_read(flow, campaign, *, rules, detail, user_id):
 
 async def _legacy_payload(queries, campaign, *, rules, detail, user_id):
     lines = [
-        f"{campaign.name} · 我的加成（原活动规则）",
-        f"累计发言抽奖加成: {detail.activity} 次",
-        f"累计邀请抽奖加成: {detail.invitation} 次",
+        f"{campaign.name} · 我的加成票（原活动规则）",
+        f"累计抽奖加成票(发言): {detail.activity} 次",
+        f"累计邀请加成票: {detail.invitation} 次",
         f"累计次数（含暂存）: {detail.total}",
     ]
     if not detail.base_qualified:
@@ -91,7 +91,7 @@ async def _legacy_payload(queries, campaign, *, rules, detail, user_id):
         [
             [
                 InlineKeyboardButton(
-                    text="刷新我的加成", callback_data=f"member:bonus:{campaign.public_ref}"
+                    text="刷新我的加成票", callback_data=f"member:bonus:{campaign.public_ref}"
                 )
             ],
             [
@@ -111,5 +111,5 @@ def _legacy_activity_lines(progress, rules):
         f"今日发言（{progress.local_date}）:",
         *(f"{title}: {count}/{rule.message_threshold} 条" for title, count in progress.groups),
         f"全部条件群达标后增加{rule.reward_tickets}次, {mode}",
-        f"今日已入账发言抽奖加成: {progress.awarded_today} 次",
+        f"今日已入账抽奖加成票(发言): {progress.awarded_today} 次",
     ]

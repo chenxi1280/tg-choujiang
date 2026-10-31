@@ -35,12 +35,12 @@ def human_rule(rules: CampaignRules, chats: tuple[dict[str, object], ...] = ()) 
             (*gate_lines(rules, chats), "独立加成:", *per_group_bonus_lines(rules, chats))
         )
     if not rules.bonus_types:
-        return "抽奖加成: 关闭，仅计算基础抽奖次数\n" + "\n".join(
+        return "抽奖加成票: 关闭，仅计算基础抽奖次数\n" + "\n".join(
             per_group_bonus_lines(rules, chats)
         )
     if rules.group_invite_rules or rules.group_activity_rules or rules.base_activity_rules:
         lines = per_group_bonus_lines(rules, chats)
-        return "抽奖加成（各群独立累计）:\n" + "\n".join(lines)
+        return "抽奖加成票（各群独立累计）:\n" + "\n".join(lines)
     parts = []
     if rules.invite_bonus_enabled:
         parts.append(invite_rule_text(rules))
@@ -49,7 +49,7 @@ def human_rule(rules: CampaignRules, chats: tuple[dict[str, object], ...] = ()) 
             f"每个条件群每天有效发言 {rules.activity.message_threshold} 条，"
             f"全部达标+{rules.activity.reward_tickets} 次"
         )
-    return "抽奖加成: " + "；".join(parts)
+    return "抽奖加成票: " + "；".join(parts)
 
 
 def invite_rule_text(rules: CampaignRules) -> str:
