@@ -31,6 +31,7 @@ from tg_lottery.telegram.creator_panel_recovery import recover_editing_panel, re
 from tg_lottery.telegram.creator_prizes import PRIZE_ACTIONS, CreatorPrizes
 from tg_lottery.telegram.creator_publication import CreatorPublisher
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
+from tg_lottery.telegram.creator_required_chats_data import required_draft_data
 from tg_lottery.telegram.creator_sections import (
     SECTION_ACTIONS,
     current_section,
@@ -468,10 +469,7 @@ class CampaignCreator:
         return updated
 
     async def _required_session(self, user_id: int) -> dict[str, Any]:
-        session = await self._sessions.get(user_id)
-        if session is None or not session.state.startswith("draft:"):
-            raise UserFacingError("创建草稿已过期，请发送 /创建抽奖 重新创建")
-        return dict(session.data)
+        return await required_draft_data(self._sessions, user_id)
 
     async def _render_text(
         self,
