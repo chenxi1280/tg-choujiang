@@ -93,7 +93,7 @@ async def test_zero_group_creator_opens_saved_draft_with_working_buttons(creator
         item
         for row in keyboard.inline_keyboard
         for item in row
-        if plain_label(item.text) == "活动标题"
+        if plain_label(item.text) == "抽奖标题"
     )
     grant = await case.tokens.consume(
         button.callback_data.removeprefix("secure:"), owner_user_id=USER_ID, chat_id=USER_ID

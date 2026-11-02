@@ -218,7 +218,7 @@ async def test_closed_base_progress_is_history_without_continuation_promises(
         text = await base_activity_views.base_progress_text(session, campaign, participant)
 
     assert ("本期基础发言已停止累计" in text) == completed
-    assert ("加成尚未生效" in text) != completed
+    assert ("已获得的加成将在门槛和参与条件满足后生效" in text) != completed
     assert ("当前有效抽奖次数" in text) != completed
     assert ("记录日期" in text) == completed
     assert "名称待更新" in text and "-100123" not in text
