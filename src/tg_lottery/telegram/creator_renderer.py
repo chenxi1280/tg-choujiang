@@ -20,6 +20,7 @@ from tg_lottery.telegram.creator_group_availability import (
 )
 from tg_lottery.telegram.creator_group_identity import filter_groups
 from tg_lottery.telegram.creator_picker_groups import picker_groups
+from tg_lottery.telegram.creator_sections import back_rows
 from tg_lottery.telegram.keyboard_layout import fit_rows, list_rows
 from tg_lottery.telegram.panel_edit import edit_panel, edit_panel_at
 from tg_lottery.telegram.panel_pagination import creator_page_rows, titled_pages
@@ -190,7 +191,7 @@ class CreatorRenderer:
         maximum = max(0, (len(groups) - 1) // GROUP_PAGE_SIZE)
         requested_page = page
         page = min(maximum, max(0, page))
-        await self._store_group_page(target.user_id, page)
+        data = await self._store_group_page(target.user_id, page)
         visible = groups[page * GROUP_PAGE_SIZE : (page + 1) * GROUP_PAGE_SIZE]
         context = await self._sessions.issue_panel_context(target.user_id, target.message_id)
         rows, counts = await self._group_buttons(
@@ -201,7 +202,7 @@ class CreatorRenderer:
             verified_availability=verified_availability,
         )
         navigation = _group_navigation(
-            page=page, maximum=maximum, has_groups=bool(groups), searching=bool(search)
+            data, page=page, maximum=maximum, has_groups=bool(groups), searching=bool(search)
         )
         back = await self._keyboard(target, navigation, context=context)
         rows = list_rows(rows, start=page * GROUP_PAGE_SIZE + 1)
@@ -239,7 +240,9 @@ class CreatorRenderer:
         session = await self._sessions.get(user_id)
         if session is None:
             raise ValueError("admin draft session expired")
-        await self._sessions.set(user_id, session.state, dict(session.data) | {"group_page": page})
+        data = dict(session.data) | {"group_page": page}
+        await self._sessions.set(user_id, session.state, data)
+        return data
 
     async def _group_availability_rows(self, groups, *, user_id, verified):
         return await asyncio.gather(
@@ -358,7 +361,7 @@ class CreatorRenderer:
 
 
 def _group_navigation(
-    *, page: int, maximum: int, has_groups: bool, searching: bool = False
+    data, *, page: int, maximum: int, has_groups: bool, searching: bool = False
 ) -> ButtonRows:
     selection = (
         [
@@ -377,7 +380,7 @@ def _group_navigation(
         ),
         [("🔄 刷新群列表", "draft_groups_refresh")],
         *([[("✅ 完成选择", "draft_groups_done")]] if has_groups else []),
-        [("↩ 返回上一层", "draft_back")],
+        *back_rows(data),
     ]
 
 

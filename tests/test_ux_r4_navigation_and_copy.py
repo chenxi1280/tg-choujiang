@@ -9,6 +9,7 @@ from tg_lottery.domain.enums import CampaignState, QualificationState
 from tg_lottery.presentation.counting_notice import blocked_counting_notice
 from tg_lottery.telegram.campaign_creator import CampaignCreator
 from tg_lottery.telegram.creator_behavior_views import return_target
+from tg_lottery.telegram.creator_renderer import CreatorRenderer, PanelTarget
 from tg_lottery.telegram.creator_sections import back_rows, section_view
 from tg_lottery.telegram.draft_config import new_draft
 from tg_lottery.telegram.group_reputation import COMMANDS, _reply
@@ -49,6 +50,52 @@ async def test_return_callback_matches_page_and_field_label(state, parent, expec
     assert creator._show_section.await_args.args[1] == expected
     assert label.startswith("↩️ 返回")
     assert creator._show_section.await_args.kwargs["data"]["creator_path"][-1] == expected
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [(["dashboard"], "草稿"), (["dashboard", "bonus", "bonus_activity"], "加成票设置")],
+)
+async def test_group_picker_return_names_actual_destination_without_extra_session_read(
+    monkeypatch, path, expected
+):
+    from aiogram.types import InlineKeyboardMarkup, Message
+
+    from tg_lottery.telegram import creator_renderer
+
+    data = new_draft() | {"creator_path": path}
+    sessions = SimpleNamespace(
+        get=AsyncMock(return_value=SimpleNamespace(state="draft:groups", data=data)),
+        set=AsyncMock(),
+        issue_panel_context=AsyncMock(return_value=object()),
+    )
+    renderer = CreatorRenderer(bot=object(), tokens=object(), queries=object(), sessions=sessions)
+    renderer._picker_group_state = AsyncMock(return_value=([], ()))
+    renderer._group_buttons = AsyncMock(return_value=([], {}))
+    renderer._keyboard = AsyncMock(return_value=InlineKeyboardMarkup(inline_keyboard=[]))
+    monkeypatch.setattr(creator_renderer, "edit_panel_at", AsyncMock())
+
+    await renderer.edit_groups(PanelTarget(201, 201, 1))
+
+    assert renderer._keyboard.await_args.args[1][-1] == [(f"↩️ 返回{expected}", "draft_back")]
+    sessions.get.assert_awaited_once_with(201)
+    creator = object.__new__(CampaignCreator)
+    creator._sessions = sessions
+    creator._render_dashboard = AsyncMock()
+    creator._show_section = AsyncMock()
+    await creator._show_dashboard(
+        SimpleNamespace(
+            from_user=SimpleNamespace(id=201),
+            message=Message.model_validate(
+                {"message_id": 1, "date": 0, "chat": {"id": 201, "type": "private"}}
+            ),
+        ),
+        CallbackGrant("draft_back", None, {}),
+    )
+    if len(path) == 1:
+        creator._render_dashboard.assert_awaited_once()
+    else:
+        assert creator._show_section.await_args.args[1] == path[-2]
 
 
 @pytest.mark.parametrize("registered,expected", [(False, "报名尚未成功"), (True, "你已报名")])

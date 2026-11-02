@@ -1,0 +1,80 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from test-runner.Dockerfile
+#1 DONE 0.0s
+
+#1 [internal] load build definition from test-runner.Dockerfile
+#1 transferring dockerfile: 831B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.12-slim
+#2 DONE 0.5s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [ 1/13] FROM docker.io/library/python:3.12-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30
+#4 resolve docker.io/library/python:3.12-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30 0.0s done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 3.26MB 0.1s done
+#5 DONE 0.1s
+
+#6 [ 2/13] WORKDIR /workspace
+#6 CACHED
+
+#7 [ 6/13] COPY src /workspace/src
+#7 CACHED
+
+#8 [ 8/13] COPY alembic.ini /workspace/alembic.ini
+#8 CACHED
+
+#9 [ 7/13] RUN python -m pip install --no-deps --no-build-isolation -e .
+#9 CACHED
+
+#10 [ 3/13] COPY pyproject.toml deploy/install_test_dependencies.py /tmp/dependencies/
+#10 CACHED
+
+#11 [ 4/13] RUN python /tmp/dependencies/install_test_dependencies.py /tmp/dependencies/pyproject.toml
+#11 CACHED
+
+#12 [ 5/13] COPY pyproject.toml /workspace/pyproject.toml
+#12 CACHED
+
+#13 [ 9/13] COPY alembic /workspace/alembic
+#13 CACHED
+
+#14 [10/13] COPY tests /workspace/tests
+#14 DONE 0.1s
+
+#15 [11/13] COPY scripts /workspace/scripts
+#15 DONE 0.0s
+
+#16 [12/13] COPY deploy/run_remote_tests.py /workspace/deploy/run_remote_tests.py
+#16 DONE 0.0s
+
+#17 [13/13] COPY deploy/check-services.sh deploy/docker-env.sh deploy/release.sh /workspace/deploy/
+#17 DONE 0.1s
+
+#18 exporting to image
+#18 exporting layers 0.1s done
+#18 writing image sha256:2e2ac991858481c002745bd2167742b6e30c211f44450553ec32037a2ee9399d done
+#18 naming to docker.io/library/tg-lottery-test-runner:current done
+#18 DONE 0.1s
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.schemas
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.tables
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.types
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.constraints
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.defaults
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.comments
+INFO  [alembic.ddl.postgresql] Detected sequence named 'telegram_updates_id_seq' as owned by integer column 'telegram_updates(id)', assuming SERIAL and omitting
+No new upgrade operations detected.
+........................................................................ [ 94%]
+....                                                                     [100%]
+76 passed in 9.19s

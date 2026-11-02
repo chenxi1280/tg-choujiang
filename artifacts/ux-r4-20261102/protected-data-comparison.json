@@ -1,0 +1,11 @@
+{
+  "protected_campaigns": 45,
+  "protected_ledger_rows": 7245,
+  "protected_draw_snapshots": 37,
+  "protected_winners": 27,
+  "existing_records_unchanged": true,
+  "changes": [],
+  "new_campaign_ids": [],
+  "revision_before": "c34a1030ux14",
+  "revision_after": "c34a1030ux14"
+}

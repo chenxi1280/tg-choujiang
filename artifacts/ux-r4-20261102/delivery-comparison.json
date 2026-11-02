@@ -1,0 +1,7 @@
+{
+  "historic_unknown_ids_and_attempts_unchanged": true,
+  "count": 37,
+  "health_before": "STATUS=DEGRADED_ACKNOWLEDGED unknown_deliveries=37 acknowledged_unknown=37 unreviewed_unknown=0 invalidated_reviews=0 unprojected_confirmations=0 failed_jobs=0 failed_updates=0 failed_notice_deliveries=0",
+  "health_after": "STATUS=DEGRADED_ACKNOWLEDGED unknown_deliveries=37 acknowledged_unknown=37 unreviewed_unknown=0 invalidated_reviews=0 unprojected_confirmations=0 failed_jobs=0 failed_updates=0 failed_notice_deliveries=0",
+  "ui_rejections_after": "rejected_ui_responses=16 unavailable_memberships=0"
+}

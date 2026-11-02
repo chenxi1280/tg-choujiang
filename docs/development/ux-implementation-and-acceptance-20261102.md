@@ -24,8 +24,8 @@
 - [x] P2-5 其他样式、预览摘要、群重名、消息设置与图标。
 - [x] 每批文本对比、上海定向测试与静态检查。
 - [x] 上海完整回归与最终差异审查。
-- [ ] 本地 master 提交 → 本地 release 合并 → push release → Actions/GHCR。
-- [ ] 线上版本、镜像、迁移、app/worker、Bot 身份和队列核验。
+- [x] 本地 master 提交 → 本地 release 合并 → push release → Actions/GHCR。
+- [x] 线上版本、镜像、迁移、app/worker、Bot 身份和队列核验。
 - [ ] 测试 Bot 的公告三模式、创建、条件、奖品和加成交互，电脑及手机截图；缺失证据明确标注。
 
 ## 当前进度与证据
@@ -86,3 +86,14 @@
 - 同次执行 migration upgrade/check、downgrade base、重新 upgrade/check 通过，无新增迁移。最终 Ruff format/check、代码指标、compileall 和 diff check 再次通过。上海运行环境通过了依赖版本限定的请求重试证明；本机的 1 项跳过没有被冒充为通过。
 - 四维审查：正确性由门槛三模式、条件四状态、草稿编辑/暂停恢复/旧 token、历史冻结规则及全回归覆盖；性能沿用现有批量群计数及条件查询，无新增查询或依赖，未做容量压测；可维护性共用门槛、条件状态、时间和加成文案函数，删除公告的空摘要与重复链接；安全性保持发布快照、回调身份、账本、Outbox 及 UNKNOWN 语义，没有数据迁移或真实业务活动写入。
 - 准备按本地 master → release 快进合并 → push release 触发原发布工作流；线上成功与客户端验收仍待后续证据。
+
+### 线上发布核验（2026-11-03）
+
+- 本地 master、release 与 origin/release 均为 `67835a50d57664f8083b27a4b82a748bc36428dc`；通过 release 推送触发 [Actions 41477038122](https://github.com/chenxi1280/tg-choujiang/actions/runs/41477038122)，checks、tests、build-image、deploy 均成功。
+- 生产 current 为 `/data/tg-lottery/releases/20261102161757_67835a5`，app、worker、integration 均运行该 SHA 镜像且 healthy；镜像 digest 为 `sha256:3c7002119a9a1f197e6893b38db3a14cecf6db59d5a29c4172b0b4fecf964988`。隔离运维 Bot 保持原版本。
+- `check-services.sh` 返回 `CHECK_STATUS=PASSED`，Alembic 保持 `c34a1030ux14`；只读 getMe 确认为原 Bot `potato_lottery_bot`，release_sha 与发布提交一致。
+- 发布前后逐项比对原 45 场活动、7245 条账本、37 份开奖快照和 27 条中奖记录，规则、配置版本、时间、参与者、每日进度及上述不可变记录全部一致，没有新增活动。证据：`protected-data-comparison.json`；原始业务快照不提交。
+- 投递状态保持 `DEGRADED_ACKNOWLEDGED`：37 条已审阅 UNKNOWN 的 outbox ID 与原 attempt ID 全部一致；无新增未审阅 UNKNOWN、无确认未投影、失败任务/Update/通知均为 0；原 16 条历史界面回信拒绝记录不变。证据：`delivery-comparison.json`。这些 UNKNOWN 的远端投递结果仍未知，没有重发或改写。
+- 网页验收客户端持续显示 updating，旧面板的新按钮未同步，部分浏览器操作超时，未计为通过。改用本机 Telegram：已通过 `/我的编号` 确认专用验收账号，收到新版创建面板，确认参与群去重、常驻门槛入口、说明首行及行数、地区不限、消息与提醒可读值。仅填写 `UX R4验收1103｜无奖品无价值` 草稿，继续验证原地奖品修改；尚未发布或执行开奖。
+- 原生客户端已验证新增占位 1 人 → 原地修改 2 人立即保存 → 进入名称编辑后取消 → 返回奖品清单和草稿仍为同一项 2 人；只读草稿记录一致。截图 `online-prize-edit-desktop.png`，测试仅用明确无奖品、无价值、无需领取的占位。
+- 线上验收发现群选择器绕过共享返回标签，仍写“返回上一层”。根因为独立渲染路径使用旧固定文案。修正为复用 `back_rows`，从已有草稿读取结果取路径，没有新增查询；两个入口测试同时验证标签与真实回调目标。76 项上海定向及最终 15 项本机纯测试通过，Ruff 与代码指标通过。首轮新增测试缺少真实 Message 对象而失败，已补齐测试对象；本机首次命令缺少 PYTHONPATH，在加载 conftest 前失败，未建立数据库连接。
