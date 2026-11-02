@@ -68,5 +68,5 @@ def test_unpublished_import_replaces_obsolete_policy_note():
     converted = current_bonus_policy(source)
     assert previous not in converted["import_notes"]
     assert "保留群配置提示" in converted["import_notes"]
-    assert any("首日不发" in value for value in converted["import_notes"])
+    assert not any("首日不发" in value for value in converted["import_notes"])
     assert source["import_notes"][0] == previous

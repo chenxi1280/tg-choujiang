@@ -6,6 +6,12 @@ from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import GroupActivityRule, GroupInviteRule
 
 DAILY_BONUS_POLICY = "daily-after-start-v1"
+POLICY_NOTES = frozenset(
+    {
+        "新场发言获得的抽奖加成票首日不发、次日起整场每天最多1张；邀请加成票规则保留，历史活动不变。",
+        "新场发言抽奖加成和邀请抽奖加成都不设上限，邀请留存固定24小时；历史活动不变。",
+    }
+)
 
 
 def uses_current_bonus_policy(data: dict[str, Any]) -> bool:
@@ -40,11 +46,9 @@ def current_bonus_policy(data: dict[str, Any]) -> dict[str, Any]:
             group: creation_rule(kind, rule) for group, rule in (data.get(key) or {}).items()
         }
     updated.update(_editor_policy(data))
-    note = (
-        "新场发言获得的抽奖加成票首日不发、次日起整场每天最多1张；"
-        "邀请加成票规则保留，历史活动不变。"
-    )
-    updated["import_notes"] = _policy_notes(data, note)
+    updated["import_notes"] = [
+        value for value in data.get("import_notes") or [] if value not in POLICY_NOTES
+    ]
     return updated
 
 
@@ -97,9 +101,3 @@ def cap_keys(kind: str) -> tuple[str, str]:
 def cap_label(rule: dict[str, Any], kind: str) -> str:
     mode_key, cap_key = cap_keys(kind)
     return "不设上限" if rule[mode_key] == "unlimited" else str(rule[cap_key])
-
-
-def _policy_notes(data, note):
-    previous = "新场发言抽奖加成和邀请抽奖加成都不设上限，邀请留存固定24小时；历史活动不变。"
-    notes = [value for value in data.get("import_notes") or [] if value != previous]
-    return list(dict.fromkeys([*notes, note]))

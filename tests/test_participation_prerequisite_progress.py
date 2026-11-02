@@ -39,7 +39,7 @@ def test_progress_counts_all_targets_and_keeps_pending_unknown_distinct():
     )
     assert "已完成 1/3" in text
     assert "✅ 已完成 · 加入「A群」" in text
-    assert "等待管理员批准" in text and "待核验 · 关注「C频道」" in text
+    assert "等待管理员批准" in text and "暂时无法检查 · 关注「C频道」" in text
 
 
 async def _block(factory, campaign_id, participant_id):

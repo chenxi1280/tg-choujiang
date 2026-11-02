@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from tg_lottery.domain.condition_targets import frozen_condition_targets
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.presentation.daily_bonus import daily_bonus_dates
+from tg_lottery.presentation.gate_rules import gate_mode_notes, gate_rule_text, payload_task_dates
 from tg_lottery.presentation.rule_pages import escaped_text_blocks
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.public_projection import BEIJING_TIMEZONE
@@ -48,11 +49,15 @@ def chat_condition(chat: Mapping, *, payload: Mapping, rules: CampaignRules) -> 
     icon = "📡" if chat.get("type") == "channel" else "👥"
     lines = [f'{icon} {action}-<a href="{link}">{title}</a>{status}']
     if chat.get("type") != "channel":
-        lines.extend(group_gate_lines(str(chat["id"]), rules))
+        lines.extend(
+            group_gate_lines(
+                str(chat["id"]), rules, calendar_dates=payload_task_dates(payload, rules)
+            )
+        )
     return "\n".join(lines)
 
 
-def group_gate_lines(key: str, rules: CampaignRules) -> tuple[str, ...]:
+def group_gate_lines(key: str, rules: CampaignRules, *, calendar_dates=()) -> tuple[str, ...]:
     if rules.admission and rules.admission.type == "invite":
         gate = rules.admission.groups.get(key)
         if gate is None:
@@ -60,10 +65,9 @@ def group_gate_lines(key: str, rules: CampaignRules) -> tuple[str, ...]:
         return (f"└ 🚪 有效邀请满 <b>{gate.required_valid_invites}</b> 人",)
     gate = rules.message_gate_rules.get(key)
     if gate is not None:
-        if gate.count_mode == "period":
-            return (f"└ 🚪 本期累计有效发言满 <b>{gate.daily_messages}</b> 条",)
-        period = "单日" if gate.consecutive_days == 1 else f"连续 {gate.consecutive_days} 天，每天"
-        return (f"└ 🚪 {period}有效发言满 <b>{gate.daily_messages}</b> 条",)
+        text = html.escape(gate_rule_text(gate, calendar_dates=calendar_dates))
+        text = text.replace(f"满 {gate.daily_messages} 条", f"满 <b>{gate.daily_messages}</b> 条")
+        return (f"└ 🚪 {text}",)
     threshold = rules.message_thresholds.get(key)
     if threshold:
         return (f"└ 🚪 累计发言至少 <b>{threshold}</b> 条",)
@@ -87,10 +91,26 @@ def membership_blocks(payload: Mapping) -> tuple[str, ...]:
     if len(blocks) == 1:
         blocks.append("无额外成员条件")
     if rules.message_gate_rules:
-        blocks.append("门槛按北京时间自然日统计，各群分别达标；先登记再累计，本场完成一次即可。")
+        blocks.extend(_gate_notes(payload, rules))
     elif rules.invite_admission_enabled:
         blocks.append("各群有效邀请分别达标；先登记，再通过本场本人邀请入口邀请新成员。")
     return tuple(blocks)
+
+
+def _gate_notes(payload, rules):
+    names = {str(chat["id"]): chat_title(chat) for chat in condition_chats(payload)}
+    notes = list(
+        gate_mode_notes(
+            rules.message_gate_rules, names=names, fixed_dates=bool(rules.message_task_calendar)
+        )
+    )
+    if rules.message_task_calendar:
+        from tg_lottery.telegram.public_projection import format_public_time
+
+        start = format_public_time(payload["preheat_at"], rules.timezone)
+        cutoff = format_public_time(payload["cutoff_at"], rules.timezone)
+        notes.append(f"本期任务时间：{start} 至 {cutoff}。")
+    return tuple(html.escape(note) for note in notes)
 
 
 def prize_block(payload: Mapping) -> str:

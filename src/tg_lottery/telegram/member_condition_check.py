@@ -7,6 +7,11 @@ from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.presentation.condition_progress import (
+    condition_header,
+    condition_label,
+    condition_line,
+)
 from tg_lottery.presentation.target_identity import duplicate_names, target_name
 from tg_lottery.telegram.keyboard_layout import pair_rows, short_label
 from tg_lottery.telegram.member_profile_conditions import profile_conditions
@@ -71,20 +76,21 @@ async def target_conditions(
     page = min(max(0, page), pages - 1)
     duplicates = duplicate_names(target.title for target in targets)
     for number, target in enumerate(targets, 1):
-        present, status = await _observe_target(bot, target, user_id=user_id)
-        if not present and target.chat_id in pending_chats and status.startswith("❌"):
-            status = "⏳ 等待管理员批准"
+        observation = await _observe_target(bot, target, user_id=user_id)
+        if observation["state"] == "ineligible" and target.chat_id in pending_chats:
+            observation["observed_status"] = "join_request_pending"
+        present = observation["state"] == "eligible"
         completed += int(present)
         if not page * 6 < number <= (page + 1) * 6:
             continue
         title = target_name(
             target.title, position=number, chat_id=target.chat_id, duplicates=duplicates
         )
-        lines.append(f"{title}：{status}")
+        lines.append(condition_line(target, observation, title=title))
         _target_entry(
             target,
             cipher=cipher,
-            present=present,
+            present=not condition_label(observation).startswith("❌"),
             title=title,
             number=number,
             lines=lines,
@@ -92,7 +98,7 @@ async def target_conditions(
         )
     lines.insert(
         0,
-        f"入群/关注条件进度：已完成 {completed}/{len(targets)} 项（本次检查）"
+        condition_header(completed, len(targets), source="刚刚检查")
         if targets
         else "无额外入群/关注条件",
     )
@@ -117,16 +123,16 @@ async def _observe_target(bot, target, *, user_id):
         present = str(member.status) in {"creator", "administrator", "member"} or (
             str(member.status) == "restricted" and member.is_member
         )
-        return present, "✅ 已加入/关注" if present else "❌ 尚未满足（已申请者请等待批准）"
+        return {"state": "eligible" if present else "ineligible"}
     except TelegramAPIError:
         logging.getLogger(__name__).warning(
             "Membership observation failed during condition navigation",
             extra={"chat_id": target.chat_id, "user_id": user_id},
             exc_info=True,
         )
-        return False, "⏳ Telegram暂时无法核验，不能视为已满足"
-    except UserFacingError as exc:
-        return False, f"⏳ {exc.public_message}；由平台修复，无需反复退订/重订"
+        return {"state": "unknown"}
+    except UserFacingError:
+        return {"state": "unknown"}
 
 
 def _target_entry(target, *, cipher, present, title, number, lines, rows):
@@ -136,7 +142,7 @@ def _target_entry(target, *, cipher, present, title, number, lines, rows):
     if url:
         rows.append([InlineKeyboardButton(text=short_label(number, title), url=url)])
     else:
-        lines.append(f"{title}：目前没有已确认可用的加入入口")
+        lines[-1] += "（入口不可用）"
 
 
 async def _require_platform_admin(bot, target):

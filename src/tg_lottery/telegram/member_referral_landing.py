@@ -227,6 +227,12 @@ def _v3_landing_text(
         f"最晚有效入群: {format_public_time(_effective_bonus_deadline(landing), rules.timezone)}\n"
         f"报名截止: {format_public_time(landing.campaign.cutoff_at, rules.timezone)}\n"
         f"{_draw_time_text(landing, outcome=outcome)}\n"
-        + "\n".join(gate_lines(rules, chats))
+        + "\n".join(gate_lines(rules, chats, calendar_dates=_landing_task_dates(landing, rules)))
         + "\n受邀人无需完成自己的抽奖门槛；加入群不会自动登记本人抽奖。"
     )
+
+
+def _landing_task_dates(landing, rules):
+    from tg_lottery.domain.message_calendar import task_dates
+
+    return task_dates(landing.campaign) if rules.message_task_calendar else ()

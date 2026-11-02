@@ -55,7 +55,7 @@ async def test_group_completion_and_remaining_bonus_are_one_notice_then_finish_s
     async with session_factory() as session:
         rows = list(await session.scalars(select(TelegramOutbox)))
         assert len(rows) == 1
-        assert "⏳ B群 · 今日 0/5 条" in rows[0].payload["text"]
+        assert "❌ B群 · 今日 0/5 条" in rows[0].payload["text"]
         assert "✅ 测试群 · 门槛完成" in rows[0].payload["text"]
         assert "测试群: 已加 0 次 · 再发 5 条 +1 次" in rows[0].payload["text"]
         assert not (await session.get(Participant, pid)).admission_qualified
@@ -83,6 +83,6 @@ async def test_compact_gate_completion_survives_midnight_with_daily_bonus_reset(
         notices = list(await session.scalars(select(TelegramOutbox)))
     latest = max(notices, key=lambda row: row.payload["occurred_at"])
     assert "✅ 测试群 · 门槛完成" in latest.payload["text"]
-    assert "⏳ B群 · 今日 0/5 条" in latest.payload["text"]
+    assert "❌ B群 · 今日 0/5 条" in latest.payload["text"]
     assert "已加 1 次 · 再发 5 条 +1 次" in latest.payload["text"]
     assert "暂存" in latest.payload["ticket_status"]

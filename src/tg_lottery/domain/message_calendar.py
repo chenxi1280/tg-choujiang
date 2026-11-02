@@ -7,9 +7,13 @@ from tg_lottery.domain.base_activity import BaseProgress
 
 
 def task_dates(campaign):
-    timezone = ZoneInfo(campaign.timezone)
-    first = campaign.preheat_at.astimezone(timezone).date()
-    last = campaign.cutoff_at.astimezone(timezone).date()
+    return task_date_range(campaign.preheat_at, campaign.cutoff_at, timezone=campaign.timezone)
+
+
+def task_date_range(start_at, cutoff_at, *, timezone):
+    zone = ZoneInfo(timezone)
+    first = start_at.astimezone(zone).date()
+    last = cutoff_at.astimezone(zone).date()
     return tuple(first + timedelta(days=n) for n in range((last - first).days + 1))
 
 

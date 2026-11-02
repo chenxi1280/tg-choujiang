@@ -38,7 +38,7 @@ async def admission_progress_text(
     observed_at = await _progress_observed_at(session, campaign, now)
     completed = _progress_completed(campaign, now)
     title = "发言数" if rules.admission.type == "message" else "邀请好友"
-    status = "已完成" if participant.admission_qualified else "待完成"
+    status = "✅ 已完成" if participant.admission_qualified else "❌ 待完成"
     lines = [f"🚪 整场门槛: {status}" if compact else f"本场{title}门槛: {status}"]
     if observed_at is None:
         return "\n".join([*lines, "历史记录截止时间未确认, 需要核查取消或开奖记录。"])
@@ -54,6 +54,7 @@ async def admission_progress_text(
             completed=completed,
             group_label=group_label,
             compact=compact,
+            now=now,
         )
     )
     return _progress_footer(
@@ -96,6 +97,7 @@ async def _group_lines(
     completed,
     group_label,
     compact=False,
+    now,
 ):
     gate = rules.admission
     timezone = ZoneInfo(rules.timezone)
@@ -119,7 +121,7 @@ async def _group_lines(
     progress = await load_base_progress(session, campaign, participant, today=day)
     if rules.message_task_calendar:
         return await _calendar_lines(
-            session, campaign, participant, progress=progress, names=names, day=day
+            session, campaign, participant, progress=progress, names=names, day=day, now=now
         )
     return _message_group_lines(
         progress,
@@ -183,7 +185,7 @@ async def _invite_group_lines(session, participant, gate, *, names, records, tim
 
 
 def _compact_group_line(name, completed, progress):
-    return f"✅ {name} · 门槛完成" if completed else f"⏳ {name} · {progress}"
+    return f"✅ {name} · 门槛完成" if completed else f"❌ {name} · {progress}"
 
 
 def _compact_message_progress(item, rule):
@@ -207,7 +209,7 @@ def _start_text(participant, timezone, *, start_at=None):
     return "成员等条件尚未通过, 本场行为统计尚未开始。"
 
 
-async def _calendar_lines(session, campaign, participant, *, progress, names, day):
+async def _calendar_lines(session, campaign, participant, *, progress, names, day, now):
     rows = await session.execute(
         select(
             CampaignParticipationGroup.chat_id_snapshot,
@@ -241,6 +243,7 @@ async def _calendar_lines(session, campaign, participant, *, progress, names, da
                 name=names.get(key, "群名称待更新"),
                 day=day,
                 counts=counts.get(key, {}),
+                now=now,
             )
         )
     return lines

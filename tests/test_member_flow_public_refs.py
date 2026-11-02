@@ -231,6 +231,7 @@ async def test_missing_target_page_lists_multiple_join_links_and_unknown_separat
         public_ref=PUBLIC_REF,
         cutoff_at=datetime.now(UTC).replace(year=datetime.now(UTC).year + 1),
         presentation={},
+        rules={},
     )
     targets = (
         _target("participation_group", -100101, title="参与群 A", chat_type="supergroup"),
@@ -253,9 +254,9 @@ async def test_missing_target_page_lists_multiple_join_links_and_unknown_separat
 
     urls = [button.url for row in keyboard.inline_keyboard for button in row if button.url]
     assert urls == ["https://t.me/group_b", "https://t.me/group_c"]
-    assert "参与群" in text and "必须全部加入" in text
-    assert "准入条件" in text and "必须全部满足" in text
-    assert "暂时无法核验" in text and "⏳ 公告频道 D" in text
+    assert "✅ 已完成 · 加入「参与群 A」" in text
+    assert "❌ 未完成 · 加入「准入群 C」" in text
+    assert "⏳ 暂时无法检查 · 关注「公告频道 D」" in text
 
 
 async def test_missing_target_page_paginates_without_limiting_reverification() -> None:
@@ -264,6 +265,7 @@ async def test_missing_target_page_paginates_without_limiting_reverification() -
         public_ref=PUBLIC_REF,
         cutoff_at=datetime.now(UTC).replace(year=datetime.now(UTC).year + 1),
         presentation={},
+        rules={},
     )
     targets = tuple(
         _target("requirement", -100200 - index, title=f"条件 {index}", chat_type="supergroup")
@@ -302,6 +304,7 @@ async def test_waiting_approval_is_visible_and_has_no_duplicate_join_button() ->
         public_ref=PUBLIC_REF,
         cutoff_at=datetime.now(UTC).replace(year=datetime.now(UTC).year + 1),
         presentation={},
+        rules={},
     )
     target = _target("requirement", -100301, title="审核群", chat_type="supergroup")
     queries = SimpleNamespace(qualification_targets=_async_result((target,)))
@@ -320,7 +323,7 @@ async def test_waiting_approval_is_visible_and_has_no_duplicate_join_button() ->
     )
 
     assert "等待管理员批准" in text
-    assert "审核群" in text and "等待批准" in text
+    assert "审核群" in text and "等待管理员批准" in text
     assert all(button.url is None for row in keyboard.inline_keyboard for button in row)
 
 

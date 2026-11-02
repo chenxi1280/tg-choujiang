@@ -42,7 +42,7 @@ def card_payload(*, mode="message", bonuses=("activity", "invite")):
 def test_caption_keeps_group_gate_under_its_link_and_reference_section_order():
     payload = card_payload()
     text, pages = rule_manifest(payload)
-    assert "一群</a>\n└ 🚪 单日有效发言满 <b>2</b> 条" in text
+    assert "一群</a>\n└ 🚪 任意 1 天有效发言满 <b>2</b> 条" in text
     assert "二群</a>\n└" not in text and "公告频道</a>\n└" not in text
     assert "大于" not in text and "每条至少" not in text
     sections = ("✨", "🧭", "🎁 <b>奖品内容", "📃", "🌱", "⏳", "⏰", "🔗")

@@ -7,12 +7,10 @@ from aiogram.types import InlineKeyboardButton
 from tg_lottery.application.campaign_targets import QualificationTarget
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.condition_targets import frozen_condition_targets
-from tg_lottery.domain.enums import QualificationState
 from tg_lottery.domain.platform_policy import PlatformPolicy
 from tg_lottery.domain.rules import CampaignRules
 from tg_lottery.presentation.participation_rules import gate_lines
 from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
-from tg_lottery.telegram.member_popups import failure_reply_text
 
 
 def conditions(campaign: object) -> tuple[dict[str, object], ...]:
@@ -146,53 +144,3 @@ def target_joinable(campaign: object, target: QualificationTarget) -> bool:
 def target_button(target: QualificationTarget) -> str:
     action = "关注" if target.chat_type == "channel" else "加入"
     return f"{action} {target.title}"
-
-
-def missing_targets_text(
-    campaign: object,
-    state: QualificationState,
-    *,
-    missing: list[QualificationTarget],
-    pending: list[QualificationTarget],
-    unknown: list[QualificationTarget],
-    page: tuple[int, int],
-) -> str:
-    lines = [failure_reply_text(campaign, state)]
-    if page[1] > 1:
-        lines.append(f"缺失条件第 {page[0]}/{page[1]} 页")
-    participation = [item for item in missing if item.kind == "participation_group"]
-    requirements = [item for item in missing if item.kind == "requirement" and not item.platform]
-    official = [item for item in missing if item.platform]
-    _append_target_lines(lines, "平台官方频道（全部必需）", official)
-    _append_target_lines(lines, "参与群（必须全部加入）", participation)
-    _append_target_lines(lines, "准入条件（必须全部满足）", requirements)
-    _append_pending_lines(lines, pending)
-    _append_unknown_lines(lines, unknown)
-    if not missing and not pending and not unknown:
-        lines.append("\n资格事实已经变化，请点击重新验证。")
-    return "\n".join(lines)
-
-
-def _append_pending_lines(lines: list[str], targets: list[QualificationTarget]) -> None:
-    if not targets:
-        return
-    lines.append("\n等待管理员批准：")
-    lines.extend(f"⏳ {item.title}（等待批准）" for item in targets)
-
-
-def _append_unknown_lines(lines: list[str], targets: list[QualificationTarget]) -> None:
-    if not targets:
-        return
-    lines.append("\n暂时无法核验：")
-    lines.extend(f"⏳ {item.title}" for item in targets)
-
-
-def _append_target_lines(lines: list[str], title: str, targets: list[QualificationTarget]) -> None:
-    if not targets:
-        return
-    lines.append(f"\n{title}：")
-    for target in targets:
-        action = "关注" if target.chat_type == "channel" else "加入"
-        unavailable = not target.public_join_url and not target.encrypted_join_url
-        suffix = "（入口不可用）" if unavailable else ""
-        lines.append(f"❌ {action}「{target.title}」{suffix}")

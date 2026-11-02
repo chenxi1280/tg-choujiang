@@ -70,7 +70,7 @@ def test_restore_unpublished_settings_normalizes_daily_reward_without_changing_s
     assert (rule["messages_per_cycle"], rule["reward_tickets"]) == (34, 1)
     assert rule["daily_cap_mode"] == "limited" and rule["daily_max_cycles"] == 1
     assert converted["invite_retention_hours"] == 24
-    assert "历史活动不变" in converted["import_notes"][-1]
+    assert converted["import_notes"] == []
     assert source == before
     assert current_bonus_policy(source | {"published_campaign_id": "published"}) == (
         source | {"published_campaign_id": "published"}

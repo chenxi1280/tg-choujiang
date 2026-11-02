@@ -64,6 +64,7 @@ async def test_conditions_keep_total_and_hide_only_confirmed_joined_targets():
     targets = [
         SimpleNamespace(
             title=f"频道{n}",
+            chat_type="channel",
             chat_id=-1000 - n,
             platform=False,
             public_join_url=f"https://t.me/channel{n}",
@@ -77,10 +78,10 @@ async def test_conditions_keep_total_and_hide_only_confirmed_joined_targets():
     )
     text = "\n".join(lines)
     assert "1/8" in text and "✅" in text and "❌" in text and "⏳ 等待管理员批准" in text
-    assert "暂时无法核验" in text
+    assert "暂时无法检查" in text
     urls = [button.url for row in rows for button in row if button.url]
-    assert "https://t.me/channel0" not in urls and "https://t.me/channel1" in urls
-    assert len(urls) == 5
+    assert "https://t.me/channel0" not in urls and "https://t.me/channel1" not in urls
+    assert len(urls) == 3
     lines, _ = await target_conditions(
         bot, 201, targets=targets, cipher=object(), reference="ref", page=99
     )

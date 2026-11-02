@@ -88,7 +88,7 @@ async def _verify_live_query(factory, cid, *, total, completed):
     assert detail is not None
     assert detail.base_qualified is completed
     assert f"当前有效抽奖次数: {total}" in detail.base_progress
-    assert ("门槛: 已完成" if completed else "门槛: 待完成") in detail.base_progress
+    assert ("门槛: ✅ 已完成" if completed else "门槛: ❌ 待完成") in detail.base_progress
 
 
 async def _draw_and_verify(factory, cid, pid, *, expected):

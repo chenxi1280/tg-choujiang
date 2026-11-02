@@ -1,9 +1,11 @@
 from typing import Any
 
 from tg_lottery.domain.admission import InviteAdmissionRule, MessageAdmissionRule
+from tg_lottery.presentation.gate_rules import gate_mode_notes, gate_rule_text
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.creator_behavior_editor import EDITOR_KEY, PAGE_SIZE
 from tg_lottery.telegram.creator_number_controls import MESSAGE_COUNT_PRESETS
+from tg_lottery.telegram.creator_reuse import visible_import_notes
 from tg_lottery.telegram.keyboard_layout import fit_rows, list_rows
 
 FIELD_LABELS = {
@@ -25,17 +27,25 @@ def admission_summary(data: dict[str, Any]) -> str:
     names = {str(item["id"]): chat_title(item) for item in data.get("participation_groups") or []}
     title = "发言数" if gate.get("type") == "message" else "邀请好友"
     if not gate.get("type"):
-        return "🚪 抽奖门槛：请选一种类型并配置至少一个群\n" + "\n".join(
-            data.get("import_notes") or []
-        )
+        return "🚪 抽奖门槛：请选一种类型并配置至少一个群\n" + "\n".join(visible_import_notes(data))
     if not groups:
         return f"🚪 抽奖门槛：{title}（请配置至少一个群）"
     lines = [f"🚪 抽奖门槛：{title}（配置群必须分别全部达标）"]
     lines.extend(
         f"· {names.get(key, key)}：{rule_text(rule, gate['type'])}" for key, rule in groups.items()
     )
-    lines.append("本场门槛完成一次即可；未选群无行为门槛，全部参与群仍须加入。")
+    lines.extend(_draft_gate_notes(gate, names))
+    lines.append("未选群无行为门槛，全部参与群仍须加入。")
     return "\n".join(lines)
+
+
+def _draft_gate_notes(gate, names):
+    if gate["type"] != "message":
+        return ()
+    parsed = {
+        key: MessageAdmissionRule.model_validate(rule) for key, rule in gate["groups"].items()
+    }
+    return gate_mode_notes(parsed, names=names)
 
 
 def rule_text(rule: dict, mode: str) -> str:
@@ -43,12 +53,7 @@ def rule_text(rule: dict, mode: str) -> str:
         parsed = InviteAdmissionRule.model_validate(rule)
         return f"有效新成员 {parsed.required_valid_invites} 人；人数继续累计"
     parsed = MessageAdmissionRule.model_validate(rule)
-    if parsed.count_mode == "period":
-        return f"本期累计 {parsed.daily_messages} 条，完成一次即可；周期为活动开始至截止"
-    return (
-        f"连续 {parsed.consecutive_days} 天，每天 {parsed.daily_messages} 条，"
-        "文字、图片、表情均计数；北京时间自然日"
-    )
+    return gate_rule_text(parsed)
 
 
 def view(data: dict) -> tuple[str, list]:

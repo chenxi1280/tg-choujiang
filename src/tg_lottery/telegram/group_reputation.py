@@ -199,6 +199,8 @@ class GroupReputation:
 
 
 def _rules(campaign, rules, chat_id):
+    from tg_lottery.domain.message_calendar import task_dates
+
     lines = [f"{campaign.name} · 抽奖加成票(发言)规则（本群）"]
     rule = rules.activity_rule_for(chat_id)
     lines.extend(_activity_rule_lines(rules, rule))
@@ -225,7 +227,8 @@ def _rules(campaign, rules, chat_id):
             "两类加成不替代门槛，旧活动保持本场冻结参数。",
         ]
     )
-    gate = "\n".join(group_gate_lines(str(chat_id), rules))
+    dates = task_dates(campaign) if rules.message_task_calendar else ()
+    gate = "\n".join(group_gate_lines(str(chat_id), rules, calendar_dates=dates))
     return "\n".join(html.escape(line) for line in lines) + ("\n" + gate if gate else "")
 
 

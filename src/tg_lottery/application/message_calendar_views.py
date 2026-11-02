@@ -3,17 +3,19 @@ from zoneinfo import ZoneInfo
 from tg_lottery.domain.message_calendar import task_dates
 
 
-def calendar_group_lines(campaign, rule, progress, *, name, day, counts):
+def calendar_group_lines(campaign, rule, progress, *, name, day, counts, now):
     today_done = day in task_dates(campaign) and progress.today_messages >= rule.daily_messages
-    today_status = "今日任务已完成" if today_done else "今日任务待完成"
+    today_status = "✅ 今日任务已完成" if today_done else "❌ 今日任务待完成"
+    if now < campaign.preheat_at:
+        today_status = "⏳ 待开始"
     lines = [
         f"{name}: 今日 {progress.today_messages}/{rule.daily_messages} 条 · {today_status}",
         f"本期每日任务: 已完成 {progress.consecutive_days}/{rule.consecutive_days} 天",
     ]
     for date in task_dates(campaign):
-        status = "待开始" if date > day else "未完成"
+        status = "⏳ 待开始" if date > day or now < campaign.preheat_at else "❌ 未完成"
         if date <= day and counts.get(date, 0) >= rule.daily_messages:
-            status = "已完成"
+            status = "✅ 已完成"
         lines.append(f"{date}: {status}")
     return lines
 

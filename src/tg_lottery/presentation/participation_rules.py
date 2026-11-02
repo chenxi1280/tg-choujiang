@@ -15,6 +15,7 @@ from tg_lottery.presentation.campaign_card import (
     prize_blocks,
     time_blocks,
 )
+from tg_lottery.presentation.gate_rules import gate_mode_notes, gate_rule_text, payload_task_dates
 from tg_lottery.presentation.mentions import html_utf16_length
 from tg_lottery.presentation.rule_pages import contextual_pages
 from tg_lottery.telegram.bonus_rule_text import chat_title, per_group_bonus_lines
@@ -28,7 +29,9 @@ def utf16_units(value: str) -> int:
     return len(value.encode("utf-16-le")) // 2
 
 
-def gate_lines(rules: CampaignRules, chats: tuple) -> tuple[str, ...]:
+def gate_lines(
+    rules: CampaignRules, chats: tuple, *, calendar_dates=(), include_notes=True
+) -> tuple[str, ...]:
     gate = rules.admission
     if gate is None:
         return ()
@@ -36,21 +39,17 @@ def gate_lines(rules: CampaignRules, chats: tuple) -> tuple[str, ...]:
     title = "发言数" if gate.type == "message" else "邀请好友"
     lines = [f"本场门槛: {title}（所选群必须分别全部达标）"]
     for key, rule in gate.groups.items():
-        if gate.type == "message" and rule.count_mode == "period":
-            value = f"本期累计 {rule.daily_messages} 条，活动开始至截止内完成一次即可"
-        elif gate.type == "message":
-            value = (
-                f"连续 {rule.consecutive_days} 天，每天 {rule.daily_messages} 条，"
-                "文字、图片、表情均计数"
-            )
+        if gate.type == "message":
+            value = gate_rule_text(rule, calendar_dates=calendar_dates)
         else:
             value = f"已确认有效新成员 {rule.required_valid_invites} 人"
         lines.append(f"{names.get(key, key)}: {value}")
-    lines.append(
-        "本期开始后且本人登记通过才统计；本期每个任务日须分别达标，多发不抵次日，每日加成另算。"
-        if rules.message_task_calendar
-        else "先明确登记并通过成员等条件再统计；本场完成一次即可，每日发言加成另算。"
-    )
+    if include_notes:
+        lines.extend(
+            gate_mode_notes(
+                rules.message_gate_rules, names=names, fixed_dates=bool(rules.message_task_calendar)
+            )
+        )
     return tuple(lines)
 
 
@@ -62,20 +61,12 @@ def detail_rule_blocks(payload: Mapping) -> tuple[str, ...]:
     rules = CampaignRules.model_validate(payload["rules"])
     chats = condition_chats(payload)
     blocks = []
-    if rules.message_task_calendar:
-        blocks.append(
-            html.escape(
-                "本期任务时间: "
-                + format_public_time(
-                    datetime.fromisoformat(str(payload["preheat_at"])), rules.timezone
-                )
-                + " 至 "
-                + format_public_time(
-                    datetime.fromisoformat(str(payload["cutoff_at"])), rules.timezone
-                )
-            )
+    blocks.extend(
+        html.escape(line)
+        for line in gate_lines(
+            rules, chats, calendar_dates=payload_task_dates(payload, rules), include_notes=False
         )
-    blocks.extend(html.escape(line) for line in gate_lines(rules, chats))
+    )
     blocks.extend(html.escape(line) for line in message_count_blocks(rules))
     blocks.append("额外抽奖次数（不替代门槛）")
     blocks.extend(html.escape(line) for line in per_group_bonus_lines(rules, chats))
@@ -100,7 +91,11 @@ def message_count_blocks(rules: CampaignRules) -> tuple[str, ...]:
     if not rules.message_gate_rules and not rules.activity_bonus_enabled:
         return ()
     return (
-        "发言按北京时间自然日统计，00:00 开始新一天；已取得的本场门槛资格和加成保留。",
+        *(
+            ("每日发言加成按北京时间 0 点换日；已获得的加成保留。",)
+            if rules.activity_bonus_enabled
+            else ()
+        ),
         "有效发言：本人发送的文字、图片、表情、贴纸及 GIF 表情均计数，不限制字数；"
         "图片无需文字说明。命令、机器人、服务消息、转发及空白消息不计。",
         f"重复内容：同一用户在同一群 {rules.activity.duplicate_window_minutes} 分钟内"

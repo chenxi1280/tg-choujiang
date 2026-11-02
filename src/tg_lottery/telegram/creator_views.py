@@ -63,14 +63,17 @@ def _preview_status(data: dict[str, Any], now: datetime) -> str:
 
 
 def dashboard_rows(data: dict[str, Any] | None = None) -> ButtonRows:
-    return [
+    rows = [
         [("活动标题", "draft_title"), ("奖品与领奖", "draft_prizes")],
-        [("参与群", "draft_group"), ("开奖时间", "draft_draw")],
-        [("参与条件", "draft_conditions"), ("加成票设置", "draft_rules")],
-        [("封面与说明", "draft_cover_summary"), ("更多设置", "draft_more")],
-        [next_draft_action(data or {})],
-        [("返回首页（草稿保留）", "draft_home")],
+        [("参与群", "draft_group"), ("抽奖门槛", "draft_gate")],
+        [("开奖时间", "draft_draw"), ("参与条件", "draft_conditions")],
+        [("加成票设置", "draft_rules"), ("封面与说明", "draft_cover_summary")],
+        [("更多设置", "draft_more")],
     ]
+    next_action = next_draft_action(data or {})
+    if next_action[1] not in {action for row in rows for _, action in row}:
+        rows.append([next_action])
+    return [*rows, [("返回首页（草稿保留）", "draft_home")]]
 
 
 def prize_prompt_text(data: dict[str, Any]) -> str:
