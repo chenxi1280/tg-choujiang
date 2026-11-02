@@ -1,0 +1,5 @@
+/data/tg-lottery/releases/20261102172622_3c7d192
+/tg-lottery-app ghcr.io/chenxi1280/tg-lottery-app:3c7d192952cdfd7e04a6c09399cf174f0b3b46e2 running healthy
+/tg-lottery-worker ghcr.io/chenxi1280/tg-lottery-app:3c7d192952cdfd7e04a6c09399cf174f0b3b46e2 running healthy
+/tg-lottery-integration ghcr.io/chenxi1280/tg-lottery-app:3c7d192952cdfd7e04a6c09399cf174f0b3b46e2 running healthy
+["ghcr.io/chenxi1280/tg-lottery-app@sha256:cbd7efe39847793a53f6526ddc0ef6725a5a22947a7d90554da97c5afc3c82bb"]

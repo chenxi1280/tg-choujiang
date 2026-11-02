@@ -1,0 +1,55 @@
+{
+  "test_campaigns": [
+    {
+      "id": "3d52dcd0-ca4c-4e28-9edc-6aaa2f391773",
+      "state": "cancelled",
+      "participants": 1,
+      "ledger_rows": 1,
+      "snapshots": 0,
+      "winners": 0,
+      "outbox": [
+        {
+          "operation": "create_required_chat_invite",
+          "state": "confirmed",
+          "remote_message_id": null
+        },
+        {
+          "operation": "send_campaign_card",
+          "state": "confirmed",
+          "remote_message_id": 26
+        },
+        {
+          "operation": "send_featured_campaign",
+          "state": "confirmed",
+          "remote_message_id": 17
+        },
+        {
+          "operation": "send_channel_shortcut",
+          "state": "confirmed",
+          "remote_message_id": 18
+        },
+        {
+          "operation": "edit_campaign_card_cancelled",
+          "state": "confirmed",
+          "remote_message_id": 26
+        },
+        {
+          "operation": "revoke_required_chat_invite",
+          "state": "confirmed",
+          "remote_message_id": null
+        },
+        {
+          "operation": "edit_featured_campaign",
+          "state": "confirmed",
+          "remote_message_id": 17
+        }
+      ]
+    }
+  ],
+  "original_unknown_unchanged": true,
+  "health": [
+    "STATUS=DEGRADED_ACKNOWLEDGED unknown_deliveries=37 acknowledged_unknown=37 unreviewed_unknown=0 invalidated_reviews=0 unprojected_confirmations=0 failed_jobs=0 failed_updates=0 failed_notice_deliveries=0",
+    "rejected_ui_responses=16 unavailable_memberships=0",
+    "CHECK_STATUS=PASSED"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "release_sha": "3c7d192952cdfd7e04a6c09399cf174f0b3b46e2",
+  "alembic_head": "c34a1030ux14",
+  "original_unknown_identity_and_attempts_unchanged": true,
+  "health": [
+    "STATUS=DEGRADED_ACKNOWLEDGED unknown_deliveries=37 acknowledged_unknown=37 unreviewed_unknown=0 invalidated_reviews=0 unprojected_confirmations=0 failed_jobs=0 failed_updates=0 failed_notice_deliveries=0",
+    "rejected_ui_responses=16 unavailable_memberships=0",
+    "CHECK_STATUS=PASSED"
+  ]
+}
