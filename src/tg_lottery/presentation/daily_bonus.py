@@ -11,23 +11,23 @@ def daily_bonus_rule_text(double_count):
         else "不双算：完成抽奖门槛后的下一条发言起计加成"
     )
     return (
-        "抽奖加成票（发言获得）：首日不发，第二天起整场每天最多1张；"
+        "发言加成票：首日不发，第二天起整场每天最多1张；"
         "所有奖励群当天条件达标后自动发放。\n" + counting
     )
 
 
 def daily_bonus_progress_text(state, *, names):
     if state.phase == "closed":
-        return f"🌱 抽奖加成票（发言获得）\n已停止新增，历史累计{state.total_awarded}张。"
+        return f"🌱 发言加成票\n已停止新增，历史累计{state.total_awarded}张。"
     lines = [
-        "🌱 抽奖加成票（发言获得）",
+        "🌱 发言加成票",
         _daily_status(state),
-        f"累计{state.total_awarded}张；能否生效仍需核验整场参与条件。",
+        f"累计{state.total_awarded}张；能否生效仍需检查整场参与条件。",
     ]
     for group in state.groups:
         gate = "本群发票前置条件已满足" if group.gate_ready else "相关发言门槛尚未完成，暂不发票"
         lines.append(
-            f"{names.get(str(group.chat_id), '活动群')}：今日加成发言 "
+            f"{names.get(str(group.chat_id), '参与群')}：今日加成发言 "
             f"{group.messages}/{group.required} 条；{gate}"
         )
     return "\n".join(lines)

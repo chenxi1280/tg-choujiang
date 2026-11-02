@@ -29,12 +29,15 @@ from tg_lottery.telegram.creator_message_context import message_user as _user
 from tg_lottery.telegram.creator_message_context import panel_target as _target
 from tg_lottery.telegram.creator_operation_logging import log_creator_action
 from tg_lottery.telegram.creator_panel_recovery import recover_editing_panel, restore_applied_panel
-from tg_lottery.telegram.creator_prizes import PRIZE_ACTIONS, CreatorPrizes
+from tg_lottery.telegram.creator_prize_edit import without_prize_edit
+from tg_lottery.telegram.creator_prizes import CreatorPrizes
 from tg_lottery.telegram.creator_publication import CreatorPublisher
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer, PanelTarget
 from tg_lottery.telegram.creator_required_chats_data import required_draft_data
 from tg_lottery.telegram.creator_sections import (
     SECTION_ACTIONS,
+    SECTION_INPUT_STATES,
+    back_rows,
     current_section,
     enter_section,
     section_view,
@@ -246,7 +249,7 @@ class CampaignCreator:
             return True
         if state == "draft:suspended":
             return False
-        if state in {"draft:prize_name", "draft:prize_count", "draft:prize_delete"}:
+        if state in CreatorPrizes.input_states:
             await self._prizes.receive(message, state=state, data=data)
             return True
         if state == "draft:behavior_admission":
@@ -285,7 +288,7 @@ class CampaignCreator:
         if grant.action.startswith("draft_content_page:"):
             await self._renderer.page(query, grant)
             return
-        if grant.action in PRIZE_ACTIONS:
+        if self._prizes.handles_action(grant.action):
             await self._prizes.handle(query, grant)
             return
         if grant.action in SECTION_ACTIONS:
@@ -311,7 +314,7 @@ class CampaignCreator:
 
     def handles_action(self, action: str) -> bool:
         return (
-            action in PRIZE_ACTIONS
+            self._prizes.handles_action(action)
             or action in SECTION_ACTIONS
             or action.startswith(("draft_base:", "draft_gate:", "draft_content_page:"))
             or action in self._grant_handlers()
@@ -358,7 +361,7 @@ class CampaignCreator:
             _message(query),
             data=data,
             text=title_prompt_text(data),
-            rows=_back_rows(),
+            rows=back_rows(data),
         )
 
     async def _receive_title(self, message: Message, data: dict[str, Any]) -> None:
@@ -373,7 +376,7 @@ class CampaignCreator:
         session = await self._sessions.get(query.from_user.id)
         if session is None:
             raise UserFacingError("创建草稿已过期，请发送 /创建抽奖 重新创建")
-        data = current_bonus_policy(dict(session.data))
+        data = without_prize_edit(current_bonus_policy(dict(session.data)))
         if group_bonus.working_copy_dirty(data):
             rows = [
                 [("放弃修改", "draft_bonus_group_cancel")],
@@ -390,14 +393,11 @@ class CampaignCreator:
         if data.get("bonus_working_copy"):
             data = group_bonus.apply_action(data, "draft_bonus_group_cancel")
         path = list(data.get("creator_path") or ["dashboard"])
-        input_states = {
-            "draft:regions",
-            "draft:description",
-            "draft:issuer",
-            "draft:claim",
-            "draft:cover",
-        }
-        if grant.action == "draft_back" and session.state not in input_states and len(path) > 1:
+        if (
+            grant.action == "draft_back"
+            and session.state not in SECTION_INPUT_STATES
+            and len(path) > 1
+        ):
             path = path[:-1]
         data = data | {"creator_path": path}
         if current_section(data) != "dashboard":
@@ -407,6 +407,7 @@ class CampaignCreator:
 
     async def _show_section(self, query, section: str, *, data: dict | None = None) -> None:
         current = data if data is not None else await self._required_session(query.from_user.id)
+        current = without_prize_edit(current)
         updated = enter_section(current, section) | {"panel_message_id": _message(query).message_id}
         text, rows = section_view(updated, section)
         await self._sessions.set(query.from_user.id, "draft:idle", updated)
@@ -416,7 +417,7 @@ class CampaignCreator:
 
     async def _confirm_clear(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:idle", guided=False)
-        rows = [[("确认清空", "draft_clear_confirm")], *_back_rows()]
+        rows = [[("确认清空", "draft_clear_confirm")], *back_rows(data)]
         await self._render_text(
             query.from_user.id,
             _message(query),
@@ -494,7 +495,3 @@ class CampaignCreator:
         rows: ButtonRows,
     ) -> None:
         await self._renderer.edit(_target(message, data), text=text, rows=rows)
-
-
-def _back_rows() -> list[list[tuple[str, str]]]:
-    return [[("↩ 返回上一层", "draft_back")]]

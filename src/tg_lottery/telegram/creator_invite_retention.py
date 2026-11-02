@@ -25,7 +25,7 @@ def retention_hours(data: dict[str, Any]) -> int:
 
 
 def retention_text(hours: int) -> str:
-    return f"入群满 {hours} 小时后核验" if hours else "入群后立即核验（无需留存等待）"
+    return f"入群满 {hours} 小时后检查" if hours else "入群后立即检查（无需留存等待）"
 
 
 def summary(data: dict[str, Any]) -> str:
@@ -37,7 +37,7 @@ def summary(data: dict[str, Any]) -> str:
 
 def apply_action(data: dict[str, Any], action: str) -> dict[str, Any]:
     if uses_current_bonus_policy(data) and action not in {"draft_retention", "draft_retention_day"}:
-        raise UserFacingError("新场邀请固定入群满24小时后核验，请使用当前邀请设置页")
+        raise UserFacingError("新场邀请固定入群满24小时后检查，请使用当前邀请设置页")
     if action == "draft_retention":
         return dict(data)
     return data | {"invite_retention_hours": HOURS_BY_ACTION[action]}
@@ -47,12 +47,12 @@ def view(data: dict[str, Any]) -> tuple[str, list[list[tuple[str, str]]]]:
     text = (
         "🤝 本场邀请留存要求\n\n当前："
         + retention_text(retention_hours(data))
-        + "\n\n达到留存时间后仍需核验新成员资格。已有成员、重复入群和自邀不计奖。"
+        + "\n\n达到留存时间后仍需检查新成员资格。已有成员、重复入群和自邀不计奖。"
         "\n最晚计奖入群时间 = 报名截止时间减去留存时间。"
         "\n留存设置不会改变邀请链接在开奖后仍可入群的规则。"
     )
     rows = [
-        [("入群后立即核验", "draft_retention_now")],
+        [("入群后立即检查", "draft_retention_now")],
         [("留存 24 小时", "draft_retention_day"), ("留存 48 小时", "draft_retention_two_days")],
         [("返回邀请加成票", "draft_bonus_invite")],
     ]

@@ -57,7 +57,7 @@ def _parse_chat_ref(value: str) -> int | str:
         return int(value)
     if "t.me/+" in value or "t.me/joinchat/" in value:
         raise UserFacingError(
-            "私有邀请链接无法识别群信息；若这是主活动群无需添加，"
+            "私有邀请链接无法识别群信息；若这是主参与群无需添加，"
             "否则请发送 t.me/c/... 消息链接或转发来源可见的频道消息"
         )
     raise UserFacingError("请发送群聊/频道链接；数字 chat ID 仅用于高级操作")
@@ -68,7 +68,7 @@ def split_values(value: str) -> list[str]:
 
 
 def participation_rows(data: dict[str, Any]) -> ButtonRows:
-    rows = [[("添加准入条件", "draft_participation_add")]]
+    rows = [[("添加额外参与条件", "draft_participation_add")]]
     chats = data.get("required_chats") or []
     page = participation_page(data)
     if len(chats) > PARTICIPATION_PAGE_SIZE:
@@ -141,10 +141,10 @@ def apply_threshold_action(thresholds: dict[str, int], chat_id: str, op: str) ->
 
 def participation_add_text() -> str:
     return (
-        "🧭 添加准入条件（必须全部满足）\n\n"
+        "🧭 添加额外参与条件（必须全部满足）\n\n"
         "点击下方列表勾选群聊或频道，再次点击取消；可搜索名称或刷新列表。\n"
         "完成后点击「返回条件列表」。\n\n"
-        "参与活动的群无需在这里重复添加。\n"
+        "参与群无需在这里重复添加。\n"
         "创建者和机器人都必须是每个目标群聊/频道的管理员。\n"
         "列表中没有目标时，也可直接发送群聊或频道链接，例如：https://t.me/example_group\n"
         "一次可发送一个或多个，用逗号、空格或换行分隔。\n"
@@ -158,7 +158,7 @@ def _main_chat_line(data: dict[str, Any], thresholds: dict[str, int]) -> str | N
         return None
     main_threshold = int(thresholds.get(str(data["chat_id"]), 0))
     suffix = f"（发言 ≥ {main_threshold} 条）" if main_threshold else ""
-    return f"主活动群：{data.get('group_title') or '未命名群组'}{suffix}"
+    return f"主参与群：{data.get('group_title') or '未命名群组'}{suffix}"
 
 
 def participation_text(data: dict[str, Any]) -> str:
@@ -210,13 +210,13 @@ def participation_page(data: dict[str, Any]) -> int:
 
 def _participation_intro(data: dict[str, Any]) -> list[str]:
     lines = [
-        "🧭 准入条件（必须全部满足）",
+        "🧭 额外参与条件（必须全部满足）",
         platform_summary(data),
-        "参与活动的群会另行全部校验。",
+        "参与群会另行全部校验。",
         "可一次发送一个或多个群聊/频道链接。",
     ]
     if data.get("folder_link"):
-        lines.append("组合分享链接：已设置（仍逐项核验）")
+        lines.append("组合分享链接：已设置（仍逐项检查）")
     return lines
 
 

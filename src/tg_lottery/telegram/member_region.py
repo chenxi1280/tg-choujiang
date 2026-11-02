@@ -20,7 +20,7 @@ async def region_view(profiles, tokens, *, user_id: int, context):
     if locked:
         text += "\n锁定至：" + format_public_time(profile.region_locked_until, "Asia/Shanghai")
     else:
-        text += "\n首次设置后5分钟内可修改，随后锁定30天。设置资料不会自动登记活动。"
+        text += "\n首次设置后5分钟内可修改，随后锁定30天。设置资料不会自动报名活动。"
         requests = tuple(
             CallbackRequest(
                 "member:region_set",

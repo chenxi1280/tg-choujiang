@@ -68,7 +68,7 @@ def legacy_activity_description(rule: dict[str, Any], cap: object) -> str:
 def daily_creation_summary(data, *, activity, invite):
     names = {str(g["id"]): g["title"] for g in data.get("participation_groups", [])}
     conditions = "；".join(
-        f"{names.get(k, '活动群')}每天{r['messages_per_cycle']}条"
+        f"{names.get(k, '参与群')}每天{r['messages_per_cycle']}条"
         for k, r in data.get("group_activity_rules", {}).items()
         if r.get("enabled")
     )

@@ -9,16 +9,15 @@ def failure_reply_text(campaign: object, state: QualificationState) -> str:
     tips = presentation.get("message_tips", True)
     if state is QualificationState.INELIGIBLE:
         return "尚未满足全部群/频道参与条件。" + (" 完成后请重新验证。" if tips else "")
-    retry = " 请稍后点击验证资格重试。"
-    return "当前无法核验群/频道资格，状态保持待核验。" + (retry if tips else "")
+    return "暂时查不到你的入群/关注状态，请稍后点「重新检查」。"
 
 
 def popup_success(total: int) -> str:
-    return f"✅ 参与成功！当前共 {total} 次抽奖机会"
+    return f"✅ 报名成功！有效抽奖次数：{total}"
 
 
 def popup_already_participated(total: int) -> str:
-    return f"你已参与，当前共 {total} 次抽奖机会"
+    return f"你已报名，当前有效抽奖次数：{total}"
 
 
 def popup_failure(
@@ -27,7 +26,7 @@ def popup_failure(
     observations: tuple[dict[str, object], ...],
 ) -> str:
     if state is QualificationState.UNKNOWN:
-        return "当前无法核验群/频道资格，请稍后再试"
+        return "暂时查不到你的入群/关注状态，请稍后点「重新检查」。"
     presentation = getattr(campaign, "presentation", {}) or {}
     titles = _condition_titles(presentation)
     threshold = _threshold_shortfall_text(titles, observations)

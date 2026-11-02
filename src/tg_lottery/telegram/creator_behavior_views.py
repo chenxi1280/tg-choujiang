@@ -96,7 +96,7 @@ def _numeric_input_text(data, editor, *, field):
     )
     return (
         f"🚪 抽奖门槛 · {title}\n当前{label}：{value}\n\n请输入{label}（正整数，只发送数字）："
-        "\n💾 回复数字或点快捷值，核验通过后直接保存本群到草稿。"
+        "\n💾 回复数字或点快捷值，检查通过后直接保存本群到草稿。"
         "\n↩️ 取消输入保留原值及其他群的暂存设置。"
     )
 
@@ -149,7 +149,7 @@ def _list_footer(data, gate):
 
 def return_target(data: dict) -> str:
     section = (data.get("creator_path") or ["dashboard"])[-1]
-    return {"conditions": "参与条件", "dashboard": "草稿预览"}.get(section, "当前模块")
+    return {"conditions": "参与条件", "dashboard": "草稿"}.get(section, "当前模块")
 
 
 def _selection_hint(data: dict, mode: str | None) -> str:
@@ -157,7 +157,7 @@ def _selection_hint(data: dict, mode: str | None) -> str:
         return "当前尚未选择类型，请点击「发言数」或「邀请好友」。"
     selected = f"当前选择：{MODE_LABELS[mode]}。"
     if not data.get("participation_groups"):
-        return selected + "\n请点击「选择参与活动的群」，选好群后回来设置门槛。"
+        return selected + "\n请点击「选择参与群」，选好群后回来设置门槛。"
     fields = "每日条数和连续天数" if mode == "message" else "有效邀请人数"
     return selected + f"\n请点击下方群名设置{fields}；快捷值或回复数字直接保存本群到草稿。"
 
@@ -202,7 +202,7 @@ def _visible_groups(data: dict, editor: dict):
 
 def _group_rows(data: dict, editor: dict) -> list:
     if not data.get("participation_groups"):
-        return [[("选择参与活动的群", "draft_gate:choose_groups")]]
+        return [[("选择参与群", "draft_gate:choose_groups")]]
     groups, page, count = _visible_groups(data, editor)
     rows = [
         [

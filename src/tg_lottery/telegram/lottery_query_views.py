@@ -56,9 +56,9 @@ async def personal_progress(queries, campaign, *, user_id):
         detail.membership_progress or "无额外入群/关注条件",
         detail.base_progress or "无额外行为门槛",
         "📈 加成进度\n" + _activity_status(campaign),
-        f"🌱 抽奖加成票(发言)：累计 {detail.activity} 次"
+        f"🌱 发言加成票：累计 {detail.activity} 次"
         if rules.activity_bonus_enabled
-        else "🌱 抽奖加成票(发言)：未开启",
+        else "🌱 发言加成票：未开启",
         f"🤝 邀请加成票：累计 {detail.invitation} 次"
         if rules.invite_bonus_enabled
         else "🤝 邀请加成票：未开启",
@@ -78,7 +78,7 @@ async def personal_progress(queries, campaign, *, user_id):
         return pages
     records = await queries.campaign_invitation_records(user_id, campaign.public_ref)
     invitation_summary = (
-        f"有效 {records.valid} 人 · 待核验 {records.pending} 人 · 无效 {records.invalid} 人"
+        f"有效 {records.valid} 人 · 待检查 {records.pending} 人 · 无效 {records.invalid} 人"
         if records
         else "本场未配置邀请任务"
     )
@@ -115,7 +115,7 @@ async def _daily_bonus(queries, campaign, *, user_id, rules):
         rule = rules.activity_rule_for(row.chat_id)
         if rule is None:
             continue
-        lines.append(f"{names.get(row.chat_id, '活动群')}：" + _activity_line(campaign, rule, row))
+        lines.append(f"{names.get(row.chat_id, '参与群')}：" + _activity_line(campaign, rule, row))
     return lines
 
 
@@ -124,13 +124,13 @@ async def _legacy_activity(queries, campaign, *, user_id, rules):
         detail = await queries.participant_campaign_detail(user_id, campaign.public_ref)
         if detail is None:
             raise ValueError("历史发言加成暂时无法获取")
-        return [f"抽奖加成票(发言)累计 {detail.activity} 次（按本场原规则入账）"]
+        return [f"发言加成票累计 {detail.activity} 次（按本场原规则入账）"]
     legacy = await queries.legacy_activity_progress(campaign.id, user_id)
     if legacy is None:
         raise ValueError("历史发言进度暂时无法获取")
     names = _group_names(campaign)
     return [
-        f"{names.get(chat, '活动群')}：今日 {count}/{rules.activity.message_threshold} 条"
+        f"{names.get(chat, '参与群')}：今日 {count}/{rules.activity.message_threshold} 条"
         for chat, count in legacy.group_counts
     ]
 
@@ -159,7 +159,7 @@ async def _invitations(queries, campaign, *, user_id, rules):
         grouped = True
         rows.append(
             f"{names.get(target.chat_id, target.title)}：有效 {records.valid} 人 · "
-            f"待核验 {records.pending} 人 · "
+            f"待检查 {records.pending} 人 · "
             f"无效 {records.invalid} 人{suffix}"
         )
     if not grouped:
@@ -167,7 +167,7 @@ async def _invitations(queries, campaign, *, user_id, rules):
         if records is None:
             raise ValueError("邀请进度暂时无法获取")
         rows.append(
-            f"有效 {records.valid} 人 · 待核验 {records.pending} 人 · 无效 {records.invalid} 人"
+            f"有效 {records.valid} 人 · 待检查 {records.pending} 人 · 无效 {records.invalid} 人"
         )
     return rows
 
@@ -220,12 +220,8 @@ async def current_task_summary(queries, campaign, *, user_id):
     rules = CampaignRules.model_validate(campaign.rules)
     daily = await _daily_bonus(queries, campaign, user_id=user_id, rules=rules)
     invitation = await _invitations(queries, campaign, user_id=user_id, rules=rules)
-    empty = (
-        "未配置可用的发言加成群。"
-        if rules.activity_bonus_enabled
-        else "本场未开启抽奖加成票(发言)。"
-    )
-    title = "🌱 抽奖加成票(发言)累计记录" if _tasks_closed(campaign) else "🌱 今日抽奖加成票(发言)"
+    empty = "未配置可用的发言加成群。" if rules.activity_bonus_enabled else "本场未开启发言加成票。"
+    title = "🌱 发言加成票累计记录" if _tasks_closed(campaign) else "🌱 今日发言加成票"
     lines = [title, _activity_status(campaign), *(daily or [empty])]
     lines.extend(["🤝 邀请进度", *invitation])
     return "\n".join(lines)
@@ -240,7 +236,7 @@ def _tasks_closed(campaign):
 
 def _activity_status(campaign):
     if _tasks_closed(campaign):
-        return "本场已停止新增任务，以下保留累计记录；截止前事实仍按原规则处理。"
+        return "本场已停止新增任务，以下保留累计记录；截止前的记录仍按原规则处理。"
     if campaign.state == CampaignState.PAUSED:
         return "⏸️ 活动暂停，发言停止新增计数，已有进度保留，截止不顺延。"
     if campaign.state == CampaignState.SCHEDULED or utcnow() < campaign.preheat_at:
@@ -251,7 +247,7 @@ def _activity_status(campaign):
 def _settlement_note(campaign):
     if _tasks_closed(campaign):
         return "累计记录按原账本保留；最终开奖次数以已保存的开奖快照为准。"
-    return "门槛或资格未通过时加成暂存；开奖仍须最终核验。"
+    return "已获得的加成保留，完成门槛并满足参与条件后生效；开奖前仍会检查条件。"
 
 
 def _activity_line(campaign, rule, progress):
@@ -278,12 +274,12 @@ def _invitation_open(campaign, rules):
 
 def _invitation_status(campaign, rules):
     if _tasks_closed(campaign):
-        return "不再引导新增邀请；已记录邀请及待核验事实按本场原规则处理。"
+        return "不再引导新增邀请；已记录邀请及待检查的记录按本场原规则处理。"
     if invite_bonus_completed(campaign, retention_hours=rules.invite.retention_hours):
-        return "最晚计奖入群时间已过；仅核验此前邀请，保留累计记录。"
+        return "最晚计奖入群时间已过；仅检查此前邀请，保留累计记录。"
     if not campaign_accepts_attribution(campaign, utcnow()):
         return "邀请计奖窗口尚未开始，已有记录保留。"
-    return "邀请按本场原有效入群窗口与留存规则核验。"
+    return "邀请按本场原有效入群窗口与留存规则检查。"
 
 
 def _invite_target(campaign, rules, gate, *, valid):

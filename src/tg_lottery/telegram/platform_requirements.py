@@ -17,7 +17,7 @@ async def inspect_official_channels(bot, policy):
             errors.append(f"· {channel.title}：{exc.public_message}")
         except TelegramAPIError as exc:
             errors.append(
-                f"· {channel.title}：Telegram核验失败（{type(exc).__name__}），请修复后重试"
+                f"· {channel.title}：Telegram检查失败（{type(exc).__name__}），请修复后重试"
             )
     if errors:
         raise UserFacingError("平台频道配置待修复，暂不能发布：\n" + "\n".join(errors))

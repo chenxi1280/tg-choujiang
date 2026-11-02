@@ -99,7 +99,7 @@ def _personal_keyboard(keyboard, *, source):
         selected = [mapped for button in row if (mapped := _personal_button(button, source))]
         if selected:
             rows.append(selected)
-    rows.append([InlineKeyboardButton(text="🔄 重新核验", callback_data=f"cp:{source.id.hex}:0")])
+    rows.append([InlineKeyboardButton(text="🔄 重新检查", callback_data=f"cp:{source.id.hex}:0")])
     rows.append(
         [InlineKeyboardButton(text="🤖 进入机器人查看 / 报名", url=_private_url(source.payload))]
     )

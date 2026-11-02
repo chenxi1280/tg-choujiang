@@ -9,9 +9,9 @@ def window_guidance(campaign, rules) -> str:
     now = utcnow()
     lines = []
     if campaign.state is CampaignState.PAUSED:
-        lines.append("本场人工暂停：发言停止新增计数，截止不顺延；邀请按本场原入口和核验规则处理。")
+        lines.append("本场人工暂停：发言停止新增计数，截止不顺延；邀请按本场原入口和检查规则处理。")
     if campaign.state is CampaignState.SCHEDULED:
-        lines.append("本场尚未运行；登记、邀请入口与实际计奖起点分别按冻结规则判断。")
+        lines.append("本场尚未运行；报名、邀请入口与实际计奖起点分别按本场规则处理。")
     if now <= campaign.cutoff_at and rules.admission is not None:
         try:
             validate_admission_window(
@@ -19,6 +19,6 @@ def window_guidance(campaign, rules) -> str:
             )
         except ValueError as exc:
             lines.append(
-                "若现在从零开始：" + str(exc) + "。已有完成或待核验事实保留，查看本人进度。"
+                "若现在从零开始：" + str(exc) + "。已有完成或待检查的记录保留，查看本人进度。"
             )
     return "\n".join(lines)

@@ -106,7 +106,7 @@ async def test_foreign_user_cannot_read_owner_query_and_rank_explains_staged_rew
     incoming = message()
     await shortcut.message(incoming, "人品排行")
     text = incoming.answer.call_args.args[0]
-    assert "含暂存" in text and "甲&lt;&amp;" in text
+    assert "含尚未生效的次数" in text and "甲&lt;&amp;" in text
     query = SimpleNamespace(
         message=incoming, from_user=SimpleNamespace(id=202), data="rep:rank:" + "a" * 22 + ":201:1"
     )

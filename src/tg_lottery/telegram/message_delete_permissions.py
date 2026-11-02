@@ -64,7 +64,7 @@ def _rights(member, kind):
 def deletion_permission_text(data):
     checks = data.get("delete_permission_checks")
     if checks is None:
-        return "\n\n🛂 删除权限：打开消息设置时按参与目标检查；实际失败仍会记录。"
+        return "\n\n🛂 机器人需要群管理员的删除消息权限，才能自动删除提示。"
     if not checks:
         return "\n\n🛂 尚未选择参与群，选择后重新打开消息设置检查删除权限。"
     lines = ["🛂 各群删除权限（本次检查，不保证之后权限不变）"]

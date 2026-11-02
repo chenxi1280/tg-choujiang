@@ -47,7 +47,7 @@ def participant_detail_view(detail, *, user_id: int, bot_username: str):
 def _detail_body(detail, *, pages, now):
     effective = current_effective_count(detail)
     if detail.state not in TERMINAL:
-        pages = (pages[0] + f"\n\n我的进度 · 当前有效次数：{effective}", *pages[1:])
+        pages = (pages[0] + f"\n\n我的进度 · 有效抽奖次数：{effective}", *pages[1:])
     notice, primary = detail_task(detail, now)
     if detail.cutoff_at is not None:
         cutoff = format_public_time(detail.cutoff_at, detail.timezone, seconds=True)

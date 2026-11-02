@@ -143,7 +143,7 @@ class CreatorGroupPicker:
     async def done(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._required_data(query.from_user.id)
         if not selected_chat_ids(data):
-            raise UserFacingError("请至少选择一个参与活动的群")
+            raise UserFacingError("请至少选择一个参与群")
         await self._sessions.set(query.from_user.id, "draft:idle", data)
         text, rows = current_draft_view(data)
         await self._renderer.render(
@@ -211,7 +211,7 @@ class CreatorGroupPicker:
     async def _required_group(self, chat_id: int) -> Group:
         group = await self._queries.group_by_chat_id(chat_id)
         if group is None:
-            raise UserFacingError("活动群不存在")
+            raise UserFacingError("参与群不存在")
         return group
 
     async def _required_data(self, user_id: int) -> dict[str, Any]:

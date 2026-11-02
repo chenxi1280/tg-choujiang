@@ -69,5 +69,6 @@ async def notify_streak_restart(
         participant=participant,
         chat_id=event.chat_id,
         key=f"base_restart:{participant.id}:{event.chat_id}:{event.local_date}",
-        text="此前连续发言已中断, 今天重新累计连续天数。已获得的加成仍暂存, 不会因断签被清空。",
+        text="此前连续发言已中断\uff0c今天重新累计连续天数。"
+        "已获得的加成保留\uff0c完成门槛并满足参与条件后生效\uff0c不会因断签被清空。",
     )

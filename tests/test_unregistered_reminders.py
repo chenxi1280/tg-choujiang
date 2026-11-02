@@ -81,7 +81,7 @@ async def test_unregistered_speech_is_temporary_idempotent_and_never_registers_o
     assert row.payload["campaign_ref"] == reference
     assert row.payload["user_id"] == NEW_USER_ID
     assert row.payload["delete_after_seconds"] == 15
-    assert "未计入本人抽奖进度" in row.payload["text"]
+    assert "本条发言不计数" in row.payload["text"]
     async with session_factory() as session:
         assert await session.scalar(select(func.count(Participant.id))) == 1
         for model in (ActivityEvent, DailyProgress, TicketLedger, ScheduledJob):

@@ -18,7 +18,7 @@ def invite_delivery_content(
             member_keyboard(str(request.payload["campaign_ref"]), invite_enabled=True),
         )
     link = _delivery_link(request, invite_link, cipher=cipher)
-    title = str(request.payload.get("group_title") or "本期活动群")
+    title = str(request.payload.get("group_title") or "本期参与群")
     return (
         f"🔗 你的「{title}」入群入口已就绪。\n\n{note}\n\n{link}\n\n"
         "此入口仅归因到当前活动和群聊，不计入下次抽奖。",

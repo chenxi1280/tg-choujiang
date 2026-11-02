@@ -101,7 +101,9 @@ def base_rule_lines(rules: CampaignRules, by_id: Mapping[str, object]) -> list[s
             f"每天 {rule.daily_messages} 条，文字、图片、表情均计数"
         )
     if rules.base_activity_rules:
-        lines.append("北京时间每日统计；先报名再累计；全部基础门槛完成前，加成暂存，不能参与开奖。")
+        lines.append(
+            "北京时间每日统计；先报名再累计；全部基础门槛完成前，已获得的加成尚未生效，不能参与开奖。"
+        )
     return lines
 
 

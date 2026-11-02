@@ -19,7 +19,7 @@ from tg_lottery.telegram.ui_style import plain_label
 @pytest.mark.parametrize(
     "data,label",
     [
-        (None, "发起抽奖"),
+        (None, "创建抽奖"),
         ({"title": "继续本稿"}, "继续创建抽奖"),
         ({"published_campaign_id": "existing"}, "查看发布状态"),
     ],
@@ -56,7 +56,7 @@ def test_creator_next_action_reaches_missing_gate_without_duplicate_bonus_entrie
 def test_combined_entry_does_not_start_a_field_input(section):
     text, rows = section_view(new_draft(), section)
     assert "请回复" not in text
-    assert rows[-1] == [("返回草稿", "draft_back")]
+    assert rows[-1] == [("↩️ 返回草稿", "draft_back")]
 
 
 def test_section_ancestor_return_does_not_build_a_navigation_loop():

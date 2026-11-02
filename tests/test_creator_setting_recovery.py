@@ -258,7 +258,7 @@ async def test_resume_retry_after_saved_state_and_failed_display_preserves_step(
     elif expected == "draft:admission_picker":
         assert "搜索\uff1aB" in failed_edit.await_args.kwargs["text"]
     else:
-        assert "已恢复输入\uff1a活动标题" in failed_edit.await_args.kwargs["text"]
+        assert "已恢复输入\uff1a抽奖标题" in failed_edit.await_args.kwargs["text"]
 
 
 async def test_stale_group_removal_confirmation_preserves_rules_and_requires_confirmation():

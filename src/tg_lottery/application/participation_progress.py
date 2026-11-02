@@ -11,11 +11,6 @@ from tg_lottery.presentation.condition_progress import (
     condition_line,
 )
 
-COUNTING_NOTICE = (
-    "全部入群、关注及其他前置条件通过并登记后,才开始统计本场发言;此前发言不补算。"
-    "行为任务未完成时加成暂存,有效抽奖次数为0。"
-)
-
 
 def membership_progress_text(
     targets, observations, *, include_targets=True, source="上次检查结果"

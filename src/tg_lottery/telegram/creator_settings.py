@@ -40,9 +40,8 @@ from tg_lottery.telegram.creator_required_chats_data import (
 from tg_lottery.telegram.creator_retention_revision import synchronize_retention
 from tg_lottery.telegram.creator_reuse_flow import CreatorReuse
 from tg_lottery.telegram.creator_schedule import quick_draw_at, validate_draw_time
-from tg_lottery.telegram.creator_sections import enter_section, section_view
+from tg_lottery.telegram.creator_sections import back_rows, enter_section, section_view
 from tg_lottery.telegram.creator_settings_ui import (
-    _back_rows,
     _message,
     _required_user,
     _target,
@@ -228,7 +227,7 @@ class CreatorSettings:
 
     async def _edit_claim(self, query: CallbackQuery, _: CallbackGrant) -> None:
         data = await self._set_state(query, "draft:claim")
-        rows = [[("使用默认说明", "draft_claim_default")], *_back_rows()]
+        rows = [[("使用默认说明", "draft_claim_default")], *back_rows(data, input_field=True)]
         await self._render(
             query, data=data, text="⚠️ 请回复中奖后的领取方式（最多 500 字）：", rows=rows
         )
@@ -288,7 +287,7 @@ class CreatorSettings:
             query,
             data=data,
             text="🌏 回复 1–3 个地区，用逗号分隔；回复 全国 清除限制。",
-            rows=_back_rows(),
+            rows=back_rows(data, input_field=True),
         )
 
     async def _receive_regions(self, message: Message, data: dict[str, Any]) -> None:
@@ -351,7 +350,7 @@ class CreatorSettings:
             query,
             data=data,
             text=participation.participation_delete_text(data),
-            rows=_back_rows(),
+            rows=back_rows(data, input_field=True),
         )
 
     async def _receive_participation_delete(self, message: Message, data: dict[str, Any]) -> None:
@@ -387,7 +386,7 @@ class CreatorSettings:
                 "📝 请回复抽奖说明（最多500字），发送 /清空说明 可清空；"
                 "说明仅为文案，实际条件以配置为准："
             ),
-            rows=_back_rows(),
+            rows=back_rows(data, input_field=True),
         )
 
     async def _receive_description(self, message: Message, data: dict[str, Any]) -> None:
@@ -402,7 +401,7 @@ class CreatorSettings:
             query,
             data=data,
             text="🧑‍💼 回复已参与用户的 @username，或 Telegram 用户 ID：",
-            rows=_back_rows(),
+            rows=back_rows(data, input_field=True),
         )
 
     async def _receive_issuer(self, message: Message, data: dict[str, Any]) -> None:

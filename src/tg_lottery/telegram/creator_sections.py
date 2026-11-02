@@ -10,6 +10,33 @@ from tg_lottery.telegram.creator_participation import participation_rows, partic
 from tg_lottery.telegram.platform_requirements import platform_summary
 
 ButtonRows = list[list[tuple[str, str]]]
+SECTION_INPUT_STATES = frozenset(
+    {
+        "draft:regions",
+        "draft:description",
+        "draft:issuer",
+        "draft:claim",
+        "draft:cover",
+        "draft:participation_delete",
+        "draft:participation",
+        "draft:title",
+        "draft:draw",
+        "draft:start",
+    }
+)
+SECTION_LABELS = {
+    "dashboard": "草稿",
+    "conditions": "参与条件",
+    "bonus": "加成票设置",
+    "cover": "封面与说明",
+    "more": "更多设置",
+    "prizes": "奖品与领奖",
+    "user_limits": "用户限制",
+    "messages": "消息与提醒",
+    "requirements": "额外参与条件",
+    "bonus_invite": "邀请加成票",
+    "bonus_activity": "发言加成票",
+}
 SECTION_ACTIONS = {
     "draft_conditions": "conditions",
     "draft_bonus_menu": "bonus",
@@ -30,6 +57,12 @@ def current_section(data: dict) -> str:
     return str((data.get("creator_path") or ["dashboard"])[-1])
 
 
+def back_rows(data, *, input_field=False):
+    path = data.get("creator_path") or ["dashboard"]
+    target = path[-1] if input_field or len(path) == 1 else path[-2]
+    return [[(f"↩️ 返回{SECTION_LABELS[target]}", "draft_back")]]
+
+
 def section_view(data: dict[str, Any], section: str) -> tuple[str, ButtonRows]:
     views = {
         "conditions": _conditions,
@@ -42,11 +75,17 @@ def section_view(data: dict[str, Any], section: str) -> tuple[str, ButtonRows]:
         "requirements": lambda draft: (participation_text(draft), participation_rows(draft)),
     }
     if section in {"bonus_invite", "bonus_activity"}:
-        return list_view(data, section.removeprefix("bonus_"))
-    view = views.get(section)
-    if view is None:
-        raise UserFacingError("创建页面不存在，请回到当前草稿")
-    return view(data)
+        text, rows = list_view(data, section.removeprefix("bonus_"))
+    else:
+        view = views.get(section)
+        if view is None:
+            raise UserFacingError("创建页面不存在，请回到当前草稿")
+        text, rows = view(data)
+    back_label = back_rows(data)[0][0][0]
+    return text, [
+        [(back_label if action == "draft_back" else label, action) for label, action in row]
+        for row in rows
+    ]
 
 
 def next_draft_action(data: dict) -> tuple[str, str]:
@@ -56,7 +95,7 @@ def next_draft_action(data: dict) -> tuple[str, str]:
             "选择参与群",
             "draft_group",
         ),
-        (bool(data.get("title")), "设置活动标题", "draft_title"),
+        (bool(data.get("title")), "设置抽奖标题", "draft_title"),
         (bool(data.get("prizes")), "添加奖品", "draft_add_prize"),
         (_gate_complete(data), "设置抽奖门槛", "draft_gate"),
         (
@@ -82,7 +121,7 @@ def _gate_complete(data: dict) -> bool:
 
 def _conditions(data: dict) -> tuple[str, ButtonRows]:
     text = (
-        "🧭 参与条件设置\n\n全部参与群都必须加入；额外关注、用户限制和行为门槛分别核验。\n"
+        "🧭 参与条件设置\n\n全部参与群都必须加入；额外关注、用户限制和行为门槛分别检查。\n"
         f"{platform_summary(data)}"
         f"{admission_summary(data)}"
     )
@@ -146,7 +185,11 @@ def _prizes(data: dict) -> tuple[str, ButtonRows]:
         rows = [[("继续新增奖品", "draft_prize_continue"), ("取消新增奖品", "draft_prize_cancel")]]
     if prizes:
         rows.extend(
-            [[("删除指定奖品", "draft_delete_prize")], [("清空奖品", "draft_clear_prizes")]]
+            [
+                [("修改奖品", "draft_edit_prize")],
+                [("删除指定奖品", "draft_delete_prize")],
+                [("清空奖品", "draft_clear_prizes")],
+            ]
         )
     if data.get("pending_prize_name"):
         rows.append([("领奖说明", "draft_claim")])

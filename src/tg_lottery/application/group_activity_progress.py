@@ -140,7 +140,7 @@ async def _award_target(
         participant=participant,
         chat_id=chat_id,
         key=f"group_activity:{campaign.id}:{participant.user_id}:{chat_id}:{progress.local_date.isoformat()}:{target}",
-        label="抽奖加成票(发言)",
+        label="发言加成票",
         delta=delta,
     )
 

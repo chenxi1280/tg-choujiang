@@ -181,7 +181,7 @@ class MemberFlow:
             await callback.answer(url=url)
             return True
         await message.answer(
-            "🤖 请进入机器人，明确点击报名并核验资格。",
+            "🤖 请进入机器人，明确点击报名并检查资格。",
             reply_markup=row_keyboard(
                 [
                     [
@@ -317,7 +317,7 @@ class MemberFlow:
         rows.append(
             [
                 InlineKeyboardButton(
-                    text="验证资格", callback_data=f"member:verify:{campaign.public_ref}"
+                    text="重新检查", callback_data=f"member:verify:{campaign.public_ref}"
                 )
             ]
         )

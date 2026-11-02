@@ -179,7 +179,7 @@ def _ticket_label(row: object) -> str:
     if row.state in {CampaignState.DRAWN, CampaignState.ARCHIVED, CampaignState.CANCELLED}:
         return _historical_ticket_label(row)
     if not row.base_qualified:
-        return f"门槛未达标 · 累计 {row.tickets} 次（暂存）"
+        return f"门槛未达标 · 累计 {row.tickets} 次（完成门槛并满足参与条件后生效）"
     return f"{row.tickets} 次"
 
 

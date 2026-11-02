@@ -23,7 +23,9 @@ def base_rules_text(data: dict[str, Any]) -> str:
         )
         lines.append(f"{index}. {group['title']}：{value}")
     lines.append("按北京时间自然日统计；未完成会中断连续天数，完成一次后保留本期达标资格。")
-    lines.append("先报名再累计。基础门槛未完成时，加成暂存，有效抽奖次数为 0。")
+    lines.append(
+        "先报名再累计。基础门槛未完成时，有效抽奖次数为 0；已获得的加成在门槛和参与条件满足后生效。"
+    )
     return "\n".join(lines)
 
 
@@ -71,7 +73,5 @@ class CreatorBaseActivity:
     def _view(self, data: dict[str, Any]) -> tuple[str, list]:
         if data.get(editor.EDITOR_KEY):
             return editor.editor_view(data)
-        hint = (
-            "请选择要设置的群：" if data.get("participation_groups") else "请先选择参与活动的群。"
-        )
+        hint = "请选择要设置的群：" if data.get("participation_groups") else "请先选择参与群。"
         return base_rules_text(data) + "\n\n" + hint, editor.list_rows(data)

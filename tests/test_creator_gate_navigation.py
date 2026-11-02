@@ -108,7 +108,7 @@ async def test_choose_groups_then_resume_invite_editor_and_save(monkeypatch):
 
 @pytest.mark.parametrize(
     "section,target,heading",
-    [("dashboard", "草稿预览", "编辑草稿"), ("conditions", "参与条件", "参与条件设置")],
+    [("dashboard", "草稿", "编辑草稿"), ("conditions", "参与条件", "参与条件设置")],
 )
 @pytest.mark.parametrize("dirty", [False, True])
 async def test_gate_return_label_matches_actual_parent_and_keeps_saved_rule(

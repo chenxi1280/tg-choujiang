@@ -2,6 +2,7 @@
 import json
 import os
 import subprocess
+import sys
 import tarfile
 import tempfile
 from pathlib import Path
@@ -55,5 +56,6 @@ with tempfile.TemporaryDirectory(prefix='lottery-ux-baseline-') as temp:
     with tarfile.open(archive) as bundle:
         bundle.extractall(source,filter='data')
     render(source,OUTPUT/'baseline-samples.json')
-render(ROOT, OUTPUT/'p0-samples.json')
-print('Rendered baseline-samples.json and p0-samples.json')
+stage = sys.argv[1] if len(sys.argv) > 1 else 'p0'
+render(ROOT, OUTPUT/f'{stage}-samples.json')
+print(f'Rendered {stage}-samples.json')

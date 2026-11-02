@@ -48,8 +48,8 @@ def bonus_closed_notice(
     status = historical_outcome_status(campaign, outcome=outcome) or "活动已截止"
     category = {
         "邀请": "邀请加成票",
-        "发言": "抽奖加成票(发言)",
-        "活跃": "抽奖加成票(发言)",
+        "发言": "发言加成票",
+        "活跃": "发言加成票",
     }.get(category, "抽奖加成票")
     return f"{status}，不再计算新增{category}；以下保留本期累计记录。"
 
@@ -63,7 +63,7 @@ def invite_list_prompt(
     if campaign_bonus_completed(campaign):
         return bonus_closed_notice(campaign, category="邀请", outcome=outcome)
     if invite_bonus_completed(campaign, retention_hours=retention_hours):
-        return "最晚计奖入群时间已过；仅核验此前邀请，可查看本期记录。"
+        return "最晚计奖入群时间已过；仅检查此前邀请，可查看本期记录。"
     return "请选择一个群查看本期链接和邀请记录："
 
 

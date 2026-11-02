@@ -12,9 +12,9 @@ def detail_task(detail, now):
     if detail.state in TERMINAL_STATES:
         return "", None
     if detail.cutoff_at is not None and now > detail.cutoff_at:
-        return "本期已截止：只查看已保存进度、待核验事实和开奖状态，不再新增任务。", None
+        return "本期已截止：只查看已保存进度、待检查的记录和开奖状态，不再新增任务。", None
     if detail.state is CampaignState.PUBLISHING:
-        return "发布尚未完成，尚未开放登记；已有本人记录保留。", _button(
+        return "发布尚未完成，尚未开放报名；已有本人记录保留。", _button(
             "查看发布中规则", f"m:rules:{ref}:0"
         )
     if detail.state not in INVITATION_STATES:
@@ -25,11 +25,9 @@ def detail_task(detail, now):
 def _available_task(detail, now):
     ref = detail.public_ref
     if not detail.registration_completed and detail.state is CampaignState.PAUSED:
-        return "⏸️ 活动暂停，报名尚未完成；恢复后可继续核验，原进度保留。", None
+        return "⏸️ 活动暂停，报名尚未完成；恢复后可继续检查，原进度保留。", None
     if not detail.registration_completed:
-        return "⏳ 报名待完成，请补齐条件后点击核验并报名。", _button(
-            "核验并报名", f"member:join:{ref}"
-        )
+        return "⏳ 报名待完成，请补齐条件后点击报名。", _button("报名", f"member:join:{ref}")
     if detail.operational_issues:
         return "请查看具体故障目标，历史奖励保留。", _button(
             "查看运行阻断与条件", f"m:conditions:{ref}:0"
@@ -41,7 +39,7 @@ def _available_task(detail, now):
             else "查看并补齐参与条件"
         )
         return (
-            "请先补齐入群、关注及资料条件并重新核验；前置条件未通过时发言不计数，"
+            "请先补齐入群、关注及资料条件并重新检查；前置条件未通过时发言不计数，"
             "此前发言不补算，历史门槛及奖励不会重置。"
         ), _button(label, f"m:conditions:{ref}:0")
     if not detail.base_qualified:
@@ -60,8 +58,8 @@ def _gate_task(detail, now):
             return "本场邀请门槛未完成，请查看本群个人邀请任务。", _button(
                 "我的邀请链接", f"member:bonus_invites:{ref}:0"
             )
-        return "最晚计奖入群时间已过，仅等待此前邀请核验；从零开始已无可完成窗口。", _button(
-            "查看待核验邀请记录", f"member:invites:{ref}:0"
+        return "最晚计奖入群时间已过，仅等待此前邀请检查；从零开始已无可完成窗口。", _button(
+            "查看待检查邀请记录", f"member:invites:{ref}:0"
         )
     notice = "本场发言门槛未完成，请查看各群进度及剩余时间。"
     if detail.state is CampaignState.PAUSED:

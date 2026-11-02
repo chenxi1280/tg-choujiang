@@ -20,10 +20,10 @@ async def send_bot_permission_reminder(bot: Bot, event: ChatMemberUpdated) -> No
         return
     if old_status not in {"administrator", "creator"}:
         purpose = (
-            "请在机器人私聊的「准入条件」中添加本频道。私有频道还需开启邀请用户权限。"
+            "请在机器人私聊的「额外参与条件」中添加本频道。私有频道还需开启邀请用户权限。"
             if channel
             else "现在可以在机器人私聊中创建抽奖并选择本群；"
-            "邀请加成票还需要开启邀请用户权限，抽奖加成票(发言)需要允许普通成员发送文本。"
+            "邀请加成票还需要开启邀请用户权限，发言加成票需要允许普通成员发送文本。"
         )
         keyboard = None
         if not channel:
@@ -32,7 +32,7 @@ async def send_bot_permission_reminder(bot: Bot, event: ChatMemberUpdated) -> No
                 inline_keyboard=[
                     [
                         InlineKeyboardButton(
-                            text="➕ 发起抽奖", url=f"https://t.me/{me.username}?start=create"
+                            text="➕ 创建抽奖", url=f"https://t.me/{me.username}?start=create"
                         )
                     ]
                 ]

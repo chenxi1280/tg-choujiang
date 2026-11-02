@@ -184,7 +184,7 @@ class PersonalFlow:
     async def show_settings(self, message: Message, *, edit: bool = False) -> None:
         await _respond(
             message,
-            "👤 个人设置\n\n资料设置不自动登记活动。",
+            "👤 个人设置\n\n资料设置不自动报名活动。",
             keyboard=settings_keyboard(),
             edit=edit,
         )

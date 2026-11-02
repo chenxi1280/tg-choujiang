@@ -14,7 +14,6 @@ def rule_review_pages(data: dict[str, Any]) -> tuple[str, ...]:
     chats = tuple(data.get("participation_groups") or []) + tuple(data.get("required_chats") or [])
     _, _, overview_body = preview_text(data).partition("\n\n")
     overview = "📜 发布前完整规则 · 未发布\n\n" + overview_body
-    overview = overview.replace("（本页面为预览文案，不是正式效果）", "")
     gate = (
         admission_summary(data)
         if data.get("participation_rules_version")

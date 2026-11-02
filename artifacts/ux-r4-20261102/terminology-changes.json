@@ -1,0 +1,1244 @@
+[
+  {
+    "path": "src/tg_lottery/telegram/bot_permission_reminders.py",
+    "line": 23,
+    "before": "\"请在机器人私聊的「准入条件」中添加本频道。私有频道还需开启邀请用户权限。\"",
+    "after": "\"请在机器人私聊的「额外参与条件」中添加本频道。私有频道还需开启邀请用户权限。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/bot_permission_reminders.py",
+    "line": 26,
+    "before": "\"邀请加成票还需要开启邀请用户权限，抽奖加成票(发言)需要允许普通成员发送文本。\"",
+    "after": "\"邀请加成票还需要开启邀请用户权限，发言加成票需要允许普通成员发送文本。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/bot_permission_reminders.py",
+    "line": 35,
+    "before": "\"➕ 发起抽奖\"",
+    "after": "\"➕ 创建抽奖\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/campaign_share_keyboard.py",
+    "line": 27,
+    "before": "\"点击参与抽奖\"",
+    "after": "\"报名\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/channel_shortcuts.py",
+    "line": 102,
+    "before": "\"🔄 重新核验\"",
+    "after": "\"🔄 重新检查\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_admission_picker.py",
+    "line": 31,
+    "before": "\"该目标已经是参与活动的群，不能同时作为准入条件\"",
+    "after": "\"该目标已经是参与群，不能同时作为额外参与条件\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_admission_picker.py",
+    "line": 75,
+    "before": "\"未知的准入列表操作，请重新打开准入条件\"",
+    "after": "\"未知的准入列表操作，请重新打开额外参与条件\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_base_activity.py",
+    "line": 75,
+    "before": "\"请先选择参与活动的群。\"",
+    "after": "\"请先选择参与群。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_base_editor.py",
+    "line": 104,
+    "before": "\"↩ 返回准入条件\"",
+    "after": "\"↩ 返回额外参与条件\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_base_editor.py",
+    "line": 122,
+    "before": "\"点击参与链接登记后开始统计；全部配置群达标后获得抽奖资格。\\n\"",
+    "after": "\"点击参与链接报名后开始统计；全部配置群达标后获得抽奖资格。\\n\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_behavior_views.py",
+    "line": 160,
+    "before": "\"\\n请点击「选择参与活动的群」，选好群后回来设置门槛。\"",
+    "after": "\"\\n请点击「选择参与群」，选好群后回来设置门槛。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_behavior_views.py",
+    "line": 205,
+    "before": "\"选择参与活动的群\"",
+    "after": "\"选择参与群\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus.py",
+    "line": 82,
+    "before": "\"抽奖加成票(发言)\"",
+    "after": "\"发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus.py",
+    "line": 95,
+    "before": "\"✅ 抽奖加成票(发言)\"",
+    "after": "\"✅ 发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus.py",
+    "line": 95,
+    "before": "\"⬜ 抽奖加成票(发言)\"",
+    "after": "\"⬜ 发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus.py",
+    "line": 101,
+    "before": "\"设置抽奖加成票(发言)\"",
+    "after": "\"设置发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus.py",
+    "line": 154,
+    "before": "\"🌱 抽奖加成票(发言)\\n\\n\"",
+    "after": "\"🌱 发言加成票\\n\\n\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus_copy.py",
+    "line": 252,
+    "before": "\"抽奖加成票(发言)\"",
+    "after": "\"发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus_fields.py",
+    "line": 46,
+    "before": "\"🌱 抽奖加成票(发言)\"",
+    "after": "\"🌱 发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus_menu.py",
+    "line": 14,
+    "before": "\"抽奖加成票(发言)\"",
+    "after": "\"发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_daily_bonus.py",
+    "line": 71,
+    "before": "'活动群'",
+    "after": "'参与群'"
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_folder_link.py",
+    "line": 35,
+    "before": "\"用于一次加入多个群和频道。链接中的列表不替代活动的准入条件，\"",
+    "after": "\"用于一次加入多个群和频道。链接中的列表不替代活动的额外参与条件，\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_availability.py",
+    "line": 57,
+    "before": "\"频道请设为准入条件\"",
+    "after": "\"频道请设为额外参与条件\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_availability.py",
+    "line": 57,
+    "before": "\"频道不能作为参与活动的群，请在“准入条件”中添加该频道。\"",
+    "after": "\"频道不能作为参与群，请在“额外参与条件”中添加该频道。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_bonus.py",
+    "line": 100,
+    "before": "\"字数设置已移除，请重新打开抽奖加成票(发言)编辑页\"",
+    "after": "\"字数设置已移除，请重新打开发言加成票编辑页\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_bonus.py",
+    "line": 220,
+    "before": "\"选择参与活动的群\"",
+    "after": "\"选择参与群\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_bonus.py",
+    "line": 226,
+    "before": "\"🌱 抽奖加成票(发言)\"",
+    "after": "\"🌱 发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_bonus.py",
+    "line": 229,
+    "before": "\"\\n当前没有参与群，请先选择参与活动的群，再设置本群加成。\"",
+    "after": "\"\\n当前没有参与群，请先选择参与群，再设置本群加成。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_picker.py",
+    "line": 146,
+    "before": "\"请至少选择一个参与活动的群\"",
+    "after": "\"请至少选择一个参与群\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_picker.py",
+    "line": 214,
+    "before": "\"活动群不存在\"",
+    "after": "\"参与群不存在\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_selection.py",
+    "line": 96,
+    "before": "\"以下准入条件需要处理：\\n\"",
+    "after": "\"以下额外参与条件需要处理：\\n\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_participation.py",
+    "line": 60,
+    "before": "\"私有邀请链接无法识别群信息；若这是主活动群无需添加，\"",
+    "after": "\"私有邀请链接无法识别群信息；若这是主参与群无需添加，\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_participation.py",
+    "line": 71,
+    "before": "\"添加准入条件\"",
+    "after": "\"添加额外参与条件\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_participation.py",
+    "line": 144,
+    "before": "\"🧭 添加准入条件（必须全部满足）\\n\\n\"",
+    "after": "\"🧭 添加额外参与条件（必须全部满足）\\n\\n\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_participation.py",
+    "line": 147,
+    "before": "\"参与活动的群无需在这里重复添加。\\n\"",
+    "after": "\"参与群无需在这里重复添加。\\n\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_participation.py",
+    "line": 213,
+    "before": "\"🧭 准入条件（必须全部满足）\"",
+    "after": "\"🧭 额外参与条件（必须全部满足）\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_participation.py",
+    "line": 215,
+    "before": "\"参与活动的群会另行全部校验。\"",
+    "after": "\"参与群会另行全部校验。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_resume_views.py",
+    "line": 14,
+    "before": "\"活动标题\"",
+    "after": "\"抽奖标题\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_sections.py",
+    "line": 98,
+    "before": "\"设置活动标题\"",
+    "after": "\"设置抽奖标题\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_threshold_input.py",
+    "line": 37,
+    "before": "\"↩ 返回准入条件\"",
+    "after": "\"↩ 返回额外参与条件\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_views.py",
+    "line": 67,
+    "before": "\"活动标题\"",
+    "after": "\"抽奖标题\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/draft_config.py",
+    "line": 249,
+    "before": "\"活动群\"",
+    "after": "\"参与群\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/draft_config.py",
+    "line": 269,
+    "before": "\"至少配置一个群的抽奖加成票(发言)\"",
+    "after": "\"至少配置一个群的发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/gateway_invite_delivery.py",
+    "line": 21,
+    "before": "\"本期活动群\"",
+    "after": "\"本期参与群\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 140,
+    "before": "\"请进入本场详情登记。\"",
+    "after": "\"请进入本场详情报名。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 162,
+    "before": "\"本人抽奖加成票(发言)进度缺少冻结目标\"",
+    "after": "\"本人发言加成票进度缺少冻结目标\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 189,
+    "before": "\"按本场抽奖加成票(发言)已入账次数排序（含暂存），同分并列；排名不代表开奖资格。\"",
+    "after": "\"按本场发言加成票已入账次数排序（含暂存），同分并列；排名不代表开奖资格。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 195,
+    "before": "\"暂无抽奖加成票(发言)入账记录。\"",
+    "after": "\"暂无发言加成票入账记录。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 222,
+    "before": "\"抽奖加成票(发言)就是本场发言奖励，没有永久积分或兑换扣分。\"",
+    "after": "\"发言加成票就是本场发言奖励，没有永久积分或兑换扣分。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 223,
+    "before": "\"先明确登记且通过成员等条件再计数；命令、查询、机器人、转发、空白不计数。\"",
+    "after": "\"先明确报名且通过成员等条件再计数；命令、查询、机器人、转发、空白不计数。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 226,
+    "before": "\"邀请规则与抽奖加成票(发言)独立；同群同一人只能计一次。\"",
+    "after": "\"邀请规则与发言加成票独立；同群同一人只能计一次。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 242,
+    "before": "\"今日抽奖加成票(发言)奖励已达本场冻结上限，明日可继续；本场累计奖励保留。\"",
+    "after": "\"今日发言加成票奖励已达本场冻结上限，明日可继续；本场累计奖励保留。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 287,
+    "before": "\"（不计入抽奖加成票(发言)排行）\"",
+    "after": "\"（不计入发言加成票排行）\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 299,
+    "before": "\"本群未开启抽奖加成票(发言)。\"",
+    "after": "\"本群未开启发言加成票。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/help_views.py",
+    "line": 86,
+    "before": "\"发起抽奖\"",
+    "after": "\"创建抽奖\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/help_views.py",
+    "line": 113,
+    "before": "\"➕ 发起抽奖\"",
+    "after": "\"➕ 创建抽奖\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/help_views.py",
+    "line": 115,
+    "before": "\"📈 邀请与抽奖加成票(发言)\"",
+    "after": "\"📈 邀请与发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/home_views.py",
+    "line": 33,
+    "before": "\"发起抽奖\"",
+    "after": "\"创建抽奖\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/home_views.py",
+    "line": 37,
+    "before": "\"✨ 抽奖助手\\n\\n参加活动、发起抽奖和本人设置，请选择下方操作。\"",
+    "after": "\"✨ 抽奖助手\\n\\n参加活动、创建抽奖和本人设置，请选择下方操作。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/lottery_query_views.py",
+    "line": 61,
+    "before": "\"🌱 抽奖加成票(发言)：未开启\"",
+    "after": "\"🌱 发言加成票：未开启\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/lottery_query_views.py",
+    "line": 118,
+    "before": "'活动群'",
+    "after": "'参与群'"
+  },
+  {
+    "path": "src/tg_lottery/telegram/lottery_query_views.py",
+    "line": 133,
+    "before": "'活动群'",
+    "after": "'参与群'"
+  },
+  {
+    "path": "src/tg_lottery/telegram/lottery_query_views.py",
+    "line": 226,
+    "before": "\"本场未开启抽奖加成票(发言)。\"",
+    "after": "\"本场未开启发言加成票。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/lottery_query_views.py",
+    "line": 228,
+    "before": "\"🌱 抽奖加成票(发言)累计记录\"",
+    "after": "\"🌱 发言加成票累计记录\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/lottery_query_views.py",
+    "line": 228,
+    "before": "\"🌱 今日抽奖加成票(发言)\"",
+    "after": "\"🌱 今日发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_activity_landing.py",
+    "line": 66,
+    "before": "\"🎟️ 一键报名\"",
+    "after": "\"🎟️ 报名\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_base_activity.py",
+    "line": 106,
+    "before": "\"📊 任务仅在本场规则允许的时段累计，登记及前置条件通过前不补算。\"",
+    "after": "\"📊 任务仅在本场规则允许的时段累计，报名及前置条件通过前不补算。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_context.py",
+    "line": 48,
+    "before": "\"\\n当前参与资格未确认合格；历史奖励保留，新增个人邀请入口需先重新核验条件。\"",
+    "after": "\"\\n当前参与资格未确认合格；历史奖励保留，新增个人邀请入口需先重新检查条件。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_permissions.py",
+    "line": 53,
+    "before": "\"群已禁止普通成员发言，当前无法累计抽奖加成票(发言)\"",
+    "after": "\"群已禁止普通成员发言，当前无法累计发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_task_views.py",
+    "line": 56,
+    "before": "\"该群未开启抽奖加成票(发言)\"",
+    "after": "\"该群未开启发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_text.py",
+    "line": 51,
+    "before": "\"抽奖加成票(发言)\"",
+    "after": "\"发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_text.py",
+    "line": 52,
+    "before": "\"抽奖加成票(发言)\"",
+    "after": "\"发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_views.py",
+    "line": 267,
+    "before": "\"🌱 抽奖加成票(发言)\"",
+    "after": "\"🌱 发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_views.py",
+    "line": 344,
+    "before": "\"抽奖加成票(发言)\"",
+    "after": "\"发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_callbacks.py",
+    "line": 143,
+    "before": "\"本期抽奖没有开启可用的邀请或抽奖加成票(发言)。\"",
+    "after": "\"本期抽奖没有开启可用的邀请或发言加成票。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_callbacks.py",
+    "line": 339,
+    "before": "\"仅合格参与者可获取本活动群邀请链接\"",
+    "after": "\"仅合格参与者可获取本参与群邀请链接\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_callbacks.py",
+    "line": 346,
+    "before": "\"请先登记本场活动；已有本人记录始终可读，不要求重新报名\"",
+    "after": "\"请先报名本场活动；已有本人记录始终可读，不要求重新报名\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_callbacks.py",
+    "line": 348,
+    "before": "\"该群未开启抽奖加成票(发言)\"",
+    "after": "\"该群未开启发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_check.py",
+    "line": 59,
+    "before": "\"重新核验\"",
+    "after": "\"重新检查\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_views.py",
+    "line": 98,
+    "before": "\"，完成加入后点击验证资格。\"",
+    "after": "\"，完成加入后点击重新检查。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_detail_actions.py",
+    "line": 17,
+    "before": "\"发布尚未完成，尚未开放登记；已有本人记录保留。\"",
+    "after": "\"发布尚未完成，尚未开放报名；已有本人记录保留。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_detail_actions.py",
+    "line": 44,
+    "before": "\"请先补齐入群、关注及资料条件并重新核验；前置条件未通过时发言不计数，\"",
+    "after": "\"请先补齐入群、关注及资料条件并重新检查；前置条件未通过时发言不计数，\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_flow.py",
+    "line": 320,
+    "before": "\"验证资格\"",
+    "after": "\"重新检查\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_gate_views.py",
+    "line": 16,
+    "before": "\"没有本人的门槛记录，查看规则不会自动登记\"",
+    "after": "\"没有本人的门槛记录，查看规则不会自动报名\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_missing_targets.py",
+    "line": 137,
+    "before": "\"验证资格\"",
+    "after": "\"重新检查\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_missing_targets.py",
+    "line": 144,
+    "before": "\"⚠️ 已报名，当前资格未通过；原登记与进度保留。\"",
+    "after": "\"⚠️ 已报名，当前资格未通过；原报名与进度保留。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_navigation.py",
+    "line": 203,
+    "before": "\"🎟️ 一键报名\"",
+    "after": "\"🎟️ 报名\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_navigation.py",
+    "line": 225,
+    "before": "\"请先登记本场活动；已有本人记录始终可读，不要求重新报名\"",
+    "after": "\"请先报名本场活动；已有本人记录始终可读，不要求重新报名\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_navigation.py",
+    "line": 285,
+    "before": "\"请先明确登记本场活动，查看规则不会开始统计\"",
+    "after": "\"请先明确报名本场活动，查看规则不会开始统计\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_navigation.py",
+    "line": 354,
+    "before": "\"没有本人的邀请记录，请先核对已登记活动\"",
+    "after": "\"没有本人的邀请记录，请先核对已报名活动\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_popups.py",
+    "line": 12,
+    "before": "\" 请稍后点击验证资格重试。\"",
+    "after": "\" 请稍后点击重新检查重试。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_profile_conditions.py",
+    "line": 15,
+    "before": "\"❌ 用户名缺失：请在Telegram个人设置中设置用户名，回来后重新核验。\"",
+    "after": "\"❌ 用户名缺失：请在Telegram个人设置中设置用户名，回来后重新检查。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_referral_landing.py",
+    "line": 87,
+    "before": "\"加入该群不等于自动报名本次抽奖。\\n\"",
+    "after": "\"加入该群不等于自动报名。\\n\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_referral_landing.py",
+    "line": 179,
+    "before": "\"报名本次抽奖\"",
+    "after": "\"报名\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_referral_landing.py",
+    "line": 231,
+    "before": "\"\\n受邀人无需完成自己的抽奖门槛；加入群不会自动登记本人抽奖。\"",
+    "after": "\"\\n受邀人无需完成自己的抽奖门槛；加入群不会自动报名本人抽奖。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_region.py",
+    "line": 23,
+    "before": "\"\\n首次设置后5分钟内可修改，随后锁定30天。设置资料不会自动登记活动。\"",
+    "after": "\"\\n首次设置后5分钟内可修改，随后锁定30天。设置资料不会自动报名活动。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_window_guidance.py",
+    "line": 14,
+    "before": "\"本场尚未运行；登记、邀请入口与实际计奖起点分别按冻结规则判断。\"",
+    "after": "\"本场尚未运行；报名、邀请入口与实际计奖起点分别按冻结规则判断。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/personal_flow.py",
+    "line": 187,
+    "before": "\"👤 个人设置\\n\\n资料设置不自动登记活动。\"",
+    "after": "\"👤 个人设置\\n\\n资料设置不自动报名活动。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/platform_inviter.py",
+    "line": 13,
+    "before": "\"请先在本场明确登记；获取邀请入口不会自动报名\"",
+    "after": "\"请先在本场明确报名；获取邀请入口不会自动报名\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/required_chats.py",
+    "line": 19,
+    "before": "\"准入条件只能选择群聊或频道\"",
+    "after": "\"额外参与条件只能选择群聊或频道\""
+  },
+  {
+    "path": "src/tg_lottery/application/activity.py",
+    "line": 374,
+    "before": "\"抽奖加成票(发言)\"",
+    "after": "\"发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/application/activity_bonus_reminders.py",
+    "line": 52,
+    "before": "\"抽奖加成票(发言)(今日):\"",
+    "after": "\"发言加成票(今日):\""
+  },
+  {
+    "path": "src/tg_lottery/application/blocked_speech_reminders.py",
+    "line": 45,
+    "before": "\"\\n请打开本场详情补齐条件并重新核验。\"",
+    "after": "\"\\n请打开本场详情补齐条件并重新检查。\""
+  },
+  {
+    "path": "src/tg_lottery/application/drawing.py",
+    "line": 83,
+    "before": "\"活动存在群权限阻断, 恢复并重新核验后才能开奖\"",
+    "after": "\"活动存在群权限阻断, 恢复并重新检查后才能开奖\""
+  },
+  {
+    "path": "src/tg_lottery/application/group_activity_progress.py",
+    "line": 143,
+    "before": "\"抽奖加成票(发言)\"",
+    "after": "\"发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/application/group_invite_links.py",
+    "line": 87,
+    "before": "\"仅合格参与者可获取本活动群邀请链接\"",
+    "after": "\"仅合格参与者可获取本参与群邀请链接\""
+  },
+  {
+    "path": "src/tg_lottery/application/participation_progress.py",
+    "line": 15,
+    "before": "\"全部入群、关注及其他前置条件通过并登记后,才开始统计本场发言;此前发言不补算。\"",
+    "after": "\"全部入群、关注及其他前置条件通过并报名后,才开始统计本场发言;此前发言不补算。\""
+  },
+  {
+    "path": "src/tg_lottery/application/unregistered_reminders.py",
+    "line": 51,
+    "before": "\"请点击「参与抽奖」查看条件并登记参与。\"",
+    "after": "\"请点击「参与抽奖」查看条件并报名。\""
+  },
+  {
+    "path": "src/tg_lottery/presentation/campaign_card.py",
+    "line": 96,
+    "before": "\"各群有效邀请分别达标；先登记，再通过本场本人邀请入口邀请新成员。\"",
+    "after": "\"各群有效邀请分别达标；先报名，再通过本场本人邀请入口邀请新成员。\""
+  },
+  {
+    "path": "src/tg_lottery/presentation/daily_bonus.py",
+    "line": 14,
+    "before": "\"抽奖加成票（发言获得）：首日不发，第二天起整场每天最多1张；\"",
+    "after": "\"发言加成票：首日不发，第二天起整场每天最多1张；\""
+  },
+  {
+    "path": "src/tg_lottery/presentation/daily_bonus.py",
+    "line": 23,
+    "before": "\"🌱 抽奖加成票（发言获得）\"",
+    "after": "\"🌱 发言加成票\""
+  },
+  {
+    "path": "src/tg_lottery/presentation/daily_bonus.py",
+    "line": 30,
+    "before": "'活动群'",
+    "after": "'参与群'"
+  },
+  {
+    "path": "src/tg_lottery/presentation/participation_rules.py",
+    "line": 105,
+    "before": "\"统计起点：本期任务开始且本人明确登记通过成员等条件后才开始，开始前不补采，\"",
+    "after": "\"统计起点：本期任务开始且本人明确报名通过成员等条件后才开始，开始前不补采，\""
+  },
+  {
+    "path": "src/tg_lottery/presentation/participation_rules.py",
+    "line": 107,
+    "before": "\"统计起点：明确登记且首次通过成员等条件后才开始，登记前不补采，\"",
+    "after": "\"统计起点：明确报名且首次通过成员等条件后才开始，报名前不补采，\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_bonus.py",
+    "line": 201,
+    "before": "抽奖加成票(发言) ",
+    "after": "发言加成票 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_bonus.py",
+    "line": 378,
+    "before": "抽奖加成票(发言)\\n\\n",
+    "after": "发言加成票\\n\\n"
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_selection.py",
+    "line": 66,
+    "before": "」禁止普通成员发言，无法启用抽奖加成票(发言)",
+    "after": "」禁止普通成员发言，无法启用发言加成票"
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_selection.py",
+    "line": 85,
+    "before": "」同时被选为参与群和准入条件，请只保留一种用途",
+    "after": "」同时被选为参与群和额外参与条件，请只保留一种用途"
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_selection.py",
+    "line": 94,
+    "before": " 个准入条件：",
+    "after": " 个额外参与条件："
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_participation.py",
+    "line": 161,
+    "before": "主活动群：",
+    "after": "主参与群："
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_publication.py",
+    "line": 279,
+    "before": "抽奖加成票(发言)：",
+    "after": "发言加成票："
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_renderer.py",
+    "line": 387,
+    "before": "👥 参与活动的群（已选 ",
+    "after": "👥 参与群（已选 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_threshold_input.py",
+    "line": 33,
+    "before": " · 发言准入条件\\n\\n",
+    "after": " · 发言额外参与条件\\n\\n"
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_views.py",
+    "line": 39,
+    "before": "👥 参与活动的群：",
+    "after": "👥 参与群："
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_views.py",
+    "line": 40,
+    "before": "🧭 准入条件：",
+    "after": "🧭 额外参与条件："
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 139,
+    "before": " · 我的抽奖加成票(发言)\\n尚未登记，本次查询不会自动报名。",
+    "after": " · 我的发言加成票\\n尚未报名，本次查询不会自动报名。"
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 149,
+    "before": " · 我的抽奖加成票(发言)\\n本场本群未开启抽奖加成票(发言)。\\n",
+    "after": " · 我的发言加成票\\n本场本群未开启发言加成票。\\n"
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 168,
+    "before": " · 我的抽奖加成票(发言)（本群）\\n今日有效发言：",
+    "after": " · 我的发言加成票（本群）\\n今日有效发言："
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 169,
+    "before": "本群抽奖加成票(发言)累计已入账：",
+    "after": "本群发言加成票累计已入账："
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 180,
+    "before": " · 我的抽奖加成票(发言)（原活动规则）\\n",
+    "after": " · 我的发言加成票（原活动规则）\\n"
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 188,
+    "before": " · 抽奖加成票(发言)排行 ",
+    "after": " · 发言加成票排行 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 204,
+    "before": " · 抽奖加成票(发言)规则（本群）",
+    "after": " · 发言加成票规则（本群）"
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 285,
+    "before": "本场抽奖加成票(发言)累计（所有群）：",
+    "after": "本场发言加成票累计（所有群）："
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 288,
+    "before": "；当前有效次数：",
+    "after": "；有效抽奖次数："
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 309,
+    "before": "抽奖加成票(发言)：每 ",
+    "after": "发言加成票：每 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/help_views.py",
+    "line": 31,
+    "before": "📖 抽奖机器人使用指南\n\n➕ 发起抽奖\n👥 将机器人加入参与群和条件频道并设为管理员。私有群/频道需开启邀请用户权限。\n🏷️ 点击“创建抽奖”，选择参与群，再设置标题、奖品和开奖时间。\n🧭 在“准入条件”添加需要关注的频道或加入的群；可添加多个，参与者必须全部满足。\n🚪 在“抽奖门槛”二选一设置发言数或邀请好友，各配置群必须分别达标。\n📈 “抽奖加成票(发言)”和“邀请加成票”分别设置各群奖励。发布前核对名称、全部条件和时间。\n📝 未发布草稿在最后一次更新后保留 ",
+    "after": "📖 抽奖机器人使用指南\n\n➕ 创建抽奖\n👥 将机器人加入参与群和条件频道并设为管理员。私有群/频道需开启邀请用户权限。\n🏷️ 点击“创建抽奖”，选择参与群，再设置标题、奖品和开奖时间。\n🧭 在“额外参与条件”添加需要关注的频道或加入的群；可添加多个，参与者必须全部满足。\n🚪 在“抽奖门槛”二选一设置发言数或邀请好友，各配置群必须分别达标。\n📈 “发言加成票”和“邀请加成票”分别设置各群奖励。发布前核对名称、全部条件和时间。\n📝 未发布草稿在最后一次更新后保留 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/help_views.py",
+    "line": 39,
+    "before": " 小时；发送 /创建抽奖 可继续有效草稿。\n\n🛂 参加抽奖\n打开活动卡的参与链接，先阅读完整条件，再点击“登记参与”或“查看本人进度”。\n按提示关注频道、加入群并验证资格；首次核验通过才开始计算本场发言与邀请。\n只查看规则或入群不会自动报名，登记前的行为不补计。历史活动沿用原报名规则。\n加入申请需等待管理员批准。发言门槛、用户名或地区要求以本次活动规则为准。\n“我参加的抽奖”可查看报名状态、抽奖次数和结果。\n群内发送“抽奖”或“/抽奖”查看本群活动；发送“抽奖进度”或“/抽奖进度”查本人进度，群内回复20秒后删除。\n私聊可点击中文按钮，或发送 /首页、/我参加的抽奖、/抽奖进度 进入对应功能。\n私聊进度回复保留，不自动删除。\n\n📈 邀请与抽奖加成票(发言)\n报名后进入“我的加成票”，选择邀请加成票和目标群，复制本期邀请链接分享。\n每次抽奖、每个群分别累计；有效邀请完成留存与核验后自动计入，无需手动领取。\n点击链接、已经在群内或未完成核验均不代表获得加成。\n本期新生成的邀请入口不随抽奖结束过期，结束后只供入群，不计入下次抽奖。\n抽奖加成票(发言)按北京时间自然日计算，可选择门槛发言双算，或门槛完成后另算。\n已获得票但整场资格未完成时，加成暂存，有效抽奖次数为0；全部条件合格后生效。\n新活动发言加成首日不发，次日起整场每天最多1张；所有奖励群当天条件均须完成。\n邀请加成票不限累计上限；有效邀请须入群满24小时并核验，同群同人只算一次。\n历史活动按本场冻结的留存、比例和上限计算；仅开启邀请门槛也能领取邀请入口。\n群内输入“人品”查本人抽奖加成票(发言)，“人品排行”查本场抽奖加成票(发言)次数排行，“人品规则”查规则。\n查询只读，不会自动报名或增加发言数；人品不是永久积分，无需兑换或扣分。\n\n🏆 开奖与领奖\n新建活动按北京时间定时开奖，历史活动沿用已保存的开奖规则。\n在“我参加的抽奖 → 已结束”查看本人结果；中奖后按通知联系发奖人员。\n资格暂时无法核验时会显示待核验，请按提示处理，不代表已经参与成功。",
+    "after": " 小时；发送 /创建抽奖 可继续有效草稿。\n\n🛂 参加抽奖\n打开活动卡的参与链接，先阅读完整条件，再点击“报名”或“查看本人进度”。\n按提示关注频道、加入群并重新检查；首次核验通过才开始计算本场发言与邀请。\n只查看规则或入群不会自动报名，报名前的行为不补计。历史活动沿用原报名规则。\n加入申请需等待管理员批准。发言门槛、用户名或地区要求以本次活动规则为准。\n“我参加的抽奖”可查看报名状态、抽奖次数和结果。\n群内发送“抽奖”或“/抽奖”查看本群活动；发送“抽奖进度”或“/抽奖进度”查本人进度，群内回复20秒后删除。\n私聊可点击中文按钮，或发送 /首页、/我参加的抽奖、/抽奖进度 进入对应功能。\n私聊进度回复保留，不自动删除。\n\n📈 邀请与发言加成票\n报名后进入“我的加成票”，选择邀请加成票和目标群，复制本期邀请链接分享。\n每次抽奖、每个群分别累计；有效邀请完成留存与核验后自动计入，无需手动领取。\n点击链接、已经在群内或未完成核验均不代表获得加成。\n本期新生成的邀请入口不随抽奖结束过期，结束后只供入群，不计入下次抽奖。\n发言加成票按北京时间自然日计算，可选择门槛发言双算，或门槛完成后另算。\n已获得票但整场资格未完成时，加成暂存，有效抽奖次数为0；全部条件合格后生效。\n新活动发言加成首日不发，次日起整场每天最多1张；所有奖励群当天条件均须完成。\n邀请加成票不限累计上限；有效邀请须入群满24小时并核验，同群同人只算一次。\n历史活动按本场冻结的留存、比例和上限计算；仅开启邀请门槛也能领取邀请入口。\n群内输入“人品”查本人发言加成票，“人品排行”查本场发言加成票次数排行，“人品规则”查规则。\n查询只读，不会自动报名或增加发言数；人品不是永久积分，无需兑换或扣分。\n\n🏆 开奖与领奖\n新建活动按北京时间定时开奖，历史活动沿用已保存的开奖规则。\n在“我参加的抽奖 → 已结束”查看本人结果；中奖后按通知联系发奖人员。\n资格暂时无法核验时会显示待核验，请按提示处理，不代表已经报名成功。"
+  },
+  {
+    "path": "src/tg_lottery/telegram/lottery_query_views.py",
+    "line": 59,
+    "before": "🌱 抽奖加成票(发言)：累计 ",
+    "after": "🌱 发言加成票：累计 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/lottery_query_views.py",
+    "line": 127,
+    "before": "抽奖加成票(发言)累计 ",
+    "after": "发言加成票累计 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_activity_preview.py",
+    "line": 33,
+    "before": "\\n尚未登记本场活动\\n\\n",
+    "after": "\\n尚未报名本场活动\\n\\n"
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_base_activity.py",
+    "line": 26,
+    "before": "已登记参与，",
+    "after": "已报名，"
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_base_activity.py",
+    "line": 26,
+    "before": " 次抽奖机会",
+    "after": " 次有效抽奖次数"
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_base_activity.py",
+    "line": 28,
+    "before": "已登记，",
+    "after": "已报名，"
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_read.py",
+    "line": 60,
+    "before": "累计抽奖加成票(发言): ",
+    "after": "累计发言加成票: "
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_read.py",
+    "line": 114,
+    "before": "今日已入账抽奖加成票(发言): ",
+    "after": "今日已入账发言加成票: "
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_task_views.py",
+    "line": 61,
+    "before": " 抽奖加成票(发言)",
+    "after": " 发言加成票"
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_task_views.py",
+    "line": 63,
+    "before": "次抽奖机会",
+    "after": "次有效抽奖次数"
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_views.py",
+    "line": 254,
+    "before": "🌱 抽奖加成票(发言)｜累计 ",
+    "after": "🌱 发言加成票｜累计 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_views.py",
+    "line": 256,
+    "before": "🌱 抽奖加成票(发言)｜今日 ",
+    "after": "🌱 发言加成票｜今日 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_navigation_views.py",
+    "line": 50,
+    "before": "\\n\\n我的进度 · 当前有效次数：",
+    "after": "\\n\\n我的进度 · 有效抽奖次数："
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_popups.py",
+    "line": 17,
+    "before": "✅ 参与成功！当前共 ",
+    "after": "✅ 报名成功！当前共 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_popups.py",
+    "line": 17,
+    "before": " 次抽奖机会",
+    "after": " 次有效抽奖次数"
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_popups.py",
+    "line": 21,
+    "before": " 次抽奖机会",
+    "after": " 次有效抽奖次数"
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_record_text.py",
+    "line": 82,
+    "before": "🌱 抽奖加成票(发言): ",
+    "after": "🌱 发言加成票: "
+  },
+  {
+    "path": "src/tg_lottery/application/progress_notifications.py",
+    "line": 22,
+    "before": " 次 · ⚠️ 请重新验证资格",
+    "after": " 次 · ⚠️ 请重新重新检查"
+  },
+  {
+    "path": "src/tg_lottery/presentation/campaign_card.py",
+    "line": 160,
+    "before": "🌱 <b>抽奖加成票(发言)：</b>",
+    "after": "🌱 <b>发言加成票：</b>"
+  },
+  {
+    "path": "src/tg_lottery/presentation/daily_bonus.py",
+    "line": 21,
+    "before": "🌱 抽奖加成票（发言获得）\\n已停止新增，历史累计",
+    "after": "🌱 发言加成票\\n已停止新增，历史累计"
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_behavior_admission.py",
+    "line": 136,
+    "before": "\"新场邀请固定入群满24小时后核验\"",
+    "after": "\"新场邀请固定入群满24小时后检查\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_behavior_admission.py",
+    "line": 152,
+    "before": "\"立即核验\"",
+    "after": "\"立即检查\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_behavior_views.py",
+    "line": 99,
+    "before": "\"\\n💾 回复数字或点快捷值，核验通过后直接保存本群到草稿。\"",
+    "after": "\"\\n💾 回复数字或点快捷值，检查通过后直接保存本群到草稿。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_folder_link.py",
+    "line": 36,
+    "before": "\"参与时仍会逐项核验。\\n\\n\"",
+    "after": "\"参与时仍会逐项检查。\\n\\n\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_availability.py",
+    "line": 25,
+    "before": "\"核验失败\"",
+    "after": "\"检查失败\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_availability.py",
+    "line": 26,
+    "before": "\"Telegram 暂时无法核验该群。请确认机器人仍在群内，然后点击重新检测。\"",
+    "after": "\"Telegram 暂时无法检查该群。请确认机器人仍在群内，然后点击重新检测。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_availability.py",
+    "line": 54,
+    "before": "\"核验失败\"",
+    "after": "\"检查失败\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_group_availability.py",
+    "line": 54,
+    "before": "\"无法核验目标类型，请点击重新检测。\"",
+    "after": "\"无法检查目标类型，请点击重新检测。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_invite_retention.py",
+    "line": 28,
+    "before": " 小时后核验",
+    "after": " 小时后检查"
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_invite_retention.py",
+    "line": 28,
+    "before": "\"入群后立即核验（无需留存等待）\"",
+    "after": "\"入群后立即检查（无需留存等待）\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_invite_retention.py",
+    "line": 40,
+    "before": "\"新场邀请固定入群满24小时后核验，请使用当前邀请设置页\"",
+    "after": "\"新场邀请固定入群满24小时后检查，请使用当前邀请设置页\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_invite_retention.py",
+    "line": 50,
+    "before": "\"\\n\\n达到留存时间后仍需核验新成员资格。已有成员、重复入群和自邀不计奖。\"",
+    "after": "\"\\n\\n达到留存时间后仍需检查新成员资格。已有成员、重复入群和自邀不计奖。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_invite_retention.py",
+    "line": 55,
+    "before": "\"入群后立即核验\"",
+    "after": "\"入群后立即检查\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_list_views.py",
+    "line": 34,
+    "before": "\"🗂️ 我可管理的活动（进入时实时核验全部参与群权限）\"",
+    "after": "\"🗂️ 我可管理的活动（进入时实时检查全部参与群权限）\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_participation.py",
+    "line": 219,
+    "before": "\"组合分享链接：已设置（仍逐项核验）\"",
+    "after": "\"组合分享链接：已设置（仍逐项检查）\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_retention_revision.py",
+    "line": 65,
+    "before": "\"选择只解决留存值，其他门槛编辑保留；整场保存前仍会核验时间窗口。\"",
+    "after": "\"选择只解决留存值，其他门槛编辑保留；整场保存前仍会检查时间窗口。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_sections.py",
+    "line": 124,
+    "before": "\"🧭 参与条件设置\\n\\n全部参与群都必须加入；额外关注、用户限制和行为门槛分别核验。\\n\"",
+    "after": "\"🧭 参与条件设置\\n\\n全部参与群都必须加入；额外关注、用户限制和行为门槛分别检查。\\n\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/group_reputation.py",
+    "line": 226,
+    "before": "小时并核验；同群同人一次。",
+    "after": "小时并检查；同群同人一次。"
+  },
+  {
+    "path": "src/tg_lottery/telegram/help_views.py",
+    "line": 39,
+    "before": " 小时；发送 /创建抽奖 可继续有效草稿。\n\n🛂 参加抽奖\n打开活动卡的参与链接，先阅读完整条件，再点击“报名”或“查看本人进度”。\n按提示关注频道、加入群并重新检查；首次核验通过才开始计算本场发言与邀请。\n只查看规则或入群不会自动报名，报名前的行为不补计。历史活动沿用原报名规则。\n加入申请需等待管理员批准。发言门槛、用户名或地区要求以本次活动规则为准。\n“我参加的抽奖”可查看报名状态、抽奖次数和结果。\n群内发送“抽奖”或“/抽奖”查看本群活动；发送“抽奖进度”或“/抽奖进度”查本人进度，群内回复20秒后删除。\n私聊可点击中文按钮，或发送 /首页、/我参加的抽奖、/抽奖进度 进入对应功能。\n私聊进度回复保留，不自动删除。\n\n📈 邀请与发言加成票\n报名后进入“我的加成票”，选择邀请加成票和目标群，复制本期邀请链接分享。\n每次抽奖、每个群分别累计；有效邀请完成留存与核验后自动计入，无需手动领取。\n点击链接、已经在群内或未完成核验均不代表获得加成。\n本期新生成的邀请入口不随抽奖结束过期，结束后只供入群，不计入下次抽奖。\n发言加成票按北京时间自然日计算，可选择门槛发言双算，或门槛完成后另算。\n已获得票但整场资格未完成时，已获得的加成保留，有效抽奖次数为0；全部条件合格后生效。\n新活动发言加成首日不发，次日起整场每天最多1张；所有奖励群当天条件均须完成。\n邀请加成票不限累计上限；有效邀请须入群满24小时并核验，同群同人只算一次。\n历史活动按本场设置的留存、比例和上限计算；仅开启邀请门槛也能领取邀请入口。\n群内输入“人品”查本人发言加成票，“人品排行”查本场发言加成票次数排行，“人品规则”查规则。\n查询只读，不会自动报名或增加发言数；人品不是永久积分，无需兑换或扣分。\n\n🏆 开奖与领奖\n新建活动按北京时间定时开奖，历史活动沿用已保存的开奖规则。\n在“我参加的抽奖 → 已结束”查看本人结果；中奖后按通知联系发奖人员。\n资格暂时无法核验时会显示待核验，请按提示处理，不代表已经报名成功。",
+    "after": " 小时；发送 /创建抽奖 可继续有效草稿。\n\n🛂 参加抽奖\n打开活动卡的参与链接，先阅读完整条件，再点击“报名”或“查看本人进度”。\n按提示关注频道、加入群并重新检查；首次检查通过才开始计算本场发言与邀请。\n只查看规则或入群不会自动报名，报名前的行为不补计。历史活动沿用原报名规则。\n加入申请需等待管理员批准。发言门槛、用户名或地区要求以本次活动规则为准。\n“我参加的抽奖”可查看报名状态、抽奖次数和结果。\n群内发送“抽奖”或“/抽奖”查看本群活动；发送“抽奖进度”或“/抽奖进度”查本人进度，群内回复20秒后删除。\n私聊可点击中文按钮，或发送 /首页、/我参加的抽奖、/抽奖进度 进入对应功能。\n私聊进度回复保留，不自动删除。\n\n📈 邀请与发言加成票\n报名后进入“我的加成票”，选择邀请加成票和目标群，复制本期邀请链接分享。\n每次抽奖、每个群分别累计；有效邀请完成留存与检查后自动计入，无需手动领取。\n点击链接、已经在群内或未完成检查均不代表获得加成。\n本期新生成的邀请入口不随抽奖结束过期，结束后只供入群，不计入下次抽奖。\n发言加成票按北京时间自然日计算，可选择门槛发言双算，或门槛完成后另算。\n已获得票但整场资格未完成时，已获得的加成保留，有效抽奖次数为0；全部条件合格后生效。\n新活动发言加成首日不发，次日起整场每天最多1张；所有奖励群当天条件均须完成。\n邀请加成票不限累计上限；有效邀请须入群满24小时并检查，同群同人只算一次。\n历史活动按本场设置的留存、比例和上限计算；仅开启邀请门槛也能领取邀请入口。\n群内输入“人品”查本人发言加成票，“人品排行”查本场发言加成票次数排行，“人品规则”查规则。\n查询只读，不会自动报名或增加发言数；人品不是永久积分，无需兑换或扣分。\n\n🏆 开奖与领奖\n新建活动按北京时间定时开奖，历史活动沿用已保存的开奖规则。\n在“我参加的抽奖 → 已结束”查看本人结果；中奖后按通知联系发奖人员。\n资格暂时无法检查时会显示待检查，请按提示处理，不代表已经报名成功。"
+  },
+  {
+    "path": "src/tg_lottery/telegram/lottery_query_views.py",
+    "line": 81,
+    "before": " 人 · 待核验 ",
+    "after": " 人 · 待检查 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/lottery_query_views.py",
+    "line": 162,
+    "before": "待核验 ",
+    "after": "待检查 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/lottery_query_views.py",
+    "line": 170,
+    "before": " 人 · 待核验 ",
+    "after": " 人 · 待检查 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/lottery_query_views.py",
+    "line": 279,
+    "before": "\"最晚计奖入群时间已过；仅核验此前邀请，保留累计记录。\"",
+    "after": "\"最晚计奖入群时间已过；仅检查此前邀请，保留累计记录。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/lottery_query_views.py",
+    "line": 282,
+    "before": "\"邀请按本场原有效入群窗口与留存规则核验。\"",
+    "after": "\"邀请按本场原有效入群窗口与留存规则检查。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_base_activity.py",
+    "line": 94,
+    "before": "\"当前无法核验群/频道资格，请稍后再试\"",
+    "after": "\"当前无法检查群/频道资格，请稍后再试\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_permissions.py",
+    "line": 43,
+    "before": "\"Telegram 暂时无法核验机器人权限，请联系活动管理员\"",
+    "after": "\"Telegram 暂时无法检查机器人权限，请联系活动管理员\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_text.py",
+    "line": 66,
+    "before": "\"最晚计奖入群时间已过；仅核验此前邀请，可查看本期记录。\"",
+    "after": "\"最晚计奖入群时间已过；仅检查此前邀请，可查看本期记录。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_check.py",
+    "line": 59,
+    "before": "\"核验并报名\"",
+    "after": "\"报名\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_check.py",
+    "line": 151,
+    "before": "\"机器人管理员权限缺失，暂不能核验\"",
+    "after": "\"机器人管理员权限缺失，暂不能检查\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_detail_actions.py",
+    "line": 28,
+    "before": "\"⏸️ 活动暂停，报名尚未完成；恢复后可继续核验，原进度保留。\"",
+    "after": "\"⏸️ 活动暂停，报名尚未完成；恢复后可继续检查，原进度保留。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_detail_actions.py",
+    "line": 30,
+    "before": "\"⏳ 报名待完成，请补齐条件后点击核验并报名。\"",
+    "after": "\"⏳ 报名待完成，请补齐条件后点击报名。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_detail_actions.py",
+    "line": 31,
+    "before": "\"核验并报名\"",
+    "after": "\"报名\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_detail_actions.py",
+    "line": 63,
+    "before": "\"最晚计奖入群时间已过，仅等待此前邀请核验；从零开始已无可完成窗口。\"",
+    "after": "\"最晚计奖入群时间已过，仅等待此前邀请检查；从零开始已无可完成窗口。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_detail_actions.py",
+    "line": 64,
+    "before": "\"查看待核验邀请记录\"",
+    "after": "\"查看待检查邀请记录\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_flow.py",
+    "line": 184,
+    "before": "\"🤖 请进入机器人，明确点击报名并核验资格。\"",
+    "after": "\"🤖 请进入机器人，明确点击报名并检查资格。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_gate_views.py",
+    "line": 77,
+    "before": "\"本群待核验记录\"",
+    "after": "\"本群待检查记录\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_group_invites.py",
+    "line": 338,
+    "before": "🔄 核验 ",
+    "after": "🔄 检查 "
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_group_invites.py",
+    "line": 390,
+    "before": "\"；最晚计奖入群时间已过；仅核验此前邀请，不再创建新邀请入口\"",
+    "after": "\"；最晚计奖入群时间已过；仅检查此前邀请，不再创建新邀请入口\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_group_invites.py",
+    "line": 491,
+    "before": " 小时后核验；同群同人只算一次。",
+    "after": " 小时后检查；同群同人只算一次。"
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_invites.py",
+    "line": 141,
+    "before": "\"最晚计奖入群时间已过；此链接仍可入群，新入群不计加成，仅核验此前邀请。\"",
+    "after": "\"最晚计奖入群时间已过；此链接仍可入群，新入群不计加成，仅检查此前邀请。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_invites.py",
+    "line": 161,
+    "before": "\"最晚有效入群时间已过；新入群不计本场有效邀请，仅核验此前邀请。\"",
+    "after": "\"最晚有效入群时间已过；新入群不计本场有效邀请，仅检查此前邀请。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_missing_targets.py",
+    "line": 146,
+    "before": "\"⏳ 报名待完成；补齐前置条件后点击核验并报名。\"",
+    "after": "\"⏳ 报名待完成；补齐前置条件后点击报名。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_missing_targets.py",
+    "line": 148,
+    "before": "\"🔄 核验并刷新\"",
+    "after": "\"🔄 重新检查\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_missing_targets.py",
+    "line": 148,
+    "before": "\"🎟️ 核验并报名\"",
+    "after": "\"🎟️ 报名\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_navigation.py",
+    "line": 359,
+    "before": " · 待核验",
+    "after": " · 待检查"
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_referral_landing.py",
+    "line": 83,
+    "before": "\"\\n⚠ 暂时无法核验你是否已在群内，入群后仍需核验。\"",
+    "after": "\"\\n⚠ 暂时无法检查你是否已在群内，入群后仍需检查。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_window_guidance.py",
+    "line": 12,
+    "before": "\"本场人工暂停：发言停止新增计数，截止不顺延；邀请按本场原入口和核验规则处理。\"",
+    "after": "\"本场人工暂停：发言停止新增计数，截止不顺延；邀请按本场原入口和检查规则处理。\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/platform_inviter.py",
+    "line": 24,
+    "before": "\"本人平台条件暂时无法核验，请稍后从本场详情验证后再获取邀请入口\"",
+    "after": "\"本人平台条件暂时无法检查，请稍后从本场详情验证后再获取邀请入口\""
+  },
+  {
+    "path": "src/tg_lottery/telegram/platform_requirements.py",
+    "line": 20,
+    "before": "：Telegram核验失败（",
+    "after": "：Telegram检查失败（"
+  },
+  {
+    "path": "src/tg_lottery/presentation/daily_bonus.py",
+    "line": 25,
+    "before": "张；能否生效仍需核验整场参与条件。",
+    "after": "张；能否生效仍需检查整场参与条件。"
+  }
+]

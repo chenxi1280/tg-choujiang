@@ -68,7 +68,7 @@ async def test_invitation_rewards_notify_with_stashed_balance(session_factory):
         assert len(notices) == 1
         payloads = {row.business_key: row.payload for row in notices}
         assert "加成 2 次" in payloads["notice:notice-award"]["ticket_status"]
-        assert all("暂存" in row.payload["ticket_status"] for row in notices)
+        assert all("尚未生效" in row.payload["ticket_status"] for row in notices)
 
 
 async def test_restart_and_cutoff_notices_are_idempotent(session_factory):

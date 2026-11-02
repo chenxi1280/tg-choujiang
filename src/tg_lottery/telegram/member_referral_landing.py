@@ -80,11 +80,11 @@ def _landing_text(
     timezone = landing.campaign.timezone
     deadline = format_public_time(_effective_bonus_deadline(landing), timezone)
     draw_time = _draw_time_text(landing, outcome=outcome)
-    verification = "\n⚠ 暂时无法核验你是否已在群内，入群后仍需核验。" if membership is None else ""
+    verification = "\n⚠ 暂时无法检查你是否已在群内，入群后仍需检查。" if membership is None else ""
     return (
         f"🤝 {identity}\n\n{state}{verification}\n\n"
         f"最晚计奖入群时间：{deadline}\n{draw_time}\n\n"
-        "加入该群不等于自动报名本次抽奖。\n"
+        "加入该群不等于自动报名。\n"
         "此邀请入口仅属于本次抽奖，结束后如入群入口仍有效，可继续入群，不计入下次抽奖。"
     )
 
@@ -176,7 +176,7 @@ def _landing_keyboard(
                 url=f"https://t.me/{flow._bot_username}?start=rules_{ref}",
             ),
             InlineKeyboardButton(
-                text="报名本次抽奖",
+                text="报名",
                 url=f"https://t.me/{flow._bot_username}?start=join_{ref}",
             ),
         ]
@@ -228,7 +228,7 @@ def _v3_landing_text(
         f"报名截止: {format_public_time(landing.campaign.cutoff_at, rules.timezone)}\n"
         f"{_draw_time_text(landing, outcome=outcome)}\n"
         + "\n".join(gate_lines(rules, chats, calendar_dates=_landing_task_dates(landing, rules)))
-        + "\n受邀人无需完成自己的抽奖门槛；加入群不会自动登记本人抽奖。"
+        + "\n受邀人无需完成自己的抽奖门槛；加入群不会自动报名本人抽奖。"
     )
 
 

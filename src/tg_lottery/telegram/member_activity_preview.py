@@ -30,7 +30,7 @@ async def show_activity_preview(flow, query, context):
     await flow._render(
         query,
         context,
-        pages=(f"活动详情 · {campaign_state_text(campaign.state)}\n尚未登记本场活动\n\n{text}",),
+        pages=(f"活动详情 · {campaign_state_text(campaign.state)}\n尚未报名本场活动\n\n{text}",),
         keyboard=InlineKeyboardMarkup(inline_keyboard=rows),
         parse_mode="HTML",
     )

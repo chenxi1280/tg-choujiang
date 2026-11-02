@@ -63,7 +63,7 @@ def _v3_rules_rows(flow, campaign):
         rows = [
             [
                 InlineKeyboardButton(
-                    text="🎟️ 一键报名",
+                    text="🎟️ 报名",
                     callback_data=f"member:join:{campaign.public_ref}",
                 )
             ],

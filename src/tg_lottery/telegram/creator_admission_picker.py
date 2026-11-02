@@ -28,7 +28,7 @@ async def add_admission_chats(bot, data: dict[str, Any], *, refs, user_id: int) 
         )
         chat_id = int(chat["id"])
         if chat_id in participating:
-            raise UserFacingError("该目标已经是参与活动的群，不能同时作为准入条件")
+            raise UserFacingError("该目标已经是参与群，不能同时作为额外参与条件")
         if chat_id in existing:
             raise UserFacingError("该群或频道已经在参与条件中")
         chats.append(chat)
@@ -72,7 +72,7 @@ class CreatorAdmissionPicker:
             "prev",
             "next",
         }:
-            raise UserFacingError("未知的准入列表操作，请重新打开准入条件")
+            raise UserFacingError("未知的准入列表操作，请重新打开额外参与条件")
         await self._render(query.from_user.id, query.message.chat.id, data)
 
     async def receive(self, message, data: dict[str, Any], *, searching: bool = False) -> None:

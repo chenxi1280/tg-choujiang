@@ -4,12 +4,19 @@ from tg_lottery.telegram.creator_cover import cover_prompt_text, cover_rows
 from tg_lottery.telegram.creator_current_view import current_draft_view
 from tg_lottery.telegram.creator_participation import participation_rows, participation_text
 from tg_lottery.telegram.creator_prize_confirmation import CONFIRMATION_STATES, confirmation_view
+from tg_lottery.telegram.creator_prize_edit import (
+    PRIZE_EDIT_STATES,
+    prize_edit_input_view,
+    prize_edit_view,
+)
 
 INPUT_LABELS = {
-    "draft:title": "活动标题",
+    "draft:title": "抽奖标题",
     "draft:prize_name": "奖品名称",
     "draft:prize_count": "中奖人数（正整数人）",
     "draft:prize_delete": "要删除的奖品编号",
+    "draft:prize_edit_name": "修改奖品名称",
+    "draft:prize_edit_count": "修改中奖人数",
     "draft:start": "开始时间（北京时间）",
     "draft:draw": "开奖时间（北京时间）",
     "draft:claim": "领奖说明",
@@ -66,6 +73,10 @@ def _confirmation_step(data, state):
 
 
 def _resumed_field(data, *, state, module):
+    if state in PRIZE_EDIT_STATES:
+        if module:
+            return data, "draft:idle", prize_edit_view(data)
+        return data, state, prize_edit_input_view(data, state)
     if module or state not in INPUT_LABELS:
         return data, "draft:idle", current_draft_view(data)
     if state == "draft:participation":

@@ -95,7 +95,7 @@ def condition_instruction(chat: dict[str, object], rules: CampaignRules) -> str:
     threshold = rules.message_thresholds.get(str(chat["id"]))
     if threshold and chat.get("type") != "channel":
         instruction += f"；报名需在本群累计发言至少 {threshold} 条"
-    return instruction + "，完成加入后点击验证资格。"
+    return instruction + "，完成加入后点击重新检查。"
 
 
 def condition_navigation(

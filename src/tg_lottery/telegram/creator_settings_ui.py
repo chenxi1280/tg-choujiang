@@ -56,7 +56,3 @@ def _required_user(message: Message):
 
 def _target(message: Message, data: dict[str, Any]) -> PanelTarget:
     return PanelTarget(_user_id(message), message.chat.id, int(data["panel_message_id"]))
-
-
-def _back_rows() -> ButtonRows:
-    return [[("↩ 返回上一层", "draft_back")]]

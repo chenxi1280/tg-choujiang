@@ -63,7 +63,7 @@ def validate_activity_target(record: dict[str, Any], *, activity_enabled: bool) 
         return
     title = record["title"]
     if allowed is False:
-        raise UserFacingError(f"强制群「{title}」禁止普通成员发言，无法启用抽奖加成票(发言)")
+        raise UserFacingError(f"强制群「{title}」禁止普通成员发言，无法启用发言加成票")
     raise UserFacingError(f"无法确认强制群「{title}」的普通成员发言权限，请检查群权限后重试")
 
 
@@ -82,7 +82,7 @@ async def resolve_requirements(
             chat_id = int(record["id"])
             if chat_id in seen:
                 raise UserFacingError(
-                    f"目标「{record['title']}」同时被选为参与群和准入条件，请只保留一种用途"
+                    f"目标「{record['title']}」同时被选为参与群和额外参与条件，请只保留一种用途"
                 )
             enabled = activity_enabled and (
                 activity_chat_ids is None or chat_id in activity_chat_ids
@@ -91,9 +91,9 @@ async def resolve_requirements(
             seen.add(chat_id)
             records.append(record | {"position": len(records) + 1})
         except UserFacingError as exc:
-            errors.append(f"· 第 {position} 个准入条件：{exc.public_message}")
+            errors.append(f"· 第 {position} 个额外参与条件：{exc.public_message}")
     if errors:
-        raise UserFacingError("以下准入条件需要处理：\n" + "\n".join(errors))
+        raise UserFacingError("以下额外参与条件需要处理：\n" + "\n".join(errors))
     return records
 
 

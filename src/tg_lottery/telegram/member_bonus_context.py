@@ -45,7 +45,7 @@ def _category_groups(campaign, rules):
 def bonus_eligibility_payload(detail, *, text, keyboard):
     if detail.qualification is QualificationState.ELIGIBLE:
         return text, keyboard
-    text += "\n当前参与资格未确认合格；历史奖励保留，新增个人邀请入口需先重新核验条件。"
+    text += "\n当前参与资格未确认合格；历史奖励保留，新增个人邀请入口需先重新检查条件。"
     rows = [
         [
             button

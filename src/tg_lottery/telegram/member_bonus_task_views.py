@@ -57,10 +57,8 @@ def activity_group_detail(context, chat_id: int, *, return_page: int):
     progress = context.activity_progress.get(chat_id)
     closed = campaign_bonus_completed(context.campaign)
     lines = [
-        bonus_header(
-            context.campaign, f"{group['title']} 抽奖加成票(发言)", outcome=context.outcome
-        ),
-        f"规则：每{rule.messages_per_cycle}条有效消息增加{rule.reward_tickets}次抽奖机会",
+        bonus_header(context.campaign, f"{group['title']} 发言加成票", outcome=context.outcome),
+        f"规则：每{rule.messages_per_cycle}条有效消息增加{rule.reward_tickets}张发言加成票",
         "文字、图片、表情均计数；" + activity_cap(rule),
     ]
     if context.rules.daily_activity_bonus:

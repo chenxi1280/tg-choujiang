@@ -56,7 +56,7 @@ def bonus_text(data: dict[str, Any]) -> str:
 
 def bonus_summary(data: dict[str, Any]) -> str:
     if _all_closed(data):
-        return "两类加成均关闭（已保存参数仍保留）"
+        return "未开启（之前填写的设置会保留）"
     if data.get("bonus_types") and (
         data.get("participation_groups") or data.get("participation_rules_version") == "v3.0"
     ):
@@ -79,7 +79,7 @@ def bonus_summary(data: dict[str, Any]) -> str:
 
 def _configured_group_summary(data: dict[str, Any]) -> str:
     pending = []
-    for kind, label in (("invite", "邀请加成票"), ("activity", "抽奖加成票(发言)")):
+    for kind, label in (("invite", "邀请加成票"), ("activity", "发言加成票")):
         configured = data.get(f"group_{kind}_rules") or {}
         if kind in data["bonus_types"] and not any(
             rule.get("enabled") for rule in configured.values()
@@ -92,13 +92,13 @@ def _configured_group_summary(data: dict[str, Any]) -> str:
 def bonus_rows(data: dict[str, Any]) -> ButtonRows:
     types = set(data.get("bonus_types", []))
     invite = "✅ 邀请加成票" if "invite" in types else "⬜ 邀请加成票"
-    activity = "✅ 抽奖加成票(发言)" if "activity" in types else "⬜ 抽奖加成票(发言)"
+    activity = "✅ 发言加成票" if "activity" in types else "⬜ 发言加成票"
     rows = [[(invite, "draft_bonus_toggle_invite"), (activity, "draft_bonus_toggle_activity")]]
     if "invite" in types:
         rows.append([("设置邀请加成票", "draft_bonus_invite")])
         rows.append([("邀请留存要求", "draft_retention")])
     if "activity" in types:
-        rows.append([("设置抽奖加成票(发言)", "draft_bonus_activity")])
+        rows.append([("设置发言加成票", "draft_bonus_activity")])
     rows.append([("↩ 返回抽奖预览", "draft_back")])
     return rows
 
@@ -151,7 +151,7 @@ def invite_bonus_rows(data: dict[str, Any]) -> ButtonRows:
 
 def activity_bonus_text(data: dict[str, Any]) -> str:
     return (
-        "🌱 抽奖加成票(发言)\n\n"
+        "🌱 发言加成票\n\n"
         f"在每个条件群每天分别发送达到 {data['activity_message_threshold']} 条有效消息，"
         f"全部达标后当天增加 {data['activity_reward_tickets']} 次。\n"
         "频道只要求关注，不要求发言。\n"

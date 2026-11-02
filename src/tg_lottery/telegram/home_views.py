@@ -30,11 +30,11 @@ def creation_entry(data: Mapping[str, object] | None) -> tuple[str, str]:
         return "查看发布状态", "nav:create"
     if data:
         return "继续创建抽奖", "nav:create"
-    return "发起抽奖", "nav:create"
+    return "创建抽奖", "nav:create"
 
 
 def home_text(data: Mapping[str, object] | None = None) -> str:
-    text = "✨ 抽奖助手\n\n参加活动、发起抽奖和本人设置，请选择下方操作。"
+    text = "✨ 抽奖助手\n\n参加活动、创建抽奖和本人设置，请选择下方操作。"
     if data and data.get("published_campaign_id"):
         return text + "\n\n上次活动已创建，请查看同一活动的发布状态。"
     if data:

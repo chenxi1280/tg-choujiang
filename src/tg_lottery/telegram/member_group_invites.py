@@ -335,7 +335,7 @@ def _missing_link_row(
             else []
         )
     if state is OutboxState.UNKNOWN_HOLD:
-        return [[InlineKeyboardButton(text=f"🔄 核验 {title} 链接状态", callback_data=refresh)]]
+        return [[InlineKeyboardButton(text=f"🔄 检查 {title} 链接状态", callback_data=refresh)]]
     if state in {
         OutboxState.PENDING,
         OutboxState.CLAIMED,
@@ -387,7 +387,7 @@ def _invite_link_note(
     if utcnow() < campaign.preheat_at:
         return "；邀请加成票尚未开始"
     if bonus_deadline is not None and utcnow() > bonus_deadline:
-        return "；最晚计奖入群时间已过；仅核验此前邀请，不再创建新邀请入口"
+        return "；最晚计奖入群时间已过；仅检查此前邀请，不再创建新邀请入口"
     if status is not None and status.delivery_state is OutboxState.UNKNOWN_HOLD:
         return "；链接创建结果暂时未知，不会盲目重试"
     return ""
@@ -488,5 +488,5 @@ def _invite_intro(campaign, rules, *, outcome):
             outcome=outcome,
         ),
         invite_list_prompt(campaign, retention_hours=rules.invite.retention_hours, outcome=outcome),
-        f"有效邀请：入群满 {rules.invite.retention_hours} 小时后核验；同群同人只算一次。",
+        f"有效邀请：入群满 {rules.invite.retention_hours} 小时后检查；同群同人只算一次。",
     ]

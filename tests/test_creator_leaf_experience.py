@@ -53,7 +53,7 @@ async def test_folder_link_preserves_all_independent_participation_conditions() 
     assert frozen["required_chat_ids"] == [-1001, -1002]
     assert frozen["participation_group_ids"] == [-1003, -1004]
     assert data["folder_link"] == ""
-    assert "仍逐项核验" in renderer.text
+    assert "仍逐项检查" in renderer.text
     keyboard = _campaign_keyboard(
         {
             "campaign_ref": "reference",

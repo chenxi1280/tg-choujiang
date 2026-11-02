@@ -40,7 +40,7 @@ async def _permission_error(bot: Bot, chat_id: int, kinds: set[str]) -> str | No
         chat = await bot.get_chat(chat_id)
         member = await bot.get_chat_member(chat_id, bot.id)
     except TelegramAPIError:
-        return "Telegram 暂时无法核验机器人权限，请联系活动管理员"
+        return "Telegram 暂时无法检查机器人权限，请联系活动管理员"
     if str(member.status) not in {"administrator", "creator"}:
         return "机器人不在群内或已不是管理员，请联系活动管理员"
     if "invite" in kinds and getattr(member, "can_invite_users", True) is False:
@@ -50,7 +50,7 @@ async def _permission_error(bot: Bot, chat_id: int, kinds: set[str]) -> str | No
     permissions = getattr(chat, "permissions", None)
     can_send = getattr(permissions, "can_send_messages", None)
     if can_send is False:
-        return "群已禁止普通成员发言，当前无法累计抽奖加成票(发言)"
+        return "群已禁止普通成员发言，当前无法累计发言加成票"
     if can_send is not True:
         return "暂时无法确认普通成员发言权限，请联系活动管理员"
     return None

@@ -84,7 +84,7 @@ def _validate_request(
     chat_id: int,
 ) -> None:
     if campaign is None or participant is None or target is None:
-        raise UserFacingError("仅合格参与者可获取本活动群邀请链接")
+        raise UserFacingError("仅合格参与者可获取本参与群邀请链接")
     rules = CampaignRules.model_validate(campaign.rules)
     if not rules.invite_target_enabled(target.chat_id_snapshot):
         raise UserFacingError("该群未开启邀请门槛或邀请加成票")

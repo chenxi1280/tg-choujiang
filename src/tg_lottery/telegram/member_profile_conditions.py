@@ -12,7 +12,7 @@ async def profile_conditions(profiles, query, *, rules, reference):
         if query.from_user.username:
             lines.append("✅ 本人用户名：@" + query.from_user.username + "（已满足）")
         else:
-            lines.append("❌ 用户名缺失：请在Telegram个人设置中设置用户名，回来后重新核验。")
+            lines.append("❌ 用户名缺失：请在Telegram个人设置中设置用户名，回来后重新检查。")
     else:
         lines.append("用户名要求：可为空。")
     if rules.allowed_regions:

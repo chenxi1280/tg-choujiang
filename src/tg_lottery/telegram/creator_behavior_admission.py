@@ -133,7 +133,7 @@ class CreatorBehaviorAdmission:
             "draft_gate:retention",
             "draft_gate:retention:24",
         }:
-            raise UserFacingError("新场邀请固定入群满24小时后核验")
+            raise UserFacingError("新场邀请固定入群满24小时后检查")
         if action == "draft_gate:retention":
             changed = data
         else:
@@ -149,7 +149,7 @@ class CreatorBehaviorAdmission:
         await self._sessions.set(query.from_user.id, "draft:behavior_admission", changed)
         text, _ = retention_view(changed | {"invite_retention_hours": staged["retention_hours"]})
         rows = [
-            [("立即核验", "draft_gate:retention:0")],
+            [("立即检查", "draft_gate:retention:0")],
             [("留存24小时", "draft_gate:retention:24"), ("留存48小时", "draft_gate:retention:48")],
             [("返回邀请门槛", "draft_gate:list")],
         ]

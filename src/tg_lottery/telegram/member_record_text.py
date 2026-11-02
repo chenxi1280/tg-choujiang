@@ -75,11 +75,11 @@ def _ticket_summary(detail: ParticipantCampaignDetail) -> str:
         CampaignState.RUNNING,
         CampaignState.PAUSED,
     }
-    label = "累计次数（含暂存）" if active else "历史累计次数（账本记录）"
+    label = "总抽奖次数" if active else "历史总抽奖次数"
     lines = [
         f"🎫 {label}: {detail.total}",
         f"🎟️ 基础次数: {detail.registration}",
-        f"🌱 抽奖加成票(发言): {detail.activity}",
+        f"🌱 发言加成票: {detail.activity}",
         f"🤝 邀请加成票: {detail.invitation}",
         detail.membership_progress,
         detail.base_progress,

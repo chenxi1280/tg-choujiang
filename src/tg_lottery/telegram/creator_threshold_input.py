@@ -30,11 +30,11 @@ class CreatorThresholdInput:
             query.message,
             user_id=query.from_user.id,
             text=(
-                f"🚪 {chat['title']} · 发言准入条件\n\n"
+                f"🚪 {chat['title']} · 发言额外参与条件\n\n"
                 f"请输入至少需要的发言条数（0–{MAX_CHAT_MESSAGE_THRESHOLD}），0 表示不限制。\n"
                 "例如发送 4，表示至少发言 4 条；此项是准入门槛，不是每日加成。"
             ),
-            rows=[[("↩ 返回准入条件", "draft_participation")]],
+            rows=[[("↩ 返回额外参与条件", "draft_participation")]],
         )
 
     async def receive(self, message: Any, data: dict[str, Any]) -> None:

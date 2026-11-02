@@ -138,7 +138,7 @@ def legacy_invite_note(campaign: object, *, chat_id: int | None = None) -> tuple
     if not campaign_bonus_completed(campaign) and now < campaign.preheat_at:
         return "本期邀请加成票尚未开始；当前链接仅用于入群，不计加成。", False
     if not campaign_bonus_completed(campaign):
-        return "最晚计奖入群时间已过；此链接仍可入群，新入群不计加成，仅核验此前邀请。", False
+        return "最晚计奖入群时间已过；此链接仍可入群，新入群不计加成，仅检查此前邀请。", False
     return "本期已截止；此链接仍可入群，但不再计算本期或以后任何抽奖加成票。", False
 
 
@@ -158,5 +158,5 @@ def _v3_invite_note(
     if not campaign_bonus_completed(campaign) and now < campaign.preheat_at:
         return f"邀请用途：{purpose}。本场邀请统计尚未开始；当前入群不计有效邀请。", False
     if not campaign_bonus_completed(campaign):
-        return "最晚有效入群时间已过；新入群不计本场有效邀请，仅核验此前邀请。", False
+        return "最晚有效入群时间已过；新入群不计本场有效邀请，仅检查此前邀请。", False
     return "本场邀请统计已截止；现存入口如可用仍可入群，不计入以后活动。", False

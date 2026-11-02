@@ -246,7 +246,7 @@ def missing_fields(data: dict[str, Any]) -> tuple[str, ...]:
 def _missing_campaign_fields(data: dict[str, Any]) -> list[str]:
     missing: list[str] = []
     if data.get("chat_id") is None:
-        missing.append("活动群")
+        missing.append("参与群")
     if not str(data.get("title", "")).strip():
         missing.append("抽奖标题")
     if not data.get("prizes"):
@@ -266,7 +266,7 @@ def _missing_group_bonus_fields(data: dict[str, Any]) -> list[str]:
     if "invite" in types and not _has_enabled_group_rule(data, "invite"):
         missing.append("至少配置一个群的邀请加成票")
     if "activity" in types and not _has_enabled_group_rule(data, "activity"):
-        missing.append("至少配置一个群的抽奖加成票(发言)")
+        missing.append("至少配置一个群的发言加成票")
     return missing
 
 

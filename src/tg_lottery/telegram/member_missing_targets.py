@@ -134,18 +134,18 @@ def _page_button(text: str, reference: str, page: int) -> InlineKeyboardButton:
 
 
 def _verify_button(reference: str) -> InlineKeyboardButton:
-    return InlineKeyboardButton(text="验证资格", callback_data=f"member:verify:{reference}")
+    return InlineKeyboardButton(text="重新检查", callback_data=f"member:verify:{reference}")
 
 
 async def registration_failure_feedback(queries, campaign, *, user_id, text, keyboard):
     detail = await queries.participant_campaign_detail(user_id, campaign.public_ref)
     registered = detail is not None and detail.registration_completed
     status = (
-        "⚠️ 已报名，当前资格未通过；原登记与进度保留。"
+        "⚠️ 已报名，当前资格未通过；原报名与进度保留。"
         if registered
-        else "⏳ 报名待完成；补齐前置条件后点击核验并报名。"
+        else "⏳ 报名待完成；补齐前置条件后点击报名。"
     )
-    label = "🔄 核验并刷新" if registered else "🎟️ 核验并报名"
+    label = "🔄 重新检查" if registered else "🎟️ 报名"
     rows = [
         [
             button.model_copy(update={"text": label})

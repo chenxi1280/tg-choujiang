@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.errors import UserFacingError
+from tg_lottery.telegram.creator_sections import back_rows
 from tg_lottery.telegram.draft_config import parse_draw_at
 
 
@@ -19,7 +20,7 @@ async def edit(flow, query):
         data=data,
         text=f"⏰ 开始时间（北京时间）\n当前：{current}\n"
         "发送 YYYY-MM-DD HH:MM 设置预约开始；必须早于报名截止。",
-        rows=[[("立即开始", "draft_start_now")], [("返回", "draft_back")]],
+        rows=[[("立即开始", "draft_start_now")], *back_rows(data, input_field=True)],
     )
 
 

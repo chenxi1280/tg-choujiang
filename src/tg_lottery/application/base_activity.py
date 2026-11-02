@@ -97,7 +97,7 @@ async def _apply_progress(
             participant=participant,
             chat_id=event.chat_id,
             key=f"base_complete:{participant.id}",
-            text="全部基础发言门槛已达标, 可以参与抽奖; 已暂存的加成现在生效。",
+            text="全部基础发言门槛已达标, 可以参与抽奖; 已获得的加成现在生效。",
         )
         await _trigger_full_draw(session, campaign, observed_at=event.event_at)
 

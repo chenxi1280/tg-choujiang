@@ -62,7 +62,7 @@ def retention_conflict_view(data: dict):
         f"原编辑基线：{conflict['base']}小时\n"
         f"现在已保存：{conflict['current']}小时\n"
         f"本次待保存：{conflict['editing']}小时\n"
-        "选择只解决留存值，其他门槛编辑保留；整场保存前仍会核验时间窗口。"
+        "选择只解决留存值，其他门槛编辑保留；整场保存前仍会检查时间窗口。"
     )
     rows = [
         [("保留当前已保存值", "draft_gate:retention_saved")],

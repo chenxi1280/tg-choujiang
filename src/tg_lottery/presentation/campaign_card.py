@@ -93,7 +93,7 @@ def membership_blocks(payload: Mapping) -> tuple[str, ...]:
     if rules.message_gate_rules:
         blocks.extend(_gate_notes(payload, rules))
     elif rules.invite_admission_enabled:
-        blocks.append("各群有效邀请分别达标；先登记，再通过本场本人邀请入口邀请新成员。")
+        blocks.append("各群有效邀请分别达标；先报名，再通过本场本人邀请入口邀请新成员。")
     return tuple(blocks)
 
 
@@ -157,7 +157,7 @@ def _bonus_lines(payload: Mapping, *, rules: CampaignRules, unlimited: bool) -> 
         )
     lines = [
         "📈 <b>抽奖加成票：</b>",
-        f"🌱 <b>抽奖加成票(发言)：</b>{activity}　{rule_link}",
+        f"🌱 <b>发言加成票：</b>{activity}　{rule_link}",
         f"🤝 <b>邀请加成票：</b>{invite}　{rule_link}",
     ]
     lines.extend(_daily_bonus_dates(payload, rules=rules))

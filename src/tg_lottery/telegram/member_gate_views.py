@@ -13,7 +13,7 @@ GATE_PAGE_SIZE = 6
 async def gate_payload(queries, *, campaign, detail, rules, targets, route, cipher):
     lines = await queries.gate_group_lines(detail_user_id=detail[0], reference=campaign.public_ref)
     if lines is None:
-        raise UserFacingError("没有本人的门槛记录，查看规则不会自动登记")
+        raise UserFacingError("没有本人的门槛记录，查看规则不会自动报名")
     context = {
         "campaign": campaign,
         "rules": rules,
@@ -74,7 +74,7 @@ def _group_payload(context, *, chat_id, page):
     if rules.admission.type == "invite":
         rows.append([_button("查看本群邀请任务", f"m:id:{campaign.public_ref}:{chat_id}:0")])
         rows.append(
-            [_button("本群待核验记录", f"m:ir:{campaign.public_ref}:{chat_id}:0:pending:0")]
+            [_button("本群待检查记录", f"m:ir:{campaign.public_ref}:{chat_id}:0:pending:0")]
         )
     parent = (
         f"m:gate:{campaign.public_ref}:{page}"

@@ -24,7 +24,7 @@ def campaign_share_keyboard(payload):
             InlineKeyboardMarkup(inline_keyboard=[[_link(payload, "查看活动状态与规则", "rules")]])
         )
     rules = CampaignRules.model_validate(payload.get("rules") or {})
-    rows = [[_link(payload, "点击参与抽奖", "join")]]
+    rows = [[_link(payload, "报名", "join")]]
     bonuses = []
     if rules.invitation_enabled:
         bonuses.append(_link(payload, "邀请入口", "invite"))

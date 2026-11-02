@@ -276,10 +276,10 @@ def confirmation_view(data: dict[str, Any]) -> tuple[str, ButtonRows]:
         f"封面：{cover}\n"
         f"邀请加成票：{len(invite_rules)} 个群开启，其中 {invite_unlimited} 个不设上限\n"
         f"{retention_summary(data)}"
-        f"抽奖加成票(发言)：{len(activity_rules)} 个群开启，"
+        f"发言加成票：{len(activity_rules)} 个群开启，"
         f"其中 {activity_unlimited} 个每日不设上限\n"
         "权限异常：0 项\n\n"
-        "确认后规则将冻结，并向全部参与群投递同一活动。"
+        "确认后本场规则不再修改，机器人将向全部参与群发送同一活动。"
     )
     rows = [
         [("查看全部规则", "draft_publish_rules")],

@@ -56,7 +56,7 @@ async def condition_check_payload(
         rows.append(
             [
                 InlineKeyboardButton(
-                    text="重新核验" if detail and detail.registration_completed else "核验并报名",
+                    text="重新检查" if detail and detail.registration_completed else "报名",
                     callback_data=action,
                 )
             ]
@@ -148,7 +148,7 @@ def _target_entry(target, *, cipher, present, title, number, lines, rows):
 async def _require_platform_admin(bot, target):
     member = await bot.get_chat_member(target.chat_id, bot.id)
     if str(member.status) not in {"administrator", "creator"}:
-        raise UserFacingError("机器人管理员权限缺失，暂不能核验")
+        raise UserFacingError("机器人管理员权限缺失，暂不能检查")
 
 
 def target_url(target, cipher):

@@ -200,7 +200,7 @@ class MemberNavigation:
             and (detail is not None or not blocked)
         ):
             action = (
-                _button("🎟️ 一键报名", f"member:join:{ref}")
+                _button("🎟️ 报名", f"member:join:{ref}")
                 if detail is None or not detail.registration_completed
                 else _button("查看本人进度", f"m:detail:{ref}")
             )
@@ -222,7 +222,7 @@ class MemberNavigation:
         campaign = await self._campaign(reference)
         detail = await self._queries.participant_campaign_detail(query.from_user.id, reference)
         if detail is None:
-            raise UserFacingError("请先登记本场活动；已有本人记录始终可读，不要求重新报名")
+            raise UserFacingError("请先报名本场活动；已有本人记录始终可读，不要求重新报名")
         rules = CampaignRules.model_validate(campaign.rules)
         if parts[1] == "bo" and uses_legacy_bonus(rules):
             text, keyboard = await bonus_read_payload(
@@ -282,7 +282,7 @@ class MemberNavigation:
         campaign = await self._campaign(reference)
         detail = await self._queries.participant_campaign_detail(query.from_user.id, reference)
         if detail is None:
-            raise UserFacingError("请先明确登记本场活动，查看规则不会开始统计")
+            raise UserFacingError("请先明确报名本场活动，查看规则不会开始统计")
         rules = CampaignRules.model_validate(campaign.rules)
         if rules.admission is not None:
             text, keyboard = await gate_payload(
@@ -351,12 +351,12 @@ class MemberNavigation:
             query.from_user.id, reference, **options
         )
         if records is None:
-            raise UserFacingError("没有本人的邀请记录，请先核对已登记活动")
+            raise UserFacingError("没有本人的邀请记录，请先核对已报名活动")
         lines = [_record_line(row, records.timezone) for row in records.rows]
         body = "\n\n".join(lines) if lines else "本活动暂无邀请记录"
         text = (
             f"🧾 邀请记录 · {records.campaign_name}\n👥 {records.group_title}\n"
-            f"📊 已确认{records.valid} · 待核验{records.pending} · 未计入{records.invalid}\n"
+            f"📊 已确认{records.valid} · 待检查{records.pending} · 未计入{records.invalid}\n"
             f"第{records.page + 1}/{records.total_pages}页\n\n{body}"
         )
         await self._render(query, context, pages=(text,), keyboard=_invitation_keyboard(records))

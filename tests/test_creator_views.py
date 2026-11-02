@@ -10,8 +10,8 @@ def test_preview_is_a_business_card_with_waiting_fields() -> None:
     assert "🖼️ 封面设置" in text
     assert "🪪 用户限制" in text
     assert "🌐 地区限制" in text
-    assert "👥 参与活动的群" in text
-    assert "🧭 准入条件" in text
+    assert "👥 参与群" in text
+    assert "🧭 额外参与条件" in text
     assert "🎁 奖品内容" in text
     assert "📃 抽奖说明" in text
     assert "📈 抽奖加成票" in text

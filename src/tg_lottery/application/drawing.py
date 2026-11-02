@@ -80,7 +80,7 @@ class DrawingService:
             if existing:
                 return existing
             if await has_active_campaign_block(uow.session, campaign.id):
-                raise UserFacingError("活动存在群权限阻断, 恢复并重新核验后才能开奖")
+                raise UserFacingError("活动存在群权限阻断, 恢复并重新检查后才能开奖")
             require_campaign_transition(campaign.state, CampaignState.DRAWING)
             campaign.state = CampaignState.DRAWING
             now = utcnow()

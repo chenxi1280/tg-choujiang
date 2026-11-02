@@ -49,7 +49,7 @@ async def activity_bonus_progress_text(
 
 
 def _bonus_lines(names, targets, counts, *, compact):
-    lines = ["🌱 今日加成" if compact else "抽奖加成票(发言)(今日):"]
+    lines = ["🌱 今日加成" if compact else "发言加成票(今日):"]
     lines.extend(
         f"{names.get(key, '群名称待更新')}: "
         + bonus_cycle_text(rule, counts.get(key, 0), compact=compact)

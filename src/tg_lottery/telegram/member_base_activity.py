@@ -23,9 +23,9 @@ async def base_registration_reply(
     chat_type = getattr(getattr(message, "chat", None), "type", None)
     if callback is not None and chat_type != "private":
         text = (
-            f"已登记参与，{label}已达标，当前共 {detail.total} 次抽奖机会"
+            f"已报名，{label}已达标，当前共 {detail.total} 次有效抽奖次数"
             if detail.base_qualified
-            else f"已登记，{label}未完成，请查看本场任务进度"
+            else f"已报名，{label}未完成，请查看本场任务进度"
         )
         await member_callbacks.safe_answer(callback, text, alert=False)
         return
@@ -39,7 +39,11 @@ async def base_registration_reply(
         + "\n"
         + detail.base_progress
         + f"\n🎟️ 当前有效抽奖次数：{detail.total if detail.base_qualified else 0}"
-        + ("；门槛未全部完成，加成暂存。" if not detail.base_qualified else ""),
+        + (
+            "；门槛未全部完成，已获得的加成将在门槛和参与条件满足后生效。"
+            if not detail.base_qualified
+            else ""
+        ),
         reply_markup=member_keyboard(
             campaign.public_ref,
             bool(rules.bonus_types),
@@ -87,7 +91,7 @@ async def registration_total(
 
 
 async def qualification_retry_reply(message: Message, callback: CallbackQuery | None) -> None:
-    text = "当前无法核验群/频道资格，请稍后再试"
+    text = "当前无法检查群/频道资格，请稍后再试"
     if callback is not None:
         await member_callbacks.safe_answer(callback, text, alert=True)
         return
@@ -103,4 +107,4 @@ def _counting_notice(campaign):
         return "⏰ 活动尚未开始；开始后才在规则允许的时段累计任务，此前记录不补算。"
     if state == CampaignState.PAUSED:
         return "⏸️ 活动暂停，发言停止新增计数，已有进度保留。"
-    return "📊 任务仅在本场规则允许的时段累计，登记及前置条件通过前不补算。"
+    return "📊 任务仅在本场规则允许的时段累计，报名及前置条件通过前不补算。"

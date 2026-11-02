@@ -78,9 +78,9 @@ def _progress_footer(lines, participant, timezone, *, campaign, completed, compa
         effective = effective_ticket_text(participant, active=active)
         lines.append(f"当前有效抽奖次数: {effective}")
         lines.append(
-            "全部任务日分别达标后才完成整场门槛; 此前基础次数和加成暂存, 每日加成另算。"
+            "全部任务日分别达标后才完成整场门槛; 此前基础次数和已获得的加成尚未生效, 每日加成另算。"
             if calendar
-            else "未完成门槛时加成暂存; 门槛本场完成一次即可, 每日加成另算。"
+            else "已获得的加成将在门槛和参与条件满足后生效; 门槛本场完成一次即可, 每日加成另算。"
         )
     lines.append(_start_text(participant, timezone, start_at=campaign.preheat_at))
     return "\n".join(lines)

@@ -101,7 +101,7 @@ def list_rows(data: dict[str, Any]) -> list:
         rule = rules.get(str(group["id"]))
         status = f"每天 {rule['daily_messages']} 条" if rule else "未设置"
         rows.append([(f"{chat_title(group)} · {status}", f"draft_base:group:{group['id']}")])
-    rows.append([("↩ 返回准入条件", "draft_participation")])
+    rows.append([("↩ 返回额外参与条件", "draft_participation")])
     return rows
 
 
@@ -119,7 +119,7 @@ def editor_view(data: dict[str, Any]) -> tuple[str, list]:
         f"🚪 {title} · 基础发言门槛\n\n"
         f"连续 {rule['consecutive_days']} 天，每天至少 {rule['daily_messages']} 条，"
         "文字、图片、表情均计数。\n"
-        "点击参与链接登记后开始统计；全部配置群达标后获得抽奖资格。\n"
+        "点击参与链接报名后开始统计；全部配置群达标后获得抽奖资格。\n"
         "北京时间每天 00:00 更新当天统计，完成后保留本场资格。\n\n"
         "选择预设或自定义数值，点击保存后生效。"
     )

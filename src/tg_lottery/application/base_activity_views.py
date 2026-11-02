@@ -70,7 +70,9 @@ async def _legacy_progress_text(
     )
     effective = effective_ticket_text(participant, active=active)
     lines.append(f"当前有效抽奖次数: {effective}")
-    lines.append("未达标时加成暂存; 缺勤会中断连续进度; 完成一次后保留本期达标资格。")
+    lines.append(
+        "已获得的加成将在门槛和参与条件满足后生效; 缺勤会中断连续进度; 完成一次后保留本期达标资格。"
+    )
     return "\n".join(lines)
 
 
@@ -81,7 +83,7 @@ def _group_label(key, name, formatter):
 def _qualification_text(qualified: bool, *, completed: bool) -> str:
     if qualified:
         return "基础发言门槛: 已达标"
-    suffix = "本期已停止累计" if completed else "加成暂存"
+    suffix = "本期已停止累计" if completed else "尚未生效"
     return f"基础发言门槛: 未达标, {suffix}"
 
 

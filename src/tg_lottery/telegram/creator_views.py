@@ -36,8 +36,8 @@ def preview_text(data: dict[str, Any], *, now: datetime | None = None) -> str:
         f"🖼️ 封面设置：{'【已设置】' if data.get('cover_file_id') else '【等待设置】'}\n"
         f"🪪 用户限制：{_user_limits(data)}\n"
         f"🌐 地区限制：{_region_limits(data)}\n\n"
-        f"👥 参与活动的群：{_participation_groups(data)}\n"
-        f"🧭 准入条件：{_requirements(data)}\n\n"
+        f"👥 参与群：{_participation_groups(data)}\n"
+        f"🧭 额外参与条件：{_requirements(data)}\n\n"
         f"{platform_summary(data)}"
         f"{_base_summary(data)}\n\n"
         f"🎁 奖品内容：\n{_prize_lines(data.get('prizes', []))}\n"
@@ -47,7 +47,6 @@ def preview_text(data: dict[str, Any], *, now: datetime | None = None) -> str:
         f"🧑‍💼 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}\n"
         f"🔔 参与提示：{message_policy_summary(data)}\n\n"
         f"当前状态：{status}\n{bonus_window_warning(data, now=now)}"
-        "（本页面为预览文案，不是正式效果）"
     )
 
 
@@ -64,7 +63,7 @@ def _preview_status(data: dict[str, Any], now: datetime) -> str:
 
 def dashboard_rows(data: dict[str, Any] | None = None) -> ButtonRows:
     rows = [
-        [("活动标题", "draft_title"), ("奖品与领奖", "draft_prizes")],
+        [("抽奖标题", "draft_title"), ("奖品与领奖", "draft_prizes")],
         [("参与群", "draft_group"), ("抽奖门槛", "draft_gate")],
         [("开奖时间", "draft_draw"), ("参与条件", "draft_conditions")],
         [("加成票设置", "draft_rules"), ("封面与说明", "draft_cover_summary")],
