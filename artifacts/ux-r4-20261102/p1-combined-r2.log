@@ -1,0 +1,91 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from test-runner.Dockerfile
+#1 transferring dockerfile: 831B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.12-slim
+#2 DONE 0.1s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [ 1/13] FROM docker.io/library/python:3.12-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30
+#4 resolve docker.io/library/python:3.12-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30 0.0s done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 3.24MB 0.1s done
+#5 DONE 0.1s
+
+#6 [ 7/13] RUN python -m pip install --no-deps --no-build-isolation -e .
+#6 CACHED
+
+#7 [ 8/13] COPY alembic.ini /workspace/alembic.ini
+#7 CACHED
+
+#8 [ 2/13] WORKDIR /workspace
+#8 CACHED
+
+#9 [ 3/13] COPY pyproject.toml deploy/install_test_dependencies.py /tmp/dependencies/
+#9 CACHED
+
+#10 [ 4/13] RUN python /tmp/dependencies/install_test_dependencies.py /tmp/dependencies/pyproject.toml
+#10 CACHED
+
+#11 [ 5/13] COPY pyproject.toml /workspace/pyproject.toml
+#11 CACHED
+
+#12 [ 6/13] COPY src /workspace/src
+#12 CACHED
+
+#13 [ 9/13] COPY alembic /workspace/alembic
+#13 CACHED
+
+#14 [10/13] COPY tests /workspace/tests
+#14 DONE 0.2s
+
+#15 [11/13] COPY scripts /workspace/scripts
+#15 DONE 0.1s
+
+#16 [12/13] COPY deploy/run_remote_tests.py /workspace/deploy/run_remote_tests.py
+#16 DONE 0.0s
+
+#17 [13/13] COPY deploy/check-services.sh deploy/docker-env.sh deploy/release.sh /workspace/deploy/
+#17 DONE 0.1s
+
+#18 exporting to image
+#18 exporting layers 0.1s done
+#18 writing image sha256:96e2e678a5eb42cbbd58e30c4d0a05101c0389e4c874caaa4d80d791c84c0015 done
+#18 naming to docker.io/library/tg-lottery-test-runner:current done
+#18 DONE 0.1s
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.schemas
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.tables
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.types
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.constraints
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.defaults
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.comments
+INFO  [alembic.ddl.postgresql] Detected sequence named 'telegram_updates_id_seq' as owned by integer column 'telegram_updates(id)', assuming SERIAL and omitting
+No new upgrade operations detected.
+........................................................................ [ 41%]
+........................................................................ [ 83%]
+.............................                                            [100%]
+=============================== warnings summary ===============================
+tests/test_participation_prerequisite_progress.py::test_blocked_speech_never_counts_and_reminds_once_with_remaining_target
+tests/test_participation_prerequisite_progress.py::test_blocked_speech_never_counts_and_reminds_once_with_remaining_target
+tests/test_participation_prerequisite_progress.py::test_blocked_speech_never_counts_and_reminds_once_with_remaining_target
+tests/test_participation_prerequisite_progress.py::test_completion_notice_includes_remaining_group_progress
+tests/test_participation_prerequisite_progress.py::test_completion_notice_includes_remaining_group_progress
+tests/test_participation_prerequisite_progress.py::test_delayed_pre_start_messages_never_add_progress_or_bonus
+tests/test_participation_prerequisite_progress.py::test_delayed_pre_start_messages_never_add_progress_or_bonus
+tests/test_progress_notifications.py::test_restart_and_cutoff_notices_are_idempotent
+tests/test_progress_notifications.py::test_restart_and_cutoff_notices_are_idempotent
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+173 passed, 9 warnings in 30.14s

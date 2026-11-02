@@ -1,0 +1,389 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from test-runner.Dockerfile
+#1 transferring dockerfile: 831B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.12-slim
+#2 DONE 1.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [ 1/13] FROM docker.io/library/python:3.12-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30
+#4 resolve docker.io/library/python:3.12-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30 0.0s done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 3.26MB 0.1s done
+#5 DONE 0.1s
+
+#6 [ 2/13] WORKDIR /workspace
+#6 CACHED
+
+#7 [ 3/13] COPY pyproject.toml deploy/install_test_dependencies.py /tmp/dependencies/
+#7 CACHED
+
+#8 [ 4/13] RUN python /tmp/dependencies/install_test_dependencies.py /tmp/dependencies/pyproject.toml
+#8 CACHED
+
+#9 [ 5/13] COPY pyproject.toml /workspace/pyproject.toml
+#9 CACHED
+
+#10 [ 6/13] COPY src /workspace/src
+#10 DONE 0.2s
+
+#11 [ 7/13] RUN python -m pip install --no-deps --no-build-isolation -e .
+#11 1.408 Obtaining file:///workspace
+#11 1.410   Checking if build backend supports build_editable: started
+#11 1.977   Checking if build backend supports build_editable: finished with status 'done'
+#11 1.978   Preparing editable metadata (pyproject.toml): started
+#11 2.661   Preparing editable metadata (pyproject.toml): finished with status 'done'
+#11 2.668 Building wheels for collected packages: tg-lottery
+#11 2.669   Building editable for tg-lottery (pyproject.toml): started
+#11 3.388   Building editable for tg-lottery (pyproject.toml): finished with status 'done'
+#11 3.389   Created wheel for tg-lottery: filename=tg_lottery-0.1.0-0.editable-py3-none-any.whl size=1727 sha256=ffeb5ec9d871068ddf470255e340caa40a782d30075ead32ce79574cf3efd4a8
+#11 3.390   Stored in directory: /tmp/pip-ephem-wheel-cache-wwhordrd/wheels/b0/41/ab/4e04a8678980f3355548f1261923479fbf2a713a7393a7dea8
+#11 3.393 Successfully built tg-lottery
+#11 3.393 Installing collected packages: tg-lottery
+#11 3.411 Successfully installed tg-lottery-0.1.0
+#11 3.412 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#11 DONE 3.5s
+
+#12 [ 8/13] COPY alembic.ini /workspace/alembic.ini
+#12 DONE 0.0s
+
+#13 [ 9/13] COPY alembic /workspace/alembic
+#13 DONE 0.0s
+
+#14 [10/13] COPY tests /workspace/tests
+#14 DONE 0.1s
+
+#15 [11/13] COPY scripts /workspace/scripts
+#15 DONE 0.0s
+
+#16 [12/13] COPY deploy/run_remote_tests.py /workspace/deploy/run_remote_tests.py
+#16 DONE 0.0s
+
+#17 [13/13] COPY deploy/check-services.sh deploy/docker-env.sh deploy/release.sh /workspace/deploy/
+#17 DONE 0.1s
+
+#18 exporting to image
+#18 exporting layers
+#18 exporting layers 0.2s done
+#18 writing image sha256:992e38090b4e193ed18fd43ae269bfb0f1b0d38cc45994938008f05b75e48c7c done
+#18 naming to docker.io/library/tg-lottery-test-runner:current done
+#18 DONE 0.2s
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.schemas
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.tables
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.types
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.constraints
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.defaults
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.comments
+INFO  [alembic.ddl.postgresql] Detected sequence named 'telegram_updates_id_seq' as owned by integer column 'telegram_updates(id)', assuming SERIAL and omitting
+No new upgrade operations detected.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade c34a1030ux14 -> c33a1026ir01, Persist the UX retention activation boundary without changing lottery facts.
+INFO  [alembic.runtime.migration] Running downgrade c33a1026ir01 -> c33a1024bc03, Persist Inbox flood-control deadlines and the most recent failure evidence.
+INFO  [alembic.runtime.migration] Running downgrade c33a1024bc03 -> c33a1008bc02, Keep individual reward entries as wide as accumulated ticket counts.
+INFO  [alembic.runtime.migration] Running downgrade c33a1008bc02 -> c33a1008bf01, Widen accumulated counts and snapshot weights for unlimited rewards.
+INFO  [alembic.runtime.migration] Running downgrade c33a1008bf01 -> c30a1004ad01, Durable startup and private bot relationship evidence.
+INFO  [alembic.runtime.migration] Running downgrade c30a1004ad01 -> b7e2a1d9c403, Independent V3 admission and explicit participation intent.
+INFO  [alembic.runtime.migration] Running downgrade b7e2a1d9c403 -> 9a7d3c5e8b20, Separate consecutive daily speaking qualification from bonus tickets.
+INFO  [alembic.runtime.migration] Running downgrade 9a7d3c5e8b20 -> f2d6a8c1e740, add explicit database grants for winner designation operators
+INFO  [alembic.runtime.migration] Running downgrade f2d6a8c1e740 -> e5c1a7d9b402, add winner designations
+INFO  [alembic.runtime.migration] Running downgrade e5c1a7d9b402 -> b4e7c3d91a20, add v2.4 draw commitments
+INFO  [alembic.runtime.migration] Running downgrade b4e7c3d91a20 -> 8f2a4c9d1e70, add v2.3 referral routes and group membership facts
+INFO  [alembic.runtime.migration] Running downgrade 8f2a4c9d1e70 -> 6b7d8e9f0a12, add group-scoped bonus facts
+INFO  [alembic.runtime.migration] Running downgrade 6b7d8e9f0a12 -> 3f1d9a7c21b4, add multi-group campaign contract
+INFO  [alembic.runtime.migration] Running downgrade 3f1d9a7c21b4 -> c6d4e8f1a205, add user_group_message_totals
+INFO  [alembic.runtime.migration] Running downgrade c6d4e8f1a205 -> b91e4d7a6c20, add per-group activity progress
+INFO  [alembic.runtime.migration] Running downgrade b91e4d7a6c20 -> f8b0d3e5a712, add invitation validation observations
+INFO  [alembic.runtime.migration] Running downgrade f8b0d3e5a712 -> e7a9c2d4f601, add campaign draft publication source
+INFO  [alembic.runtime.migration] Running downgrade e7a9c2d4f601 -> d4c8a1f2b903, add qualification observations
+INFO  [alembic.runtime.migration] Running downgrade d4c8a1f2b903 -> 2a4e91b6f703, add campaign public reference
+INFO  [alembic.runtime.migration] Running downgrade 2a4e91b6f703 -> 7c3f8d11a902, add region audit and registration ticket
+INFO  [alembic.runtime.migration] Running downgrade 7c3f8d11a902 -> a42b9c7d3e10, add user profiles and campaign presentation
+INFO  [alembic.runtime.migration] Running downgrade a42b9c7d3e10 -> 0d7f5bb6c9a1, freeze prize plan and track winner slots
+INFO  [alembic.runtime.migration] Running downgrade 0d7f5bb6c9a1 -> 992c1dd08da2, add durable update routing and replayable outbox projection
+INFO  [alembic.runtime.migration] Running downgrade 992c1dd08da2 -> c11c56173969, track polling update continuity
+INFO  [alembic.runtime.migration] Running downgrade c11c56173969 -> fbbafc89a4ff, trace business facts to durable updates
+INFO  [alembic.runtime.migration] Running downgrade fbbafc89a4ff -> 567e7c3b621a, add qualification request hash and delivery attempt identity
+INFO  [alembic.runtime.migration] Running downgrade 567e7c3b621a -> , initial schema
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 567e7c3b621a, initial schema
+INFO  [alembic.runtime.migration] Running upgrade 567e7c3b621a -> fbbafc89a4ff, add qualification request hash and delivery attempt identity
+INFO  [alembic.runtime.migration] Running upgrade fbbafc89a4ff -> c11c56173969, trace business facts to durable updates
+INFO  [alembic.runtime.migration] Running upgrade c11c56173969 -> 992c1dd08da2, track polling update continuity
+INFO  [alembic.runtime.migration] Running upgrade 992c1dd08da2 -> 0d7f5bb6c9a1, add durable update routing and replayable outbox projection
+INFO  [alembic.runtime.migration] Running upgrade 0d7f5bb6c9a1 -> a42b9c7d3e10, freeze prize plan and track winner slots
+INFO  [alembic.runtime.migration] Running upgrade a42b9c7d3e10 -> 7c3f8d11a902, add user profiles and campaign presentation
+INFO  [alembic.runtime.migration] Running upgrade 7c3f8d11a902 -> 2a4e91b6f703, add region audit and registration ticket
+INFO  [alembic.runtime.migration] Running upgrade 2a4e91b6f703 -> d4c8a1f2b903, add campaign public reference
+INFO  [alembic.runtime.migration] Running upgrade d4c8a1f2b903 -> e7a9c2d4f601, add qualification observations
+INFO  [alembic.runtime.migration] Running upgrade e7a9c2d4f601 -> f8b0d3e5a712, add campaign draft publication source
+INFO  [alembic.runtime.migration] Running upgrade f8b0d3e5a712 -> b91e4d7a6c20, add invitation validation observations
+INFO  [alembic.runtime.migration] Running upgrade b91e4d7a6c20 -> c6d4e8f1a205, add per-group activity progress
+INFO  [alembic.runtime.migration] Running upgrade c6d4e8f1a205 -> 3f1d9a7c21b4, add user_group_message_totals
+INFO  [alembic.runtime.migration] Running upgrade 3f1d9a7c21b4 -> 6b7d8e9f0a12, add multi-group campaign contract
+INFO  [alembic.runtime.migration] Running upgrade 6b7d8e9f0a12 -> 8f2a4c9d1e70, add group-scoped bonus facts
+INFO  [alembic.runtime.migration] Running upgrade 8f2a4c9d1e70 -> b4e7c3d91a20, add v2.3 referral routes and group membership facts
+INFO  [alembic.runtime.migration] Running upgrade b4e7c3d91a20 -> e5c1a7d9b402, add v2.4 draw commitments
+INFO  [alembic.runtime.migration] Running upgrade e5c1a7d9b402 -> f2d6a8c1e740, add winner designations
+INFO  [alembic.runtime.migration] Running upgrade f2d6a8c1e740 -> 9a7d3c5e8b20, add explicit database grants for winner designation operators
+INFO  [alembic.runtime.migration] Running upgrade 9a7d3c5e8b20 -> b7e2a1d9c403, Separate consecutive daily speaking qualification from bonus tickets.
+INFO  [alembic.runtime.migration] Running upgrade b7e2a1d9c403 -> c30a1004ad01, Independent V3 admission and explicit participation intent.
+INFO  [alembic.runtime.migration] Running upgrade c30a1004ad01 -> c33a1008bf01, Durable startup and private bot relationship evidence.
+INFO  [alembic.runtime.migration] Running upgrade c33a1008bf01 -> c33a1008bc02, Widen accumulated counts and snapshot weights for unlimited rewards.
+INFO  [alembic.runtime.migration] Running upgrade c33a1008bc02 -> c33a1024bc03, Keep individual reward entries as wide as accumulated ticket counts.
+INFO  [alembic.runtime.migration] Running upgrade c33a1024bc03 -> c33a1026ir01, Persist Inbox flood-control deadlines and the most recent failure evidence.
+INFO  [alembic.runtime.migration] Running upgrade c33a1026ir01 -> c34a1030ux14, Persist the UX retention activation boundary without changing lottery facts.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+No new upgrade operations detected.
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.schemas
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.tables
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.types
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.constraints
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.defaults
+INFO  [alembic.runtime.plugins] setting up autogenerate plugin alembic.autogenerate.comments
+INFO  [alembic.ddl.postgresql] Detected sequence named 'telegram_updates_id_seq' as owned by integer column 'telegram_updates(id)', assuming SERIAL and omitting
+pytest shard 1/8: 232 nodes
+shard 1 batch 1: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_bigint_rewards.py: 4 warnings
+tests/test_daily_bonus_edges.py: 3 warnings
+tests/test_daily_bonus_integration.py: 20 warnings
+tests/test_gate_bonus_reminders.py: 5 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 1 batch 2: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_message_counting_v31.py: 4 warnings
+tests/test_message_window_repair.py: 7 warnings
+tests/test_participation_prerequisite_progress.py: 2 warnings
+tests/test_r14_boundaries.py: 3 warnings
+tests/test_reminder_neighbor_database.py: 2 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 1 batch 3: 56 nodes
+........................................................                 [100%]
+=============================== warnings summary ===============================
+tests/test_v30_admission_integration.py::test_eight_combinations_gate_rewards_and_final_entries[bonuses2-message]
+tests/test_v30_admission_integration.py::test_eight_combinations_gate_rewards_and_final_entries[bonuses2-message]
+tests/test_v30_event_edges.py::test_midnight_uses_source_date_and_completed_gate_stays_qualified
+tests/test_v30_event_edges.py::test_midnight_uses_source_date_and_completed_gate_stays_qualified
+tests/test_v30_event_edges.py::test_midnight_uses_source_date_and_completed_gate_stays_qualified
+tests/test_v30_event_edges.py::test_midnight_uses_source_date_and_completed_gate_stays_qualified
+tests/test_v30_event_edges.py::test_midnight_uses_source_date_and_completed_gate_stays_qualified
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+pytest shard 2/8: 232 nodes
+shard 2 batch 1: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_bigint_rewards.py: 4 warnings
+tests/test_daily_bonus_edges.py: 3 warnings
+tests/test_daily_bonus_integration.py: 24 warnings
+tests/test_gate_bonus_reminders.py: 10 warnings
+tests/test_integration_snapshot_postgres.py: 2 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 2 batch 2: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_member_gate_queries.py: 1 warning
+tests/test_message_counting_v31.py: 2 warnings
+tests/test_message_window_repair.py: 9 warnings
+tests/test_reminder_neighbor_database.py: 2 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 2 batch 3: 56 nodes
+........................................................                 [100%]
+=============================== warnings summary ===============================
+tests/test_v27_daily_activity.py: 12 warnings
+tests/test_v30_event_edges.py: 2 warnings
+tests/test_v32_activity_reward_editor.py: 10 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+pytest shard 3/8: 232 nodes
+shard 3 batch 1: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_daily_bonus_edges.py: 3 warnings
+tests/test_daily_bonus_integration.py: 8 warnings
+tests/test_gate_bonus_reminders.py: 5 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 3 batch 2: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_message_counting_v31.py::test_excluded_messages_do_not_advance_gate_bonus_or_total[blank]
+tests/test_reminder_neighbor_database.py::test_registered_unqualified_user_reads_bonus_without_re_registering_or_new_invite[pending]
+tests/test_reminder_neighbor_database.py::test_registered_unqualified_user_reads_bonus_without_re_registering_or_new_invite[pending]
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 3 batch 3: 56 nodes
+........................................................                 [100%]
+=============================== warnings summary ===============================
+tests/test_v30_admission_integration.py::test_eight_combinations_gate_rewards_and_final_entries[bonuses3-message]
+tests/test_v30_admission_integration.py::test_eight_combinations_gate_rewards_and_final_entries[bonuses3-message]
+tests/test_v30_event_edges.py::test_invalid_text_does_not_complete_gate[/start]
+tests/test_v30_event_edges.py::test_invalid_text_does_not_complete_gate[/start]
+tests/test_v30_event_edges.py::test_incomplete_progress_is_silent_after_group_migration
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+pytest shard 4/8: 231 nodes
+shard 4 batch 1: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_base_activity_integration.py: 35 warnings
+tests/test_daily_bonus_integration.py: 10 warnings
+tests/test_gate_bonus_reminders.py: 15 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 4 batch 2: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+shard 4 batch 3: 55 nodes
+.......................................................                  [100%]
+=============================== warnings summary ===============================
+tests/test_v30_event_edges.py: 2 warnings
+tests/test_v32_navigation_database.py: 2 warnings
+tests/test_v33_unlimited_runtime.py: 22 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+pytest shard 5/8: 231 nodes
+shard 5 batch 1: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_base_activity_integration.py: 37 warnings
+tests/test_daily_bonus_integration.py: 7 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 5 batch 2: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+shard 5 batch 3: 55 nodes
+.......................................................                  [100%]
+=============================== warnings summary ===============================
+tests/test_v30_admission_integration.py: 58 warnings
+tests/test_v30_event_edges.py: 6 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+pytest shard 6/8: 231 nodes
+shard 6 batch 1: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_base_activity_integration.py: 11 warnings
+tests/test_daily_bonus_edges.py: 6 warnings
+tests/test_daily_bonus_integration.py: 7 warnings
+tests/test_gate_bonus_reminders.py: 10 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 6 batch 2: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_progress_notifications.py::test_restart_and_cutoff_notices_are_idempotent
+tests/test_progress_notifications.py::test_restart_and_cutoff_notices_are_idempotent
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 6 batch 3: 55 nodes
+.......................................................                  [100%]
+pytest shard 7/8: 231 nodes
+shard 7 batch 1: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_base_activity_integration.py: 4 warnings
+tests/test_daily_bonus_edges.py: 9 warnings
+tests/test_daily_bonus_integration.py: 18 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 7 batch 2: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_message_counting_v31.py: 4 warnings
+tests/test_participation_prerequisite_progress.py: 3 warnings
+tests/test_progress_group_links.py: 5 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 7 batch 3: 55 nodes
+.......................................................                  [100%]
+=============================== warnings summary ===============================
+tests/test_v30_admission_integration.py::test_eight_combinations_gate_rewards_and_final_entries[bonuses1-message]
+tests/test_v30_admission_integration.py::test_eight_combinations_gate_rewards_and_final_entries[bonuses1-message]
+tests/test_v30_admission_integration.py::test_cache_pending_uses_source_check_and_unknown_stays_unresolved
+tests/test_v30_admission_integration.py::test_cache_pending_uses_source_check_and_unknown_stays_unresolved
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+pytest shard 8/8: 231 nodes
+shard 8 batch 1: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_daily_bonus_edges.py: 8 warnings
+tests/test_daily_bonus_integration.py: 6 warnings
+tests/test_gate_bonus_reminders.py: 5 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 8 batch 2: 88 nodes
+........................................................................ [ 81%]
+................                                                         [100%]
+=============================== warnings summary ===============================
+tests/test_message_counting_v31.py: 4 warnings
+tests/test_message_window_repair.py: 12 warnings
+tests/test_participation_prerequisite_progress.py: 2 warnings
+tests/test_progress_group_links.py: 5 warnings
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+shard 8 batch 3: 55 nodes
+.......................................................                  [100%]
+=============================== warnings summary ===============================
+tests/test_v30_event_edges.py::test_same_second_watermark_and_prior_source_are_rejected
+tests/test_v30_event_edges.py::test_same_second_watermark_and_prior_source_are_rejected
+tests/test_v30_event_edges.py::test_same_second_watermark_and_prior_source_are_rejected
+tests/test_v30_event_edges.py::test_same_second_watermark_and_prior_source_are_rejected
+  sys:1: SADeprecationWarning: The `objects` parameter of `Session.flush` is deprecated
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
