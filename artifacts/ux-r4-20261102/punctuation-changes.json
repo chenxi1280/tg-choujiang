@@ -1,0 +1,954 @@
+[
+  {
+    "path": "src/tg_lottery/telegram/admin_flow.py",
+    "line": 44,
+    "before": "\"开奖结果已生成, 群公告和中奖通知正在发送。\"",
+    "after": "\"开奖结果已生成， 群公告和中奖通知正在发送。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/admin_management_views.py",
+    "line": 25,
+    "before": "\\n状态: ",
+    "after": "\\n状态： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/admin_management_views.py",
+    "line": 29,
+    "before": "报名: ",
+    "after": "报名： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/admin_management_views.py",
+    "line": 29,
+    "before": "\\n有效邀请: ",
+    "after": "\\n有效邀请： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/admin_management_views.py",
+    "line": 30,
+    "before": "待验证邀请: ",
+    "after": "待验证邀请： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/admin_management_views.py",
+    "line": 30,
+    "before": "\\n总抽奖次数: ",
+    "after": "\\n总抽奖次数： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/admin_management_views.py",
+    "line": 31,
+    "before": "送达: 已确认 ",
+    "after": "送达： 已确认 ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/admin_management_views.py",
+    "line": 52,
+    "before": "\"\\n\\n发布延迟导致门槛不可完成: \"",
+    "after": "\"\\n\\n发布延迟导致门槛不可完成： \"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus.py",
+    "line": 74,
+    "before": "发言(每个条件群每天",
+    "after": "发言（每个条件群每天",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus.py",
+    "line": 75,
+    "before": "次)",
+    "after": "次）",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus.py",
+    "line": 367,
+    "before": "邀请(每",
+    "after": "邀请（每",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus.py",
+    "line": 367,
+    "before": "次)",
+    "after": "次）",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus.py",
+    "line": 370,
+    "before": "邀请(",
+    "after": "邀请（",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_bonus.py",
+    "line": 370,
+    "before": "次)",
+    "after": "次）",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_messages.py",
+    "line": 38,
+    "before": "🔔 消息与提醒\\n\\n扩展说明: ",
+    "after": "🔔 消息与提醒\\n\\n扩展说明： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_messages.py",
+    "line": 39,
+    "before": "删除报名指令: ",
+    "after": "删除报名指令： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/creator_messages.py",
+    "line": 39,
+    "before": "\\n临时提示保留: ",
+    "after": "\\n临时提示保留： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/gateway.py",
+    "line": 101,
+    "before": "\"\\n完成时间: \"",
+    "after": "\"\\n完成时间： \"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_activity_landing.py",
+    "line": 36,
+    "before": "\"当前状态: \"",
+    "after": "\"当前状态： \"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_activity_landing.py",
+    "line": 96,
+    "before": "\"当前状态: \"",
+    "after": "\"当前状态： \"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_read.py",
+    "line": 60,
+    "before": "累计发言加成票: ",
+    "after": "累计发言加成票： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_read.py",
+    "line": 61,
+    "before": "累计邀请加成票: ",
+    "after": "累计邀请加成票： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_read.py",
+    "line": 62,
+    "before": "总抽奖次数: ",
+    "after": "总抽奖次数： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_read.py",
+    "line": 65,
+    "before": "\"行为门槛尚未完成, 累计次数不代表当前有效开奖次数。\"",
+    "after": "\"行为门槛尚未完成， 累计次数不代表当前有效开奖次数。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_read.py",
+    "line": 69,
+    "before": "\"本人发言进度暂不可读, 请刷新核查\"",
+    "after": "\"本人发言进度暂不可读， 请刷新核查\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_read.py",
+    "line": 111,
+    "before": "）:",
+    "after": "）：",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_read.py",
+    "line": 112,
+    "before": ": ",
+    "after": "： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_read.py",
+    "line": 113,
+    "before": "次, ",
+    "after": "次， ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_read.py",
+    "line": 114,
+    "before": "今日已入账发言加成票: ",
+    "after": "今日已入账发言加成票： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_bonus_views.py",
+    "line": 454,
+    "before": "\"邀请加成票关闭; 有效邀请仍用于本场门槛。\"",
+    "after": "\"邀请加成票关闭； 有效邀请仍用于本场门槛。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_views.py",
+    "line": 26,
+    "before": "开奖方式: 满 ",
+    "after": "开奖方式： 满 ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_views.py",
+    "line": 27,
+    "before": "\"开奖方式: 定时开奖\"",
+    "after": "\"开奖方式： 定时开奖\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_views.py",
+    "line": 33,
+    "before": "\"独立加成:\"",
+    "after": "\"独立加成：\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_views.py",
+    "line": 36,
+    "before": "\"抽奖加成票: 关闭，仅计算基础抽奖次数\\n\"",
+    "after": "\"抽奖加成票： 关闭，仅计算基础抽奖次数\\n\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_views.py",
+    "line": 41,
+    "before": "\"抽奖加成票（各群独立累计）:\\n\"",
+    "after": "\"抽奖加成票（各群独立累计）：\\n\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_views.py",
+    "line": 50,
+    "before": "\"抽奖加成票: \"",
+    "after": "\"抽奖加成票： \"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_views.py",
+    "line": 77,
+    "before": "消息删除: ",
+    "after": "消息删除： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_views.py",
+    "line": 77,
+    "before": "; 完成提示不自动删除",
+    "after": "； 完成提示不自动删除",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_views.py",
+    "line": 78,
+    "before": "消息删除: ",
+    "after": "消息删除： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_views.py",
+    "line": 78,
+    "before": "; 完成提示 ",
+    "after": "； 完成提示 ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_views.py",
+    "line": 84,
+    "before": "\" (加入入口已关闭)\"",
+    "after": "\" （加入入口已关闭）\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_condition_views.py",
+    "line": 86,
+    "before": "\"参与条件: \"",
+    "after": "\"参与条件： \"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_record_text.py",
+    "line": 14,
+    "before": "📊 活动状态: ",
+    "after": "📊 活动状态： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_record_text.py",
+    "line": 15,
+    "before": "🛂 入群/关注等前置资格: ",
+    "after": "🛂 入群/关注等前置资格： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_record_text.py",
+    "line": 16,
+    "before": "⏰ 计划开奖时间: ",
+    "after": "⏰ 计划开奖时间： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_record_text.py",
+    "line": 81,
+    "before": "🎟️ 基础次数: ",
+    "after": "🎟️ 基础次数： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_record_text.py",
+    "line": 82,
+    "before": "🌱 发言加成票: ",
+    "after": "🌱 发言加成票： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_record_text.py",
+    "line": 83,
+    "before": "🤝 邀请加成票: ",
+    "after": "🤝 邀请加成票： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_referral_landing.py",
+    "line": 225,
+    "before": "\\n邀请用途: ",
+    "after": "\\n邀请用途： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_referral_landing.py",
+    "line": 226,
+    "before": "有效邀请要求: ",
+    "after": "有效邀请要求： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_referral_landing.py",
+    "line": 227,
+    "before": "最晚有效入群: ",
+    "after": "最晚有效入群： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/member_referral_landing.py",
+    "line": 228,
+    "before": "报名截止: ",
+    "after": "报名截止： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/public_projection.py",
+    "line": 96,
+    "before": "地区已锁定, 请于 ",
+    "after": "地区已锁定， 请于 ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/public_projection.py",
+    "line": 98,
+    "before": "\"没有执行此操作的权限, 或页面授权已失效。\"",
+    "after": "\"没有执行此操作的权限， 或页面授权已失效。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/public_projection.py",
+    "line": 105,
+    "before": "\"系统暂时无法完成此操作, 请稍后重试。\"",
+    "after": "\"系统暂时无法完成此操作， 请稍后重试。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/update_handler.py",
+    "line": 189,
+    "before": "\"原页面已失效, 请发送 /首页 重新打开。\"",
+    "after": "\"原页面已失效， 请发送 /首页 重新打开。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/telegram/update_handler.py",
+    "line": 243,
+    "before": "\"此按钮已失效, 请发送 /首页 重新打开当前页面。\"",
+    "after": "\"此按钮已失效， 请发送 /首页 重新打开当前页面。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/activity_bonus_reminders.py",
+    "line": 52,
+    "before": "\"发言加成票(今日):\"",
+    "after": "\"发言加成票\\uff08今日\\uff09\\uff1a\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/activity_bonus_reminders.py",
+    "line": 66,
+    "before": " 轮, 今日已达加成上限。",
+    "after": " 轮\\uff0c 今日已达加成上限。",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/activity_bonus_reminders.py",
+    "line": 75,
+    "before": " 轮; ",
+    "after": " 轮\\uff1b ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/activity_bonus_reminders.py",
+    "line": 75,
+    "before": " 条, ",
+    "after": " 条\\uff0c ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admin_sessions.py",
+    "line": 40,
+    "before": "\"草稿已有更新的操作, 原请求未再次修改内容; 请使用当前页面\"",
+    "after": "\"草稿已有更新的操作\\uff0c 原请求未再次修改内容\\uff1b 请使用当前页面\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_invites.py",
+    "line": 45,
+    "before": "本群邀请门槛已完成: 已确认 ",
+    "after": "本群邀请门槛已完成\\uff1a 已确认 ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_progress.py",
+    "line": 111,
+    "before": "\"本场全部行为门槛已完成; 成员等其他条件合格时, 已获得的加成生效。\"",
+    "after": "\"本场全部行为门槛已完成\\uff1b 成员等其他条件合格时\\uff0c 已获得的加成生效。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 43,
+    "before": "🚪 整场门槛: ",
+    "after": "🚪 整场门槛\\uff1a ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 43,
+    "before": "门槛: ",
+    "after": "门槛\\uff1a ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 45,
+    "before": "\"历史记录截止时间未确认, 需要核查取消或开奖记录。\"",
+    "after": "\"历史记录截止时间未确认\\uff0c 需要核查取消或开奖记录。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 73,
+    "before": "\"本期已停止累计; 此处为历史进度, 结果请查看参与详情。\"",
+    "after": "\"本期已停止累计\\uff1b 此处为历史进度\\uff0c 结果请查看参与详情。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 80,
+    "before": "当前有效抽奖次数: ",
+    "after": "当前有效抽奖次数\\uff1a ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 82,
+    "before": "\"全部任务日分别达标后才完成整场门槛; 此前基础次数和已获得的加成尚未生效, 每日加成另算。\"",
+    "after": "\"全部任务日分别达标后才完成整场门槛\\uff1b 此前基础次数和已获得的加成尚未生效\\uff0c 每日加成另算。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 84,
+    "before": "\"已获得的加成将在门槛和参与条件满足后生效; 门槛本场完成一次即可, 每日加成另算。\"",
+    "after": "\"已获得的加成将在门槛和参与条件满足后生效\\uff1b 门槛本场完成一次即可\\uff0c 每日加成另算。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 151,
+    "before": ": 本期累计 ",
+    "after": "\\uff1a 本期累计 ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 154,
+    "before": ": ",
+    "after": "\\uff1a ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 155,
+    "before": " 条; 连续 ",
+    "after": " 条\\uff1b 连续 ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 182,
+    "before": ": 已确认 ",
+    "after": "\\uff1a 已确认 ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 203,
+    "before": "\"本场统计起点: \"",
+    "after": "\"本场统计起点\\uff1a \"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 207,
+    "before": "\"成员等条件尚未通过, 本场行为统计尚未开始。\"",
+    "after": "\"成员等条件尚未通过\\uff0c 本场行为统计尚未开始。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/admission_views.py",
+    "line": 252,
+    "before": "; 本群已于 ",
+    "after": "\\uff1b 本群已于 ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity.py",
+    "line": 100,
+    "before": "\"全部基础发言门槛已达标, 可以参与抽奖; 已获得的加成现在生效。\"",
+    "after": "\"全部基础发言门槛已达标\\uff0c 可以参与抽奖\\uff1b 已获得的加成现在生效。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity.py",
+    "line": 303,
+    "before": "本期累计抽奖门槛已完成: ",
+    "after": "本期累计抽奖门槛已完成\\uff1a ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity.py",
+    "line": 308,
+    "before": " 今日发言任务已完成: ",
+    "after": " 今日发言任务已完成\\uff1a ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity.py",
+    "line": 309,
+    "before": " 条; ",
+    "after": " 条\\uff1b ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity.py",
+    "line": 316,
+    "before": "\"整场门槛尚未完成, 其余任务日仍须分别达标。\"",
+    "after": "\"整场门槛尚未完成\\uff0c 其余任务日仍须分别达标。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity_notifications.py",
+    "line": 30,
+    "before": "\"本期报名已截止: 行为门槛未完成, 本期不能参与开奖。已累计加成保留记录, 本期不生效。\"",
+    "after": "\"本期报名已截止\\uff1a 行为门槛未完成\\uff0c 本期不能参与开奖。已累计加成保留记录\\uff0c 本期不生效。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity_views.py",
+    "line": 62,
+    "before": ": ",
+    "after": "\\uff1a ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity_views.py",
+    "line": 62,
+    "before": " 条; ",
+    "after": " 条\\uff1b ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity_views.py",
+    "line": 65,
+    "before": "\"本期基础发言已停止累计; 此处为历史进度, 开奖结果请查看参与详情。\"",
+    "after": "\"本期基础发言已停止累计\\uff1b 此处为历史进度\\uff0c 开奖结果请查看参与详情。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity_views.py",
+    "line": 72,
+    "before": "当前有效抽奖次数: ",
+    "after": "当前有效抽奖次数\\uff1a ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity_views.py",
+    "line": 74,
+    "before": "\"已获得的加成将在门槛和参与条件满足后生效; 缺勤会中断连续进度; 完成一次后保留本期达标资格。\"",
+    "after": "\"已获得的加成将在门槛和参与条件满足后生效\\uff1b 缺勤会中断连续进度\\uff1b 完成一次后保留本期达标资格。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity_views.py",
+    "line": 85,
+    "before": "\"基础发言门槛: 已达标\"",
+    "after": "\"基础发言门槛\\uff1a 已达标\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity_views.py",
+    "line": 87,
+    "before": "基础发言门槛: 未达标, ",
+    "after": "基础发言门槛\\uff1a 未达标\\uff0c ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity_views.py",
+    "line": 109,
+    "before": ": 记录日期未确认, 历史条数和连续进度未确认",
+    "after": "\\uff1a 记录日期未确认\\uff0c 历史条数和连续进度未确认",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity_views.py",
+    "line": 112,
+    "before": "\"本期基础发言已停止累计; 此处为历史进度。\"",
+    "after": "\"本期基础发言已停止累计\\uff1b 此处为历史进度。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/base_activity_views.py",
+    "line": 113,
+    "before": "\"无法确认记录截止日期: 活动缺少取消时间审计记录及已完成的开奖记录, 需要核查。\"",
+    "after": "\"无法确认记录截止日期\\uff1a 活动缺少取消时间审计记录及已完成的开奖记录\\uff0c 需要核查。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/campaign_sharing.py",
+    "line": 80,
+    "before": "\"活动当前未开放参与, 请在活动规则中查看实际状态\"",
+    "after": "\"活动当前未开放参与\\uff0c 请在活动规则中查看实际状态\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/campaign_sharing.py",
+    "line": 82,
+    "before": "\"本期报名已截止, 请查看活动规则和开奖结果\"",
+    "after": "\"本期报名已截止\\uff0c 请查看活动规则和开奖结果\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/campaigns.py",
+    "line": 113,
+    "before": "\"发布前平台策略已变化, 请保留草稿并重新确认完整条件\"",
+    "after": "\"发布前平台策略已变化\\uff0c 请保留草稿并重新确认完整条件\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/drawing.py",
+    "line": 83,
+    "before": "\"活动存在群权限阻断, 恢复并重新检查后才能开奖\"",
+    "after": "\"活动存在群权限阻断\\uff0c 恢复并重新检查后才能开奖\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/drawing.py",
+    "line": 373,
+    "before": "\"指定中奖人未通过最终资格复核, 请重新指定或删除该名额\"",
+    "after": "\"指定中奖人未通过最终资格复核\\uff0c 请重新指定或删除该名额\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/group_invite_links.py",
+    "line": 108,
+    "before": "\"该群机器人权限异常, 请联系创建者将机器人设为管理员后重试\"",
+    "after": "\"该群机器人权限异常\\uff0c 请联系创建者将机器人设为管理员后重试\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/member_gate_queries.py",
+    "line": 30,
+    "before": "\"历史记录截止时间未确认, 需要核查取消或开奖记录。\"",
+    "after": "\"历史记录截止时间未确认\\uff0c 需要核查取消或开奖记录。\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/message_calendar_views.py",
+    "line": 11,
+    "before": ": 今日 ",
+    "after": "\\uff1a 今日 ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/message_calendar_views.py",
+    "line": 12,
+    "before": "本期每日任务: 已完成 ",
+    "after": "本期每日任务\\uff1a 已完成 ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/message_calendar_views.py",
+    "line": 26,
+    "before": "本期任务时间: ",
+    "after": "本期任务时间\\uff1a ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/message_calendar_views.py",
+    "line": 26,
+    "before": " (北京时间); 各任务日须分别达标, 多发不抵次日。",
+    "after": " \\uff08北京时间\\uff09\\uff1b 各任务日须分别达标\\uff0c 多发不抵次日。",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/message_threshold_notices.py",
+    "line": 31,
+    "before": "本群累计发言条件已达标: ",
+    "after": "本群累计发言条件已达标\\uff1a ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/message_threshold_notices.py",
+    "line": 31,
+    "before": " 条, 请在活动入口验证全部参与条件。",
+    "after": " 条\\uff0c 请在活动入口验证全部参与条件。",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/notice_recovery.py",
+    "line": 45,
+    "before": "\"没有可安全重试的明确失败通知; 暂停中的开始通知须恢复后重试\"",
+    "after": "\"没有可安全重试的明确失败通知\\uff1b 暂停中的开始通知须恢复后重试\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/participants.py",
+    "line": 131,
+    "before": "\"活动正在等待 Telegram 权限恢复, 暂时不能报名\"",
+    "after": "\"活动正在等待 Telegram 权限恢复\\uff0c 暂时不能报名\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/participants.py",
+    "line": 433,
+    "before": "本抽奖仅限地区: ",
+    "after": "本抽奖仅限地区\\uff1a ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/participants.py",
+    "line": 433,
+    "before": ", 请先使用 /设置地区 设置",
+    "after": "\\uff0c 请先使用 /设置地区 设置",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/platform_entry.py",
+    "line": 30,
+    "before": "\"本人平台条件需要重新验证, 请从本场详情验证后获取新邀请入口\"",
+    "after": "\"本人平台条件需要重新验证\\uff0c 请从本场详情验证后获取新邀请入口\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/progress_notifications.py",
+    "line": 20,
+    "before": " 次尚未生效(",
+    "after": " 次尚未生效\\uff08",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/progress_notifications.py",
+    "line": 20,
+    "before": "未完成)",
+    "after": "未完成\\uff09",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/progress_notifications.py",
+    "line": 131,
+    "before": "\"完成时: \"",
+    "after": "\"完成时\\uff1a \"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/public_participation.py",
+    "line": 39,
+    "before": "👥 参与情况: ",
+    "after": "👥 参与情况\\uff1a ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/public_participation.py",
+    "line": 40,
+    "before": "\"（北京时间，以开奖前检查为准）\"",
+    "after": "\"\\uff08北京时间\\uff0c以开奖前检查为准\\uff09\"",
+    "system_copy": false
+  },
+  {
+    "path": "src/tg_lottery/application/publication_recovery.py",
+    "line": 36,
+    "before": "\"活动当前不在投放中, 不能重试发布\"",
+    "after": "\"活动当前不在投放中\\uff0c 不能重试发布\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/publication_recovery.py",
+    "line": 38,
+    "before": "\"活动已过截止时间, 无法重新发布; 请取消此活动后创建新的抽奖\"",
+    "after": "\"活动已过截止时间\\uff0c 无法重新发布\\uff1b 请取消此活动后创建新的抽奖\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/rule_publication.py",
+    "line": 118,
+    "before": "\"已截止, 复核中\"",
+    "after": "\"已截止\\uff0c 复核中\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/rule_publication.py",
+    "line": 119,
+    "before": "\"已截止, 待开奖\"",
+    "after": "\"已截止\\uff0c 待开奖\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/rule_publication.py",
+    "line": 125,
+    "before": "当前状态: ",
+    "after": "当前状态\\uff1a ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/winner_authorization.py",
+    "line": 20,
+    "before": "\"无权访问此运维入口: 操作人不在中奖指定授权名单中\"",
+    "after": "\"无权访问此运维入口\\uff1a 操作人不在中奖指定授权名单中\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/winner_authorization.py",
+    "line": 33,
+    "before": "\"无权访问此运维入口: 操作人不在中奖指定授权名单中\"",
+    "after": "\"无权访问此运维入口\\uff1a 操作人不在中奖指定授权名单中\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/winner_designations.py",
+    "line": 244,
+    "before": "\"用户名匹配到多个报名记录, 请改用 Telegram 用户 ID\"",
+    "after": "\"用户名匹配到多个报名记录\\uff0c 请改用 Telegram 用户 ID\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/winner_designations.py",
+    "line": 311,
+    "before": "\"当前活动要求中奖人唯一, 该用户已被指定到其他名额\"",
+    "after": "\"当前活动要求中奖人唯一\\uff0c 该用户已被指定到其他名额\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/application/winners.py",
+    "line": 38,
+    "before": "\"当前活动不允许登记领奖, 请核对已完成的开奖结果\"",
+    "after": "\"当前活动不允许登记领奖\\uff0c 请核对已完成的开奖结果\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/presentation/campaign_card.py",
+    "line": 46,
+    "before": "\" (加入入口已关闭)\"",
+    "after": "\" （加入入口已关闭）\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/presentation/draw_messages.py",
+    "line": 21,
+    "before": "\"未分配名额:\"",
+    "after": "\"未分配名额：\"",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/presentation/draw_messages.py",
+    "line": 36,
+    "before": "）: ",
+    "after": "）： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/presentation/draw_messages.py",
+    "line": 43,
+    "before": ": ",
+    "after": "： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/presentation/draw_messages.py",
+    "line": 54,
+    "before": "」中获得: ",
+    "after": "」中获得： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/presentation/draw_messages.py",
+    "line": 56,
+    "before": "领奖方式: ",
+    "after": "领奖方式： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/presentation/draw_messages.py",
+    "line": 57,
+    "before": "发奖人员: ",
+    "after": "发奖人员： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/presentation/participation_rules.py",
+    "line": 40,
+    "before": "本场门槛: ",
+    "after": "本场门槛： ",
+    "system_copy": true
+  },
+  {
+    "path": "src/tg_lottery/presentation/participation_rules.py",
+    "line": 86,
+    "before": "\"最晚有效入群: \"",
+    "after": "\"最晚有效入群： \"",
+    "system_copy": true
+  }
+]

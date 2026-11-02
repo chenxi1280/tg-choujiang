@@ -56,8 +56,8 @@ async def test_gate_group_lines_loads_each_group_without_custom_labels(monkeypat
     lines = await member_gate_queries.load_gate_group_lines(Factory, 202, "campaign-ref")
 
     assert list(lines) == ["-1001", "-1002"]
-    assert lines["-1001"].startswith("A群:")
-    assert lines["-1002"].startswith("B群:")
+    assert lines["-1001"].startswith("A群\uff1a")
+    assert lines["-1002"].startswith("B群\uff1a")
     if mode == "message":
         assert "今日 5/20 条" in lines["-1001"]
         assert "今日 7/20 条" in lines["-1002"]

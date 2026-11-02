@@ -122,7 +122,7 @@ async def test_registered_group_migration_updates_chat_id(session_factory) -> No
 
 
 def test_draw_confirmation_uses_business_language_only() -> None:
-    assert DRAW_CONFIRMATION_TEXT == "开奖结果已生成, 群公告和中奖通知正在发送。"
+    assert DRAW_CONFIRMATION_TEXT == "开奖结果已生成\uff0c 群公告和中奖通知正在发送。"
     assert "数据库" not in DRAW_CONFIRMATION_TEXT
     assert "独立送达" not in DRAW_CONFIRMATION_TEXT
 

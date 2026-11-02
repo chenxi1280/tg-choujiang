@@ -1,5 +1,7 @@
 from typing import Any
 
+from tg_lottery.domain.rules import BaseActivityRule
+from tg_lottery.presentation.gate_rules import gate_mode_notes, gate_rule_text
 from tg_lottery.telegram import creator_base_editor as editor
 from tg_lottery.telegram.creator_bonus_permissions import verify_publication_bonus_permissions
 from tg_lottery.telegram.creator_participation import reject_v3_legacy_gate
@@ -13,16 +15,11 @@ def base_rules_text(data: dict[str, Any]) -> str:
     lines = ["基础抽奖门槛（各配置群分别达标）"]
     for index, group in enumerate(groups, 1):
         rule = rules.get(str(group["id"]))
-        value = (
-            (
-                f"连续 {rule['consecutive_days']} 天，每天 {rule['daily_messages']} 条，"
-                "文字、图片、表情均计数"
-            )
-            if rule
-            else "未设置"
-        )
+        value = gate_rule_text(BaseActivityRule.model_validate(rule)) if rule else "未设置"
         lines.append(f"{index}. {group['title']}：{value}")
-    lines.append("按北京时间自然日统计；未完成会中断连续天数，完成一次后保留本期达标资格。")
+    parsed = {key: BaseActivityRule.model_validate(rule) for key, rule in rules.items()}
+    names = {str(group["id"]): group["title"] for group in groups}
+    lines.extend(gate_mode_notes(parsed, names=names))
     lines.append(
         "先报名再累计。基础门槛未完成时，有效抽奖次数为 0；已获得的加成在门槛和参与条件满足后生效。"
     )

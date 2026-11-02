@@ -108,7 +108,7 @@ async def _complete_admission(
             participant=participant,
             chat_id=chat_id,
             key=f"admission_complete:{participant.id}",
-            text="本场全部行为门槛已完成; 成员等其他条件合格时, 已获得的加成生效。",
+            text="本场全部行为门槛已完成\uff1b 成员等其他条件合格时\uff0c 已获得的加成生效。",
         )
         await trigger_admission_full_draw(session, campaign, observed_at=event_at)
 

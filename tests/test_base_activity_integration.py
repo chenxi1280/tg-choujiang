@@ -90,7 +90,7 @@ async def test_seven_days_stashes_bonus_then_enables_same_ledger_and_deduplicate
         assert len(durable) == 12
         assert incomplete == []
         assert all("delete_after_seconds" not in item.payload for item in durable)
-        assert all("暂存" in notice.payload["ticket_status"] for notice in notices)
+        assert all("尚未生效" in notice.payload["ticket_status"] for notice in notices)
     await messages(service, day=6)
     async with session_factory() as session:
         participant = await session.get(Participant, participant_id)

@@ -8,6 +8,7 @@ from tg_lottery.telegram.member_bonus_text import bonus_closed_notice, campaign_
 from tg_lottery.telegram.member_bonus_views import build_bonus_overview
 from tg_lottery.telegram.member_invites import legacy_invite_link_payload
 from tg_lottery.telegram.member_window_guidance import window_guidance
+from tg_lottery.telegram.public_projection import format_public_time
 from tg_lottery.telegram.ui_style import style_keyboard
 
 
@@ -57,16 +58,16 @@ async def _legacy_read(flow, campaign, *, rules, detail, user_id):
 async def _legacy_payload(queries, campaign, *, rules, detail, user_id):
     lines = [
         f"{campaign.name} · 我的加成票（原活动规则）",
-        f"累计发言加成票: {detail.activity} 次",
-        f"累计邀请加成票: {detail.invitation} 次",
-        f"总抽奖次数: {detail.total}",
+        f"累计发言加成票： {detail.activity} 次",
+        f"累计邀请加成票： {detail.invitation} 次",
+        f"总抽奖次数： {detail.total}",
     ]
     if not detail.base_qualified:
-        lines.append("行为门槛尚未完成, 累计次数不代表当前有效开奖次数。")
+        lines.append("行为门槛尚未完成， 累计次数不代表当前有效开奖次数。")
     if rules.activity_bonus_enabled and not campaign_bonus_completed(campaign):
         progress = await queries.legacy_activity_progress(campaign.id, user_id)
         if progress is None:
-            raise UserFacingError("本人发言进度暂不可读, 请刷新核查")
+            raise UserFacingError("本人发言进度暂不可读， 请刷新核查")
         lines.extend(_legacy_activity_lines(progress, rules))
     notice = bonus_closed_notice(campaign, outcome=detail.outcome)
     if notice:
@@ -108,8 +109,11 @@ def _legacy_activity_lines(progress, rules):
     rule = rules.activity
     mode = "每天结算一次" if rule.settle_once_per_day else f"每日最多{rule.daily_ticket_cap}次"
     return [
-        f"今日发言（{progress.local_date}）:",
-        *(f"{title}: {count}/{rule.message_threshold} 条" for title, count in progress.groups),
-        f"全部条件群达标后增加{rule.reward_tickets}次, {mode}",
-        f"今日已入账发言加成票: {progress.awarded_today} 次",
+        "今日发言："
+        + format_public_time(
+            progress.local_date, "Asia/Shanghai", include_timezone=False, date_only=True
+        ),
+        *(f"{title}： {count}/{rule.message_threshold} 条" for title, count in progress.groups),
+        f"全部条件群达标后增加{rule.reward_tickets}次， {mode}",
+        f"今日已入账发言加成票： {progress.awarded_today} 次",
     ]

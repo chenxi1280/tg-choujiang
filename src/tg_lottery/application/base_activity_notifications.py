@@ -27,7 +27,8 @@ async def notify_unqualified_at_cutoff(session: object, campaign: object) -> Non
             chat_id=int(next(iter(rules))),
             key=f"base_cutoff:{participant.id}",
             text=(
-                "本期报名已截止: 行为门槛未完成, 本期不能参与开奖。已累计加成保留记录, 本期不生效。"
+                "本期报名已截止\uff1a 行为门槛未完成\uff0c 本期不能参与开奖。"
+                + "已累计加成保留记录\uff0c 本期不生效。"
             ),
         )
         await flush_progress_notices(

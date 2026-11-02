@@ -187,7 +187,7 @@ def test_closed_detail_counts_are_history_and_never_promised_as_stashed(state):
     detail = replace(_detail(), state=state, base_qualified=False)
     text = "\n".join(participant_record_pages(detail))
 
-    assert "历史累计次数（账本记录）: 3" in text
+    assert "历史总抽奖次数\uff1a3" in text
     assert "历史累计不代表最终开奖次数" in text
     assert "暂存" not in text
 
@@ -218,7 +218,7 @@ async def test_closed_base_progress_is_history_without_continuation_promises(
         text = await base_activity_views.base_progress_text(session, campaign, participant)
 
     assert ("本期基础发言已停止累计" in text) == completed
-    assert ("加成暂存" in text) != completed
+    assert ("加成尚未生效" in text) != completed
     assert ("当前有效抽奖次数" in text) != completed
     assert ("记录日期" in text) == completed
     assert "名称待更新" in text and "-100123" not in text

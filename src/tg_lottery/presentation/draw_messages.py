@@ -18,7 +18,7 @@ def draw_result_text(payload: dict[str, Any]) -> str:
         lines.append("本期没有符合条件的中奖候选人。")
     unallocated = payload.get("undistributed", [])
     if unallocated:
-        lines.extend(["未分配名额:", *(_undistributed_line(item) for item in unallocated)])
+        lines.extend(["未分配名额：", *(_undistributed_line(item) for item in unallocated)])
     if payload.get("extended_tips"):
         lines.append("本次结果已保存，可在「我参加的抽奖」中查看。")
     return "\n".join(lines)
@@ -33,14 +33,14 @@ def _creator_completion_lines(payload: dict[str, Any]) -> list[str]:
 def _winner_line(item: dict[str, Any]) -> str:
     return (
         f"• 第{int(item['prize_position'])}顺位 {html.escape(str(item['prize_name']))}"
-        f"（名额 {int(item['prize_slot_no'])}）: {user_mention(item)}"
+        f"（名额 {int(item['prize_slot_no'])}）： {user_mention(item)}"
     )
 
 
 def _undistributed_line(item: dict[str, Any]) -> str:
     return (
         f"• 第{int(item['prize_position'])}顺位 {html.escape(str(item['prize_name']))}"
-        f": {int(item['count'])} 人"
+        f"： {int(item['count'])} 人"
     )
 
 
@@ -51,10 +51,10 @@ def winner_notice_text(payload: dict[str, Any]) -> str:
         "display_name": payload["issuer_name"],
     }
     text = (
-        f"恭喜你在「{html.escape(str(payload['campaign_name']))}」中获得: "
+        f"恭喜你在「{html.escape(str(payload['campaign_name']))}」中获得： "
         f"{html.escape(str(payload['prize_name']))}（名额 {int(payload['prize_slot_no'])}）。\n"
-        f"领奖方式: {html.escape(str(payload['claim_instructions']))}\n"
-        f"发奖人员: {user_mention(issuer)}"
+        f"领奖方式： {html.escape(str(payload['claim_instructions']))}\n"
+        f"发奖人员： {user_mention(issuer)}"
     )
     if payload.get("campaign_ref"):
         text += "\n" + result_reference_line(payload)

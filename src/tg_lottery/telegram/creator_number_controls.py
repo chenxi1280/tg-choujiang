@@ -14,8 +14,8 @@ def number_row(label: str, action: str, value: object) -> list[tuple[str, str]]:
 
 
 def mode_row(kind: str, mode: str) -> list[tuple[str, str]]:
-    unlimited = "✅ 不设上限" if mode == "unlimited" else "不设上限"
-    limited = "✅ 设置上限" if mode == "limited" else "设置上限"
+    unlimited = "✅ 不设上限" if mode == "unlimited" else "⬜ 不设上限"
+    limited = "✅ 设置上限" if mode == "limited" else "⬜ 设置上限"
     return [
         (unlimited, f"draft_bonus_{kind}_unlimited"),
         (limited, f"draft_bonus_{kind}_limited"),
@@ -26,7 +26,10 @@ def preset_row(
     field: str, values: tuple[int, ...], unit: str, *, selected=None
 ) -> list[tuple[str, str]]:
     return [
-        (("✅ " if value == selected else "") + f"{value}{unit}", f"{PRESET_PREFIX}{field}:{value}")
+        (
+            ("✅ " if value == selected else "⬜ ") + f"{value}{unit}",
+            f"{PRESET_PREFIX}{field}:{value}",
+        )
         for value in values
     ]
 

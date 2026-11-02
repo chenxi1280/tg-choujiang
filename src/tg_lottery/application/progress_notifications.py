@@ -17,7 +17,7 @@ def ticket_status(participant: object, campaign: object | None = None) -> str:
     )
     if not qualified:
         label = "行为门槛" if campaign and campaign.rules.get("admission") else "基础门槛"
-        return f"🎟️ 有效抽奖次数 0 · 加成 {bonus} 次尚未生效({label}未完成)"
+        return f"🎟️ 有效抽奖次数 0 · 加成 {bonus} 次尚未生效\uff08{label}未完成\uff09"
     if participant.qualification_state != QualificationState.ELIGIBLE:
         return f"🎟️ 有效抽奖次数 0 · 加成 {bonus} 次 · ⚠️ 请重新重新检查"
     return f"🎟️ 有效抽奖次数 {participant.ticket_total_cache} · 加成 {bonus} 次 + 基础 1 次"
@@ -128,7 +128,7 @@ async def flush_progress_notices(
                 ],
                 "event_refs": list(events),
                 "occurred_at": event_at.isoformat(),
-                "ticket_status": "完成时: " + ticket_status(participant, campaign),
+                "ticket_status": "完成时\uff1a " + ticket_status(participant, campaign),
             },
         )
 

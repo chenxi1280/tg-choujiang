@@ -186,7 +186,7 @@ class LotteryUpdateHandler:
         ):
             if not isinstance(query.message, Message):
                 await member_callbacks.safe_answer(
-                    query, "原页面已失效, 请发送 /首页 重新打开。", alert=True
+                    query, "原页面已失效， 请发送 /首页 重新打开。", alert=True
                 )
                 return
             try:
@@ -240,7 +240,7 @@ class LotteryUpdateHandler:
             await self._dispatch_secure_callback(query, data)
             return
         await member_callbacks.safe_answer(
-            query, "此按钮已失效, 请发送 /首页 重新打开当前页面。", alert=True
+            query, "此按钮已失效， 请发送 /首页 重新打开当前页面。", alert=True
         )
 
     async def _dispatch_member_callback(self, query: CallbackQuery, data: str) -> bool:

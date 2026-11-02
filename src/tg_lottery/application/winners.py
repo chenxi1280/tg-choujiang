@@ -35,7 +35,7 @@ class WinnerService:
                 raise ValueError("winner campaign not found")
             validate_expected(campaign, expected)
             if campaign.state is not CampaignState.DRAWN:
-                raise UserFacingError("当前活动不允许登记领奖, 请核对已完成的开奖结果")
+                raise UserFacingError("当前活动不允许登记领奖\uff0c 请核对已完成的开奖结果")
             await require_campaign_admin(
                 uow.session, campaign_id=campaign.id, user_id=actor_user_id
             )

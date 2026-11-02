@@ -128,7 +128,7 @@ class ParticipantService:
             participant = await self._existing_participant(uow.session, request)
             active_block = await has_active_campaign_block(uow.session, campaign.id)
             if active_block and participant is None:
-                raise UserFacingError("活动正在等待 Telegram 权限恢复, 暂时不能报名")
+                raise UserFacingError("活动正在等待 Telegram 权限恢复\uff0c 暂时不能报名")
             await self._validate_profile_requirements(uow.session, campaign, request)
             targets = await qualification_targets(uow.session, campaign)
             participant = participant or await self._new_participant(
@@ -430,7 +430,7 @@ class ParticipantService:
         profile = await session.get(UserProfile, request.user_id)
         if profile is None or profile.region not in rules.allowed_regions:
             allowed = "、".join(rules.allowed_regions)
-            raise UserFacingError(f"本抽奖仅限地区: {allowed}, 请先使用 /设置地区 设置")
+            raise UserFacingError(f"本抽奖仅限地区\uff1a {allowed}\uff0c 请先使用 /设置地区 设置")
 
     async def _ensure_registration_ticket(
         self,

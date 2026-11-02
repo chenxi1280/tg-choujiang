@@ -27,7 +27,7 @@ async def load_gate_group_lines(factory, user_id, reference):
         observed = await _progress_observed_at(session, campaign, now)
         if observed is None:
             return {
-                key: "历史记录截止时间未确认, 需要核查取消或开奖记录。"
+                key: "历史记录截止时间未确认\uff0c 需要核查取消或开奖记录。"
                 for key in rules.admission.groups
             }
         records = await _completion_records(session, participant.id)
@@ -40,5 +40,6 @@ async def load_gate_group_lines(factory, user_id, reference):
             records=records,
             completed=_progress_completed(campaign, now),
             group_label=None,
+            now=now,
         )
         return dict(zip(rules.admission.groups, lines, strict=True))

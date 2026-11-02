@@ -144,7 +144,7 @@ def test_group_activity_targets_are_independent() -> None:
         (None, "获取 A群 链接", True),
         (OutboxState.PENDING, "🔄 创建中 · A群", True),
         (OutboxState.PRE_ACCEPT_FAILED, "重试 A群 链接", True),
-        (OutboxState.UNKNOWN_HOLD, "🔄 核验 A群 链接状态", True),
+        (OutboxState.UNKNOWN_HOLD, "🔄 检查 A群 链接状态", True),
     ],
 )
 def test_group_invite_link_buttons_follow_delivery_certainty(
@@ -332,7 +332,7 @@ def test_publication_confirmation_summarizes_all_group_rules() -> None:
 
     assert "参与群" in text and "2 个" in text
     assert "邀请加成票" in text and "2 个群开启" in text
-    assert "抽奖加成票(发言)" in text and "1 个每日不设上限" in text
+    assert "发言加成票" in text and "1 个每日不设上限" in text
     assert [(label, action) for row in rows for label, action in row][-2] == (
         "确认发布",
         "draft_publish_confirm",

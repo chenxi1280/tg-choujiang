@@ -10,6 +10,7 @@ from tg_lottery.application.campaign_outcomes import (
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import CampaignState, QualificationState
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.telegram.public_projection import format_public_time
 
 BEIJING_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
@@ -22,13 +23,20 @@ async def base_progress_text(
     now: datetime | None = None,
     group_label=None,
     compact=False,
+    include_timezone=True,
 ) -> str:
     rules = CampaignRules.model_validate(campaign.rules)
     if rules.admission is not None:
         from tg_lottery.application.admission_views import admission_progress_text
 
         return await admission_progress_text(
-            session, campaign, participant, now=now, group_label=group_label, compact=compact
+            session,
+            campaign,
+            participant,
+            now=now,
+            group_label=group_label,
+            compact=compact,
+            include_timezone=include_timezone,
         )
     return await _legacy_progress_text(
         session, campaign, participant, rules=rules, now=now, group_label=group_label
@@ -49,7 +57,8 @@ async def _legacy_progress_text(
     progress = await load_base_progress(session, campaign, participant, today=today)
     groups = _group_titles(campaign)
     lines = [_qualification_text(participant.base_qualified, completed=completed)]
-    date_label = f"记录日期 {today}" if completed else "今日"
+    date_text = format_public_time(today, rules.timezone, include_timezone=False, date_only=True)
+    date_label = f"记录日期 {date_text}" if completed else "今日"
     for key, item in progress.items():
         rule = rules.base_activity_rules[key]
         name = _group_label(key, groups.get(key) or "名称待更新", group_label)
@@ -59,19 +68,21 @@ async def _legacy_progress_text(
             else f"连续 {item.consecutive_days}/{rule.consecutive_days} 天"
         )
         lines.append(
-            f"{name}: {date_label} {item.today_messages}/{rule.daily_messages} 条; {status}"
+            f"{name}\uff1a {date_label} {item.today_messages}/{rule.daily_messages} 条\uff1b"
+            f" {status}"
         )
     if completed:
-        lines.append("本期基础发言已停止累计; 此处为历史进度, 开奖结果请查看参与详情。")
+        lines.append("本期基础发言已停止累计\uff1b 此处为历史进度\uff0c 开奖结果请查看参与详情。")
         return "\n".join(lines)
     active = (
         participant.base_qualified
         and participant.qualification_state == QualificationState.ELIGIBLE
     )
     effective = effective_ticket_text(participant, active=active)
-    lines.append(f"当前有效抽奖次数: {effective}")
+    lines.append(f"当前有效抽奖次数\uff1a {effective}")
     lines.append(
-        "已获得的加成将在门槛和参与条件满足后生效; 缺勤会中断连续进度; 完成一次后保留本期达标资格。"
+        "已获得的加成将在门槛和参与条件满足后生效\uff1b 缺勤会中断连续进度\uff1b "
+        + "本群门槛无需重做\uff0c参与开奖仍须满足全部参与条件。"
     )
     return "\n".join(lines)
 
@@ -82,9 +93,9 @@ def _group_label(key, name, formatter):
 
 def _qualification_text(qualified: bool, *, completed: bool) -> str:
     if qualified:
-        return "基础发言门槛: 已达标"
+        return "基础发言门槛\uff1a 已达标"
     suffix = "本期已停止累计" if completed else "尚未生效"
-    return f"基础发言门槛: 未达标, {suffix}"
+    return f"基础发言门槛\uff1a 未达标\uff0c {suffix}"
 
 
 async def _progress_observed_at(
@@ -106,11 +117,13 @@ def _unconfirmed_terminal_progress(
     groups = _group_titles(campaign)
     lines = [_qualification_text(participant.base_qualified, completed=True)]
     lines.extend(
-        f"{groups.get(key) or '名称待更新'}: 记录日期未确认, 历史条数和连续进度未确认"
+        f"{groups.get(key) or '名称待更新'}\uff1a 记录日期未确认\uff0c 历史条数和连续进度未确认"
         for key in rules.base_activity_rules
     )
-    lines.append("本期基础发言已停止累计; 此处为历史进度。")
-    lines.append("无法确认记录截止日期: 活动缺少取消时间审计记录及已完成的开奖记录, 需要核查。")
+    lines.append("本期基础发言已停止累计\uff1b 此处为历史进度。")
+    lines.append(
+        "无法确认记录截止日期\uff1a 活动缺少取消时间审计记录及已完成的开奖记录\uff0c 需要核查。"
+    )
     return "\n".join(lines)
 
 

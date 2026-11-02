@@ -20,14 +20,15 @@ MANAGEMENT_ACTION_LABELS = {
 
 
 def management_text(campaign, *, stats, deliveries, details):
+    draw_time = format_public_time(campaign.draw_at, campaign.timezone, include_timezone=False)
     text = (
-        f"{campaign.name}\n状态: {campaign_state_text(campaign.state)}\n"
+        f"{campaign.name}\n状态： {campaign_state_text(campaign.state)}\n"
         f"规则版本：{campaign.config_revision}\n"
         f"截止：{format_public_time(campaign.cutoff_at, campaign.timezone)}\n"
-        f"计划开奖：{format_public_time(campaign.draw_at, campaign.timezone)}\n"
-        f"报名: {stats.participants}\n有效邀请: {stats.valid_invitations}\n"
-        f"待验证邀请: {stats.pending_invitations}\n总抽奖次数: {stats.tickets}\n"
-        f"送达: 已确认 {deliveries.confirmed} / 待处理 {deliveries.pending} / "
+        f"计划开奖：{draw_time}\n"
+        f"报名： {stats.participants}\n有效邀请： {stats.valid_invitations}\n"
+        f"待验证邀请： {stats.pending_invitations}\n总抽奖次数： {stats.tickets}\n"
+        f"送达： 已确认 {deliveries.confirmed} / 待处理 {deliveries.pending} / "
         f"明确失败 {deliveries.failed} / 未知 {deliveries.unknown}"
     )
     return (
@@ -48,7 +49,7 @@ def _publication_status_note(campaign: object) -> str:
     if campaign.state is not CampaignState.PUBLISHING:
         return ""
     if campaign.presentation.get("publication_window_error"):
-        return "\n\n发布延迟导致门槛不可完成: " + campaign.presentation["publication_window_error"]
+        return "\n\n发布延迟导致门槛不可完成： " + campaign.presentation["publication_window_error"]
     if campaign.cutoff_at <= utcnow():
         return "\n\n活动已过截止时间，但发布尚未完成。请取消此活动后创建新的抽奖。"
     return "\n\n全部参与群完整规则页和活动卡确认送达后才正式开始；投递异常请查看发布异常。"

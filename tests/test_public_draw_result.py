@@ -41,7 +41,7 @@ async def test_result_link_queries_saved_draw_without_registering_and_survives_a
     assert ">查看开奖结果</a>" in text
     assert f"https://t.me/test_bot?start=history_{reference}" in text
     assert "实际开奖时间" in text and "北京时间" in text
-    assert "成员一" in text and "未分配名额" in text and "二等奖: 1 人" in text
+    assert "成员一" in text and "未分配名额" in text and "二等奖\uff1a 1 人" in text
     assert "snapshot_hash" not in text and "random_input" not in text
     flow.register.assert_not_awaited()
     async with session_factory() as session:
@@ -106,7 +106,7 @@ async def test_unregistered_activity_opens_compact_detail_with_explicit_registra
     )
     await navigation.open_message(message, reference)
     text = answer.call_args.args[0]
-    assert "活动详情" in text and "尚未登记" in text
+    assert "活动详情" in text and "尚未报名" in text
     assert "完整统计与加成规则" not in text
     requests = navigation._tokens.create_many.call_args.kwargs["requests"]
     keyboard = answer.call_args.kwargs["reply_markup"]

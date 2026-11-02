@@ -37,13 +37,13 @@ def gate_lines(
         return ()
     names = {str(item["id"]): chat_title(item) for item in chats}
     title = "发言数" if gate.type == "message" else "邀请好友"
-    lines = [f"本场门槛: {title}（所选群必须分别全部达标）"]
+    lines = [f"本场门槛： {title}（所选群必须分别全部达标）"]
     for key, rule in gate.groups.items():
         if gate.type == "message":
             value = gate_rule_text(rule, calendar_dates=calendar_dates)
         else:
             value = f"已确认有效新成员 {rule.required_valid_invites} 人"
-        lines.append(f"{names.get(key, key)}: {value}")
+        lines.append(f"{names.get(key, key)}：{value}")
     if include_notes:
         lines.extend(
             gate_mode_notes(
@@ -82,7 +82,9 @@ def invitation_requirement_blocks(rules: CampaignRules, payload: Mapping) -> tup
     deadline = datetime.fromisoformat(str(payload["cutoff_at"])) - timedelta(
         hours=rules.invite.retention_hours
     )
-    return ("最晚有效入群: " + format_public_time(deadline, rules.timezone),)
+    return (
+        "最晚有效入群： " + format_public_time(deadline, rules.timezone, include_timezone=False),
+    )
 
 
 def message_count_blocks(rules: CampaignRules) -> tuple[str, ...]:
@@ -113,12 +115,12 @@ def message_count_blocks(rules: CampaignRules) -> tuple[str, ...]:
 def public_rule_blocks(payload: Mapping) -> tuple[str, ...]:
     return (
         f"✨ <b>{html.escape(str(payload['name']))}</b>",
-        *membership_blocks(payload),
+        *membership_blocks(payload, timezone_label=False),
         *prize_blocks(payload),
         *description_blocks(payload),
         bonus_block(payload),
         *participation_blocks(payload),
-        *time_blocks(payload),
+        *time_blocks(payload, timezone_label=False),
         *footer_blocks(payload),
         "📜 完整统计与加成规则",
         *detail_rule_blocks(payload),
@@ -176,7 +178,9 @@ def compact_card(payload: Mapping) -> str:
             f'📃 <b>抽奖说明：</b>正文较长，<a href="{rule_url}">查看完整说明与规则</a>',
             bonus_block(payload),
             *participation_blocks(payload),
-            *time_blocks(payload),
+            *time_blocks(
+                payload, timezone_label=not bool(payload["rules"].get("message_task_calendar"))
+            ),
             *footer_blocks(payload),
         )
     )
@@ -192,7 +196,7 @@ def summary_card(payload: Mapping, *, page_count: int, limit: int) -> str:
     remainder = f'<a href="{url}">查看全部奖品、条件与说明</a>'
     tail = "\n\n".join(
         (
-            bonus_block(payload),
+            bonus_block(payload, compact=True),
             *participation_blocks(payload),
             *time_blocks(payload),
             *footer_blocks(payload),
@@ -204,7 +208,7 @@ def summary_card(payload: Mapping, *, page_count: int, limit: int) -> str:
     if html_utf16_length(base) > limit:
         tail = "\n\n".join(
             (
-                bonus_block(payload),
+                bonus_block(payload, compact=True),
                 *participation_blocks(payload),
                 *time_blocks(payload),
                 footer_blocks(payload)[-1],

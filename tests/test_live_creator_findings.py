@@ -19,7 +19,7 @@ async def test_participation_picker_rejects_channels_before_selection(chat_type)
     result = await inspect_group_availability(bot, -1001, 201)
     assert result.selectable is (chat_type != "channel")
     if chat_type == "channel":
-        assert "准入条件" in result.reason
+        assert "额外参与条件" in result.reason
 
 
 async def test_bonus_permission_error_identifies_group_by_name():

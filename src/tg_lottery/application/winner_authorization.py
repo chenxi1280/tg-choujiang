@@ -17,7 +17,7 @@ class WinnerAuthorization:
 
     async def require(self, session: AsyncSession, actor_user_id: int) -> str:
         if type(actor_user_id) is not int or actor_user_id <= 0:
-            raise UserFacingError("无权访问此运维入口: 操作人不在中奖指定授权名单中")
+            raise UserFacingError("无权访问此运维入口\uff1a 操作人不在中奖指定授权名单中")
         if actor_user_id in self.configured_user_ids:
             return "config"
         # Hold the database grant until this operation commits; revocation affects the next call.
@@ -30,5 +30,5 @@ class WinnerAuthorization:
             .with_for_update(read=True)
         )
         if operator is None:
-            raise UserFacingError("无权访问此运维入口: 操作人不在中奖指定授权名单中")
+            raise UserFacingError("无权访问此运维入口\uff1a 操作人不在中奖指定授权名单中")
         return "database"

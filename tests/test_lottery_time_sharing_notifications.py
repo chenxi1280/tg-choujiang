@@ -21,7 +21,7 @@ def test_quick_ten_days_and_legacy_naive_time_preserve_correct_instants():
     target = quick_draw_at("draft_draw_ten_days", "Europe/London", now=now)
     assert target.astimezone(UTC) == datetime(2026, 9, 24, 9, tzinfo=UTC)
     assert format_public_time("2026-09-14 10:00", "Europe/London") == (
-        "2026年09月14日 17:00 (北京时间)"
+        "2026年9月14日 17:00\uff08北京时间\uff09"
     )
 
 

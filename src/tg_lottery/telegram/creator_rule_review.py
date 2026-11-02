@@ -19,7 +19,10 @@ def rule_review_pages(data: dict[str, Any]) -> tuple[str, ...]:
         if data.get("participation_rules_version")
         else base_rules_text(data)
     )
-    sections = [overview, gate, "逐项参与条件（必须全部满足）"]
+    sections = [overview, gate]
+    if data.get("description"):
+        sections.append("📃 抽奖说明：\n" + data["description"])
+    sections.append("逐项参与条件（必须全部满足）")
     sections.extend(condition_instruction(chat, rules) for chat in chats)
     sections.extend(
         [

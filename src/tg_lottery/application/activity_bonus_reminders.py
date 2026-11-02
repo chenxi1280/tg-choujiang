@@ -49,9 +49,9 @@ async def activity_bonus_progress_text(
 
 
 def _bonus_lines(names, targets, counts, *, compact):
-    lines = ["🌱 今日加成" if compact else "发言加成票(今日):"]
+    lines = ["🌱 今日加成" if compact else "发言加成票\uff08今日\uff09\uff1a"]
     lines.extend(
-        f"{names.get(key, '群名称待更新')}: "
+        f"{names.get(key, '群名称待更新')}\uff1a "
         + bonus_cycle_text(rule, counts.get(key, 0), compact=compact)
         for key, rule in targets.items()
     )
@@ -63,7 +63,7 @@ def bonus_cycle_text(rule, count, *, compact=False):
     if rule.daily_cap_mode == "limited" and cycles >= rule.daily_max_cycles:
         if compact:
             return f"🏁 今日 +{rule.daily_max_cycles * rule.reward_tickets} 次 · 已达上限"
-        return f"已完成 {rule.daily_max_cycles} 轮, 今日已达加成上限。"
+        return f"已完成 {rule.daily_max_cycles} 轮\uff0c 今日已达加成上限。"
     label = "下一轮" if cycles else "本轮"
     remaining = rule.messages_per_cycle - progress
     if compact:
@@ -72,7 +72,7 @@ def bonus_cycle_text(rule, count, *, compact=False):
             f"再发 {remaining} 条 +{rule.reward_tickets} 次"
         )
     return (
-        f"已完成 {cycles} 轮; {label} {progress}/{rule.messages_per_cycle} 条, "
+        f"已完成 {cycles} 轮\uff1b {label} {progress}/{rule.messages_per_cycle} 条\uff0c "
         f"还差 {remaining} 条有效发言可增加 {rule.reward_tickets} 次。"
     )
 

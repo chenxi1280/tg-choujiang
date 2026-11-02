@@ -35,17 +35,18 @@ def message_settings_text(data: dict[str, Any]) -> str:
     command = "开启" if data.get("delete_trigger_message") else "关闭"
     delay = _DELAY_LABELS[data.get("completion_delete_after_seconds")]
     return (
-        f"🔔 临时提示自动删除\n\n扩展说明: {_explanation_label(data)}\n"
-        f"删除报名命令: {command}\n临时提示保留: {delay}\n\n"
+        f"🔔 消息与提醒\n\n扩展说明： {_explanation_label(data)}\n"
+        f"删除报名指令： {command}\n临时提示保留： {delay}\n\n"
         "精简说明仍保留资格反馈、中奖结果和领奖联系人。\n"
         "📊 主动进度查询固定20秒删除；完整任务面板、公告和结果保留。"
     ) + deletion_permission_text(data)
 
 
 def message_policy_summary(data: dict[str, Any]) -> str:
-    command = "删除报名命令" if data.get("delete_trigger_message") else "保留报名命令"
+    command = "删除报名指令" if data.get("delete_trigger_message") else "保留报名指令"
     delay = _DELAY_LABELS[data.get("completion_delete_after_seconds")]
-    return f"扩展说明 {_explanation_label(data)}; {command}; 临时提示 {delay}"
+    notice = "提示不自动删除" if delay == "不删除" else f"提示 {delay}后自动删除"
+    return f"{notice}；{command}；扩展说明{_explanation_label(data)}"
 
 
 def _explanation_label(data: dict[str, Any]) -> str:
@@ -56,12 +57,12 @@ def message_settings_rows(data: dict[str, Any]) -> ButtonRows:
     expanded = bool(data.get("message_tips", True))
     rows = [
         [
-            (("✅ " if expanded else "") + "显示扩展说明", "draft_messages_on"),
-            (("✅ " if not expanded else "") + "精简说明", "draft_messages_off"),
+            ("显示扩展说明", "draft_messages_on"),
+            ("精简说明", "draft_messages_off"),
         ],
         [
-            ("删除报名命令", "draft_messages_trigger_on"),
-            ("保留报名命令", "draft_messages_trigger_off"),
+            ("删除报名指令", "draft_messages_trigger_on"),
+            ("保留报名指令", "draft_messages_trigger_off"),
         ],
         [("15秒", "draft_messages_delay_15s"), ("20秒", "draft_messages_delay_20s")],
         [("不删除", "draft_messages_delay_never"), ("更多时长", "draft_messages_more")],
@@ -69,9 +70,10 @@ def message_settings_rows(data: dict[str, Any]) -> ButtonRows:
     ]
 
     selected = {
+        "draft_messages_on" if expanded else "draft_messages_off",
         "draft_messages_trigger_on"
         if data.get("delete_trigger_message")
-        else "draft_messages_trigger_off"
+        else "draft_messages_trigger_off",
     }
     selected.update(
         "draft_messages_delay_" + key
@@ -79,7 +81,15 @@ def message_settings_rows(data: dict[str, Any]) -> ButtonRows:
         if value == data.get("completion_delete_after_seconds")
     )
     return [
-        [(("✅ " if action in selected else "") + label, action) for label, action in row]
+        [
+            (
+                ("✅ " if action in selected else "⬜ ") + label
+                if action not in {"draft_back", "draft_messages_more"}
+                else label,
+                action,
+            )
+            for label, action in row
+        ]
         for row in rows
     ]
 
@@ -88,7 +98,7 @@ async def show_more_delays(flow, query, grant):
     data = await flow._set_state(query, "draft:idle")
     buttons = [
         (
-            ("✅ " if seconds == data.get("completion_delete_after_seconds") else "")
+            ("✅ " if seconds == data.get("completion_delete_after_seconds") else "⬜ ")
             + _DELAY_LABELS[seconds],
             "draft_messages_delay_" + key,
         )
@@ -96,5 +106,5 @@ async def show_more_delays(flow, query, grant):
         if seconds not in {None, 15, 20}
     ]
     rows = [buttons[index : index + 2] for index in range(0, len(buttons), 2)]
-    rows.append([("返回消息提示", "draft_messages")])
+    rows.append([("返回消息与提醒", "draft_messages")])
     await flow._render(query, data=data, text=message_settings_text(data), rows=rows)

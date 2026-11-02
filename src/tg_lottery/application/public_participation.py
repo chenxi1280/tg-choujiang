@@ -1,11 +1,10 @@
-from zoneinfo import ZoneInfo
-
 from sqlalchemy import exists, func, or_, select
 
 from tg_lottery.application.admission_qualification import behavior_clause
 from tg_lottery.application.records import utcnow
 from tg_lottery.domain.enums import QualificationState, TicketSource
 from tg_lottery.infrastructure.db import Participant, TicketLedger
+from tg_lottery.telegram.public_projection import format_public_time
 
 
 def successful_registration():
@@ -35,10 +34,10 @@ async def public_participation(session, campaign_id):
             ).where(Participant.campaign_id == campaign_id)
         )
     ).one()
-    moment = utcnow().astimezone(ZoneInfo("Asia/Shanghai")).strftime("%m-%d %H:%M:%S")
+    moment = format_public_time(utcnow(), "Asia/Shanghai", include_timezone=False)
     return (
-        f"👥 参与情况: {eligible}人已记录达标 / {total}人报名 · 截至{moment}"
-        " (北京时间, 以开奖复核为准)"
+        f"👥 参与情况\uff1a {eligible}人已记录达标 / {total}人报名 · 截至{moment}"
+        "\uff08以开奖前检查为准\uff09"
     )
 
 

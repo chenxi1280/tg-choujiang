@@ -119,8 +119,8 @@ def editor_view(data: dict[str, Any]) -> tuple[str, list]:
         f"🚪 {title} · 基础发言门槛\n\n"
         f"连续 {rule['consecutive_days']} 天，每天至少 {rule['daily_messages']} 条，"
         "文字、图片、表情均计数。\n"
-        "点击参与链接报名后开始统计；全部配置群达标后获得抽奖资格。\n"
-        "北京时间每天 00:00 更新当天统计，完成后保留本场资格。\n\n"
+        "点击参与链接报名后开始统计；全部配置群达标后完成发言门槛，参与开奖仍须满足全部参与条件。\n"
+        "北京时间每天 00:00 更新当天统计，本群门槛完成后无需重做。\n\n"
         "选择预设或自定义数值，点击保存后生效。"
     )
     rows = [_field_row(field) for field in FIELDS]

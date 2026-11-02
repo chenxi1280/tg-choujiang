@@ -83,11 +83,11 @@ async def test_early_cutoff_updates_card_and_rule_page_without_changing_frozen_t
     card_text = bot.calls[0][2]["caption"] if has_cover else bot.calls[0][1][0]
     rule_text = bot.calls[1][1][0]
     for text in (card_text, rule_text):
-        assert "实际截止\uff1a2026年10月29日 19时39分49秒" in text
-        assert "计划开奖\uff1a2026年10月29日 19时44分50秒" in text
+        assert "实际截止\uff1a2026年10月29日 19:39" in text
+        assert "计划开奖\uff1a2026年10月29日 19:44" in text
         assert "原计划" in text
-        assert "2026年10月29日 20时09分48秒" in text
-        assert "2026年10月29日 20时14分48秒" in text
+        assert "2026年10月29日 20:09" in text
+        assert "2026年10月29日 20:14" in text
 
 
 async def test_drawn_card_reports_completed_time_from_saved_draw_run(session_factory):
@@ -128,6 +128,6 @@ def test_covered_card_keeps_times_and_frozen_rules_when_winner_summary_will_not_
             "winners": [{"user_id": 201, "display_name": "中奖人" * 100}],
         }
     )
-    assert "实际截止\uff1a2026年10月29日 19时39分49秒" in text
+    assert "实际截止\uff1a2026年10月29日 19:39" in text
     assert frozen in text
     assert html_utf16_length(text) <= CAPTION_UTF16_LIMIT

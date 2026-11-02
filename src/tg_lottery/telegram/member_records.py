@@ -161,7 +161,7 @@ def _record_line(row: InvitationRecordRow, timezone: str) -> str:
     status = _INVITATION_STATE_TEXT[row.state]
     reason = _FINAL_REASON_TEXT.get(row.final_reason or "")
     result = f"{status}（{reason}）" if reason else status
-    observed = format_public_time(row.observed_at, timezone)
+    observed = format_public_time(row.observed_at, timezone, include_timezone=False)
     return f"• {row.group_title}｜{identity}\n  {result}｜{observed}"
 
 
@@ -256,7 +256,7 @@ def _invitation_keyboard(records: CampaignInvitationRecords) -> InlineKeyboardMa
 def _filter_row(records: CampaignInvitationRecords) -> list[InlineKeyboardButton]:
     return [
         InlineKeyboardButton(
-            text=("✅ " if key == records.status_filter else "") + label,
+            text=("✅ " if key == records.status_filter else "⬜ ") + label,
             callback_data=(
                 f"m:ir:{records.public_ref}:{records.group_chat_id}:{records.group_page}:{key}:0"
             ),

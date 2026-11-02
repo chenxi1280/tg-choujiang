@@ -65,7 +65,7 @@ async def test_base_controller_routes_custom_input_and_checks_permissions_only_o
     await controller.handle(query, SimpleNamespace(action="draft_base:save"))
     verify.assert_awaited_once()
     assert sessions.data["base_activity_rules"]["-1002"]["daily_messages"] == 5
-    assert "返回准入条件" in str(renderer.rows)
+    assert "返回额外参与条件" in str(renderer.rows)
 
 
 def test_group_bonus_defaults_and_custom_five_messages_use_daily_mode():

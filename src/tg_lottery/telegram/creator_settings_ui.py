@@ -24,7 +24,7 @@ def custom_draw_prompt(timezone: str, *, now: datetime | None = None, saved: str
     label = public_timezone_label(BEIJING_TIMEZONE)
     value_label = "已保存的开奖时间" if saved else "时间示例"
     return (
-        f"🕒 定时开奖 ({label})\n\n{value_label}：\n<code>{example}</code>\n\n"
+        f"🕒 定时开奖（{label}）\n\n{value_label}：\n<code>{example}</code>\n\n"
         "点击上方时间复制，修改后直接发送。\n"
         "格式：年-月-日 时:分；也可选择快捷时间。"
     )

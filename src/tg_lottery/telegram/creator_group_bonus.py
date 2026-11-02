@@ -29,6 +29,7 @@ from tg_lottery.telegram.creator_bonus_policy import (
 from tg_lottery.telegram.creator_daily_bonus import (
     daily_activity_editor,
     daily_creation_summary,
+    group_list_notice,
     legacy_activity_description,
 )
 from tg_lottery.telegram.creator_number_controls import (
@@ -224,9 +225,7 @@ def list_view(data: dict[str, Any], kind: str) -> tuple[str, ButtonRows]:
         rows.append([("有效邀请要求", "draft_retention")])
     rows.append([("↩ 返回加成票设置", "draft_bonus_menu")])
     title = "🤝 邀请加成票" if kind == "invite" else "🌱 发言加成票"
-    reminder = "机器人必须在每个参与群中且拥有管理员权限。"
-    if not groups:
-        reminder += "\n当前没有参与群，请先选择参与群，再设置本群加成。"
+    reminder = group_list_notice(data, kind=kind)
     return f"{title}（逐群设置）\n\n{reminder}\n\n{details}", rows
 
 

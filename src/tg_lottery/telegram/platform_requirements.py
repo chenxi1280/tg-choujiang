@@ -27,7 +27,7 @@ async def _inspect_channel(bot, channel, *, bot_id):
     chat = await bot.get_chat(channel.chat_id)
     member = await bot.get_chat_member(channel.chat_id, bot_id)
     if int(chat.id) != channel.chat_id or str(chat.type) != "channel":
-        raise UserFacingError("冻结身份不是对应频道")
+        raise UserFacingError("配置的目标与实际频道不一致，请重新设置")
     if str(member.status) not in {"administrator", "creator"}:
         raise UserFacingError("机器人需要频道管理员权限")
     if "/+" in channel.join_url:

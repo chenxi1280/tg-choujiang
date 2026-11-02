@@ -97,7 +97,7 @@ async def test_inbox_mounts_bot_before_private_start_reply(session_factory) -> N
     assert await processor.process_once() is True
     assert len(bot.methods) == 1
     assert bot.methods[0].chat_id == 201
-    assert bot.methods[0].text == "请选择操作:"
+    assert bot.methods[0].text == "请选择操作\uff1a"
 
 
 def _processor(handler, session_factory, *, bot=None) -> InboxProcessor:

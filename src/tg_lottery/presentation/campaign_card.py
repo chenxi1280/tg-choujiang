@@ -3,17 +3,15 @@
 import html
 from collections.abc import Mapping
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from tg_lottery.domain.condition_targets import frozen_condition_targets
 from tg_lottery.domain.rules import CampaignRules
+from tg_lottery.presentation.bonus_summary import bonus_summary_lines
 from tg_lottery.presentation.daily_bonus import daily_bonus_dates
 from tg_lottery.presentation.gate_rules import gate_mode_notes, gate_rule_text, payload_task_dates
 from tg_lottery.presentation.rule_pages import escaped_text_blocks
 from tg_lottery.telegram.bonus_rule_text import chat_title
-from tg_lottery.telegram.public_projection import BEIJING_TIMEZONE
-
-CARD_TIME_FORMAT = "%Y年%m月%d日 %H时%M分%S秒"
+from tg_lottery.telegram.public_projection import format_public_time
 
 
 def campaign_link(payload: Mapping, action: str = "join") -> str:
@@ -45,9 +43,9 @@ def chat_condition(chat: Mapping, *, payload: Mapping, rules: CampaignRules) -> 
         url = str(chat["join_url"])
     title = html.escape(chat_title(chat))
     link = html.escape(url, quote=True)
-    status = " (加入入口已关闭)" if chat.get("invite_revoked_at") else ""
+    status = " （加入入口已关闭）" if chat.get("invite_revoked_at") else ""
     icon = "📡" if chat.get("type") == "channel" else "👥"
-    lines = [f'{icon} {action}-<a href="{link}">{title}</a>{status}']
+    lines = [f'{icon} {action}「<a href="{link}">{title}</a>」{status}']
     if chat.get("type") != "channel":
         lines.extend(
             group_gate_lines(
@@ -74,7 +72,7 @@ def group_gate_lines(key: str, rules: CampaignRules, *, calendar_dates=()) -> tu
     return ()
 
 
-def membership_blocks(payload: Mapping) -> tuple[str, ...]:
+def membership_blocks(payload: Mapping, *, timezone_label=True) -> tuple[str, ...]:
     rules = CampaignRules.model_validate(payload["rules"])
     blocks = ["🧭 <b>参与条件（必须全部满足）：</b>"]
     if rules.platform_policy:
@@ -91,13 +89,13 @@ def membership_blocks(payload: Mapping) -> tuple[str, ...]:
     if len(blocks) == 1:
         blocks.append("无额外成员条件")
     if rules.message_gate_rules:
-        blocks.extend(_gate_notes(payload, rules))
+        blocks.extend(_gate_notes(payload, rules, timezone_label=timezone_label))
     elif rules.invite_admission_enabled:
         blocks.append("各群有效邀请分别达标；先报名，再通过本场本人邀请入口邀请新成员。")
     return tuple(blocks)
 
 
-def _gate_notes(payload, rules):
+def _gate_notes(payload, rules, *, timezone_label):
     names = {str(chat["id"]): chat_title(chat) for chat in condition_chats(payload)}
     notes = list(
         gate_mode_notes(
@@ -105,11 +103,10 @@ def _gate_notes(payload, rules):
         )
     )
     if rules.message_task_calendar:
-        from tg_lottery.telegram.public_projection import format_public_time
-
-        start = format_public_time(payload["preheat_at"], rules.timezone)
-        cutoff = format_public_time(payload["cutoff_at"], rules.timezone)
-        notes.append(f"本期任务时间：{start} 至 {cutoff}。")
+        start = format_public_time(payload["preheat_at"], rules.timezone, include_timezone=False)
+        cutoff = format_public_time(payload["cutoff_at"], rules.timezone, include_timezone=False)
+        label = "（北京时间）" if timezone_label else ""
+        notes.append(f"本期任务时间{label}：{start} 至 {cutoff}。")
     return tuple(html.escape(note) for note in notes)
 
 
@@ -133,40 +130,24 @@ def description_blocks(payload: Mapping) -> tuple[str, ...]:
     return ("📃 <b>抽奖说明：</b>\n" + first, *remaining)
 
 
-def bonus_block(payload: Mapping) -> str:
+def bonus_block(payload: Mapping, *, compact=False) -> str:
     rules = CampaignRules.model_validate(payload["rules"])
-    if rules.bonus_policy_version == "unlimited-v1":
-        return unlimited_bonus_block(payload, rules=rules)
-    return _bonus_lines(payload, rules=rules, unlimited=False)
-
-
-def unlimited_bonus_block(payload: Mapping, *, rules: CampaignRules) -> str:
-    return _bonus_lines(payload, rules=rules, unlimited=True)
-
-
-def _bonus_lines(payload: Mapping, *, rules: CampaignRules, unlimited: bool) -> str:
     url = html.escape(campaign_link(payload, "rules"), quote=True)
-    rule_link = f'<a href="{url}">规则</a>'
-    activity = (
-        ("不设上限" if unlimited else "按本场规则") if rules.activity_bonus_enabled else "未开启"
-    )
-    invite = ("不设上限" if unlimited else "按本场规则") if rules.invite_bonus_enabled else "未开启"
-    if rules.daily_activity_bonus and rules.activity_bonus_enabled:
-        activity = "首日不发，第二天起整场每天最多1张；" + (
-            "门槛发言双算" if rules.activity_bonus_double_count else "门槛完成后另算发言"
-        )
-    lines = [
-        "📈 <b>抽奖加成票：</b>",
-        f"🌱 <b>发言加成票：</b>{activity}　{rule_link}",
-        f"🤝 <b>邀请加成票：</b>{invite}　{rule_link}",
-    ]
+    lines = ["📈 <b>抽奖加成票：</b>"]
+    for line in bonus_summary_lines(rules, condition_chats(payload), compact=compact):
+        icon, text = line.split(" ", 1)
+        label, value = text.split("：", 1)
+        lines.append(f"{icon} <b>{label}：</b>{html.escape(value)}")
     lines.extend(_daily_bonus_dates(payload, rules=rules))
+    lines.append(f'<a href="{url}">完整规则</a>')
     if rules.activity_bonus_enabled:
-        lines.append("└ 群内输入：<b>人品</b> · <b>人品排行</b> · <b>人品规则</b>")
+        lines.append(
+            "└ 群内输入：<b>发言加成票</b>；也可使用 <b>人品</b>、<b>人品排行</b>、<b>人品规则</b>"
+        )
     return "\n".join(lines)
 
 
-def time_blocks(payload: Mapping) -> tuple[str, ...]:
+def time_blocks(payload: Mapping, *, timezone_label=True) -> tuple[str, ...]:
     timezone = str(payload["timezone"])
     cutoff = card_time(payload["cutoff_at"], timezone)
     if payload["rules"].get("draw_mode") == "full":
@@ -175,20 +156,20 @@ def time_blocks(payload: Mapping) -> tuple[str, ...]:
         )
     else:
         moment = card_time(payload["draw_at"], timezone)
-        draw = "⏰ <b>开奖日期：</b>（北京时间）\n" + moment
+        draw = "⏰ <b>开奖时间：</b>\n" + moment
     start = payload["presentation"].get("start_at")
-    beginning = ("▶️ <b>计划开始：</b>（北京时间）\n" + card_time(start, timezone),) if start else ()
+    beginning = ("▶️ <b>计划开始：</b>\n" + card_time(start, timezone),) if start else ()
     actual = payload.get("started_at")
     if actual:
-        beginning += ("▶️ <b>实际启动：</b>（北京时间）\n" + card_time(actual, timezone),)
-    return (*beginning, "⏳ <b>报名及行为统计截止：</b>（北京时间）\n" + cutoff, draw)
+        beginning += ("▶️ <b>实际启动：</b>\n" + card_time(actual, timezone),)
+    blocks = (*beginning, "⏳ <b>报名及行为统计截止：</b>\n" + cutoff, draw)
+    if timezone_label:
+        return (blocks[0].replace("：</b>", "（北京时间）：</b>", 1), *blocks[1:])
+    return blocks
 
 
 def card_time(value: str, timezone: str) -> str:
-    zone = ZoneInfo(timezone)
-    moment = datetime.fromisoformat(str(value))
-    localized = moment.replace(tzinfo=zone) if moment.tzinfo is None else moment.astimezone(zone)
-    return localized.astimezone(ZoneInfo(BEIJING_TIMEZONE)).strftime(CARD_TIME_FORMAT)
+    return format_public_time(str(value), timezone, include_timezone=False)
 
 
 def footer_blocks(payload: Mapping) -> tuple[str, ...]:
@@ -215,7 +196,9 @@ def card_blocks(payload: Mapping) -> tuple[str, ...]:
         *description_blocks(payload),
         bonus_block(payload),
         *participation_blocks(payload),
-        *time_blocks(payload),
+        *time_blocks(
+            payload, timezone_label=not bool(payload["rules"].get("message_task_calendar"))
+        ),
         *footer_blocks(payload),
     )
 

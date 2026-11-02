@@ -78,7 +78,9 @@ def _landing_text(
     identity = f"{landing.campaign.name}"
     state = _landing_state(landing, membership, now=now, outcome=outcome)
     timezone = landing.campaign.timezone
-    deadline = format_public_time(_effective_bonus_deadline(landing), timezone)
+    deadline = format_public_time(
+        _effective_bonus_deadline(landing), timezone, include_timezone=False
+    )
     draw_time = _draw_time_text(landing, outcome=outcome)
     verification = "\n⚠ 暂时无法检查你是否已在群内，入群后仍需检查。" if membership is None else ""
     return (
@@ -221,11 +223,15 @@ def _v3_landing_text(
     if not active:
         status = "本场新增邀请已关闭；现存入口如可用仍可入群"
     chats = tuple(landing.campaign.presentation.get("participation_groups") or [])
+    deadline = format_public_time(
+        _effective_bonus_deadline(landing), rules.timezone, include_timezone=False
+    )
+    cutoff = format_public_time(landing.campaign.cutoff_at, rules.timezone, include_timezone=False)
     return (
-        f"{landing.campaign.name}\n邀请用途: {purpose}\n{status}\n"
-        f"有效邀请要求: {retention_text(rules.invite.retention_hours)}\n"
-        f"最晚有效入群: {format_public_time(_effective_bonus_deadline(landing), rules.timezone)}\n"
-        f"报名截止: {format_public_time(landing.campaign.cutoff_at, rules.timezone)}\n"
+        f"{landing.campaign.name}\n邀请用途： {purpose}\n{status}\n"
+        f"有效邀请要求： {retention_text(rules.invite.retention_hours)}\n"
+        f"最晚有效入群： {deadline}\n"
+        f"报名截止： {cutoff}\n"
         f"{_draw_time_text(landing, outcome=outcome)}\n"
         + "\n".join(gate_lines(rules, chats, calendar_dates=_landing_task_dates(landing, rules)))
         + "\n受邀人无需完成自己的抽奖门槛；加入群不会自动报名本人抽奖。"

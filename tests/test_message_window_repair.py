@@ -80,7 +80,7 @@ async def test_preview_apply_replay_future_awards_and_final_gate(session_factory
             now=NEW_START + timedelta(minutes=3),
         )
         assert "今日任务已完成" in text and "已完成 1/3 天" in text
-        assert "待开始" in text and "当前有效抽奖次数: 0" in text
+        assert "待开始" in text and "当前有效抽奖次数\uff1a 0" in text
     for day in (1, 2):
         await speech(
             session_factory,

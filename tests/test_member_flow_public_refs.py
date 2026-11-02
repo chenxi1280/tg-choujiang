@@ -132,8 +132,8 @@ async def test_success_deletion_policy_preserves_action_panel() -> None:
     await flow.register(message, PUBLIC_REF, user=user, observed_at=datetime.now(UTC))
 
     assert [item["message_id"] for item in participants.deletions] == [77]
-    assert message.texts[0].startswith("✅ 参与成功")
-    assert "当前共 1 次抽奖机会" in message.texts[0]
+    assert message.texts[0].startswith("✅ 报名成功")
+    assert "有效抽奖次数\uff1a1" in message.texts[0]
 
 
 def test_legacy_bonus_rules_have_a_complete_human_readable_description() -> None:
@@ -179,7 +179,7 @@ async def test_rules_remain_visible_after_private_condition_link_is_revoked() ->
 
     await flow.show_rules(message, PUBLIC_REF)
 
-    assert "私有参与群</a> (加入入口已关闭)" in message.texts[-1]
+    assert "私有参与群</a>」 \uff08加入入口已关闭\uff09" in message.texts[-1]
     button = message.reply_markup.inline_keyboard[0][0]
     assert button.url == f"https://t.me/?start=join_{PUBLIC_REF}"
 

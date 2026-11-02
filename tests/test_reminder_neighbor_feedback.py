@@ -174,5 +174,5 @@ async def test_participation_card_link_opens_same_activity_in_users_private_chat
         assert "提醒回归" in delivered[0][1]
         routes = {r.payload["route"] for r in requests}
         assert f"m:conditions:{REFERENCE}:0" in routes
-        assert "一键报名" in str(delivered[0][2]["reply_markup"])
+        assert "报名" in str(delivered[0][2]["reply_markup"])
     flow._participants.queue_temporary_reminder.assert_not_awaited()

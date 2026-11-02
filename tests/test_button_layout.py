@@ -116,4 +116,4 @@ def test_prize_removal_actions_have_their_own_rows():
     for action in ("draft_delete_prize", "draft_clear_prizes"):
         row = next(row for row in rows if any(item[1] == action for item in row))
         assert len(row) == 1
-    assert rows[-1] == [("返回草稿", "draft_back")]
+    assert rows[-1] == [("↩️ 返回草稿", "draft_back")]

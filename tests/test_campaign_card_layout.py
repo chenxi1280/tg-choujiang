@@ -42,8 +42,8 @@ def card_payload(*, mode="message", bonuses=("activity", "invite")):
 def test_caption_keeps_group_gate_under_its_link_and_reference_section_order():
     payload = card_payload()
     text, pages = rule_manifest(payload)
-    assert "一群</a>\n└ 🚪 任意 1 天有效发言满 <b>2</b> 条" in text
-    assert "二群</a>\n└" not in text and "公告频道</a>\n└" not in text
+    assert "一群</a>」\n└ 🚪 任意 1 天有效发言满 <b>2</b> 条" in text
+    assert "二群</a>」\n└" not in text and "公告频道</a>」\n└" not in text
     assert "大于" not in text and "每条至少" not in text
     sections = ("✨", "🧭", "🎁 <b>奖品内容", "📃", "🌱", "⏳", "⏰", "🔗")
     assert [text.index(section) for section in sections] == sorted(
@@ -51,7 +51,7 @@ def test_caption_keeps_group_gate_under_its_link_and_reference_section_order():
     )
     assert "1. 联系管理兑奖\n2. &lt;说明&gt; &amp; 原样换行" in text
     assert "礼物 &amp; 奖励" in text and "发奖人 &amp; 管理员" in text
-    assert "2026年10月10日 20时00分01秒" in text
+    assert "2026年10月10日 20:00" in text
     assert html_utf16_length(text) <= 900
     assert not pages
     rules_text = "\n".join(public_rule_blocks(payload))
@@ -69,7 +69,7 @@ def test_private_target_never_exposes_plain_invite_even_when_present():
     text, _pages = rule_manifest(payload)
     assert "private-secret" not in text + "".join(public_rule_blocks(payload))
     assert (
-        '关注-<a href="https://t.me/lottery_test_bot?start=condition_abcdefgh_3">公告频道</a>'
+        '关注「<a href="https://t.me/lottery_test_bot?start=condition_abcdefgh_3">公告频道</a>」'
         in text
     )
 
@@ -77,9 +77,9 @@ def test_private_target_never_exposes_plain_invite_even_when_present():
 def test_invitation_gate_and_disabled_bonuses_are_not_presented_as_speech_rules():
     payload = card_payload(mode="invite", bonuses=())
     text, _pages = rule_manifest(payload)
-    assert "一群</a>\n└ 🚪 有效邀请满 <b>2</b> 人" in text
+    assert "一群</a>」\n└ 🚪 有效邀请满 <b>2</b> 人" in text
     assert "单日有效发言" not in text and "每日发言加成" not in text
-    assert "抽奖加成票(发言)\uff1a</b>未开启" in text
+    assert "发言加成票\uff1a</b>未开启" in text
     assert "有效邀请要求" in "".join(public_rule_blocks(payload))
 
 
@@ -94,10 +94,8 @@ def test_caption_capacity_counts_visible_html_instead_of_link_attributes():
 
 
 def test_saved_time_is_converted_without_changing_the_instant():
-    assert card_time("2026-10-10T12:00:01+00:00", "Europe/London") == (
-        "2026年10月10日 20时00分01秒"
-    )
-    assert card_time("2026-10-10 13:00:01", "Europe/London") == ("2026年10月10日 20时00分01秒")
+    assert card_time("2026-10-10T12:00:01+00:00", "Europe/London") == ("2026年10月10日 20:00")
+    assert card_time("2026-10-10 13:00:01", "Europe/London") == ("2026年10月10日 20:00")
 
 
 def test_legacy_global_bonus_rules_keep_actual_reward_and_daily_scope():
@@ -108,11 +106,11 @@ def test_legacy_global_bonus_rules_keep_actual_reward_and_daily_scope():
         "invite": {"reward_tickets": 4},
     }
     rules = "\n".join(public_rule_blocks(payload))
-    assert "每个统计群每天有效发言满 10 条\uff0c全部达标 +3 次" in rules
-    assert "每天奖励一次" in rules and "每个有效邀请 +4 次" in rules
+    assert "每个统计群每天有效发言满 10 条\uff0c全部达标 +3 张" in rules
+    assert "每天奖励一次" in rules and "每个有效邀请 +4 张" in rules
     card = _campaign_card_text(payload)
-    assert "抽奖加成票(发言)\uff1a" in card and "邀请加成票\uff1a" in card
-    assert "按本场规则" in card and "不设上限" not in card
+    assert "发言加成票\uff1a" in card and "邀请加成票\uff1a" in card
+    assert "全部达标 +3 张" in card and "不设上限" in card
 
 
 def test_long_prize_list_paginates_between_prizes_without_dropping_names():

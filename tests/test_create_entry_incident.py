@@ -87,7 +87,7 @@ async def test_zero_group_creator_opens_saved_draft_with_working_buttons(creator
     text_call = case.edits.call_args if entry == "button" else case.answers.call_args
     markup_call = case.edits.call_args if entry == "button" else case.markup_edits.call_args
     assert "编辑草稿" in text_call.args[0]
-    assert "活动群" in text_call.args[0]
+    assert "参与群" in text_call.args[0]
     keyboard = markup_call.kwargs["reply_markup"]
     button = next(
         item
@@ -133,7 +133,7 @@ async def test_zero_group_publish_is_rejected_without_campaign_creation(
     case = creator_case
     await case.creator.start(_query())
     original = (await case.sessions.get(USER_ID)).data
-    with pytest.raises(UserFacingError, match="活动群"):
+    with pytest.raises(UserFacingError, match="参与群"):
         await case.creator._publisher.confirm(_query(), object())
     assert (await case.sessions.get(USER_ID)).data == original
     async with session_factory() as session:
@@ -141,7 +141,7 @@ async def test_zero_group_publish_is_rejected_without_campaign_creation(
 
 
 @pytest.mark.parametrize(
-    "failure", [UserFacingError("请先完成: 活动群"), ValueError("private detail")]
+    "failure", [UserFacingError("请先完成: 参与群"), ValueError("private detail")]
 )
 async def test_private_callback_errors_send_visible_message_after_ack(monkeypatch, failure):
     handler = _handler()
@@ -154,7 +154,7 @@ async def test_private_callback_errors_send_visible_message_after_ack(monkeypatc
     answer.assert_awaited_once_with()
     notification.assert_awaited_once()
     text = notification.call_args.args[0]
-    assert text.startswith("操作未完成:")
+    assert text.startswith("操作未完成\uff1a")
     assert "private detail" not in text
     if isinstance(failure, UserFacingError):
-        assert "活动群" in text
+        assert "参与群" in text

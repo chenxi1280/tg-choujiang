@@ -174,7 +174,7 @@ async def test_callback_unknown_state_answers_retry_alert():
 
     assert len(callback.answers) == 1
     text, show_alert = callback.answers[0]
-    assert text.startswith("当前无法核验群/频道资格")
+    assert text.startswith("当前无法检查群/频道资格")
     assert text.endswith("请稍后再试")
     assert show_alert is True
 
@@ -191,8 +191,8 @@ async def test_register_short_circuits_already_eligible_participant():
 
     assert len(callback.answers) == 1
     text, show_alert = callback.answers[0]
-    assert text.startswith("你已参与")
-    assert "当前共 5 次抽奖机会" in text
+    assert text.startswith("你已报名")
+    assert "有效抽奖次数\uff1a5" in text
     assert show_alert is False
     assert message.texts == []
     assert participants.begun == 0
@@ -205,8 +205,8 @@ async def test_register_already_eligible_private_start_replies_message():
     await flow.register(message, PUBLIC_REF, user=_user(), observed_at=datetime.now(UTC))
 
     assert len(message.texts) == 1
-    assert message.texts[0].startswith("你已参与")
-    assert "当前共 6 次抽奖机会" in message.texts[0]
+    assert message.texts[0].startswith("你已报名")
+    assert "有效抽奖次数\uff1a6" in message.texts[0]
 
 
 async def test_register_eligible_replay_reads_cached_total():
@@ -224,8 +224,8 @@ async def test_register_eligible_replay_reads_cached_total():
 
     assert len(callback.answers) == 1
     text, show_alert = callback.answers[0]
-    assert text.startswith("✅ 参与成功")
-    assert "当前共 4 次抽奖机会" in text
+    assert text.startswith("✅ 报名成功")
+    assert "有效抽奖次数\uff1a4" in text
     assert show_alert is False
     assert message.texts == []
 
@@ -336,5 +336,5 @@ async def test_base_activity_private_reply_sends_progress_message():
 
     assert len(message.texts) == 1
     assert "前置条件已通过" in message.texts[0]
-    assert "登记及前置条件通过前不补算" in message.texts[0]
+    assert "报名及前置条件通过前不补算" in message.texts[0]
     assert "A群" in message.texts[0]

@@ -82,7 +82,7 @@ async def test_v23_bonus_navigation_separates_categories_and_group_details() -> 
     assert invite_keyboard.inline_keyboard[0][0].copy_text.text == (
         "https://t.me/lottery_bot?start=ref_AAAAAAAAAAAAAAAAAAAAAA"
     )
-    assert "每10条有效消息增加1次抽奖机会" in activity_detail
+    assert "每10条有效消息增加1张发言加成票" in activity_detail
     assert "每条至少" not in activity_detail and "文字、图片、表情均计数" in activity_detail
     assert "距下一次还差 2 条" in activity_detail
     _assert_callback_limit(overview_keyboard, invite_keyboard, activity_keyboard)
@@ -225,7 +225,7 @@ async def test_drawn_campaign_hides_entries_but_keeps_invitation_history() -> No
         unavailable={},
     )
     assert "累计达标 2 天、获得 2 次" in activity_detail
-    assert "不再计算新增抽奖加成票(发言)" in activity_detail
+    assert "不再计算新增发言加成票" in activity_detail
     assert "距下一次还差" not in activity_detail
 
 
@@ -286,7 +286,7 @@ async def test_join_deadline_preserves_awarded_invites_and_activity_progress() -
         campaign, category="activity", chat_id=-1001, return_page=0, **common
     )
     assert "最晚计奖入群时间已过" in listing + detail
-    assert "仅核验此前邀请" in detail
+    assert "仅检查此前邀请" in detail
     assert "有效邀请 3 人" in detail and "已获得 1 次" in detail
     assert "距下一次还差" not in listing + detail
     assert plain_label(keyboard.inline_keyboard[0][0].text).startswith("复制入群链接")

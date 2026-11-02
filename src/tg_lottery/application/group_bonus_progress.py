@@ -79,7 +79,9 @@ async def load_group_bonus_progress(
             ticket_totals=ticket_totals,
             daily=daily,
             activity_days=await _activity_days(session, campaign_id, participant.id),
-            base_text=await base_progress_text(session, campaign, participant),
+            base_text=await base_progress_text(
+                session, campaign, participant, include_timezone=False
+            ),
         )
 
         if rules.daily_activity_bonus:

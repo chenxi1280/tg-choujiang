@@ -64,8 +64,8 @@ async def test_new_group_admin_has_private_creation_entry():
     await send_bot_permission_reminder(bot, event)
     button = bot.send_message.await_args.kwargs["reply_markup"].inline_keyboard[0][0]
     assert button.url == "https://t.me/test_bot?start=create"
-    assert "发起抽奖" in button.text
-    assert creation_entry(None) == ("发起抽奖", "nav:create")
+    assert "创建抽奖" in button.text
+    assert creation_entry(None) == ("创建抽奖", "nav:create")
     handler = object.__new__(LotteryUpdateHandler)
     handler._admin_flow = SimpleNamespace(start_create_message=AsyncMock())
     message = object()

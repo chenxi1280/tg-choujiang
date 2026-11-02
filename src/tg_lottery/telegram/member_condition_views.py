@@ -23,22 +23,22 @@ def conditions(campaign: object) -> tuple[dict[str, object], ...]:
 
 def draw_rule(rules: CampaignRules) -> str:
     if rules.draw_mode == "full":
-        return f"开奖方式: 满 {rules.participant_target} 人后进入结算，30 天中午兜底"
-    return "开奖方式: 定时开奖"
+        return f"开奖方式： 满 {rules.participant_target} 人后进入结算，30 天中午兜底"
+    return "开奖方式： 定时开奖"
 
 
 def human_rule(rules: CampaignRules, chats: tuple[dict[str, object], ...] = ()) -> str:
     if rules.admission is not None:
         return "\n".join(
-            (*gate_lines(rules, chats), "独立加成:", *per_group_bonus_lines(rules, chats))
+            (*gate_lines(rules, chats), "独立加成：", *per_group_bonus_lines(rules, chats))
         )
     if not rules.bonus_types:
-        return "抽奖加成票: 关闭，仅计算基础抽奖次数\n" + "\n".join(
+        return "抽奖加成票： 关闭，仅计算基础抽奖次数\n" + "\n".join(
             per_group_bonus_lines(rules, chats)
         )
     if rules.group_invite_rules or rules.group_activity_rules or rules.base_activity_rules:
         lines = per_group_bonus_lines(rules, chats)
-        return "抽奖加成票（各群独立累计）:\n" + "\n".join(lines)
+        return "抽奖加成票（各群独立累计）：\n" + "\n".join(lines)
     parts = []
     if rules.invite_bonus_enabled:
         parts.append(invite_rule_text(rules))
@@ -47,7 +47,7 @@ def human_rule(rules: CampaignRules, chats: tuple[dict[str, object], ...] = ()) 
             f"每个条件群每天有效发言 {rules.activity.message_threshold} 条，"
             f"全部达标+{rules.activity.reward_tickets} 次"
         )
-    return "抽奖加成票: " + "；".join(parts)
+    return "抽奖加成票： " + "；".join(parts)
 
 
 def invite_rule_text(rules: CampaignRules) -> str:
@@ -74,16 +74,16 @@ def deletion_rule(campaign: object) -> str:
     trigger = "删除报名命令" if presentation.get("delete_trigger_message") else "保留报名命令"
     seconds = presentation.get("completion_delete_after_seconds")
     if seconds is None:
-        return f"消息删除: {trigger}; 完成提示不自动删除"
-    return f"消息删除: {trigger}; 完成提示 {int(seconds)} 秒后删除"
+        return f"消息删除： {trigger}； 完成提示不自动删除"
+    return f"消息删除： {trigger}； 完成提示 {int(seconds)} 秒后删除"
 
 
 def condition_summary(campaign: object) -> str:
     labels = []
     for chat in conditions(campaign):
-        suffix = " (加入入口已关闭)" if chat.get("invite_revoked_at") else ""
+        suffix = " （加入入口已关闭）" if chat.get("invite_revoked_at") else ""
         labels.append(f"{chat['title']}{suffix}")
-    return "参与条件: " + ("、".join(labels) if labels else "无额外条件")
+    return "参与条件： " + ("、".join(labels) if labels else "无额外条件")
 
 
 def condition_action(chat: dict[str, object]) -> str:

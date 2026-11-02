@@ -41,13 +41,18 @@ def preview_text(data: dict[str, Any], *, now: datetime | None = None) -> str:
         f"{platform_summary(data)}"
         f"{_base_summary(data)}\n\n"
         f"🎁 奖品内容：\n{_prize_lines(data.get('prizes', []))}\n"
-        f"📃 抽奖说明：{data.get('description') or '【等待设置】'}\n\n"
+        f"📃 抽奖说明：{description_summary(data)}\n\n"
         f"📈 抽奖加成票：{bonus_summary(data)}\n{retention_summary(data)}\n"
         f"⏰ 开奖时间：{_draw_text(data)}\n"
         f"🧑‍💼 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}\n"
-        f"🔔 参与提示：{message_policy_summary(data)}\n\n"
+        f"🔔 消息与提醒：{message_policy_summary(data)}\n\n"
         f"当前状态：{status}\n{bonus_window_warning(data, now=now)}"
     )
+
+
+def description_summary(data):
+    lines = (data.get("description") or "").splitlines()
+    return f"{lines[0]}（共 {len(lines)} 行）" if lines else "【等待设置】"
 
 
 def _preview_status(data: dict[str, Any], now: datetime) -> str:
@@ -118,7 +123,7 @@ def _user_limits(data: dict[str, Any]) -> str:
 
 def _region_limits(data: dict[str, Any]) -> str:
     regions = data.get("allowed_regions", [])
-    return "、".join(regions) if regions else "全国"
+    return "、".join(regions) if regions else "不限"
 
 
 def _requirements(data: dict[str, Any]) -> str:

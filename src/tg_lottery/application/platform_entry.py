@@ -27,7 +27,7 @@ async def require_current_platform_entry(session, campaign, participant):
     if relation["state"] != "eligible":
         raise UserFacingError("请先从本场入口启动机器人、解除屏蔽并验证本人参与条件")
     if check is None or not _current_check(check, policy=policy, relation=relation):
-        raise UserFacingError("本人平台条件需要重新验证, 请从本场详情验证后获取新邀请入口")
+        raise UserFacingError("本人平台条件需要重新验证\uff0c 请从本场详情验证后获取新邀请入口")
 
 
 def _current_check(check, *, policy, relation):

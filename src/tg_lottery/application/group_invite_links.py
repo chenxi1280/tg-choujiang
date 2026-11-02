@@ -105,7 +105,7 @@ async def _require_target_available(session: object, request: GroupInviteLinkReq
         )
     )
     if blocked:
-        raise UserFacingError("该群机器人权限异常, 请联系创建者将机器人设为管理员后重试")
+        raise UserFacingError("该群机器人权限异常\uff0c 请联系创建者将机器人设为管理员后重试")
 
 
 async def _queue_link_request(

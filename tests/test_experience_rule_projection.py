@@ -48,17 +48,17 @@ def test_card_and_private_rules_render_each_frozen_group_bonus() -> None:
     private = human_rule(rules, CHATS)
     complete_rules = "\n".join(public_rule_blocks(payload))
     for text in (complete_rules, private):
-        assert "每邀请 3 个有效新成员 +1 次" in text
-        assert "每邀请 5 个有效新成员 +1 次" in text
-        assert "上限 7 次" in text
-        assert "每天发言满 20 条 +2 次" in text
+        assert "每邀请 3 个有效新成员 +1 张" in text
+        assert "每邀请 5 个有效新成员 +1 张" in text
+        assert "上限 7 张" in text
+        assert "每天发言满 20 条 +2 张" in text
         assert "每天只奖励一次" in text
         assert "按达标天数累计" in text
         assert "每条至少" not in text and "文字、图片、表情均计数" in text
         assert "-100" not in text
-    assert "公告频道</a>" in card and "📡 关注-<a" in card
+    assert "公告频道</a>" in card and "📡 关注「<a" in card
     assert "累计发言至少 <b>50</b> 条" in card
-    assert "抽奖加成票(发言)" in card and "邀请加成票" in card and card.count("规则</a>") == 2
+    assert "发言加成票" in card and "邀请加成票" in card and card.count("规则</a>") == 1
     assert "全部达标" not in private
 
 
@@ -82,8 +82,8 @@ def test_multi_group_failure_names_the_actual_missing_group() -> None:
 def test_group_picker_shows_name_without_raw_chat_id() -> None:
     group = SimpleNamespace(title="读书群", chat_id=-100123456789)
     availability = GroupAvailability(True, "可选择", "")
-    text = _group_button_text(group, availability, True, parallel_count=2)
-    assert "读书群" in text and "另有 2 个" in text
+    text = _group_button_text(group, availability, True)
+    assert "读书群" in text and "另有" not in text
     assert str(group.chat_id) not in text
 
 

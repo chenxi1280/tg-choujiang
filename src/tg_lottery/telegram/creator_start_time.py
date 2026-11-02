@@ -11,14 +11,14 @@ async def edit(flow, query):
     from tg_lottery.telegram.public_projection import format_public_time
 
     current = (
-        format_public_time(data["start_at"], "Asia/Shanghai")
+        format_public_time(data["start_at"], "Asia/Shanghai", include_timezone=False)
         if data.get("start_at")
         else "发布完成后立即开始"
     )
     await flow._render(
         query,
         data=data,
-        text=f"⏰ 开始时间（北京时间）\n当前：{current}\n"
+        text=f"▶️ 开始时间（北京时间）\n当前：{current}\n"
         "发送 YYYY-MM-DD HH:MM 设置预约开始；必须早于报名截止。",
         rows=[[("立即开始", "draft_start_now")], *back_rows(data, input_field=True)],
     )

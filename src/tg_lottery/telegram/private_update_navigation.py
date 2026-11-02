@@ -70,7 +70,7 @@ async def send_operation_error(handler, message, exc):
     )
     text = public_error_text(exc, handler._default_timezone)
     prefix = "页面显示未完成" if isinstance(exc, PanelUnavailableError) else "操作未完成"
-    await message.answer(f"{prefix}: {text}")
+    await message.answer(f"{prefix}：{text}")
 
 
 async def callback_error(handler, query, exc):

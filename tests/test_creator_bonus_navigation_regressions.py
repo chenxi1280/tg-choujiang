@@ -41,8 +41,8 @@ def test_empty_bonus_list_offers_group_selection(kind):
         "chat_id": None,
     }
     text, rows = bonus.list_view(data, kind)
-    assert "请先选择参与活动的群" in text
-    assert any(("选择参与活动的群", "draft_group") in row for row in rows)
+    assert "请先选择参与群" in text
+    assert any(("选择参与群", "draft_group") in row for row in rows)
 
 
 def test_custom_daily_cap_is_preserved_when_reselecting_limited_mode():
@@ -62,7 +62,7 @@ def test_changing_message_count_does_not_change_remembered_daily_cap():
     assert data["bonus_working_copy"]["rule"]["daily_max_cycles"] == 7
 
 
-@pytest.mark.parametrize("kind,label", [("invite", "邀请加成票"), ("activity", "抽奖加成票(发言)")])
+@pytest.mark.parametrize("kind,label", [("invite", "邀请加成票"), ("activity", "发言加成票")])
 def test_new_bonus_without_groups_shows_pending_configuration(kind, label):
     summary = bonus_summary(new_draft() | {"bonus_types": [kind]})
     assert f"{label}待逐群设置" in summary

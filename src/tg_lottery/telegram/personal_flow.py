@@ -1,5 +1,3 @@
-from zoneinfo import ZoneInfo
-
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from tg_lottery.application.queries import QueryService
@@ -19,6 +17,7 @@ from tg_lottery.telegram.participant_list_views import (
 )
 from tg_lottery.telegram.public_projection import (
     campaign_state_text,
+    format_public_time,
 )
 from tg_lottery.telegram.ui_style import style_keyboard
 
@@ -255,9 +254,9 @@ class PersonalFlow:
             and profile.region_editable_until is not None
             and profile.region_editable_until < utcnow() < profile.region_locked_until
         ):
-            text += "\n当前锁定至：" + profile.region_locked_until.astimezone(
-                ZoneInfo(self._default_timezone)
-            ).strftime("%Y年%m月%d日 %H:%M")
+            text += "\n当前锁定至：" + format_public_time(
+                profile.region_locked_until, self._default_timezone
+            )
             keyboard = settings_keyboard()
         await _respond(
             message,
@@ -347,9 +346,8 @@ def _region_keyboard() -> InlineKeyboardMarkup:
 
 
 def _region_success_text(profile: object, timezone: str) -> str:
-    zone = ZoneInfo(timezone)
-    editable = profile.region_editable_until.astimezone(zone).strftime("%Y年%m月%d日 %H:%M")
-    locked = profile.region_locked_until.astimezone(zone).strftime("%Y年%m月%d日 %H:%M")
+    editable = format_public_time(profile.region_editable_until, timezone)
+    locked = format_public_time(profile.region_locked_until, timezone, include_timezone=False)
     return f"✅ 已设定为【{profile.region}】\n你仍可在 {editable} 前修改，之后将锁定至 {locked}。"
 
 

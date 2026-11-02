@@ -33,8 +33,8 @@ def test_member_rule_payload_contains_saved_calendar_start_for_card_and_rules():
     card, _pages = rule_manifest(payload)
     rules = "\n".join(complete_rule_pages(payload))
     assert card and "本期任务时间" in rules
-    assert "2026年10月04日" in rules
-    assert "每天 36 条" in rules
+    assert "2026年10月4日" in rules
+    assert "每天各满 36 条" in rules
     assert "join_calendar_ref" in card
 
 

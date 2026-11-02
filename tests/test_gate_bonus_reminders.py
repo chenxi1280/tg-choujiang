@@ -41,7 +41,7 @@ async def test_shared_messages_obey_gate_and_bonus_thresholds(
         if gate == 5 and bonus == 10:
             assert "全部行为门槛已完成" in text and "再发 5 条 +1 次" in text
         if gate == 10 and count == 5:
-            assert "暂存" in rows[-1].payload["ticket_status"]
+            assert "尚未生效" in rows[-1].payload["ticket_status"]
     await speech(session_factory, count=count, at=START, first_id=1)
     async with session_factory() as session:
         assert len(list(await session.scalars(select(TelegramOutbox)))) == len(rows)
@@ -57,7 +57,7 @@ async def test_group_completion_and_remaining_bonus_are_one_notice_then_finish_s
         assert len(rows) == 1
         assert "❌ B群 · 今日 0/5 条" in rows[0].payload["text"]
         assert "✅ 测试群 · 门槛完成" in rows[0].payload["text"]
-        assert "测试群: 已加 0 次 · 再发 5 条 +1 次" in rows[0].payload["text"]
+        assert "测试群\uff1a 已加 0 次 · 再发 5 条 +1 次" in rows[0].payload["text"]
         assert not (await session.get(Participant, pid)).admission_qualified
     await speech(session_factory, chat_id=SECOND, count=5)
     async with session_factory() as session:
@@ -85,4 +85,4 @@ async def test_compact_gate_completion_survives_midnight_with_daily_bonus_reset(
     assert "✅ 测试群 · 门槛完成" in latest.payload["text"]
     assert "❌ B群 · 今日 0/5 条" in latest.payload["text"]
     assert "已加 1 次 · 再发 5 条 +1 次" in latest.payload["text"]
-    assert "暂存" in latest.payload["ticket_status"]
+    assert "尚未生效" in latest.payload["ticket_status"]

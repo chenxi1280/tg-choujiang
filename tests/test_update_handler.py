@@ -314,7 +314,7 @@ async def test_internal_error_is_logged_but_not_exposed(caplog) -> None:
 
     await handler._send_operation_error(message, ValueError(secret))
 
-    assert message.answers == ["操作未完成: 系统暂时无法完成此操作, 请稍后重试。"]
+    assert message.answers == ["操作未完成\uff1a系统暂时无法完成此操作\uff0c 请稍后重试。"]
     assert secret not in message.answers[0]
     assert secret in caplog.text
 
@@ -370,7 +370,7 @@ async def test_reviewed_validation_message_remains_actionable() -> None:
 
     await handler._send_operation_error(message, UserFacingError("奖品名称长度必须为 1-120 字"))
 
-    assert message.answers == ["操作未完成: 奖品名称长度必须为 1-120 字"]
+    assert message.answers == ["操作未完成\uff1a奖品名称长度必须为 1-120 字"]
 
 
 def _handler(*, member_flow=None) -> LotteryUpdateHandler:

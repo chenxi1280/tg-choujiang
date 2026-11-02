@@ -41,7 +41,7 @@ from tg_lottery.telegram.public_projection import campaign_state_text
 from tg_lottery.telegram.publication_error_text import publication_error_text
 from tg_lottery.telegram.ui_style import style_keyboard
 
-DRAW_CONFIRMATION_TEXT = "开奖结果已生成, 群公告和中奖通知正在发送。"
+DRAW_CONFIRMATION_TEXT = "开奖结果已生成， 群公告和中奖通知正在发送。"
 
 
 class AdminFlow:

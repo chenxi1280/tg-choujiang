@@ -57,7 +57,7 @@ async def test_per_target_delete_permissions_keep_unknown_and_own_message_rights
     assert [r["own"] for r in result["delete_permission_checks"]] == [True, True, None]
     assert [r["commands"] for r in result["delete_permission_checks"]] == [False, True, None]
     text = deletion_permission_text(data | result)
-    assert all(t in text for t in ("一群", "二群", "三群", "无法删除用户报名命令", "暂时无法确认"))
+    assert all(t in text for t in ("一群", "二群", "三群", "无法删除用户报名指令", "暂时无法确认"))
     assert bot.get_chat_member.await_count == 3
 
 
@@ -97,9 +97,7 @@ async def test_registration_failure_preserves_registered_fact_and_labels_action(
     )
     assert ("已报名" if registered else "报名待完成") in text
     assert "❌ 条件群未加入" in text
-    assert keyboard.inline_keyboard[0][0].text == (
-        "🔄 核验并刷新" if registered else "🎟️ 核验并报名"
-    )
+    assert keyboard.inline_keyboard[0][0].text == ("🔄 重新检查" if registered else "🎟️ 报名")
 
 
 @pytest.mark.parametrize("label", ["✅已关注", "❌ 未关注", "⏳ 待核验", "✅ 发言数"])

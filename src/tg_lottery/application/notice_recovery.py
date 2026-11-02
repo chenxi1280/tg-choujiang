@@ -42,7 +42,7 @@ async def retry_failed_notices(uow_factory, campaign_id, actor_user_id, *, expec
                 _reset_failed_outbox(row)
                 retried.append(str(row.id))
         if not retried:
-            raise UserFacingError("没有可安全重试的明确失败通知; 暂停中的开始通知须恢复后重试")
+            raise UserFacingError("没有可安全重试的明确失败通知\uff1b 暂停中的开始通知须恢复后重试")
         add_audit(
             uow.session,
             actor_user_id=actor_user_id,

@@ -36,9 +36,11 @@ def test_every_qualification_state_has_a_non_technical_public_label() -> None:
 def test_public_time_requires_and_displays_the_authoritative_timezone() -> None:
     instant = datetime(2026, 8, 8, 3, 25, tzinfo=UTC)
 
-    assert format_public_time(instant, "Asia/Shanghai") == ("2026年08月08日 11:25 (北京时间)")
+    assert format_public_time(instant, "Asia/Shanghai") == (
+        "2026年8月8日 11:25\uff08北京时间\uff09"
+    )
     assert format_public_time("2026-08-08 11:25", "Asia/Shanghai") == (
-        "2026年08月08日 11:25 (北京时间)"
+        "2026年8月8日 11:25\uff08北京时间\uff09"
     )
     with pytest.raises(ValueError, match="explicit timezone"):
         format_public_time(instant, "")
@@ -49,7 +51,7 @@ def test_public_time_never_exposes_an_unmapped_iana_timezone() -> None:
 
     text = format_public_time(instant, "Europe/London")
 
-    assert text == "2026年08月08日 11:25 (北京时间)"
+    assert text == "2026年8月8日 11:25\uff08北京时间\uff09"
     assert "Europe/London" not in text
 
 
@@ -58,11 +60,11 @@ def test_public_error_projection_only_exposes_explicitly_reviewed_details() -> N
 
     assert public_error_text(UserFacingError("奖品名称过长"), "Asia/Shanghai") == ("奖品名称过长")
     assert public_error_text(ValueError(secret), "Asia/Shanghai") == (
-        "系统暂时无法完成此操作, 请稍后重试。"
+        "系统暂时无法完成此操作\uff0c 请稍后重试。"
     )
     assert secret not in public_error_text(ValueError(secret), "Asia/Shanghai")
     assert public_error_text(AuthorizationDenied(secret), "Asia/Shanghai") == (
-        "没有执行此操作的权限, 或页面授权已失效。"
+        "没有执行此操作的权限\uff0c 或页面授权已失效。"
     )
 
 
@@ -70,5 +72,5 @@ def test_region_lock_uses_the_bot_business_timezone_without_raw_datetime() -> No
     error = RegionLockedError(datetime(2026, 9, 7, 0, 0, tzinfo=UTC))
 
     assert public_error_text(error, "Asia/Shanghai") == (
-        "地区已锁定, 请于 2026年09月07日 08:00 (北京时间) 后修改。"
+        "地区已锁定\uff0c 请于 2026年9月7日 08:00\uff08北京时间\uff09 后修改。"
     )

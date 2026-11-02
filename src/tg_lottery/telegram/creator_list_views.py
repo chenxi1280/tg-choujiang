@@ -33,7 +33,11 @@ def creator_list_view(result) -> tuple[str, InlineKeyboardMarkup]:
     scope = (
         "🗂️ 我可管理的活动（进入时实时检查全部参与群权限）" if result.managed else "🗂️ 我发起的抽奖"
     )
-    lines = [scope, "", f"共 {result.total} 场 · 第 {result.page + 1}/{result.page_count} 页"]
+    lines = [
+        scope + "（北京时间）",
+        "",
+        f"共 {result.total} 场 · 第 {result.page + 1}/{result.page_count} 页",
+    ]
     prefix = "nav:managed" if result.managed else "nav:created"
     categories = _list_categories(result)
     rows = _category_rows(categories, prefix=prefix, selected=result.category)
@@ -43,9 +47,10 @@ def creator_list_view(result) -> tuple[str, InlineKeyboardMarkup]:
     if result.unconfirmed:
         lines.append(f"未确认（待核查）：{result.unconfirmed}")
     for number, campaign in enumerate(result.rows, result.page * CREATOR_PAGE_SIZE + 1):
+        moment = format_public_time(campaign.draw_at, campaign.timezone, include_timezone=False)
         lines.append(
             f"{number}. {campaign.name}｜{_campaign_label(campaign, result.category)}\n"
-            f"  开奖 {format_public_time(campaign.draw_at, campaign.timezone)}"
+            f"  开奖 {moment}"
         )
         rows.append([_button(campaign.name, _campaign_route(campaign.public_ref, result))])
     if not result.rows:
@@ -110,7 +115,7 @@ def _list_pages(result, prefix):
 
 def _category_rows(categories, *, prefix, selected):
     buttons = [
-        _button(("✅ " if category == selected else "") + label, f"{prefix}:{category}:0")
+        _button(("✅ " if category == selected else "⬜ ") + label, f"{prefix}:{category}:0")
         for label, category in categories
     ]
     return [buttons[i : i + CATEGORY_COLUMNS] for i in range(0, len(buttons), CATEGORY_COLUMNS)]

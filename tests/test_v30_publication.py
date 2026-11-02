@@ -17,7 +17,7 @@ def test_confirmation_counts_only_effective_bonus_groups(version, bonuses):
     rules = rules_for("invite", bonuses)
     data = rules.model_dump(mode="json") | {"participation_rules_version": version}
     text, _rows = confirmation_view(data)
-    for kind, label in (("invite", "邀请加成票"), ("activity", "抽奖加成票(发言)")):
+    for kind, label in (("invite", "邀请加成票"), ("activity", "发言加成票")):
         count = len(data[f"group_{kind}_rules"])
         expected = count if version == "legacy" or kind in bonuses else 0
         assert f"{label}\uff1a{expected} 个群开启" in text
@@ -51,7 +51,7 @@ def test_full_rules_pages_keep_each_condition_and_same_activity_link(cover):
     assert all(html_utf16_length(page) <= 3500 for page in pages)
     assert all(f"https://t.me/channel_{i}" in "".join(pages) for i in range(50))
     assert "join_abcdefgh" in card and "join_abcdefgh" in "".join(pages)
-    assert "每天 2 条" in "".join(pages)
+    assert "任意 1 天有效发言满 2 条" in "".join(pages)
     assert "北京时间自然日" in "".join(pages)
     assert "命令、机器人、服务消息、转发及空白消息不计" in "".join(pages)
 
@@ -75,9 +75,9 @@ def test_public_counting_explanation_follows_actual_enabled_modules(mode, bonuse
         )
     )
     speech_enabled = mode == "message" or "activity" in bonuses
-    assert ("北京时间自然日" in text) is speech_enabled
+    assert ("0 点换日" in text) is speech_enabled
     assert ("11 分钟内" in text) is speech_enabled
-    assert ("登记前不补采" in text) is speech_enabled
+    assert ("报名前不补采" in text) is speech_enabled
 
 
 async def long_campaign(factory):

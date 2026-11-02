@@ -25,7 +25,7 @@ TARGET_CHAT_ID = -100999
 
 
 class ReminderParticipants:
-    def __init__(self, error="仅合格参与者可获取本活动群邀请链接"):
+    def __init__(self, error="仅合格参与者可获取本参与群邀请链接"):
         self.reminders = []
         self.error = error
 
@@ -117,7 +117,7 @@ async def test_group_invite_without_participation_queues_group_reminder():
         _flow(campaign, participants), query, f"{PUBLIC_REF}:{TARGET_CHAT_ID}"
     )
 
-    reason = "仅合格参与者可获取本活动群邀请链接"
+    reason = "仅合格参与者可获取本参与群邀请链接"
     assert query.answers == [(reason, True)]
     assert participants.reminders[0]["text"] == reason
 
@@ -145,7 +145,7 @@ async def test_no_bonus_rules_queues_group_reminder_with_join_link():
     campaign.rules = CampaignRules().model_dump(mode="json")
     query = _attach_answer(_query())
     await bonus_callback(_flow(campaign, participants), query, PUBLIC_REF)
-    assert participants.reminders[0]["text"] == "本期抽奖没有开启可用的邀请或抽奖加成票(发言)。"
+    assert participants.reminders[0]["text"] == "本期抽奖没有开启可用的邀请或发言加成票。"
     assert participants.reminders[0]["campaign_ref"] == PUBLIC_REF
 
 

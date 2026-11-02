@@ -44,7 +44,7 @@ async def test_cancelled_progress_stays_at_recorded_day_after_updates_and_archiv
             )
 
         assert len(set(outputs)) == 1
-        assert "记录日期 2026-10-02 5/5 条; 连续 2/7 天" in outputs[0]
+        assert "记录日期 2026年10月2日 5/5 条\uff1b 连续 2/7 天" in outputs[0]
         assert "本期基础发言已停止累计" in outputs[0]
         assert "当前有效抽奖次数" not in outputs[0]
         assert (
@@ -63,7 +63,7 @@ async def test_cancellation_after_cutoff_keeps_original_cutoff_day(session_facto
 
         text = await base_activity_views.base_progress_text(session, campaign, participant)
 
-        assert "记录日期 2026-10-01 5/5 条; 连续 2/7 天" in text
+        assert "记录日期 2026年10月1日 5/5 条\uff1b 连续 2/7 天" in text
         assert campaign.cutoff_at == cutoff_at
 
 
@@ -92,7 +92,7 @@ async def test_drawn_archival_does_not_treat_other_audits_as_cancellation(
 
         text = await base_activity_views.base_progress_text(session, campaign, participant)
 
-        assert "记录日期 2026-10-01 5/5 条; 连续 2/7 天" in text
+        assert "记录日期 2026年10月1日 5/5 条\uff1b 连续 2/7 天" in text
         assert "未确认" not in text
 
 
@@ -139,7 +139,7 @@ async def test_terminal_progress_requires_its_own_completion_or_cancellation_fac
     assert "无法确认记录截止日期" in detail.base_progress
     assert "缺少取消时间审计记录" in detail.base_progress
     assert "历史条数和连续进度未确认" in detail.base_progress
-    assert "记录日期 2026-10" not in detail.base_progress
+    assert "记录日期 2026年10月" not in detail.base_progress
     assert "连续 2/7 天" not in detail.base_progress
 
 

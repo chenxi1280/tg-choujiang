@@ -134,10 +134,11 @@ async def test_group_page_checks_all_visible_groups_concurrently_and_batches_cou
             context=DraftPanelContext("draft", 1, 10),
         )
     )
-    rows = await _finish_concurrent(task, bot)
+    rows, counts = await _finish_concurrent(task, bot)
     queries.active_campaign_counts_by_chats.assert_awaited_once_with(PAGE_CHAT_IDS)
     assert len(rows) == len(PAGE_CHAT_IDS)
-    assert "另有 3 个进行中活动" in rows[-1][0].text
+    assert counts == {CHAT_ID: 3}
+    assert "另有" not in rows[-1][0].text
     assert rows[-1][0].text.startswith("✅")
 
 

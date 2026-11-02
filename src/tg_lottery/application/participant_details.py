@@ -79,7 +79,9 @@ async def load_participant_campaign_detail(
                 session, campaign, participant.id, outcome=outcome
             ),
             outcome=outcome,
-            base_progress=await base_progress_text(session, campaign, participant),
+            base_progress=await base_progress_text(
+                session, campaign, participant, include_timezone=False
+            ),
             membership_progress=await saved_membership_progress(session, campaign, participant),
             base_qualified=behavior_qualified(participant, campaign),
             public_ref=campaign.public_ref,

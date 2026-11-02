@@ -1,10 +1,9 @@
-from zoneinfo import ZoneInfo
-
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.domain.public_refs import is_campaign_public_ref
 from tg_lottery.presentation.draw_messages import draw_result_pages, draw_result_text
+from tg_lottery.telegram.public_projection import format_public_time
 from tg_lottery.telegram.ui_style import style_keyboard
 
 
@@ -47,12 +46,11 @@ async def show_public_result(flow, message, reference: str) -> None:
 
 
 def _result_payload(campaign, outcome, *, rows, prizes, username):
-    completed = outcome.completed_at.astimezone(ZoneInfo("Asia/Shanghai"))
     return {
         "campaign_name": campaign.name,
         "campaign_ref": campaign.public_ref,
         "bot_username": username,
-        "completed_at_text": completed.strftime("%Y年%m月%d日 %H:%M:%S（北京时间）"),
+        "completed_at_text": format_public_time(outcome.completed_at, "Asia/Shanghai"),
         "winners": [_winner_payload(row) for row in rows],
         "undistributed": _unallocated(rows, prizes),
     }

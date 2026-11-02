@@ -162,7 +162,7 @@ def _more(data: dict) -> tuple[str, ButtonRows]:
         f"🧑‍💼 发奖人员：{data.get('issuer_name') or data.get('creator_name') or '当前管理员'}",
         [
             [("开始时间", "draft_start")],
-            [("发奖人员", "draft_issuer"), ("消息提示", "draft_messages")],
+            [("发奖人员", "draft_issuer"), ("消息与提醒", "draft_messages")],
             [("载入上次抽奖配置", "draft_load_last")],
             [("清空并新建草稿", "draft_clear")],
             [("返回草稿", "draft_back")],
@@ -205,8 +205,8 @@ def _user_limits(data: dict) -> tuple[str, ButtonRows]:
         f"🌐 允许地区：{regions}\n选择立即保存。",
         [
             [
-                ("✓ 用户名必填" if required else "用户名必填", "draft_username_on"),
-                ("用户名可为空" if required else "✓ 用户名可为空", "draft_username_off"),
+                ("✅ 用户名必填" if required else "⬜ 用户名必填", "draft_username_on"),
+                ("⬜ 用户名可为空" if required else "✅ 用户名可为空", "draft_username_off"),
             ],
             [("设置地区限制", "draft_regions")],
             [("返回参与条件", "draft_back")],

@@ -69,7 +69,7 @@ async def test_first_day_daily_limit_reset_and_replayed_messages(session_factory
         assert "本群发票前置条件已满足" in text
     async with session_factory() as session:
         texts = await session.scalars(select(TelegramOutbox.payload))
-        assert any("抽奖加成票(发言) +1" in row.get("text", "") for row in texts)
+        assert any("发言加成票 +1" in row.get("text", "") for row in texts)
     await speech(session_factory, count=needed, at=START + timedelta(days=2), first_id=400)
     assert await totals(session_factory, pid) == 3
 

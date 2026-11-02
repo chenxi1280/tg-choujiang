@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from tg_lottery.domain.message_calendar import task_date_range
+from tg_lottery.telegram.public_projection import format_public_time
 
 
 def payload_task_dates(payload, rules):
@@ -17,7 +18,7 @@ def payload_task_dates(payload, rules):
 
 def task_date_text(dates):
     def label(day):
-        return f"{day.year}年{day.month}月{day.day}日"
+        return format_public_time(day, "Asia/Shanghai", include_timezone=False, date_only=True)
 
     if len(dates) > 4:
         return f"{label(dates[0])}至{label(dates[-1])}共 {len(dates)} 天"

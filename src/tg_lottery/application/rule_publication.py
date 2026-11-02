@@ -115,14 +115,14 @@ def queue_rule_states(
     labels = {
         "cancelled": "已取消",
         "drawn": "已开奖",
-        "settling": "已截止, 复核中",
-        "ready_to_draw": "已截止, 待开奖",
+        "settling": "已截止\uff0c 复核中",
+        "ready_to_draw": "已截止\uff0c 待开奖",
         "drawing": "开奖中",
         "paused": "已暂停",
         "running": "进行中",
         "archived": "已归档",
     }
-    heading = f"当前状态: {labels[state]}"
+    heading = f"当前状态\uff1a {labels[state]}"
     if state in {"settling", "drawn"}:
         heading += "\n" + campaign_state_times(
             cutoff_at=campaign.cutoff_at,

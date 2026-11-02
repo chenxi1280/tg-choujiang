@@ -1,10 +1,15 @@
 import html
-from datetime import datetime
-from zoneinfo import ZoneInfo
+
+from tg_lottery.telegram.public_projection import format_public_time
 
 
 def featured_content(payload, *, digest):
-    heading = f"📅 {payload['date']} 每日精选抽奖" if digest else "🎉 新抽奖上线"
+    date = (
+        format_public_time(payload["date"], "Asia/Shanghai", include_timezone=False, date_only=True)
+        if digest
+        else ""
+    )
+    heading = f"📅 {date} 每日精选抽奖" if digest else "🎉 新抽奖上线"
     parts = [f"<b>{heading}</b>"]
     buttons = []
     for item in payload["items"]:
@@ -38,6 +43,4 @@ def _item_text(item, *, url, label):
 
 
 def _time(value):
-    return (
-        datetime.fromisoformat(value).astimezone(ZoneInfo("Asia/Shanghai")).strftime("%m-%d %H:%M")
-    )
+    return format_public_time(value, "Asia/Shanghai", include_timezone=False)

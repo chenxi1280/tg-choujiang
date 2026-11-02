@@ -119,7 +119,7 @@ async def _observed_member(chat, user):
     return SimpleNamespace(status="member" if chat == -1000 else "left")
 
 
-def test_detail_times_keep_seconds_and_the_same_saved_instant():
+def test_detail_times_show_minutes_and_preserve_the_saved_instant():
     from dataclasses import replace
 
     from tg_lottery.telegram.member_navigation_views import participant_detail_view
@@ -128,6 +128,6 @@ def test_detail_times_keep_seconds_and_the_same_saved_instant():
     detail = replace(_detail(), draw_at=moment, cutoff_at=moment - timedelta(minutes=5))
     pages, _ = participant_detail_view(detail, user_id=201, bot_username="testbot")
     text = "\n".join(pages)
-    assert "2026年10月30日 11:04:59" in text
-    assert "2026年10月30日 10:59:59" in text
+    assert "2026年10月30日 11:04" in text
+    assert "2026年10月30日 10:59" in text
     assert detail.draw_at == moment

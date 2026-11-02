@@ -241,7 +241,7 @@ async def _participant(session: object, campaign_id: UUID, reference: str) -> Pa
     if not rows:
         raise UserFacingError("该用户尚未报名本活动")
     if len(rows) > 1:
-        raise UserFacingError("用户名匹配到多个报名记录, 请改用 Telegram 用户 ID")
+        raise UserFacingError("用户名匹配到多个报名记录\uff0c 请改用 Telegram 用户 ID")
     return rows[0]
 
 
@@ -308,7 +308,7 @@ async def _require_unique_participant(
     if current_id is not None:
         statement = statement.where(WinnerDesignation.id != current_id)
     if await session.scalar(statement) is not None:
-        raise UserFacingError("当前活动要求中奖人唯一, 该用户已被指定到其他名额")
+        raise UserFacingError("当前活动要求中奖人唯一\uff0c 该用户已被指定到其他名额")
 
 
 def _validate_slot(prize: Prize, prize_slot_no: int) -> None:

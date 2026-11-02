@@ -70,7 +70,7 @@ def test_old_capped_activity_query_does_not_promise_another_reward_today():
         update={"daily_cap_mode": "limited", "daily_max_cycles": 1}
     )
     text = _next_reward_notice(campaign(), rule, needed=1, awarded_today=rule.reward_tickets)
-    assert "今日抽奖加成票(发言)奖励已达" in text and "下一轮" not in text
+    assert "今日发言加成票奖励已达" in text and "下一轮" not in text
     text = _rules(campaign(), rules, FIRST)
     assert f"入群满{rules.invite.retention_hours}小时" in text
     assert "新场入群满24小时" not in text
@@ -191,7 +191,7 @@ async def test_picker_reuses_only_current_operation_proof_and_rechecks_next_oper
     values = dict(
         groups=groups, selected_chat_ids=(-1001,), context=DraftPanelContext("draft", 1, 10)
     )
-    rows = await renderer._group_buttons(
+    rows, _ = await renderer._group_buttons(
         PanelTarget(201, 201, 10), **values, verified_availability={-1001: ready}
     )
     assert len(rows) == 2 and rows[0][0].text.startswith("✅")

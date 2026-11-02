@@ -37,7 +37,9 @@ class AdminSessionService:
             source = current_update_id()
             previous = row.data.get("mutation_source_update_id")
             if source is not None and previous is not None and source < int(previous):
-                raise UserFacingError("草稿已有更新的操作, 原请求未再次修改内容; 请使用当前页面")
+                raise UserFacingError(
+                    "草稿已有更新的操作\uff0c 原请求未再次修改内容\uff1b 请使用当前页面"
+                )
             row.state = state
             row.data = data | ({"mutation_source_update_id": source} if source is not None else {})
             row.expires_at = utcnow() + DRAFT_SESSION_TTL

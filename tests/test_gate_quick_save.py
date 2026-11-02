@@ -70,7 +70,7 @@ async def test_invalid_input_keeps_field_and_last_saved_rule_with_actionable_lat
     assert sessions.data[editor.EDITOR_KEY]["field"] == "daily_messages"
     values = renderer.render.await_args.kwargs
     assert "未保存" in values["text"] and "正整数" in values["text"]
-    assert ("8条/天", "draft_gate:quick:daily_messages:8") in [
+    assert ("⬜ 8条/天", "draft_gate:quick:daily_messages:8") in [
         b for row in values["rows"] for b in row
     ]
     setup[0].assert_not_awaited()
@@ -152,9 +152,7 @@ def test_days_are_separate_and_clean_saved_gate_has_no_second_save_requirement()
     returned = editor.apply_action(data, "draft_gate:list")
     _, rows = views.view(returned)
     assert "draft_gate:save" not in [a for row in rows for _, a in row]
-    assert ("返回草稿预览\uff08已保存\uff09", "draft_gate:leave") in [
-        b for row in rows for b in row
-    ]
+    assert ("返回草稿\uff08已保存\uff09", "draft_gate:leave") in [b for row in rows for b in row]
 
 
 async def test_committed_reply_display_failure_replays_saved_result_without_second_save(

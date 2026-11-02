@@ -33,7 +33,7 @@ async def show_v3_rules(flow: Any, message: Any, campaign: Any) -> None:
     prizes = await flow._queries.prizes(campaign.id)
     payload = _rules_payload(flow, campaign, prizes)
     pages = complete_rule_pages(
-        payload, ("当前状态: " + campaign_state_text(campaign.state), *public_rule_blocks(payload))
+        payload, ("当前状态： " + campaign_state_text(campaign.state), *public_rule_blocks(payload))
     )
     await _send_rule_pages(message, pages, rows=_v3_rules_rows(flow, campaign))
 
@@ -93,7 +93,7 @@ async def show_legacy_rules(flow, message, campaign):
     pages = complete_rule_pages(
         payload,
         (
-            "当前状态: " + campaign_state_text(campaign.state),
+            "当前状态： " + campaign_state_text(campaign.state),
             *public_rule_blocks(payload),
             html.escape(member_condition_views.draw_rule(rules)),
             html.escape(member_condition_views.deletion_rule(campaign)),

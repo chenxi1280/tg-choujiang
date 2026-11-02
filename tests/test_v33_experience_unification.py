@@ -27,9 +27,9 @@ from tg_lottery.telegram.ui_style import plain_label
 @pytest.mark.parametrize("key", ["create", "member", "bonus", "results"])
 def test_help_topics_do_not_include_the_next_topic(key):
     markers = {
-        "create": "➕ 发起抽奖",
+        "create": "➕ 创建抽奖",
         "member": "🛂 参加抽奖",
-        "bonus": "📈 邀请与抽奖加成票(发言)",
+        "bonus": "📈 邀请与发言加成票",
         "results": "🏆 开奖与领奖",
     }
     text, _keyboard = guide_topic(key, bot_username="lottery_bot")
@@ -51,7 +51,7 @@ def test_card_actions_match_the_frozen_enabled_capabilities(bonuses):
     assert markup.inline_keyboard[0][0].url == "https://t.me/lottery_test_bot?start=join_abcdefgh"
     assert markup.inline_keyboard[0][0].callback_data is None
     text = bonus_block(payload)
-    assert text.count('href="https://t.me/lottery_test_bot?start=rules_abcdefgh"') == 2
+    assert text.count('href="https://t.me/lottery_test_bot?start=rules_abcdefgh"') == 1
     assert ("群内输入" in text) == ("activity" in bonuses)
 
 
@@ -121,11 +121,11 @@ async def test_reputation_query_distinguishes_all_group_rewards_from_effective_t
     incoming = message()
     await GroupReputation(queries=queries, bot_username="lottery_bot").message(incoming, "人品")
     text = incoming.answer.call_args.args[0]
-    assert "本群抽奖加成票(发言)累计已入账：2" in text
-    assert "本场抽奖加成票(发言)累计（所有群）：5" in text
-    assert f"当前有效次数：{expected}" in text
-    assert "基础：1 次；邀请加成票：2 次（不计入抽奖加成票(发言)排行）" in text
-    assert ("加成暂存" in text) == (not base)
+    assert "本群发言加成票累计已入账\uff1a2" in text
+    assert "本场发言加成票累计\uff08所有群\uff09\uff1a5" in text
+    assert f"有效抽奖次数\uff1a{expected}" in text
+    assert "基础\uff1a1 次\uff1b邀请加成票\uff1a2 次\uff08不计入发言加成票排行\uff09" in text
+    assert ("完成门槛并满足参与条件后生效" in text) == (not base)
 
 
 def test_legacy_reputation_rules_keep_actual_global_scope_and_reward_limits():
@@ -138,8 +138,8 @@ def test_legacy_reputation_rules_keep_actual_global_scope_and_reward_limits():
     item.cutoff_at = datetime.now(UTC) + timedelta(days=3)
     text = _rules(item, rules, -100123)
     assert "每个统计群每天有效发言满 7 条" in text
-    assert "全部达标 +3 次" in text and "每日最多 6 次" in text
-    assert "每个有效邀请 +4 次" in text and "入群满48小时" in text
+    assert "全部达标 +3 张" in text and "每日最多 6 张" in text
+    assert "每个有效邀请 +4 张" in text and "入群满48小时" in text
     assert "未开启" not in text
 
 

@@ -31,7 +31,7 @@ def build_participated_campaign_list(
 ) -> tuple[str, InlineKeyboardMarkup]:
     title = "🧾 我的邀请记录" if invitation_only else "🙋 我参加的抽奖"
     empty = "当前分类没有可显示的邀请活动" if invitation_only else "当前分类没有参与记录"
-    lines = [title, ""]
+    lines = [title + "（北京时间）", ""]
     if page.rows:
         lines.extend(
             _campaign_line(row, position=position)
@@ -53,7 +53,7 @@ def _campaign_line(row: object, *, position: int) -> str:
     return (
         f"{position}. {row.name}｜{_state_label(row)}｜"
         f"{_ticket_label(row)}｜{qualification_state_text(row.qualification)}\n"
-        f"  开奖 {format_public_time(row.draw_at, row.timezone)}"
+        f"  开奖 {format_public_time(row.draw_at, row.timezone, include_timezone=False)}"
     )
 
 
@@ -97,7 +97,7 @@ def _category_row(
 ) -> list[InlineKeyboardButton]:
     return [
         InlineKeyboardButton(
-            text=("✅ " if category == selected else "") + label,
+            text=("✅ " if category == selected else "⬜ ") + label,
             callback_data=f"{prefix}:{category}:0" + _parent_suffix(parent),
         )
         for category, label in _CATEGORY_LABELS.items()

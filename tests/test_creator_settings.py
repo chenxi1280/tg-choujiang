@@ -155,9 +155,9 @@ def test_participation_add_button_opens_a_distinct_input_prompt() -> None:
         bot=RequiredChatBot(),
     )
 
-    assert rows[0] == [("添加准入条件", "draft_participation_add")]
+    assert rows[0] == [("添加额外参与条件", "draft_participation_add")]
     assert "也可直接发送群聊或频道链接" in participation_add_text()
-    assert "参与活动的群无需在这里重复添加" in participation_add_text()
+    assert "参与群无需在这里重复添加" in participation_add_text()
     assert "创建者和机器人都必须" in participation_add_text()
     assert "数字 chat ID 仅用于高级操作" in participation_add_text()
     assert (
@@ -175,7 +175,7 @@ def test_activity_bonus_rejects_a_channel_as_the_main_chat() -> None:
 
 
 async def test_required_chats_reject_participation_group_overlap() -> None:
-    with pytest.raises(UserFacingError, match=r"群组 -1001.*参与群.*准入条件"):
+    with pytest.raises(UserFacingError, match=r"群组 -1001.*参与群.*额外参与条件"):
         await resolve_requirements(
             RequiredChatBot(),
             {
@@ -255,7 +255,7 @@ async def test_participation_conditions_accumulate_by_resolved_chat_id() -> None
     with pytest.raises(UserFacingError, match="已经在参与条件"):
         await settings._receive_participation(_message("@public_group"), sessions.data)
 
-    with pytest.raises(UserFacingError, match="已经是参与活动的群"):
+    with pytest.raises(UserFacingError, match="已经是参与群"):
         await settings._receive_participation(_message("-1001"), sessions.data)
 
 
@@ -335,7 +335,7 @@ def test_custom_draw_prompt_uses_an_example_instead_of_a_python_format_string() 
 
     prompt = custom_draw_prompt("Asia/Shanghai", now=now)
 
-    assert "定时开奖 (北京时间)" in prompt
+    assert "定时开奖\uff08北京时间\uff09" in prompt
     assert "<code>2026-08-11 20:00</code>" in prompt
     assert "%Y" not in prompt
 

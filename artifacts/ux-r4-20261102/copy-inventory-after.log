@@ -1,0 +1,2 @@
+2188 public-copy candidates; 262 explicit exclusions; saved user-visible-copy.json
+src/tg_lottery/telegram/creator_start_time.py:21 '▶️ 开始时间（北京时间）\n当前：{…}\n发送 YYYY-MM-DD HH:MM 设置预约开始；必须早于报名截止。'

@@ -14,6 +14,7 @@ from tg_lottery.infrastructure.db import (
     CampaignParticipationGroup,
     Invitation,
 )
+from tg_lottery.telegram.public_projection import format_public_time
 
 
 async def admission_progress_text(
@@ -24,6 +25,7 @@ async def admission_progress_text(
     now=None,
     group_label=None,
     compact=False,
+    include_timezone=True,
 ) -> str:
     from tg_lottery.application.base_activity_views import (
         _progress_completed,
@@ -39,9 +41,9 @@ async def admission_progress_text(
     completed = _progress_completed(campaign, now)
     title = "发言数" if rules.admission.type == "message" else "邀请好友"
     status = "✅ 已完成" if participant.admission_qualified else "❌ 待完成"
-    lines = [f"🚪 整场门槛: {status}" if compact else f"本场{title}门槛: {status}"]
+    lines = [f"🚪 整场门槛\uff1a {status}" if compact else f"本场{title}门槛\uff1a {status}"]
     if observed_at is None:
-        return "\n".join([*lines, "历史记录截止时间未确认, 需要核查取消或开奖记录。"])
+        return "\n".join([*lines, "历史记录截止时间未确认\uff0c 需要核查取消或开奖记录。"])
     records = await _completion_records(session, participant.id)
     lines.extend(
         await _group_lines(
@@ -58,31 +60,48 @@ async def admission_progress_text(
         )
     )
     return _progress_footer(
-        lines, participant, timezone, campaign=campaign, completed=completed, compact=compact
+        lines,
+        participant,
+        timezone,
+        campaign=campaign,
+        completed=completed,
+        compact=compact,
+        include_timezone=include_timezone,
     )
 
 
-def _progress_footer(lines, participant, timezone, *, campaign, completed, compact):
+def _progress_footer(
+    lines, participant, timezone, *, campaign, completed, compact, include_timezone
+):
     calendar = campaign.rules.get("message_task_calendar")
     if calendar:
-        lines.append(calendar_window_text(campaign))
+        lines.append(calendar_window_text(campaign, include_timezone=include_timezone))
     if compact:
         return "\n".join([*lines, *(["⏹️ 本期已停止累计"] if completed else [])])
     if completed:
-        lines.append("本期已停止累计; 此处为历史进度, 结果请查看参与详情。")
+        lines.append("本期已停止累计\uff1b 此处为历史进度\uff0c 结果请查看参与详情。")
     else:
         active = (
             participant.admission_qualified
             and participant.qualification_state == QualificationState.ELIGIBLE
         )
         effective = effective_ticket_text(participant, active=active)
-        lines.append(f"当前有效抽奖次数: {effective}")
+        lines.append(f"当前有效抽奖次数\uff1a {effective}")
         lines.append(
-            "全部任务日分别达标后才完成整场门槛; 此前基础次数和已获得的加成尚未生效, 每日加成另算。"
+            "全部任务日分别达标后才完成整场门槛\uff1b "
+            + "此前基础次数和已获得的加成尚未生效\uff0c 每日加成另算。"
             if calendar
-            else "已获得的加成将在门槛和参与条件满足后生效; 门槛本场完成一次即可, 每日加成另算。"
+            else "已获得的加成将在门槛和参与条件满足后生效\uff1b "
+            + "门槛本场完成一次即可\uff0c 每日加成另算。"
         )
-    lines.append(_start_text(participant, timezone, start_at=campaign.preheat_at))
+    lines.append(
+        _start_text(
+            participant,
+            timezone,
+            start_at=campaign.preheat_at,
+            timezone_label=include_timezone and not calendar,
+        )
+    )
     return "\n".join(lines)
 
 
@@ -145,13 +164,14 @@ def _message_group_lines(progress, gate, *, names, records, timezone, day, compl
             )
             for key, item in progress.items()
         ]
-    label = f"记录日期 {day}" if completed else "今日"
+    date_text = format_public_time(day, str(timezone), include_timezone=False, date_only=True)
+    label = f"记录日期 {date_text}" if completed else "今日"
     return [
-        f"{names.get(key, key)}: 本期累计 {item.today_messages}"
+        f"{names.get(key, key)}\uff1a 本期累计 {item.today_messages}"
         f"/{gate.groups[key].daily_messages} 条" + _completed(records, key, timezone)
         if gate.groups[key].count_mode == "period"
-        else f"{names.get(key, key)}: {label} {item.today_messages}"
-        f"/{gate.groups[key].daily_messages} 条; 连续 {item.consecutive_days}"
+        else f"{names.get(key, key)}\uff1a {label} {item.today_messages}"
+        f"/{gate.groups[key].daily_messages} 条\uff1b 连续 {item.consecutive_days}"
         f"/{gate.groups[key].consecutive_days} 天" + _completed(records, key, timezone)
         for key, item in progress.items()
     ]
@@ -178,7 +198,7 @@ async def _invite_group_lines(session, participant, gate, *, names, records, tim
             for key, rule in gate.groups.items()
         ]
     return [
-        f"{names.get(key, key)}: 已确认 {counts.get(int(key), 0)}"
+        f"{names.get(key, key)}\uff1a 已确认 {counts.get(int(key), 0)}"
         f"/{rule.required_valid_invites} 人" + _completed(records, key, timezone)
         for key, rule in gate.groups.items()
     ]
@@ -197,16 +217,14 @@ def _compact_message_progress(item, rule):
     return text
 
 
-def _start_text(participant, timezone, *, start_at=None):
+def _start_text(participant, timezone, *, start_at=None, timezone_label=True):
     if participant.counting_started_at:
-        return (
-            "本场统计起点: "
-            + max(participant.counting_started_at, start_at or participant.counting_started_at)
-            .astimezone(timezone)
-            .strftime("%m-%d %H:%M:%S")
-            + " (北京时间)"
+        return "本场统计起点\uff1a " + format_public_time(
+            max(participant.counting_started_at, start_at or participant.counting_started_at),
+            str(timezone),
+            include_timezone=timezone_label,
         )
-    return "成员等条件尚未通过, 本场行为统计尚未开始。"
+    return "成员等条件尚未通过\uff0c 本场行为统计尚未开始。"
 
 
 async def _calendar_lines(session, campaign, participant, *, progress, names, day, now):
@@ -251,7 +269,13 @@ async def _calendar_lines(session, campaign, participant, *, progress, names, da
 
 def _completed(records: dict, key: str, timezone: object) -> str:
     completed_at = records.get(int(key))
-    return f"; 本群已于 {completed_at.astimezone(timezone).date()} 完成" if completed_at else ""
+    return (
+        "\uff1b 本群已于 "
+        + format_public_time(completed_at, str(timezone), include_timezone=False, date_only=True)
+        + " 完成"
+        if completed_at
+        else ""
+    )
 
 
 async def _completion_records(session, participant_id):

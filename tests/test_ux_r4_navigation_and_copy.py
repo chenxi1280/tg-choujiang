@@ -59,7 +59,7 @@ def test_blocked_counting_copy_preserves_window_conditions_and_no_backfill(regis
     text = blocked_counting_notice(campaign, registered=registered)
     assert expected in text and "本条发言不计数" in text
     assert "不补算" in text and "条件" in text
-    assert "2026年11月05日 20:00" in text
+    assert "2026年11月5日 20:00" in text
     if registered:
         assert "完成门槛并满足参与条件后生效" in text
         assert "当前有效抽奖次数为 0" in text
@@ -95,7 +95,7 @@ def test_total_keeps_both_bonus_sources_while_effective_count_obeys_gate():
         membership_progress="",
         base_progress="门槛尚未完成",
     )
-    assert "总抽奖次数: 4" in _ticket_summary(detail)
+    assert "总抽奖次数\uff1a4" in _ticket_summary(detail)
     assert current_effective_count(detail) == "0"
     detail.base_qualified = True
     assert current_effective_count(detail) == "4"

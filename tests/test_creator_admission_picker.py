@@ -33,7 +33,7 @@ def grant(action):
 
 def test_admission_empty_page_only_has_add_and_back():
     assert participation_rows({}) == [
-        [("添加准入条件", "draft_participation_add")],
+        [("添加额外参与条件", "draft_participation_add")],
         [("↩ 返回上一层", "draft_back")],
     ]
 
@@ -66,7 +66,7 @@ async def test_picker_select_toggle_and_permission_failure_are_atomic():
     assert sessions.data["required_chat_ids"] == [-1003]
     await picker.handle(_panel_query(), grant("select:-1003"))
     assert sessions.data["required_chat_ids"] == []
-    with pytest.raises(UserFacingError, match="参与活动的群"):
+    with pytest.raises(UserFacingError, match="参与群"):
         await picker.handle(_panel_query(), grant("select:-1001"))
     picker, sessions, _ = picker_fixture(bot=RequiredChatBot(creator_status="member"))
     before = dict(sessions.data)

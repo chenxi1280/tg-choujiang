@@ -71,8 +71,8 @@ def bonus_summary(data: dict[str, Any]) -> str:
         summaries.append(_invite_summary(data))
     if "activity" in types:
         summaries.append(
-            f"发言(每个条件群每天{data['activity_message_threshold']}条，"
-            f"全部达标+{data['activity_reward_tickets']}次)"
+            f"发言（每个条件群每天{data['activity_message_threshold']}条，"
+            f"全部达标+{data['activity_reward_tickets']}次）"
         )
     return "；".join(summaries)
 
@@ -120,11 +120,11 @@ def invite_bonus_rows(data: dict[str, Any]) -> ButtonRows:
     mode_rows = [
         [
             (
-                "✅ 简单比例" if _invite_mode(data) == "ratio" else "简单比例",
+                "✅ 简单比例" if _invite_mode(data) == "ratio" else "⬜ 简单比例",
                 "draft_bonus_invite_mode_ratio",
             ),
             (
-                "✅ 累计阶梯" if _invite_mode(data) == "tiered" else "累计阶梯",
+                "✅ 累计阶梯" if _invite_mode(data) == "tiered" else "⬜ 累计阶梯",
                 "draft_bonus_invite_mode_tiered",
             ),
         ]
@@ -364,10 +364,10 @@ def _ratio(data: dict[str, Any]) -> int:
 
 def _invite_summary(data: dict[str, Any]) -> str:
     if _invite_mode(data) == "ratio":
-        return f"邀请(每{_ratio(data)}个有效邀请+1次，上限{data['invite_bonus_cap']}次)"
+        return f"邀请（每{_ratio(data)}个有效邀请+1次，上限{data['invite_bonus_cap']}次）"
     tiers = data.get("invite_reward_tiers", [])
     values = ", ".join(f"{item['invite_count']}人+{item['total_bonus']}次" for item in tiers)
-    return f"邀请({values}，上限{data['invite_bonus_cap']}次)"
+    return f"邀请（{values}，上限{data['invite_bonus_cap']}次）"
 
 
 def _ratio_rows(data: dict[str, Any]) -> ButtonRows:

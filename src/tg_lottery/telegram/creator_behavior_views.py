@@ -130,7 +130,7 @@ def _list_view(data, editor):
         text += "\n保存将替换原门槛；两种加成保持独立设置。"
     rows = [
         [
-            (("✅ " if mode == value else "") + label, f"draft_gate:mode:{value}")
+            (("✅ " if mode == value else "⬜ ") + label, f"draft_gate:mode:{value}")
             for value, label in MODE_LABELS.items()
         ]
     ]
@@ -179,7 +179,8 @@ def _group_view(data: dict, editor: dict) -> tuple[str, list]:
         rows.insert(-1, [("复制到选定群", "draft_gate:copy_open")])
     return (
         f"🚪 抽奖门槛 · {chat_title(group)}\n{rule_text(editor['rule'], mode)}\n"
-        "🌱 每日加成独立设置。\n\n💾 快捷值或直接回复正整数，即保存本群门槛到草稿。\n"
+        "文字、图片、表情均计数。\n🌱 每日加成独立设置。\n\n"
+        "💾 快捷值或直接回复正整数，即保存本群门槛到草稿。\n"
         "默认修改条数；周期累计的期限为活动开始至截止，每日门槛可另设连续天数。"
         if mode == "message"
         else f"🚪 抽奖门槛 · {chat_title(group)}\n{rule_text(editor['rule'], mode)}\n\n"
@@ -294,7 +295,7 @@ def _field_preset_row(editor: dict, field: str) -> list:
     current = editor.get("rule", {}).get(field)
     values = [
         (
-            f"{'✓ ' if value == current else ''}{value}{units[field]}",
+            f"{'✅ ' if value == current else '⬜ '}{value}{units[field]}",
             f"draft_gate:quick:{field}:{value}",
         )
         for value in PRESETS[field]
@@ -315,8 +316,8 @@ def _group_field_rows(data, editor):
         rows.insert(
             0,
             [
-                ("每日门槛" if period else "✅ 每日门槛", "draft_gate:count_mode:daily"),
-                ("✅ 周期累计" if period else "周期累计", "draft_gate:count_mode:period"),
+                ("⬜ 每日门槛" if period else "✅ 每日门槛", "draft_gate:count_mode:daily"),
+                ("✅ 周期累计" if period else "⬜ 周期累计", "draft_gate:count_mode:period"),
             ],
         )
     return rows

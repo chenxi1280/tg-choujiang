@@ -48,7 +48,7 @@ async def test_mode_callback_shows_selection_before_any_group_is_configured(
         assert "A群" in renderer.text
     else:
         assert "选好群后回来设置门槛" in renderer.text
-        assert ("选择参与活动的群", "draft_gate:choose_groups") in renderer.rows[1]
+        assert ("选择参与群", "draft_gate:choose_groups") in renderer.rows[1]
 
 
 def _message(text: str = "") -> Message:
@@ -78,7 +78,7 @@ def _input_data(mode: str = "message", field: str = "daily_messages") -> dict:
 @pytest.mark.parametrize(
     "mode,field,expected",
     [
-        ("message", "daily_messages", "每天 34 条"),
+        ("message", "daily_messages", "任意 1 天有效发言满 34 条"),
         ("invite", "required_valid_invites", "新成员 34 人"),
     ],
 )

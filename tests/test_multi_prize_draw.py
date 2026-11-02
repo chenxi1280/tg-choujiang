@@ -101,7 +101,7 @@ async def test_draw_is_blocked_while_any_group_permission_fact_is_unknown(
             )
         )
 
-    with pytest.raises(UserFacingError, match="恢复并重新核验后才能开奖"):
+    with pytest.raises(UserFacingError, match="恢复并重新检查后才能开奖"):
         await DrawingService(uow_factory).run(campaign_id, actor_user_id=101)
 
 

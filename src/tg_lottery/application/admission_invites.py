@@ -42,7 +42,8 @@ async def update_invite_admission(session: object, *, campaign: object, invitati
             participant=participant,
             chat_id=target.chat_id_snapshot,
             key=f"invite_admission:{participant.id}:{target.id}",
-            text=f"本群邀请门槛已完成: 已确认 {count}/{rule.required_valid_invites} 名有效新成员。",
+            text="本群邀请门槛已完成\uff1a "
+            + f"已确认 {count}/{rule.required_valid_invites} 名有效新成员。",
         )
 
 

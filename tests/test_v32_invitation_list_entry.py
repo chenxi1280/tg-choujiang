@@ -16,7 +16,7 @@ from tg_lottery.telegram.ui_style import plain_label
 def test_participated_list_exposes_invitation_entry_with_original_source(category, page):
     source = ParticipatedCampaignPage(category, page, page + 1, ())
     text, keyboard = build_participated_campaign_list(source, invitation_only=False)
-    assert text.startswith("🙋 我参加的抽奖\n")
+    assert text.startswith("🙋 我参加的抽奖\uff08北京时间\uff09\n")
     entry = next(
         button
         for row in keyboard.inline_keyboard
@@ -36,7 +36,7 @@ def test_invitation_filters_and_paging_keep_original_participated_list():
     text, keyboard = build_participated_campaign_list(
         page, invitation_only=True, parent=("ended", 2)
     )
-    assert text.startswith("🧾 我的邀请记录\n")
+    assert text.startswith("🧾 我的邀请记录\uff08北京时间\uff09\n")
     buttons = [button for row in keyboard.inline_keyboard for button in row]
     assert next(
         button.callback_data for button in buttons if plain_label(button.text) == "返回参与列表"

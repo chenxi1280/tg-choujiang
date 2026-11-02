@@ -28,5 +28,6 @@ async def notify_threshold_crossing(session, observation, *, count):
             participant=participant,
             chat_id=observation.chat_id,
             key=f"message_threshold:{participant.id}:{observation.chat_id}:{threshold}",
-            text=f"本群累计发言条件已达标: {count}/{threshold} 条, 请在活动入口验证全部参与条件。",
+            text=f"本群累计发言条件已达标\uff1a {count}/{threshold} 条\uff0c "
+            + "请在活动入口验证全部参与条件。",
         )

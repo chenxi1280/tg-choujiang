@@ -24,18 +24,16 @@ def activity_url(username, reference, *, action="join"):
 def discovery(campaigns, *, username, page):
     pages = max(1, (len(campaigns) + 4) // 5)
     page = min(max(page, 0), pages - 1)
-    lines = ["🎁 本群进行中的抽奖"]
+    lines = ["🎁 本群进行中的抽奖（北京时间）"]
     for campaign in campaigns[page * 5 : (page + 1) * 5]:
         url = html.escape(activity_url(username, campaign.public_ref), quote=True)
         name = html.escape(campaign.name)
+        cutoff = format_public_time(campaign.cutoff_at, campaign.timezone, include_timezone=False)
+        draw_time = format_public_time(campaign.draw_at, campaign.timezone, include_timezone=False)
         state = campaign_state_text(campaign.state)
         if campaign.state in {CampaignState.RUNNING, CampaignState.SCHEDULED}:
             state = _open_label(campaign)
-        lines.append(
-            f'🎟️ <a href="{url}">{name}</a>\n└ {state}\n'
-            f"截止 {format_public_time(campaign.cutoff_at, campaign.timezone, seconds=True)}\n"
-            f"开奖 {format_public_time(campaign.draw_at, campaign.timezone, seconds=True)}"
-        )
+        lines.append(f'🎟️ <a href="{url}">{name}</a>\n└ {state}\n截止 {cutoff}\n开奖 {draw_time}')
     if not campaigns:
         lines.append("📭 本群当前没有可报名的抽奖。")
     lines.append(f"第 {page + 1}/{pages} 页 · 点击活动名进入机器人查看并报名")

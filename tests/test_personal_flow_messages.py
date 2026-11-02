@@ -91,7 +91,7 @@ async def test_personal_lists_render_business_states_and_local_time() -> None:
     rendered = "\n".join(message.answers)
     assert "进行中" in rendered
     assert "符合条件" in rendered
-    assert "2026年08月08日 11:25 (北京时间)" in rendered
+    assert "2026年8月8日 11:25" in rendered
     assert "running" not in rendered
     assert "eligible" not in rendered
     assert "+00:00" not in rendered
@@ -132,8 +132,8 @@ def test_region_success_text_shows_exact_edit_and_lock_deadlines() -> None:
 
     text = _region_success_text(profile, "Asia/Shanghai")
 
-    assert "2026年08月20日 12:35 前修改" in text
-    assert "锁定至 2026年09月19日 12:30" in text
+    assert "2026年8月20日 12:35\uff08北京时间\uff09 前修改" in text
+    assert "锁定至 2026年9月19日 12:30" in text
 
 
 async def test_participated_query_carries_frozen_campaign_timezone(session_factory) -> None:

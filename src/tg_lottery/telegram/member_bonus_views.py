@@ -386,6 +386,7 @@ def _invite_group_detail(
     status = context.link_statuses.get(chat_id)
     progress = context.invite_progress.get(chat_id)
     deadline = context.campaign.cutoff_at - timedelta(hours=context.rules.invite.retention_hours)
+    deadline_text = format_public_time(deadline, context.campaign.timezone, include_timezone=False)
     completed = _invite_bonus_completed(context)
     lines = [
         _header(
@@ -394,7 +395,7 @@ def _invite_group_detail(
             outcome=context.outcome,
         ),
         _invite_rule_text(rule),
-        f"最晚计奖入群：{format_public_time(deadline, context.campaign.timezone)}",
+        f"最晚计奖入群：{deadline_text}",
         _invite_progress_line(str(group["title"]), rule, progress, completed=completed),
         _invite_link_note(
             context.campaign, status, bonus_deadline=deadline, outcome=context.outcome
@@ -451,7 +452,7 @@ def _invite_bonus_completed(context: BonusViewContext) -> bool:
 
 def _invite_rule_text(rule):
     if rule is None:
-        return "邀请加成票关闭; 有效邀请仍用于本场门槛。"
+        return "邀请加成票关闭； 有效邀请仍用于本场门槛。"
     return f"规则：每 {rule.invites_per_cycle} 名有效新成员 +1；{_invite_cap(rule)}"
 
 

@@ -139,5 +139,5 @@ def test_extra_conditions_are_a_real_resume_parent():
     from tg_lottery.telegram.draft_config import new_draft
 
     text, rows = section_view(new_draft(), "requirements")
-    assert "参与条件" in text or "准入条件" in text
+    assert "参与条件" in text or "额外参与条件" in text
     assert any(action == "draft_back" for row in rows for _, action in row)

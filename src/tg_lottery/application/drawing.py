@@ -80,7 +80,7 @@ class DrawingService:
             if existing:
                 return existing
             if await has_active_campaign_block(uow.session, campaign.id):
-                raise UserFacingError("活动存在群权限阻断, 恢复并重新检查后才能开奖")
+                raise UserFacingError("活动存在群权限阻断\uff0c 恢复并重新检查后才能开奖")
             require_campaign_transition(campaign.state, CampaignState.DRAWING)
             campaign.state = CampaignState.DRAWING
             now = utcnow()
@@ -370,7 +370,7 @@ def _designated_participant(
         None,
     )
     if participant is None:
-        raise UserFacingError("指定中奖人未通过最终资格复核, 请重新指定或删除该名额")
+        raise UserFacingError("指定中奖人未通过最终资格复核\uff0c 请重新指定或删除该名额")
     return participant
 
 

@@ -46,7 +46,7 @@ async def test_rules_landing_and_group_join_do_not_enroll(session_factory, monke
     message = SimpleNamespace(answer=AsyncMock())
     await open_activity(flow, message, campaign.public_ref)
     assert "参与条件" in message.answer.call_args.args[0]
-    assert "一键报名" in message.answer.call_args.kwargs["reply_markup"].inline_keyboard[0][0].text
+    assert "报名" in message.answer.call_args.kwargs["reply_markup"].inline_keyboard[0][0].text
     await flow.membership_changed(
         campaign_id=cid,
         user=User(id=202, is_bot=False, first_name="测试"),
@@ -144,5 +144,5 @@ async def test_v3_creator_persists_frozen_rules_and_complete_publication_text(
         assert f"start=join_{frozen.public_ref}" in text
         assert f"start=rules_{frozen.public_ref}" in text
         full_rules = "\n".join(public_rule_blocks(outbox.payload))
-        assert ("每天 2 条" if mode == "message" else "新成员 2 人") in full_rules
+        assert ("任意 1 天有效发言满 2 条" if mode == "message" else "新成员 2 人") in full_rules
         assert outbox.payload["rules"] == frozen.rules

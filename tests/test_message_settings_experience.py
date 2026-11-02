@@ -34,4 +34,4 @@ async def test_explanation_action_saves_choice_and_displays_it_on_dashboard(acti
     query = SimpleNamespace(from_user=SimpleNamespace(id=101), message=message)
     await settings._set_messages(query, SimpleNamespace(action=action))
     assert sessions.data["message_tips"] is enabled
-    assert ("扩展说明 显示" if enabled else "扩展说明 精简") in renderer.text
+    assert ("扩展说明显示" if enabled else "扩展说明精简") in renderer.text

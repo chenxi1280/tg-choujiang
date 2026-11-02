@@ -33,9 +33,11 @@ async def retry_failed_publication(
         validate_expected(campaign, expected)
         await require_campaign_admin(uow.session, campaign_id=campaign_id, user_id=actor_user_id)
         if campaign.state is not CampaignState.PUBLISHING:
-            raise UserFacingError("活动当前不在投放中, 不能重试发布")
+            raise UserFacingError("活动当前不在投放中\uff0c 不能重试发布")
         if campaign.cutoff_at <= utcnow():
-            raise UserFacingError("活动已过截止时间, 无法重新发布; 请取消此活动后创建新的抽奖")
+            raise UserFacingError(
+                "活动已过截止时间\uff0c 无法重新发布\uff1b 请取消此活动后创建新的抽奖"
+            )
         rows = (
             await uow.session.scalars(
                 select(TelegramOutbox)

@@ -18,8 +18,8 @@ def daily_activity_editor(data, working, *, title, footer):
         number_row("加成条数", "activity_cycle", rule["messages_per_cycle"]),
         preset_row("cycle", MESSAGE_COUNT_PRESETS, "条", selected=rule["messages_per_cycle"]),
         [
-            ("✅ 双算" if double else "双算", "draft_bonus_double:on"),
-            ("不双算" if double else "✅ 不双算", "draft_bonus_double:off"),
+            ("✅ 双算" if double else "⬜ 双算", "draft_bonus_double:on"),
+            ("⬜ 不双算" if double else "✅ 不双算", "draft_bonus_double:off"),
         ],
         *footer,
     ]
@@ -86,3 +86,12 @@ def creation_bonus_dates(data):
     start = datetime.fromisoformat(data["start_at"]) if data.get("start_at") else utcnow()
     cutoff = datetime.fromisoformat(data["draw_at"]) - timedelta(minutes=5)
     return daily_bonus_dates(start, cutoff)
+
+
+def group_list_notice(data, *, kind):
+    text = "机器人必须在每个参与群中且拥有管理员权限。"
+    if not data.get("participation_groups"):
+        text += "\n当前没有参与群，请先选择参与群，再设置本群加成。"
+    if kind == "activity" and data.get("bonus_policy_version") == "daily-after-start-v1":
+        text += "\n" + daily_bonus_rule_text(data.get("activity_bonus_double_count", True))
+    return text

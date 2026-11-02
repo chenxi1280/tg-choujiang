@@ -12,6 +12,7 @@ from tg_lottery.application.callback_tokens import CallbackRequest, CallbackToke
 from tg_lottery.application.queries import QueryService
 from tg_lottery.domain.errors import UserFacingError
 from tg_lottery.infrastructure.db import Group
+from tg_lottery.presentation.target_identity import duplicate_names
 from tg_lottery.telegram.bonus_rule_text import chat_title
 from tg_lottery.telegram.creator_group_availability import (
     GroupAvailability,
@@ -192,22 +193,25 @@ class CreatorRenderer:
         await self._store_group_page(target.user_id, page)
         visible = groups[page * GROUP_PAGE_SIZE : (page + 1) * GROUP_PAGE_SIZE]
         context = await self._sessions.issue_panel_context(target.user_id, target.message_id)
-        rows = await self._group_buttons(
+        rows, counts = await self._group_buttons(
             target,
             groups=visible,
             selected_chat_ids=selected_chat_ids,
             context=context,
             verified_availability=verified_availability,
         )
-        back = await self._keyboard(
-            target,
-            _group_navigation(
-                page=page, maximum=maximum, has_groups=bool(groups), searching=bool(search)
-            ),
-            context=context,
+        navigation = _group_navigation(
+            page=page, maximum=maximum, has_groups=bool(groups), searching=bool(search)
         )
+        back = await self._keyboard(target, navigation, context=context)
         rows = list_rows(rows, start=page * GROUP_PAGE_SIZE + 1)
         rows.extend(back.inline_keyboard)
+        group_lines = _group_picker_lines(
+            visible,
+            counts,
+            start=page * GROUP_PAGE_SIZE + 1,
+            duplicates=duplicate_names(g.title for g in groups),
+        )
         await edit_panel_at(
             self._bot,
             (notice + "\n\n" if notice else "")
@@ -215,10 +219,7 @@ class CreatorRenderer:
             + ("\n页码已随当前群列表调整。" if page != requested_page else "")
             + ("\n搜索：" + search if search else "")
             + "\n\n"
-            + "\n".join(
-                f"{page * GROUP_PAGE_SIZE + i}. {g.title}（{g.chat_id}）"
-                for i, g in enumerate(visible, start=1)
-            ),
+            + "\n".join(group_lines),
             chat_id=target.chat_id,
             message_id=target.message_id,
             reply_markup=style_keyboard(InlineKeyboardMarkup(inline_keyboard=rows)),
@@ -261,14 +262,13 @@ class CreatorRenderer:
         selected_chat_ids: tuple[int, ...],
         context: DraftPanelContext,
         verified_availability: dict[int, GroupAvailability] | None = None,
-    ) -> list[list[InlineKeyboardButton]]:
+    ) -> tuple[list[list[InlineKeyboardButton]], dict[int, int]]:
         availability, counts = await asyncio.gather(
             self._group_availability_rows(
                 groups, user_id=target.user_id, verified=verified_availability
             ),
             self._queries.active_campaign_counts_by_chats(tuple(group.chat_id for group in groups)),
         )
-        parallel_counts = [counts.get(group.chat_id, 0) for group in groups]
         requests = tuple(
             CallbackRequest(
                 "draft_toggle_group"
@@ -283,22 +283,20 @@ class CreatorRenderer:
             for group, status in zip(groups, availability, strict=True)
         )
         tokens = await self._create_tokens(target, requests, context=context)
-        return [
+        rows = [
             [
                 InlineKeyboardButton(
                     text=_group_button_text(
                         group,
                         status,
                         group.chat_id in selected_chat_ids,
-                        parallel_count=parallel_count,
                     ),
                     callback_data=f"secure:{token}",
                 ),
             ]
-            for group, status, token, parallel_count in zip(
-                groups, availability, tokens, parallel_counts, strict=True
-            )
+            for group, status, token in zip(groups, availability, tokens, strict=True)
         ]
+        return rows, counts
 
     async def _keyboard(
         self,
@@ -401,16 +399,24 @@ def _group_button_text(
     group: Group,
     status: GroupAvailability,
     selected: bool,
-    *,
-    parallel_count: int,
 ) -> str:
     title = chat_title({"id": group.chat_id, "title": group.title})
-    title = title[:28] + f" · {str(group.chat_id)[-6:]}"
     if not status.selectable:
         return f"✅ 已选 · {title}｜点此移除" if selected else f"⚠ {title}｜{status.status}"
     prefix = "✅ " if selected else "⬜ "
-    parallel = f"｜另有 {parallel_count} 个进行中活动" if parallel_count else ""
-    return prefix + title + parallel
+    return prefix + title
+
+
+def _group_picker_lines(groups, counts, *, start, duplicates):
+    lines = []
+    for index, group in enumerate(groups, start):
+        title = chat_title({"id": group.chat_id, "title": group.title})
+        if group.title in duplicates:
+            title += f"（ID 末 4 位：{str(group.chat_id)[-4:]}）"
+        count = counts.get(group.chat_id, 0)
+        status = f" · 另有 {count} 个进行中活动" if count else ""
+        lines.append(f"{index}. {title}{status}")
+    return lines
 
 
 def _group_page_rows(page: int, maximum: int) -> ButtonRows:

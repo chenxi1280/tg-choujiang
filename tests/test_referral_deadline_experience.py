@@ -45,9 +45,9 @@ def _landing(state=CampaignState.RUNNING):
 
 def test_referral_landing_explains_dates_unknown_membership_and_campaign_scope() -> None:
     text = _landing_text(_landing(), None, now=NOW)
-    assert "2026年09月05日 17:00 (北京时间)" in text
-    assert "2026年09月05日 19:00 (北京时间)" in text
-    assert "暂时无法核验" in text
+    assert "2026年9月5日 17:00" in text
+    assert "2026年9月5日 19:00\uff08北京时间\uff09" in text
+    assert "暂时无法检查" in text
     assert "不计入下次抽奖" in text
 
 
@@ -86,7 +86,7 @@ def test_early_cutoff_shortens_displayed_invitation_deadline() -> None:
     landing = _landing(CampaignState.SETTLING)
     landing.campaign.cutoff_at = NOW + timedelta(minutes=30)
     text = _landing_text(landing, False, now=NOW)
-    assert "2026年09月05日 15:30 (北京时间)" in text
+    assert "2026年9月5日 15:30" in text
     assert "17:00" not in text
     assert "本期邀请加成票已经结束" in text
 
@@ -124,9 +124,9 @@ def test_referral_before_preheat_keeps_ordinary_join_and_registration_options() 
     keyboard = _landing_keyboard(flow, landing, False)
     buttons = [button for row in keyboard.inline_keyboard for button in row]
     assert "邀请加成票尚未开始" in text
-    assert "暂时无法核验" in text
+    assert "暂时无法检查" in text
     assert buttons[0].url == "https://t.me/+persistent"
-    assert "报名本次抽奖" in [plain_label(button.text) for button in buttons]
+    assert "报名" in [plain_label(button.text) for button in buttons]
 
 
 def test_ended_invite_note_preserves_confirmed_revocation_fact() -> None:

@@ -79,7 +79,7 @@ def deletion_permission_text(data):
 
 
 def _status(value, *, own):
-    label = "机器人短提示" if own else "用户报名命令"
+    label = "机器人短提示" if own else "用户报名指令"
     if value is None:
         return f"⏳ {label}删除权限暂时无法确认，请稍后重新检查"
     if value:

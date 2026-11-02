@@ -77,6 +77,6 @@ def _require_shareable(campaign: Campaign | None) -> None:
     if campaign is None:
         raise UserFacingError("活动不存在或已经失效")
     if campaign.state not in {CampaignState.RUNNING, CampaignState.SCHEDULED}:
-        raise UserFacingError("活动当前未开放参与, 请在活动规则中查看实际状态")
+        raise UserFacingError("活动当前未开放参与\uff0c 请在活动规则中查看实际状态")
     if utcnow() > campaign.cutoff_at:
-        raise UserFacingError("本期报名已截止, 请查看活动规则和开奖结果")
+        raise UserFacingError("本期报名已截止\uff0c 请查看活动规则和开奖结果")

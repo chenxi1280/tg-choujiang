@@ -1,6 +1,5 @@
 from datetime import UTC, datetime
 from typing import Any
-from zoneinfo import ZoneInfoNotFoundError
 
 import pytest
 from aiogram.exceptions import TelegramBadRequest
@@ -25,9 +24,9 @@ SNAPSHOT_HASH = "fc99b18147ccfaf6b7c3ab660c4ed6e688fc091ccaa97e4bdf0db477182702a
 def test_campaign_card_localizes_internal_iso_times() -> None:
     text = _campaign_card_text(_campaign_payload())
 
-    assert "⏰ <b>开奖日期" in text
+    assert "⏰ <b>开奖时间" in text
     assert "北京时间" in text
-    assert "2026年08月08日 11时25分00秒" in text
+    assert "2026年8月8日 11:25" in text
     assert "T03:20:00" not in text
     assert "+00:00" not in text
 
@@ -49,14 +48,14 @@ def test_campaign_card_accepts_legacy_minute_payload() -> None:
 
     text = _campaign_card_text(payload)
 
-    assert "2026年08月08日 11时25分00秒" in text
+    assert "2026年8月8日 11:25" in text
     assert "T03:25:00" not in text
 
 
 def test_campaign_card_rejects_unknown_timezone() -> None:
     payload = _campaign_payload() | {"timezone": "Mars/Olympus"}
 
-    with pytest.raises(ZoneInfoNotFoundError):
+    with pytest.raises(ValueError, match="unsupported public timezone"):
         _campaign_card_text(payload)
 
 
@@ -81,7 +80,7 @@ async def test_legacy_iso_payload_loads_persisted_campaign_timezone(session_fact
     assert request.payload["timezone"] == "Asia/Shanghai"
     assert request.payload["campaign_ref"] == campaign.public_ref
     assert "timezone" not in outbox.payload
-    assert "2026年08月08日 11时25分00秒" in text
+    assert "2026年8月8日 11:25" in text
     assert "UTC" not in text
 
 
@@ -147,13 +146,13 @@ def test_campaign_card_explains_per_group_messages_and_channel_following() -> No
 
     assert "主活动群</a>" in text
     assert "协作群</a>" in text
-    assert "📡 关注-<a href=" in text and "公告频道</a>" in text
+    assert "📡 关注「<a href=" in text and "公告频道</a>" in text
     assert text.count('href="https://t.me/lottery_test_bot?start=condition_') == 3
     for position in range(1, 4):
         assert f"condition_{payload['campaign_ref']}_{position}" in text
     assert text.count("累计发言至少 <b>10</b> 条") == 2
-    assert "🌱 <b>抽奖加成票(发言)" in text
-    assert "抽奖加成票(发言)" in text and text.count(">规则</a>") == 2
+    assert "🌱 <b>发言加成票" in text
+    assert "发言加成票" in text and text.count(">完整规则</a>") == 1
 
 
 def test_draw_result_keeps_internal_hash_out_of_public_message() -> None:
@@ -171,7 +170,7 @@ def test_draw_result_keeps_internal_hash_out_of_public_message() -> None:
     )
 
     assert "本期没有符合条件的中奖候选人。" in text
-    assert "未分配名额:" in text
+    assert "未分配名额\uff1a" in text
     assert "本次结果已保存" in text
     assert "权重计算" not in text
     assert "快照:" not in text
@@ -396,17 +395,17 @@ async def test_campaign_card_matches_lotterybest_format() -> None:
     assert "🌐 归属地" in text
     assert "广东" in text
     assert "🪪 必须设置 Telegram 用户名" in text
-    assert '👥 加入-<a href="https://t.me/welfare_group">福利群</a>' in text
+    assert '👥 加入「<a href="https://t.me/welfare_group">福利群</a>」' in text
     assert "累计发言至少 <b>10</b> 条" in text
     assert "🎁 <b>奖品内容" in text
     assert "📦 一等奖" in text
     assert "<b>2</b>" in text
-    assert "🌱 <b>抽奖加成票(发言)" in text
-    assert "抽奖加成票(发言)" in text and "邀请加成票" in text
-    assert text.count(">规则</a>") == 2
-    assert ">规则</a>" in text
-    assert "⏰ <b>开奖日期" in text
-    assert "2026年08月08日 11时25分00秒" in text
+    assert "🌱 <b>发言加成票" in text
+    assert "发言加成票" in text and "邀请加成票" in text
+    assert text.count(">完整规则</a>") == 1
+    assert ">完整规则</a>" in text
+    assert "⏰ <b>开奖时间" in text
+    assert "2026年8月8日 11:25" in text
     assert kwargs["parse_mode"] == "HTML"
     assert kwargs["protect_content"] is False
     assert kwargs["link_preview_options"].is_disabled is True
@@ -424,7 +423,7 @@ async def test_campaign_keyboard_emphasizes_participation_with_rules_in_body() -
     buttons = [button for row in keyboard.inline_keyboard for button in row]
 
     assert len(buttons) == 3
-    assert buttons[0].text == "🛂 点击参与抽奖"
+    assert buttons[0].text == "🎟️ 报名"
     assert buttons[0].url == _campaign_deep_link(_lotterybest_card_payload(), "join")
     assert buttons[0].callback_data is None
     assert [plain_label(button.text) for button in buttons[1:]] == ["邀请入口", "我的加成票"]

@@ -25,6 +25,7 @@ from tg_lottery.infrastructure.db import (
     Participant,
 )
 from tg_lottery.infrastructure.db.models_base_activity import BaseActivityEvent
+from tg_lottery.presentation.gate_rules import task_date_text
 
 
 async def record_base_activity(
@@ -97,7 +98,7 @@ async def _apply_progress(
             participant=participant,
             chat_id=event.chat_id,
             key=f"base_complete:{participant.id}",
-            text="全部基础发言门槛已达标, 可以参与抽奖; 已获得的加成现在生效。",
+            text="全部基础发言门槛已达标\uff0c 可以参与抽奖\uff1b 已获得的加成现在生效。",
         )
         await _trigger_full_draw(session, campaign, observed_at=event.event_at)
 
@@ -300,20 +301,21 @@ async def _daily_notice(
                 participant=participant,
                 chat_id=event.chat_id,
                 key=f"period_gate:{participant.id}:{event.chat_id}",
-                text=f"本期累计抽奖门槛已完成: {current.today_messages}/{rule.daily_messages} 条。",
+                text="本期累计抽奖门槛已完成\uff1a "
+                + f"{current.today_messages}/{rule.daily_messages} 条。",
             )
             return
         days_label = "本期完成任务日" if campaign.rules.get("message_task_calendar") else "连续进度"
         text = (
-            f"{event.local_date} 今日发言任务已完成: "
-            f"{current.today_messages}/{rule.daily_messages} 条; "
+            f"{task_date_text((event.local_date,))} 今日发言任务已完成\uff1a "
+            f"{current.today_messages}/{rule.daily_messages} 条\uff1b "
             f"{days_label} {min(current.consecutive_days, rule.consecutive_days)}"
             f"/{rule.consecutive_days} 天。"
         )
         if current.qualified:
             text += "本群整场发言门槛已完成。"
         else:
-            text += "整场门槛尚未完成, 其余任务日仍须分别达标。"
+            text += "整场门槛尚未完成\uff0c 其余任务日仍须分别达标。"
         await queue_progress_notice(
             session,
             campaign=campaign,

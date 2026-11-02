@@ -98,7 +98,7 @@ class TelegramGateway:
         if payload.get("occurred_at"):
             from tg_lottery.telegram.public_projection import format_public_time
 
-            text += "\n完成时间: " + format_public_time(payload["occurred_at"], "Asia/Shanghai")
+            text += "\n完成时间： " + format_public_time(payload["occurred_at"], "Asia/Shanghai")
         message = await self._bot.send_message(
             outbox.recipient_chat_id,
             text,

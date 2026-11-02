@@ -110,7 +110,7 @@ class CampaignService:
                 self.platform_policy is not None
                 and draft.rules.platform_policy != self.platform_policy
             ):
-                raise UserFacingError("发布前平台策略已变化, 请保留草稿并重新确认完整条件")
+                raise UserFacingError("发布前平台策略已变化\uff0c 请保留草稿并重新确认完整条件")
             campaign = self._new_campaign(draft, group, actor_user_id, source=source)
             uow.session.add(campaign)
             await uow.session.flush()

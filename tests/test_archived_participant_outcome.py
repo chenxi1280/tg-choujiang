@@ -42,7 +42,7 @@ async def test_real_cancel_then_archive_keeps_cancelled_result_in_detail_and_lis
     assert detail.state is CampaignState.ARCHIVED
     assert detail.outcome.kind == "cancelled"
     assert detail.draw_result is None
-    assert "活动状态: 已取消（已归档）" in text
+    assert "活动状态\uff1a 已取消（已归档）" in text
     assert "活动已取消，未开奖" in text + listing
     assert "未找到已完成" not in text and "未中奖" not in text
     assert "历史开奖结果未确认" not in text
@@ -92,7 +92,7 @@ async def test_archived_result_without_its_own_completed_or_cancel_fact_is_uncon
 
     assert detail.outcome.kind == "unconfirmed"
     assert detail.draw_result is None
-    assert "活动状态: 历史结果未确认" in text
+    assert "活动状态\uff1a 历史结果未确认" in text
     assert "历史开奖结果未确认" in text
     assert "历史结果未确认，待核查" in listing
     assert "未中奖" not in text + listing
@@ -127,8 +127,8 @@ async def test_completed_draw_has_priority_over_cancellation_audit_after_archiva
     assert detail.draw_result.frozen_tickets == 3
     assert len(detail.draw_result.awards) == 2
     assert "已中奖" in text and "最终开奖次数：3" in text
-    assert "活动状态: 已开奖" in text
-    assert "活动状态: 已取消" not in text
+    assert "活动状态\uff1a 已开奖" in text
+    assert "活动状态\uff1a 已取消" not in text
     assert "活动已取消" not in text
     assert "已开奖" in listing and "已取消" not in listing
 

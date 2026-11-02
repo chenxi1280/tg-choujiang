@@ -86,7 +86,7 @@ async def test_legacy_invite_link_after_join_deadline_still_opens_without_bonus_
     await flow.show_invite_link(message, campaign.public_ref, user_id=201)
     assert "最晚计奖入群时间已过" in plain_label(message.text)
     assert "新入群不计加成" in plain_label(message.text)
-    assert "仅核验此前邀请" in plain_label(message.text)
+    assert "仅检查此前邀请" in plain_label(message.text)
     assert plain_label(message.markup.inline_keyboard[0][0].text) == "复制入群链接"
     assert plain_label(message.markup.inline_keyboard[2][0].text) == "转发入群"
 
