@@ -152,7 +152,13 @@ def test_reuse_notes_preserve_original_gate_mode(source, values, expected):
 
 @pytest.mark.parametrize(
     "offset,messages,expected",
-    [(-60, 0, "⏳ 待开始"), (0, 0, "❌ 未完成"), (60, 0, "❌ 未完成"), (60, 20, "✅ 已完成")],
+    [
+        (-60, 0, "⏳ 待开始"),
+        (-60, 20, "⏳ 待开始"),
+        (0, 0, "❌ 未完成"),
+        (60, 0, "❌ 未完成"),
+        (60, 20, "✅ 已完成"),
+    ],
 )
 def test_calendar_status_uses_start_instant_and_keeps_future_waiting(offset, messages, expected):
     start = datetime.fromisoformat("2026-11-02T20:00:00+08:00")

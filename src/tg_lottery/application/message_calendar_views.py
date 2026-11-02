@@ -13,7 +13,11 @@ def calendar_group_lines(campaign, rule, progress, *, name, day, counts, now):
     ]
     for date in task_dates(campaign):
         status = "⏳ 待开始" if date > day or now < campaign.preheat_at else "❌ 未完成"
-        if date <= day and counts.get(date, 0) >= rule.daily_messages:
+        if (
+            now >= campaign.preheat_at
+            and date <= day
+            and counts.get(date, 0) >= rule.daily_messages
+        ):
             status = "✅ 已完成"
         label = format_public_time(date, campaign.timezone, include_timezone=False, date_only=True)
         lines.append(f"{label}\uff1a{status}")
