@@ -199,7 +199,7 @@ def _prizes(data: dict) -> tuple[str, ButtonRows]:
 
 def _user_limits(data: dict) -> tuple[str, ButtonRows]:
     required = bool(data.get("username_required"))
-    regions = "、".join(data.get("allowed_regions") or []) or "全国"
+    regions = "、".join(data.get("allowed_regions") or []) or "不限"
     return (
         f"🪪 用户限制\n\n用户名：{'必填' if required else '可为空'}\n"
         f"🌐 允许地区：{regions}\n选择立即保存。",

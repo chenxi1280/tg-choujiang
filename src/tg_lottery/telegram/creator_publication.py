@@ -31,6 +31,7 @@ from tg_lottery.telegram.creator_invite_retention import summary as retention_su
 from tg_lottery.telegram.creator_public_preview import send_public_preview
 from tg_lottery.telegram.creator_renderer import ButtonRows, CreatorRenderer
 from tg_lottery.telegram.creator_rule_review import review_navigation, rule_review_pages
+from tg_lottery.telegram.creator_sections import back_rows
 from tg_lottery.telegram.creator_share import publication_receipt
 from tg_lottery.telegram.draft_config import campaign_input, presentation_from_data
 from tg_lottery.telegram.issuer import resolve_issuer
@@ -284,7 +285,7 @@ def confirmation_view(data: dict[str, Any]) -> tuple[str, ButtonRows]:
     rows = [
         [("查看全部规则", "draft_publish_rules")],
         [("确认发布", "draft_publish_confirm")],
-        [("返回修改", "draft_back")],
+        *back_rows(data),
     ]
     if data.get("cover_file_id"):
         rows.insert(0, [("预览封面", "draft_cover_preview")])

@@ -127,12 +127,16 @@ def _region_limits(data: dict[str, Any]) -> str:
 
 
 def _requirements(data: dict[str, Any]) -> str:
-    chats = data.get("required_chats") or []
+    chats = [
+        chat for chat in data.get("required_chats") or [] if chat.get("sources") != ["platform"]
+    ]
     if chats:
         return "必须全部满足\n" + "\n".join(
             f"  {'关注' if chat.get('type') == 'channel' else '加入'}「{chat_title(chat)}」"
             for chat in chats
         )
+    if data.get("required_chats"):
+        return "无额外条件"
     count = len(data.get("required_chat_refs") or data.get("required_chat_ids", []))
     return f"{count} 项（必须全部满足）" if count else "无额外条件"
 

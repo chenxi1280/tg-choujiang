@@ -123,7 +123,7 @@ async def test_zero_group_list_explains_setup_and_has_only_usable_navigation(cre
     rows = case.bot.edit_message_text.call_args.kwargs["reply_markup"].inline_keyboard
     assert [plain_label(button.text) for row in rows for button in row] == [
         "刷新群列表",
-        "返回上一层",
+        "返回草稿",
     ]
 
 

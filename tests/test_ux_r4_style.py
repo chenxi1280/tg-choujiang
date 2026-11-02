@@ -18,9 +18,29 @@ from tg_lottery.telegram.bonus_rule_text import global_bonus_lines, per_group_bo
 from tg_lottery.telegram.creator_group_availability import GroupAvailability
 from tg_lottery.telegram.creator_renderer import _group_button_text, _group_picker_lines
 from tg_lottery.telegram.creator_rule_review import rule_review_pages
+from tg_lottery.telegram.creator_sections import section_view
 from tg_lottery.telegram.creator_views import description_summary, preview_text
 from tg_lottery.telegram.draft_config import new_draft, parse_draw_at
 from tg_lottery.telegram.public_projection import format_public_time
+
+
+@pytest.mark.parametrize("sources", [["platform"], ["platform", "creator"], None])
+def test_frozen_platform_targets_are_only_extra_when_creator_also_requires_them(sources):
+    data = new_draft() | {
+        "required_chats": [
+            {"id": -1001, "title": "测试频道", "type": "channel", "sources": sources}
+        ],
+        "required_chat_ids": [-1001],
+    }
+    before = deepcopy(data)
+    text = preview_text(data)
+    if sources == ["platform"]:
+        assert "额外参与条件\uff1a无额外条件" in text
+    else:
+        assert "关注「测试频道」" in text
+    assert data == before
+    limits, _ = section_view(data, "user_limits")
+    assert "允许地区\uff1a不限" in limits
 
 
 @pytest.mark.parametrize("zone", ["UTC", "Asia/Shanghai", "Europe/London"])
