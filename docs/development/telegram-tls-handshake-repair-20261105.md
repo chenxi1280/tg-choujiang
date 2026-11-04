@@ -45,8 +45,40 @@ X25519 组可以保留 TLS 1.3，影响范围更小，因此采用后者。
 - 原有未审阅 `delete_message` UNKNOWN 继续使 delivery health 报告 DEGRADED；
   不能把连接修复验收描述为该历史消息已删除或全部业务验收通过。
 
-执行证据保存在 `artifacts/production-error-diagnosis-20261105/`。发布结果待验收后记录。
+执行证据保存在 `artifacts/production-error-diagnosis-20261105/`。
 
 发布前检查：全范围 Ruff 格式、lint、代码指标与编译检查通过；上海专用执行器的
 会话、运维身份和连接失败恢复相关测试 66 项通过。新增测试验证实际 ClientHello
 内容与大小，不只检查 setter 调用。
+
+## 发布与线上结果
+
+代码提交 `27af3c4ce58d06335fc6e99a36040a2bf9f4f216` 已经由
+[发布工作流 41868458649](https://github.com/chenxi1280/tg-choujiang/actions/runs/41868458649)
+完成 checks、tests、build-image 和 deploy。八分片各 234 个测试节点，共 1872 项通过。
+
+北京时间 2026-11-05 00:52:40，新 app、Worker、integration 启动并通过健康检查；
+运维 Bot 于 00:54:25 使用相同镜像重建，身份和授权配置核对一致。
+`current` 指向 `20261104165104_27af3c4`，四个容器使用同一镜像摘要
+`sha256:b219053fc8d4b344ac38fab10fc4a489fe8dd1b337bf74c59a224b48b37ec090`；
+Alembic 为 `c34a1030ux14 (head)`。
+
+两类实际会话各创建 20 个独立连接执行 `getMe`，40 次全部取得预期 Bot 身份回执，
+ClientHello 均为 517 字节。运维 Bot 的 `getMe` 和无 Webhook 状态也单独核验。
+00:56:15 只读快照确认新 Worker 已自然完成 6 次频道扫描；当时的新容器日志中没有
+ERROR 或 WARNING。输入持续处理，未触发验收开奖或人为发送业务消息。
+
+全部 38 条 UNKNOWN 及目标关联的 Attempt、原提醒、删除任务和审计指纹均与发布前一致。
+整体巡检继续因那一条未审阅的历史 `delete_message` 返回 DEGRADED 和
+`CHECK_STATUS=FAILED`。该历史未决项按用户选择保留；连接修复单独验收，
+整体投递健康检查仍未通过，原删除结果也仍未确认。
+
+正确性复核：普通会话和单请求会话共享 TLS 配置，后者的请求次数与未知投递分类不变。
+性能复核：组配置仅在创建会话时执行，没有每次业务请求的新检查。
+可维护性复核：一处配置和真实握手回归覆盖两个会话类型，依赖版本继续固定。
+安全性复核：CA、证书和主机名校验保留，TLS 1.3 仍可协商；X25519 取代默认混合 PQ
+keyshare，修复范围限于 Telegram 会话。
+
+本次证明上述握手配置修复在验收窗口有效，不承诺外部网络永久无波动；
+TCP 连接阶段的瞬时故障仍按原机制记录、重试和监控。未执行真实 Telegram 客户端的
+报名到开奖、群公告和中奖私信验收，不能据此宣称这些业务场景已全部通过。
