@@ -1,0 +1,12 @@
+[Unit]
+Description=Telegram lottery read-only healthcheck and Feishu alerts
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=BASE_DIR=/data/tg-lottery
+EnvironmentFile=/etc/tg-lottery/service-health.env
+UMask=0077
+TimeoutStartSec=300
+ExecStart=/usr/bin/python3 /data/tg-lottery/current/deploy/monitor_services.py

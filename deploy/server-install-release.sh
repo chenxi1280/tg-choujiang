@@ -42,6 +42,8 @@ APP_DIR="${RELEASE_DIR}" BASE_DIR="${BASE_DIR}" SHARED_DIR="${SHARED_DIR}" ENV_F
 ln -sfn "$RELEASE_DIR" "${CURRENT_LINK}.tmp"
 mv -Tf "${CURRENT_LINK}.tmp" "$CURRENT_LINK"
 
+BASE_DIR="$BASE_DIR" bash "$SCRIPT_DIR/install-monitor.sh"
+
 mapfile -t release_paths < <(find "$RELEASES_DIR" -mindepth 1 -maxdepth 1 -type d | sort)
 if (( ${#release_paths[@]} > KEEP_RELEASES )); then
   remove_count=$(( ${#release_paths[@]} - KEEP_RELEASES ))
