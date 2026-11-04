@@ -2,16 +2,17 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.exceptions import TelegramNetworkError
 from aiohttp import ClientConnectorError, ClientError
+
+from tg_lottery.telegram.session import TelegramSession
 
 
 class PreRequestConnectionError(TelegramNetworkError):
     """The single, non-redirecting HTTP request could not establish a connection."""
 
 
-class SingleRequestSession(AiohttpSession):
+class SingleRequestSession(TelegramSession):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._connection_proof_supported = _verified_versions() and self._proxy is None

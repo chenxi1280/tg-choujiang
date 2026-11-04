@@ -14,6 +14,7 @@ from tg_lottery.infrastructure.db.uow import UnitOfWork
 from tg_lottery.ops_bot_config import OpsBotSettings, get_ops_bot_settings
 from tg_lottery.runtime import configure_logging, validate_bot
 from tg_lottery.telegram.ops_winner_designations import OpsWinnerDesignationHandler
+from tg_lottery.telegram.session import TelegramSession
 
 
 async def run(settings: OpsBotSettings | None = None) -> None:
@@ -21,7 +22,7 @@ async def run(settings: OpsBotSettings | None = None) -> None:
     configure_logging(resolved.log_level)
     engine = create_engine(resolved.database_url)
     session_factory = create_session_factory(engine)
-    bot = Bot(resolved.ops_bot_token.get_secret_value())
+    bot = Bot(resolved.ops_bot_token.get_secret_value(), session=TelegramSession())
     try:
         await _require_isolated_bot_id(session_factory, resolved.ops_bot_id)
         await validate_bot(bot, resolved.ops_bot_id)

@@ -35,6 +35,13 @@ Inbox 限流通过 `next_attempt_at` 持久保存 Telegram 的最早重试时间
 
 迁移 `c33a1026ir01` 新增上述两个可空字段并回填现有错误，兼容原有输入；存在尚未到期的 Inbox 限流等待时拒绝数据库降级。回滚运行制品也须支持 Inbox 限流截止时间，不能运行旧逻辑绕过等待。
 
+## Telegram 连接
+
+Telegram 客户端统一固定 X25519 密钥交换组，保留 TLS 1.3、CA 和主机名校验，避免
+OpenSSL 3.5 默认大 ClientHello 在当前 Telegram 路径上的握手重置。该配置只影响
+Telegram HTTP 会话，不改变数据库 TLS、出口或投递重试。根因对照与验收见
+[Telegram TLS 握手故障修复](../development/telegram-tls-handshake-repair-20261105.md)。
+
 ## 回滚
 
 ```bash

@@ -31,6 +31,7 @@ from tg_lottery.telegram.help_views import HelpLinks
 from tg_lottery.telegram.member_flow import MemberFlow
 from tg_lottery.telegram.member_navigation import MemberNavigation
 from tg_lottery.telegram.personal_flow import PersonalFlow
+from tg_lottery.telegram.session import TelegramSession
 from tg_lottery.telegram.update_handler import LotteryUpdateHandler
 
 
@@ -81,7 +82,7 @@ def build_container(settings: Settings, *, bot_session: BaseSession | None = Non
     )
     return Container(
         settings=settings,
-        bot=Bot(settings.bot_token, session=bot_session),
+        bot=Bot(settings.bot_token, session=bot_session or TelegramSession()),
         engine=engine,
         session_factory=session_factory,
         services=services,
