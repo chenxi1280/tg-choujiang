@@ -34,10 +34,26 @@ def test_alert_dedup_change_and_recovery(notifications):
     assert len(notifications) == 1
     assert monitor.process_report(_report("new UNKNOWN"), now=NOW) == 1
     assert len(notifications) == 2
+    assert "线上告警" in notifications[-1]
     assert monitor.process_report(_report(), now=NOW) == 0
     assert "告警恢复" in notifications[-1]
     assert "历史 UNKNOWN 仍未确认" in notifications[-1]
     assert monitor.process_report(_report(), now=NOW) == 0
+    assert len(notifications) == 3
+
+
+def test_log_error_aging_out_with_unreviewed_unknown_updates_alert_scope(notifications):
+    historical = "UNKNOWN_UNREVIEWED outbox_id=historical operation=delete_message"
+    polling_error = "tg-lottery-ops-bot-1 ERROR logger=aiogram.dispatcher"
+    monitor.process_report(_report(historical), now=NOW)
+    monitor.process_report(_report(historical, polling_error), now=NOW)
+    assert "线上告警" in notifications[-1]
+
+    assert monitor.process_report(_report(historical), now=NOW) == 1
+    assert "告警范围缩小" in notifications[-1]
+    assert historical in notifications[-1]
+    assert polling_error not in notifications[-1]
+    assert monitor.process_report(_report(historical), now=NOW) == 1
     assert len(notifications) == 3
 
 

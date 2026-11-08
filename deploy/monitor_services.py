@@ -162,11 +162,15 @@ def send_feishu(message):
 
 
 def notification_title(report, previous, now):
-    if report["issues"]:
-        if report["issues"] != previous.get("issues"):
+    issues = set(report["issues"])
+    previous_issues = set(previous.get("issues", []))
+    if issues:
+        if issues - previous_issues:
             return "线上告警"
+        if previous_issues - issues:
+            return "告警范围缩小"
         return None
-    if previous.get("issues"):
+    if previous_issues:
         return "告警恢复"
     if not previous:
         return "监控已启用"
