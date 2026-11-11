@@ -20,7 +20,7 @@ async def send_qualification_detail(bot, *, user_id, text, keyboard, callback):
         logging.getLogger(__name__).warning(
             "Qualification detail private delivery failed",
             extra={"user_id": user_id, "error_type": type(error).__name__},
-            exc_info=True,
+            exc_info=not isinstance(error, TelegramForbiddenError),
         )
         text = _private_failure_text(error)
         if callback is None:

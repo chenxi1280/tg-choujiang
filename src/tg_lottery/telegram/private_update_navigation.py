@@ -1,4 +1,4 @@
-from tg_lottery.domain.errors import DomainError
+from tg_lottery.domain.errors import DomainError, UserFacingError
 from tg_lottery.telegram import command_input
 from tg_lottery.telegram.start_payloads import is_unpublished_preview
 
@@ -63,10 +63,13 @@ async def send_operation_error(handler, message, exc):
     from tg_lottery.telegram.panel_edit import PanelUnavailableError
     from tg_lottery.telegram.public_projection import public_error_text
 
+    business_validation = isinstance(exc, UserFacingError) and (
+        exc.__cause__ is None or isinstance(exc.__cause__, ValueError)
+    )
     handler._logger.warning(
         "Telegram operation rejected",
         extra={"error_type": type(exc).__name__},
-        exc_info=(type(exc), exc, exc.__traceback__),
+        exc_info=None if business_validation else (type(exc), exc, exc.__traceback__),
     )
     text = public_error_text(exc, handler._default_timezone)
     prefix = "页面显示未完成" if isinstance(exc, PanelUnavailableError) else "操作未完成"

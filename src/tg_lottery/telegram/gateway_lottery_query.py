@@ -26,6 +26,6 @@ async def deliver_query(bot, outbox):
             raise
         import logging
 
-        logging.getLogger(__name__).warning("query request disappeared before reply", exc_info=True)
+        logging.getLogger(__name__).warning("query request disappeared before reply")
         message = await bot.send_message(outbox.recipient_chat_id, payload["text"], **options)
     return GatewayResult(remote_result=remote_object(message), remote_message_id=message.message_id)

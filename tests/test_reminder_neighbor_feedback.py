@@ -57,13 +57,26 @@ async def test_no_matching_group_rule_uses_temporary_feedback(monkeypatch, route
     flow._bot.send_message.assert_not_awaited()
 
 
-async def test_private_navigation_failure_does_not_queue_public_reminder(monkeypatch):
+@pytest.mark.parametrize("via_link", [False, True])
+async def test_private_navigation_failure_does_not_queue_public_reminder(
+    monkeypatch, caplog, via_link
+):
     answer = AsyncMock()
     monkeypatch.setattr(Message, "answer", answer)
     flow = flow_for(queries_for(campaign(), registered=False))
     query = _query().model_copy(update={"data": f"m:bo:{REFERENCE}"})
-    await handler_for(flow)._callback(query)
-    assert "操作未完成" in answer.await_args.args[0]
+    handler = handler_for(flow)
+    if via_link:
+        message = query.message.model_copy(
+            update={"from_user": query.from_user, "text": f"/start bonus_{REFERENCE}"}
+        )
+        await handler._private_message(message)
+        assert "完成报名及参与条件校验" in answer.await_args.args[0]
+    else:
+        await handler._callback(query)
+        assert "请先报名本场活动" in answer.await_args.args[0]
+    assert "Telegram operation rejected" in caplog.text
+    assert "Traceback" not in caplog.text
     flow._participants.queue_temporary_reminder.assert_not_awaited()
 
 
@@ -126,6 +139,7 @@ async def test_qualification_private_delivery_reports_actual_result_once(monkeyp
         label = {"blocked": "私聊不可达", "unknown": "结果未确认", "rejected": "发送失败"}[case]
         assert label in text
         assert "Qualification detail private delivery failed" in caplog.text
+        assert ("Traceback" in caplog.text) == (case != "blocked")
 
 
 @pytest.mark.parametrize("registered", [True, False])

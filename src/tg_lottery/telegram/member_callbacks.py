@@ -35,9 +35,7 @@ async def record_callback(
     try:
         handled = await _show_record_callback(flow, personal, query, data=data)
     except TelegramForbiddenError:
-        logging.getLogger(__name__).warning(
-            "Participant record private delivery forbidden", exc_info=True
-        )
+        logging.getLogger(__name__).warning("Participant record private delivery forbidden")
         await _record_acknowledgement(
             flow,
             query,
@@ -227,8 +225,10 @@ async def _deliver_invite_callback(
         ):
             raise
         return
-    except TelegramAPIError:
-        logging.getLogger(__name__).warning("Invite private delivery failed", exc_info=True)
+    except TelegramAPIError as error:
+        logging.getLogger(__name__).warning(
+            "Invite private delivery failed", exc_info=not isinstance(error, TelegramForbiddenError)
+        )
         await safe_answer(query, "请先私聊机器人，再查看邀请入口", alert=True)
         return
     await safe_answer(query, "邀请入口已私聊发送给你", alert=False)
