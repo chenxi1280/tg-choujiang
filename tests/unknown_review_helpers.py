@@ -71,5 +71,5 @@ def _manifest_row(row, attempt):
         "attempt_certainty": attempt.certainty.value,
         "attempt_finished_at": attempt.finished_at.isoformat(),
         "error_code": attempt.error_code,
-        "error_class": "connector",
+        "error_class": "connector" if "ClientConnectorError" in row.last_error else "other_network",
     }

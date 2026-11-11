@@ -86,8 +86,11 @@ def snapshot(row, attempts):
     }
 
 
-def validate_reviewable(row, attempts):
-    if row.operation not in REVIEW_OPERATIONS or row.state is not OutboxState.UNKNOWN_HOLD:
+def validate_reviewable(row, attempts, *, deletion_source):
+    eligible = row.operation in REVIEW_OPERATIONS or (
+        row.operation == "delete_message" and deletion_source is not None
+    )
+    if not eligible or row.state is not OutboxState.UNKNOWN_HOLD:
         raise ReviewRefused("target is not an eligible unknown notice")
     if canonical_hash(row.payload) != row.request_hash or len(attempts) != 1:
         raise ReviewRefused("request hash or original attempt count changed")
@@ -114,9 +117,9 @@ def _validate_no_remote_evidence(row, attempt):
         raise ReviewRefused("target already has remote evidence or a projection")
 
 
-def review_details(row, attempts, incident_ref):
-    validate_reviewable(row, attempts)
-    return {
+def review_details(row, attempts, incident_ref, *, deletion_source=None):
+    validate_reviewable(row, attempts, deletion_source=deletion_source)
+    details = {
         "version": 1,
         "incident_ref": incident_ref,
         "operation": row.operation,
@@ -126,3 +129,6 @@ def review_details(row, attempts, incident_ref):
         "snapshot_hash": canonical_hash(snapshot(row, attempts)),
         "delivery_result": "unknown",
     }
+    if deletion_source is not None:
+        details["deletion_source"] = deletion_source
+    return details

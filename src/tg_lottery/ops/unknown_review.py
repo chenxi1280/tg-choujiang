@@ -18,6 +18,7 @@ from tg_lottery.config import get_settings
 from tg_lottery.domain.rules import canonical_hash
 from tg_lottery.infrastructure.db import AuditLog, DeliveryAttempt, TelegramOutbox
 from tg_lottery.infrastructure.db.session import create_engine, create_session_factory
+from tg_lottery.ops.reconcile_notice_deletion import verified_expired_deletion_source
 from tg_lottery.ops.unknown_review_snapshot import (
     REVIEW_ACTION,
     ReviewRefused,
@@ -87,7 +88,7 @@ async def review_unknowns(sessions, request):
         await session.execute(text("SET LOCAL lock_timeout = '5s'"))
         await session.execute(text("SET LOCAL statement_timeout = '15s'"))
         rows, attempts = await _lock_targets(session, tuple(sorted(frozen)))
-        entries = _review_entries(rows, attempts, request)
+        entries = await _review_entries(session, rows, attempts=attempts, request=request)
         report = _report(entries, request)
         if request.expected_fingerprint is not None:
             if request.expected_fingerprint != report["fingerprint"]:
@@ -118,7 +119,7 @@ async def _lock_targets(session, ids):
     return rows, attempts
 
 
-def _review_entries(rows, attempts, request):
+async def _review_entries(session, rows, *, attempts, request):
     frozen = {UUID(item["outbox_id"]): item for item in request.manifest}
     by_outbox = {row.id: [] for row in rows}
     for attempt in attempts:
@@ -126,10 +127,28 @@ def _review_entries(rows, attempts, request):
     entries = []
     for row in rows:
         current = by_outbox[row.id]
-        details = review_details(row, current, request.incident_ref)
-        _validate_manifest_row(row, current[0], frozen[row.id])
+        target = frozen[row.id]
+        source = None
+        if row.operation == "delete_message":
+            source = await _verify_deletion_review(
+                session, row, target, count=request.expected_count
+            )
+        details = review_details(row, current, request.incident_ref, deletion_source=source)
+        _validate_manifest_row(row, current[0], target)
         entries.append((row, details | {"manifest_sha256": request.manifest_sha256}))
     return entries
+
+
+async def _verify_deletion_review(session, row, target, *, count):
+    if count != 1:
+        raise ReviewRefused("expired reminder deletion must be reviewed on its own")
+    try:
+        source = await verified_expired_deletion_source(session, row)
+    except ValueError as exc:
+        raise ReviewRefused(str(exc)) from exc
+    if target.get("deletion_source") != source:
+        raise ReviewRefused("deletion source differs from the approved frozen manifest")
+    return source
 
 
 def _report(entries, request):

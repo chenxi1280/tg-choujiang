@@ -4,7 +4,8 @@
 
 ## 安全边界
 
-- 只允许 `send_progress_notice` 和 `send_temporary_reminder`，且每个目标必须仍为 `UNKNOWN_HOLD`，只有一条对应的 UNKNOWN `TelegramNetworkError` Attempt，请求哈希、原错误、时间和租约均通过核验。
+- 允许 `send_progress_notice` 和 `send_temporary_reminder`。超过 Telegram 48 小时删除窗口的临时提醒删除可单条知悉，清单须额外冻结 `deletion_source`，绑定同一活动、群、消息的已确认来源提醒、Telegram 回执和带来源 ID 的原删除任务。复核不执行删除。
+- 每个目标必须仍为 `UNKNOWN_HOLD`，只有一条对应的 UNKNOWN `TelegramNetworkError` Attempt，请求哈希、原错误、时间和租约均通过核验。
 - 操作前冻结逐条清单，明确批准具体记录、数量和业务风险；清单必须包含 Outbox、请求、来源及原 Attempt 的身份和时间。预览指纹绑定清单 SHA-256 和当前事实，应用时在行锁内重新核验；任何变化使整批事务失败。
 - 每条审计保存事件引用、清单 SHA-256、原 Attempt 身份与事实指纹、请求身份指纹和完整状态指纹。原 Attempt 仍为 UNKNOWN，不伪造确认回执；重复应用同一清单和指纹是幂等的。
 - 指纹用于检测证据的意外变化，不是抵御具有数据库写权限者篡改的签名；数据库权限和审计访问控制仍须独立保护。
